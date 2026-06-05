@@ -4,7 +4,7 @@ SRC = src
 TEST = test
 DOCS = docs
 
-.PHONY: docs test-html test-http test-parser test-response test-router test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 all-spikes check clean
+.PHONY: docs test-html test-http test-parser test-response test-router test-socket test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 all-spikes check clean
 
 spike1:
 	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike1.hs -o spike1
@@ -58,9 +58,13 @@ test-router:
 	$(MHS) -i$(SRC) $(TEST)/MicroHttp/RouterTest.hs -o router-test
 	./router-test
 
-test: test-html test-http test-parser test-response test-router
+test-socket:
+	$(MHS) -i$(SRC) $(TEST)/MicroHttp/Network/SocketTest.hs -o socket-test
+	./socket-test
+
+test: test-html test-http test-parser test-response test-router test-socket
 
 check: docs test all-spikes
 
 clean:
-	rm -f html-test http-test parser-test response-test router-test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9
+	rm -f html-test http-test parser-test response-test router-test socket-test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9

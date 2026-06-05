@@ -4,7 +4,7 @@ SRC = src
 TEST = test
 DOCS = docs
 
-.PHONY: docs test-http test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 all-spikes check clean
+.PHONY: docs test-http test-response test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 all-spikes check clean
 
 spike1:
 	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike1.hs -o spike1
@@ -42,9 +42,13 @@ test-http:
 	$(MHS) -i$(SRC) $(TEST)/MicroHttp/HttpTest.hs -o http-test
 	./http-test
 
-test: test-http
+test-response:
+	$(MHS) -i$(SRC) $(TEST)/MicroHttp/Http/ResponseTest.hs -o response-test
+	./response-test
+
+test: test-http test-response
 
 check: docs test all-spikes
 
 clean:
-	rm -f http-test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9
+	rm -f http-test response-test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9

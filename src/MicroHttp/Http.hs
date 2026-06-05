@@ -11,6 +11,7 @@ module MicroHttp.Http
   , Status(..)
   , okStatus
   , parseMethod
+  , renderHeaderName
   , normaliseHeaderName
   ) where
 
@@ -81,6 +82,9 @@ okStatus = Status 200 "OK"
 normaliseHeaderName :: ByteString -> HeaderName
 normaliseHeaderName name =
   HeaderName (BS.pack (map lowerAscii (BS.unpack name)))
+
+renderHeaderName :: HeaderName -> ByteString
+renderHeaderName (HeaderName name) = name
 
 lowerAscii :: Char -> Char
 lowerAscii c

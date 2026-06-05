@@ -4,7 +4,7 @@ SRC = src
 TEST = test
 DOCS = docs
 
-.PHONY: docs test-html test-http test-parser test-response test-router test-server test-socket test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 all-spikes check clean
+.PHONY: docs test-facade test-html test-http test-parser test-response test-router test-server test-socket test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 all-spikes check clean
 
 spike1:
 	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike1.hs -o spike1
@@ -38,6 +38,10 @@ all-spikes: spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9
 docs:
 	markdownlint-cli2 "$(DOCS)/**/*.md"
 
+test-facade:
+	$(MHS) -i$(SRC) $(TEST)/MicroHttpTest.hs -o facade-test
+	./facade-test
+
 test-html:
 	$(MHS) -i$(SRC) $(TEST)/MicroHttp/HtmlTest.hs -o html-test
 	./html-test
@@ -66,9 +70,9 @@ test-socket:
 	$(MHS) -i$(SRC) $(TEST)/MicroHttp/Network/SocketTest.hs -o socket-test
 	./socket-test
 
-test: test-html test-http test-parser test-response test-router test-server test-socket
+test: test-facade test-html test-http test-parser test-response test-router test-server test-socket
 
 check: docs test all-spikes
 
 clean:
-	rm -f html-test http-test parser-test response-test router-test server-test socket-test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9
+	rm -f facade-test html-test http-test parser-test response-test router-test server-test socket-test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9

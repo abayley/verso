@@ -110,9 +110,9 @@ Rationale: Streaming large responses is useful, but adding a streaming
 dependency before the strict request/response path exists would create extra
 compatibility work and design surface.
 
-Consequences: Keep response bodies strict at first, but reserve a small local
-chunked API or `ResponseBody` variant for file streaming once basic serving
-works.
+Consequences: Use a small local response-body shape for file streaming. Avoid an
+external streaming package until MicroHs compatibility and actual pressure are
+clear.
 
 ### DEC-011: Close Every Connection After One Request Initially
 
@@ -165,11 +165,49 @@ framework feature.
 Consequences: `MicroHttp.Middleware` wraps `Application -> Application`
 behaviours such as request logging or error responses.
 
+### DEC-016: Use a Closed Sum Type for HTTP Methods
+
+Status: Accepted.
+
+Rationale: The first server targets browser and htmx workflows. A closed method
+type gives route matching and method override code simple, total pattern matches
+without carrying arbitrary method text through the application.
+
+Consequences: The parser chooses the `Method` constructor at parse time.
+Unknown or extension methods are rejected as unsupported input rather than
+preserved in `Request`.
+
+### DEC-017: Normalise Request Header Names at Parse Time
+
+Status: Accepted.
+
+Rationale: HTTP request header lookup is case-insensitive. Normalising once in
+the parser keeps handlers, middleware, and body parsing from repeating the same
+case-folding work.
+
+Consequences: `Headers` keeps a lower-case header-name invariant for requests.
+The original request header spelling is not preserved.
+
+### DEC-018: Support File Response Bodies in the First Implementation
+
+Status: Accepted.
+
+Rationale: File response support is useful for static assets and large content,
+and the type-level cost is low if it is modelled as a `ResponseBody` variant.
+
+Consequences: `ResponseBody` includes a file case. Strict bodies can still be
+serialised with `Content-Length`; file bodies are written by the server or
+response writer in chunks.
+
+The first file response implementation should not require an external streaming
+library. MicroHs does not currently export `getFileSize`, so file responses may
+initially be close-delimited unless a small file-size capability is added.
+
 ## Design Register Open Review Items
 
 - Verify socket layout assumptions on non-macOS platforms before treating
   Haskell-side sockaddr construction as portable.
 - Confirm whether MicroHs `ByteString` performance and allocation behaviour are
   acceptable for socket reads and writes under load.
-- Decide the exact local streaming shape after the strict response path and
-  filesystem file-serving path exist.
+- Decide whether file responses need a local file-size FFI before static asset
+  support is considered production-ready.

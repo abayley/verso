@@ -35,11 +35,18 @@ data ParseError
   = BadRequest String
   | HeaderTooLarge
   | BodyTooLarge
+  | UnsupportedMethod RequestBytes
   | UnsupportedTransferEncoding
   | UnsupportedHttpVersion
 
 parseRequest :: ParseLimits -> RequestBytes -> Either ParseError Request
 ```
+
+The parser chooses the closed `Method` constructor at parse time. Unknown method
+tokens return `UnsupportedMethod`.
+
+Request header names are normalised at parse time so later layers can rely on a
+lower-case header-name invariant.
 
 ## HTTP Parser Module Test Strategy
 
@@ -47,6 +54,7 @@ Parser tests should be pure fixture tests. They should cover:
 
 - Valid `GET`.
 - Valid form `POST`.
+- Unsupported method.
 - Query parsing.
 - Header normalisation.
 - Header limit.

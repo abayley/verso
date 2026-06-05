@@ -14,7 +14,7 @@ socket adapter, HTTP parser, application function, and response serialiser.
 - Read one request per connection for the first implementation.
 - Convert parser failures into HTTP error responses.
 - Call the application with a parsed request.
-- Serialise and write the response.
+- Write strict and file response bodies.
 - Close each client connection.
 
 ## Server Module Non-Responsibilities

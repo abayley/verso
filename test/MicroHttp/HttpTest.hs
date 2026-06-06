@@ -2,40 +2,25 @@ module Main(main) where
 
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http
+import Test.Hspec
 
 main :: IO ()
-main = do
-  assertEqual
-    "given GET token, when parsing method, then GET constructor is returned"
-    (Just GET)
-    (parseMethod (bs "GET"))
-  assertEqual
-    "given extension method token, when parsing method, then method is rejected"
-    Nothing
-    (parseMethod (bs "PROPFIND"))
-  assertEqual
-    "given POST token, when parsing method, then POST constructor is returned"
-    (Just POST)
-    (parseMethod (bs "POST"))
-  assertEqual
-    "given mixed-case header name, when normalising, then lower-case name is returned"
-    (HeaderName (bs "content-type"))
-    (normaliseHeaderName (bs "Content-Type"))
-  assertEqual
-    "given strict body response, when reading response body, then strict body is visible"
-    (StrictBody (bs "hello"))
-    (responseBody (Response okStatus [] (StrictBody (bs "hello"))))
-  assertEqual
-    "given file body response, when reading response body, then file path is visible"
-    (FileBody "public/app.css")
-    (responseBody (Response okStatus [] (FileBody "public/app.css")))
+main = hspec $
+  describe "MicroHttp.Http" $ do
+    it "given GET token, when parsing method, then GET constructor is returned" $
+      parseMethod (bs "GET") `shouldBe` Just GET
+    it "given extension method token, when parsing method, then method is rejected" $
+      parseMethod (bs "PROPFIND") `shouldBe` Nothing
+    it "given POST token, when parsing method, then POST constructor is returned" $
+      parseMethod (bs "POST") `shouldBe` Just POST
+    it "given mixed-case header name, when normalising, then lower-case name is returned" $
+      normaliseHeaderName (bs "Content-Type") `shouldBe` HeaderName (bs "content-type")
+    it "given strict body response, when reading response body, then strict body is visible" $
+      responseBody (Response okStatus [] (StrictBody (bs "hello")))
+        `shouldBe` StrictBody (bs "hello")
+    it "given file body response, when reading response body, then file path is visible" $
+      responseBody (Response okStatus [] (FileBody "public/app.css"))
+        `shouldBe` FileBody "public/app.css"
 
 bs :: String -> BS.ByteString
 bs = BS.pack
-
-assertEqual :: (Eq a, Show a) => String -> a -> a -> IO ()
-assertEqual name expected actual =
-  if expected == actual then
-    return ()
-  else
-    error (name ++ ": expected " ++ show expected ++ ", got " ++ show actual)

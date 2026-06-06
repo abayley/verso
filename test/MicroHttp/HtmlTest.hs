@@ -1,13 +1,13 @@
 module Main(main) where
 
 import MicroHttp.Html
+import Test.Hspec
 
 main :: IO ()
-main = do
-  assertEqual
-    "given htmx custom element, when rendering, then escaped HTML is returned"
-    expected
-    (renderHtml todoItem)
+main = hspec $
+  describe "MicroHttp.Html" $
+    it "given htmx custom element, when rendering, then escaped HTML is returned" $
+      renderHtml todoItem `shouldBe` expected
 
 todoItem :: Html ()
 todoItem =
@@ -30,10 +30,3 @@ expected =
   "<span data-safe=\"true\"></span>" ++
   "<button hx-delete=\"/todos/42\" hx-swap=\"outerHTML\">Delete</button>" ++
   "</todo-item>"
-
-assertEqual :: (Eq a, Show a) => String -> a -> a -> IO ()
-assertEqual name expectedValue actual =
-  if expectedValue == actual then
-    return ()
-  else
-    error (name ++ ": expected " ++ show expectedValue ++ ", got " ++ show actual)

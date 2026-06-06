@@ -1,8 +1,11 @@
 MHS = ../MicroHs/bin/mhs
+MHS_PACKAGE_DB = $(HOME)/.mcabal/mhs-0.16.0.0
+MHSFLAGS = -a$(MHS_PACKAGE_DB)
 SPIKE = spike
 SRC = src
 TEST = test
 DOCS = docs
+DOC_FILES = INSTALL.md "$(DOCS)/**/*.md"
 
 .PHONY: docs test-facade test-html test-http test-parser test-response test-router test-server test-socket test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 all-spikes check clean
 
@@ -36,38 +39,38 @@ spike9:
 all-spikes: spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9
 
 docs:
-	markdownlint-cli2 "$(DOCS)/**/*.md"
+	markdownlint-cli2 $(DOC_FILES)
 
 test-facade:
-	$(MHS) -i$(SRC) $(TEST)/MicroHttpTest.hs -o facade-test
+	$(MHS) $(MHSFLAGS) -i$(SRC) $(TEST)/MicroHttpTest.hs -o facade-test
 	./facade-test
 
 test-html:
-	$(MHS) -i$(SRC) $(TEST)/MicroHttp/HtmlTest.hs -o html-test
+	$(MHS) $(MHSFLAGS) -i$(SRC) $(TEST)/MicroHttp/HtmlTest.hs -o html-test
 	./html-test
 
 test-http:
-	$(MHS) -i$(SRC) $(TEST)/MicroHttp/HttpTest.hs -o http-test
+	$(MHS) $(MHSFLAGS) -i$(SRC) $(TEST)/MicroHttp/HttpTest.hs -o http-test
 	./http-test
 
 test-parser:
-	$(MHS) -i$(SRC) $(TEST)/MicroHttp/Http/ParserTest.hs -o parser-test
+	$(MHS) $(MHSFLAGS) -i$(SRC) $(TEST)/MicroHttp/Http/ParserTest.hs -o parser-test
 	./parser-test
 
 test-response:
-	$(MHS) -i$(SRC) $(TEST)/MicroHttp/Http/ResponseTest.hs -o response-test
+	$(MHS) $(MHSFLAGS) -i$(SRC) $(TEST)/MicroHttp/Http/ResponseTest.hs -o response-test
 	./response-test
 
 test-router:
-	$(MHS) -i$(SRC) $(TEST)/MicroHttp/RouterTest.hs -o router-test
+	$(MHS) $(MHSFLAGS) -i$(SRC) $(TEST)/MicroHttp/RouterTest.hs -o router-test
 	./router-test
 
 test-server:
-	$(MHS) -i$(SRC) $(TEST)/MicroHttp/ServerTest.hs -o server-test
+	$(MHS) $(MHSFLAGS) -i$(SRC) $(TEST)/MicroHttp/ServerTest.hs -o server-test
 	./server-test
 
 test-socket:
-	$(MHS) -i$(SRC) $(TEST)/MicroHttp/Network/SocketTest.hs -o socket-test
+	$(MHS) $(MHSFLAGS) -i$(SRC) $(TEST)/MicroHttp/Network/SocketTest.hs -o socket-test
 	./socket-test
 
 test: test-facade test-html test-http test-parser test-response test-router test-server test-socket

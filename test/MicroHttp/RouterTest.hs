@@ -3,38 +3,26 @@ module Main(main) where
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http
 import MicroHttp.Router
+import Test.Hspec
 
 main :: IO ()
-main = do
-  literal <- route routes (request GET ["todos"])
-  assertEqual
-    "given literal route, when routing, then literal handler response is returned"
-    (StrictBody (bs "index"))
-    (responseBody literal)
-
-  captured <- route routes (request GET ["todos", "42"])
-  assertEqual
-    "given capture route, when routing, then capture is passed to handler"
-    (StrictBody (bs "show 42"))
-    (responseBody captured)
-
-  created <- route routes (request POST ["todos"])
-  assertEqual
-    "given POST route, when routing, then POST handler response is returned"
-    (StrictBody (bs "create"))
-    (responseBody created)
-
-  missing <- route routes (request GET ["missing"])
-  assertEqual
-    "given no matching path, when routing, then not found response is returned"
-    404
-    (statusCode (responseStatus missing))
-
-  wrongMethod <- route routes (request DELETE ["todos"])
-  assertEqual
-    "given matching path with wrong method, when routing, then method not allowed is returned"
-    405
-    (statusCode (responseStatus wrongMethod))
+main = hspec $
+  describe "MicroHttp.Router" $ do
+    it "given literal route, when routing, then literal handler response is returned" $ do
+      literal <- route routes (request GET ["todos"])
+      responseBody literal `shouldBe` StrictBody (bs "index")
+    it "given capture route, when routing, then capture is passed to handler" $ do
+      captured <- route routes (request GET ["todos", "42"])
+      responseBody captured `shouldBe` StrictBody (bs "show 42")
+    it "given POST route, when routing, then POST handler response is returned" $ do
+      created <- route routes (request POST ["todos"])
+      responseBody created `shouldBe` StrictBody (bs "create")
+    it "given no matching path, when routing, then not found response is returned" $ do
+      missing <- route routes (request GET ["missing"])
+      statusCode (responseStatus missing) `shouldBe` 404
+    it "given matching path with wrong method, when routing, then method not allowed is returned" $ do
+      wrongMethod <- route routes (request DELETE ["todos"])
+      statusCode (responseStatus wrongMethod) `shouldBe` 405
 
 routes :: [Route]
 routes =
@@ -66,10 +54,3 @@ capture name ((key, value):rest)
 
 bs :: String -> BS.ByteString
 bs = BS.pack
-
-assertEqual :: (Eq a, Show a) => String -> a -> a -> IO ()
-assertEqual name expected actual =
-  if expected == actual then
-    return ()
-  else
-    error (name ++ ": expected " ++ show expected ++ ", got " ++ show actual)

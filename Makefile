@@ -1,6 +1,7 @@
 MHS = mhs
 MHS_PACKAGE_DB = $(HOME)/.mcabal/mhs-0.16.0.0
 MHSFLAGS = -a$(MHS_PACKAGE_DB)
+BUILD = build
 SPIKE = spike
 SRC = src
 TEST = test
@@ -10,34 +11,43 @@ DOCS = docs
 DOC_FILES = README.md INSTALL.md STANDARDS.md TODO.md "$(DOCS)/**/*.md"
 HS_FILES = $(shell find $(SRC) $(TEST) -name '*.hs' | sort)
 
-.PHONY: docs format format-check lint test-unit test-integration test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 all-spikes check clean
+.PHONY: docs format format-check lint run-test-app test-unit test-integration test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 all-spikes check clean
 
 spike1:
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike1.hs -o spike1
+	mkdir -p $(BUILD)
+	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike1.hs -o $(BUILD)/spike1
 
 spike2:
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike2.hs -o spike2
+	mkdir -p $(BUILD)
+	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike2.hs -o $(BUILD)/spike2
 
 spike3:
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike3.hs -o spike3
+	mkdir -p $(BUILD)
+	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike3.hs -o $(BUILD)/spike3
 
 spike4:
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike4.hs -o spike4
+	mkdir -p $(BUILD)
+	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike4.hs -o $(BUILD)/spike4
 
 spike5:
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike5.hs -o spike5
+	mkdir -p $(BUILD)
+	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike5.hs -o $(BUILD)/spike5
 
 spike6:
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike6.hs -o spike6
+	mkdir -p $(BUILD)
+	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike6.hs -o $(BUILD)/spike6
 
 spike7:
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike7.hs -o spike7
+	mkdir -p $(BUILD)
+	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike7.hs -o $(BUILD)/spike7
 
 spike8:
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike8.hs -o spike8
+	mkdir -p $(BUILD)
+	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike8.hs -o $(BUILD)/spike8
 
 spike9:
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike9.hs -o spike9
+	mkdir -p $(BUILD)
+	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike9.hs -o $(BUILD)/spike9
 
 all-spikes: spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9
 
@@ -53,17 +63,24 @@ format-check:
 lint:
 	hlint $(SRC) $(TEST)
 
+run-test-app:
+	mkdir -p $(BUILD)
+	$(MHS) $(MHSFLAGS) -i$(SRC) $(SRC)/TestApp.hs -o $(BUILD)/test-app
+	$(BUILD)/test-app
+
 test-unit:
-	$(MHS) $(MHSFLAGS) -i$(SRC) -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -o unit-test
-	./unit-test
+	mkdir -p $(BUILD)
+	$(MHS) $(MHSFLAGS) -i$(SRC) -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -o $(BUILD)/unit-test
+	$(BUILD)/unit-test
 
 test-integration:
-	$(MHS) $(MHSFLAGS) -i$(SRC) -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -o integration-test
-	./integration-test
+	mkdir -p $(BUILD)
+	$(MHS) $(MHSFLAGS) -i$(SRC) -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -o $(BUILD)/integration-test
+	$(BUILD)/integration-test
 
 test: test-unit test-integration
 
 check: docs format-check lint test
 
 clean:
-	rm -f unit-test integration-test facade-test html-test http-test parser-test response-test router-test server-test socket-test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9
+	rm -rf $(BUILD)

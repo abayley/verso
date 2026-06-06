@@ -35,12 +35,54 @@ rawTrusted :: Builder -> Html ()
 el :: Text -> [(Text, Text)] -> Html () -> Html ()
 voidEl :: Text -> [(Text, Text)] -> Html ()
 custom :: Text -> [(Text, Text)] -> Html () -> Html ()
+
+instance IsString (Html ())
+
+html :: [(Text, Text)] -> Html () -> Html ()
+head :: [(Text, Text)] -> Html () -> Html ()
+body :: [(Text, Text)] -> Html () -> Html ()
+h1 :: [(Text, Text)] -> Html () -> Html ()
+p :: [(Text, Text)] -> Html () -> Html ()
 ```
 
-## HTML Module Design Decision
+The preferred call style is qualified and close to `blaze-html`:
+
+```haskell
+{-# LANGUAGE OverloadedStrings #-}
+
+import qualified MicroHttp.Html as H
+
+page :: H.Html ()
+page =
+  H.html [H.lang "en"] $ do
+    H.head [] $
+      H.title [] "MicroHttp"
+    H.body [] $
+      H.main [] $ do
+        H.h1 [] "Hello"
+        H.p [] "Rendered as escaped text"
+```
+
+## HTML Module Builder Decision
 
 Use the local builder for the first implementation. The active MicroHs package
 path did not provide `xhtml` or `lucid` during the spike run, and the local
 builder handles htmx/custom-element markup directly.
 
 External combinator libraries remain follow-up package-port checks.
+
+## HTML Module Naming Decision
+
+Prefer unsuffixed element helpers such as `html`, `head`, `body`, `h1`, and `p`
+when importing the module qualified. These names intentionally overlap with a few
+Prelude names, matching the usual blaze-style import pattern.
+
+Keep underscored helpers such as `html_`, `head_`, and `p_` as compatibility
+aliases. Attribute helpers can still use suffixes where the unsuffixed name would
+be awkward or reserved, such as `class_`.
+
+## HTML Module Text Decision
+
+Support `OverloadedStrings` through `IsString (Html ())`, with string literals
+rendered through the same escaping path as `text`. Use `rawTrusted` only for
+already-sanitised markup.

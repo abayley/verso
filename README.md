@@ -138,9 +138,10 @@ make all-spikes
 ```
 
 Spikes are retained as historical design evidence. They are not part of the
-default `make check` quality gate.
+default `make check` quality gate. Compiled spike binaries are written under
+`build/`.
 
-Remove generated test and spike binaries:
+Remove generated binaries:
 
 ```sh
 make clean
@@ -148,8 +149,23 @@ make clean
 
 ## MicroHttp Run Commands
 
-There is not yet a standalone example executable in `app/`. The current server
-entrypoints are library functions:
+Run the test application:
+
+```sh
+make run-test-app
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8080/
+```
+
+The app is implemented in `src/TestApp.hs` and serves `/` and `/index.html`.
+It uses a sequential `serveOne` loop because the current `serve` accept loop can
+block handler progress under MicroHs' socket FFI.
+
+The current server entrypoints are library functions:
 
 - `serve :: Settings -> Application -> IO (Either ServerError ())`
 - `serveOne :: Settings -> Application -> IO (Either ServerError ())`

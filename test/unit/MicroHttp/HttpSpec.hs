@@ -1,11 +1,11 @@
-module Main(main) where
+module MicroHttp.HttpSpec(spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http
 import Test.Hspec
 
-main :: IO ()
-main = hspec $
+spec :: Spec
+spec =
   describe "MicroHttp.Http" $ do
     it "given GET token, when parsing method, then GET constructor is returned" $
       parseMethod (bs "GET") `shouldBe` Just GET

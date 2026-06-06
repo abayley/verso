@@ -1,12 +1,12 @@
-module Main(main) where
+module MicroHttp.ServerSpec(spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http
 import MicroHttp.Server
 import Test.Hspec
 
-main :: IO ()
-main = hspec $
+spec :: Spec
+spec =
   describe "MicroHttp.Server" $ do
     it "given valid request bytes, when responding, then application response is returned" $ do
       ok <- respondToRequestBytes

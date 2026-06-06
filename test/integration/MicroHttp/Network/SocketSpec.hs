@@ -1,10 +1,10 @@
-module Main(main) where
+module MicroHttp.Network.SocketSpec(spec) where
 
 import MicroHttp.Network.Socket
 import Test.Hspec
 
-main :: IO ()
-main = hspec $
+spec :: Spec
+spec =
   describe "MicroHttp.Network.Socket" $
     it "given port zero, when listening and closing, then both operations succeed" $ do
       opened <- listenTcp HostAny (Port 0) 1

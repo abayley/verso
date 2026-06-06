@@ -19,10 +19,10 @@ MicroHs compiler at `../MicroHs/bin/mhs`.
 Recommended targets:
 
 ```makefile
-build
+test-unit
 test
 test-integration
-spikes
+all-spikes
 docs
 check
 clean
@@ -51,7 +51,14 @@ Use fast checks for iteration:
 
 ```sh
 make -C micro-http docs
-make -C micro-http test
+make -C micro-http test-unit
+```
+
+Run effectful checks separately when touching filesystem, socket, or server
+lifecycle code:
+
+```sh
+make -C micro-http test-integration
 ```
 
 Use full checks before review:

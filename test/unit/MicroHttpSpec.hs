@@ -1,11 +1,11 @@
-module Main(main) where
+module MicroHttpSpec(spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp
 import Test.Hspec
 
-main :: IO ()
-main = hspec $
+spec :: Spec
+spec =
   describe "MicroHttp facade" $
     it "given public facade import, when building response, then exported modules are available" $
       responseBody (Response okStatus [] (StrictBody (BS.pack (renderHtml page))))

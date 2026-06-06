@@ -1,12 +1,12 @@
-module Main(main) where
+module MicroHttp.RouterSpec(spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http
 import MicroHttp.Router
 import Test.Hspec
 
-main :: IO ()
-main = hspec $
+spec :: Spec
+spec =
   describe "MicroHttp.Router" $ do
     it "given literal route, when routing, then literal handler response is returned" $ do
       literal <- route routes (request GET ["todos"])

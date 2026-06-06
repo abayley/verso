@@ -1,10 +1,10 @@
-module Main(main) where
+module MicroHttp.HtmlSpec(spec) where
 
 import MicroHttp.Html
 import Test.Hspec
 
-main :: IO ()
-main = hspec $
+spec :: Spec
+spec =
   describe "MicroHttp.Html" $
     it "given htmx custom element, when rendering, then escaped HTML is returned" $
       renderHtml todoItem `shouldBe` expected

@@ -14,8 +14,12 @@ micro-http/
     MicroHttp/
       ...
   test/
-    MicroHttp/
-      ...
+    unit/
+      MicroHttp/
+        ...
+    integration/
+      MicroHttp/
+        ...
   app/
     Main.hs
   spike/
@@ -49,23 +53,30 @@ modules.
 
 ## MicroHttp Test Layout Decision
 
-Use `test/MicroHttp/...` for test modules that mirror `src/MicroHttp/...`.
+Use `test/unit/...` for unit specs and `test/integration/...` for specs that
+touch the filesystem, sockets, subprocesses, environment, clock, or other
+external effects. Within each suite, mirror `src/MicroHttp/...` module paths.
 
 Suggested test split:
 
 ```text
 test/
-  MicroHttp/
-    HtmlTest.hs
-    Http/
-      ParserTest.hs
-      ResponseTest.hs
-    RouterTest.hs
-    Router/
-      TypedTest.hs
-    Store/
-      FileSystemTest.hs
-    ServerIntegrationTest.hs
+  unit/
+    Main.hs
+    MicroHttp/
+      HtmlSpec.hs
+      Http/
+        ParserSpec.hs
+        ResponseSpec.hs
+      RouterSpec.hs
+      ServerSpec.hs
+  integration/
+    Main.hs
+    MicroHttp/
+      Http/
+        ResponseFileSpec.hs
+      Network/
+        SocketSpec.hs
 ```
 
 Pure unit tests should not open sockets or touch the filesystem. Filesystem and
@@ -74,10 +85,9 @@ targets.
 
 ## MicroHttp Test Harness Decision
 
-Start with a small local assertion harness if package availability is uncertain.
-Move to `HUnit` or `hspec` only after confirming the active MicroHs package DB
-has the required packages installed.
+Use `nanospec`, which provides a small `Test.Hspec` subset, for the current test
+harness. Each spec module should export `spec :: Spec`; suite drivers should
+import those modules and call `hspec`.
 
-The MicroHs package list says `HUnit`, `hspec`, and related packages are known
-to compile, but they were not verified as installed in this workspace during the
-spike run.
+Avoid `hspec-discover` for now. It depends on preprocessor/build-tool behaviour
+that is not needed while the MicroHs build remains Makefile-driven.

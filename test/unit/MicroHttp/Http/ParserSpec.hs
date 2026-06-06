@@ -1,12 +1,12 @@
-module Main(main) where
+module MicroHttp.Http.ParserSpec(spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http
 import MicroHttp.Http.Parser
 import Test.Hspec
 
-main :: IO ()
-main = hspec $
+spec :: Spec
+spec =
   describe "MicroHttp.Http.Parser" $ do
     it "given GET request, when parsing, then request fields are returned" $
       parseRequest

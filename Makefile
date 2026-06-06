@@ -1,4 +1,4 @@
-MHS = ../MicroHs/bin/mhs
+MHS = mhs
 MHS_PACKAGE_DB = $(HOME)/.mcabal/mhs-0.16.0.0
 MHSFLAGS = -a$(MHS_PACKAGE_DB)
 SPIKE = spike
@@ -8,8 +8,9 @@ UNIT_TEST = $(TEST)/unit
 INTEGRATION_TEST = $(TEST)/integration
 DOCS = docs
 DOC_FILES = README.md INSTALL.md STANDARDS.md TODO.md "$(DOCS)/**/*.md"
+HS_FILES = $(shell find $(SRC) $(TEST) -name '*.hs' | sort)
 
-.PHONY: docs test-unit test-integration test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 all-spikes check clean
+.PHONY: docs format format-check lint test-unit test-integration test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 all-spikes check clean
 
 spike1:
 	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike1.hs -o spike1
@@ -43,6 +44,15 @@ all-spikes: spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9
 docs:
 	markdownlint-cli2 $(DOC_FILES)
 
+format:
+	fourmolu --mode inplace $(HS_FILES)
+
+format-check:
+	fourmolu --mode check $(HS_FILES)
+
+lint:
+	hlint $(SRC) $(TEST)
+
 test-unit:
 	$(MHS) $(MHSFLAGS) -i$(SRC) -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -o unit-test
 	./unit-test
@@ -53,7 +63,7 @@ test-integration:
 
 test: test-unit test-integration
 
-check: docs test all-spikes
+check: docs format-check lint test
 
 clean:
 	rm -f unit-test integration-test facade-test html-test http-test parser-test response-test router-test server-test socket-test spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9

@@ -1,37 +1,37 @@
-module MicroHttp.Html
-  ( Html
-  , attr
-  , button_
-  , class_
-  , custom
-  , div_
-  , el
-  , form_
-  , hxDelete
-  , hxPost
-  , hxSwap
-  , hxTarget
-  , input_
-  , rawTrusted
-  , renderHtml
-  , text
-  , voidEl
-  ) where
+module MicroHttp.Html (
+    Html,
+    attr,
+    button_,
+    class_,
+    custom,
+    div_,
+    el,
+    form_,
+    hxDelete,
+    hxPost,
+    hxSwap,
+    hxTarget,
+    input_,
+    rawTrusted,
+    renderHtml,
+    text,
+    voidEl,
+) where
 
 newtype Html a = Html (String, a)
 
 instance Functor Html where
-  fmap f (Html (out, value)) = Html (out, f value)
+    fmap f (Html (out, value)) = Html (out, f value)
 
 instance Applicative Html where
-  pure value = Html ("", value)
-  Html (left, f) <*> Html (right, value) = Html (left ++ right, f value)
+    pure value = Html ("", value)
+    Html (left, f) <*> Html (right, value) = Html (left ++ right, f value)
 
 instance Monad Html where
-  return = pure
-  Html (left, value) >>= f =
-    case f value of
-      Html (right, next) -> Html (left ++ right, next)
+    return = pure
+    Html (left, value) >>= f =
+        case f value of
+            Html (right, next) -> Html (left ++ right, next)
 
 renderHtml :: Html a -> String
 renderHtml (Html (out, _)) = out
@@ -44,9 +44,9 @@ rawTrusted = emit
 
 el :: String -> [(String, String)] -> Html () -> Html ()
 el name attrs children = do
-  emit ("<" ++ name ++ renderAttrs attrs ++ ">")
-  children
-  emit ("</" ++ name ++ ">")
+    emit ("<" ++ name ++ renderAttrs attrs ++ ">")
+    children
+    emit ("</" ++ name ++ ">")
 
 voidEl :: String -> [(String, String)] -> Html ()
 voidEl name attrs = emit ("<" ++ name ++ renderAttrs attrs ++ ">")

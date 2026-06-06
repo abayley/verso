@@ -10,25 +10,21 @@ Install or build these tools first:
 
 - MicroHs 0.16.0.0
 - MicroCabal 0.5.10.0
+- `fourmolu`
+- `hlint`
 - `make`
 - `markdownlint-cli2`
 
-The current Makefile expects this layout from the parent Haskell workspace:
-
-```text
-haskell/
-  MicroHs/
-    bin/mhs
-  micro-http/
-    Makefile
-```
+The current Makefile expects `mhs`, `fourmolu`, `hlint`, and
+`markdownlint-cli2` to be visible on `PATH`.
 
 Check the active compiler:
 
 ```sh
-../MicroHs/bin/mhs --version
-~/.mcabal/bin/mhs --version
-~/.mcabal/bin/mcabal --version
+mhs --version
+mcabal --version
+fourmolu --version
+hlint --version
 ```
 
 ## MicroHs Package Database
@@ -39,7 +35,7 @@ Check the active compiler:
 ~/.mcabal/mhs-0.16.0.0
 ```
 
-The checked-out `../MicroHs/bin/mhs` may otherwise look in:
+Some MicroHs builds may otherwise look in:
 
 ```text
 ~/.mcabal-user/mhs-0.16.0.0
@@ -48,6 +44,7 @@ The checked-out `../MicroHs/bin/mhs` may otherwise look in:
 The project Makefile passes the package database explicitly:
 
 ```make
+MHS = mhs
 MHS_PACKAGE_DB = $(HOME)/.mcabal/mhs-0.16.0.0
 MHSFLAGS = -a$(MHS_PACKAGE_DB)
 ```
@@ -161,7 +158,7 @@ main =
         (1 :: Int) `shouldBe` 1
 EOF
 
-../MicroHs/bin/mhs \
+mhs \
   -a"$HOME/.mcabal/mhs-0.16.0.0" \
   /tmp/micro-http-hspec-smoke.hs \
   -o /tmp/micro-http-hspec-smoke
@@ -182,7 +179,7 @@ main =
   quickCheck (\x -> (x :: Int) == x)
 EOF
 
-../MicroHs/bin/mhs \
+mhs \
   -a"$HOME/.mcabal/mhs-0.16.0.0" \
   /tmp/micro-http-quickcheck-smoke.hs \
   -o /tmp/micro-http-quickcheck-smoke
@@ -198,5 +195,6 @@ make check
 make clean
 ```
 
-`make check` runs Markdown linting, all production tests, and the spike
-compilation checks.
+`make check` runs Markdown linting, Fourmolu format checks, HLint, and all
+production tests. Spike compilation is available separately with
+`make all-spikes`.

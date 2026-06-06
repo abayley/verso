@@ -1,4 +1,4 @@
-module Main(main) where
+module Main (main) where
 
 import qualified MicroHttp.HtmlSpec as HtmlSpec
 import qualified MicroHttp.Http.ParserSpec as ParserSpec
@@ -11,10 +11,10 @@ import Test.Hspec
 
 main :: IO ()
 main = hspec $ do
-  FacadeSpec.spec
-  HtmlSpec.spec
-  HttpSpec.spec
-  ParserSpec.spec
-  ResponseSpec.spec
-  RouterSpec.spec
-  ServerSpec.spec
+    FacadeSpec.spec
+    HtmlSpec.spec
+    HttpSpec.spec
+    ParserSpec.spec
+    ResponseSpec.spec
+    RouterSpec.spec
+    ServerSpec.spec

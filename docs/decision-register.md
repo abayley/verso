@@ -52,11 +52,14 @@ points live in `app/`.
 
 Status: Accepted.
 
-Rationale: Direct `mhs` commands are the lowest-friction way to keep MicroHs
-spikes reproducible before package metadata stabilises.
+Rationale: Direct `mhs` commands are the lowest-friction way to keep production
+modules testable before package metadata stabilises.
 
-Consequences: The first automation target is `make check`; Cabal or MicroCabal
-can be added after production modules settle.
+Consequences: `make check` is the standard quality gate. It runs documentation
+linting, Haskell format checks, HLint, and production tests. Spike builds remain
+available through `make all-spikes`, but they are historical checks rather than
+part of the default gate. Cabal or MicroCabal can be added after production
+modules settle.
 
 ### DEC-006: Start With a Small Local Test Harness
 

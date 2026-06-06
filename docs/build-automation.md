@@ -4,7 +4,8 @@
 
 Build automation should make the common checks boring:
 
-- Compile the library.
+- Run Haskell format checks.
+- Run Haskell lint checks.
 - Run pure unit tests.
 - Run integration tests.
 - Run spike builds when requested.
@@ -13,12 +14,16 @@ Build automation should make the common checks boring:
 
 ## MicroHttp Initial Make Targets
 
-Use `Makefile` first because the local workflow already has a checked-out
-MicroHs compiler at `../MicroHs/bin/mhs`.
+Use `Makefile` first because the local workflow is still direct MicroHs
+compilation rather than Cabal-managed package builds. The Makefile expects
+`mhs`, `fourmolu`, `hlint`, and `markdownlint-cli2` to be visible on `PATH`.
 
 Recommended targets:
 
 ```makefile
+format
+format-check
+lint
 test-unit
 test
 test-integration
@@ -28,9 +33,8 @@ check
 clean
 ```
 
-The current spike targets should remain while design is being reviewed, but the
-main `check` target should eventually run production build and tests, not every
-spike by default.
+The spike targets remain available for historical reproducibility, but the main
+`check` target runs the production quality gate, not every spike by default.
 
 ## MicroHttp Cabal Or MicroCabal Direction
 
@@ -51,6 +55,8 @@ Use fast checks for iteration:
 
 ```sh
 make -C micro-http docs
+make -C micro-http format-check
+make -C micro-http lint
 make -C micro-http test-unit
 ```
 

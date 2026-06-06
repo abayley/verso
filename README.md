@@ -54,23 +54,15 @@ not re-exported through the public facade.
 
 ## MicroHttp Installation
 
-Install MicroHs, MicroCabal, and the current test dependencies before running the
-project checks. The full installation notes are in
+Install MicroHs, MicroCabal, development tools, and the current test dependencies
+before running the project checks. The full installation notes are in
 [INSTALL.md](INSTALL.md).
 
-The Makefile expects this sibling workspace layout:
-
-```text
-haskell/
-  MicroHs/
-    bin/mhs
-  micro-http/
-    Makefile
-```
-
-The test targets pass the MicroHs package database explicitly:
+The Makefile expects `mhs`, `hlint`, `fourmolu`, and `markdownlint-cli2` to be
+visible on `PATH`. Test targets pass the MicroHs package database explicitly:
 
 ```make
+MHS = mhs
 MHS_PACKAGE_DB = $(HOME)/.mcabal/mhs-0.16.0.0
 MHSFLAGS = -a$(MHS_PACKAGE_DB)
 ```
@@ -85,14 +77,33 @@ make check
 
 `make check` runs:
 
-- Markdown linting for `README.md`, `INSTALL.md`, and `docs/`.
+- Markdown linting for root Markdown files and `docs/`.
+- Fourmolu format checks for `src/` and `test/`.
+- HLint checks for `src/` and `test/`.
 - Unit and integration test executables under `test/`.
-- All compile spikes under `spike/`.
 
 Run only Markdown linting:
 
 ```sh
 make docs
+```
+
+Run only Haskell format checks:
+
+```sh
+make format-check
+```
+
+Format Haskell source and test files:
+
+```sh
+make format
+```
+
+Run only HLint:
+
+```sh
+make lint
 ```
 
 Run all tests:
@@ -125,6 +136,9 @@ Compile all retained spikes:
 ```sh
 make all-spikes
 ```
+
+Spikes are retained as historical design evidence. They are not part of the
+default `make check` quality gate.
 
 Remove generated test and spike binaries:
 

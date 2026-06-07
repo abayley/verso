@@ -240,6 +240,13 @@ async function main() {
   await page.goto(`${baseUrl}/documents/home`);
   assert.equal((await page.locator("body").innerText()).trim(), autosavedMarkdown);
 
+  await page.goto(`${baseUrl}/documents/home/edit`);
+  await page.waitForSelector(".markdown-editor__surface h1");
+  await page.locator(".markdown-editor__style-select").selectOption("heading-2");
+  await page.waitForSelector(".markdown-editor__surface h2");
+  assert.equal(await page.locator(".markdown-editor__surface h2").innerText(), "Autosaved heading");
+  assert.equal(await page.locator(".markdown-editor__preview h2").innerText(), "Autosaved heading");
+
   assert.deepEqual(consoleErrors, []);
 }
 

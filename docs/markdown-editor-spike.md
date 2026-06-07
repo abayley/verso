@@ -460,7 +460,7 @@ Phase Four is complete because the browser now owns Markdown parsing, rendering,
 preview, and visual-editing projection. The TestApp server stores and serves
 Markdown text and static editor assets, but no longer owns Markdown rendering.
 
-### Markdown Editor Spike Phase Five: In Progress
+### Markdown Editor Spike Phase Five: Complete
 
 Scope: expand the basic non-asset Markdown subset after the browser-owned
 pipeline is in place. Each supported feature must pass through the typed editor
@@ -477,11 +477,10 @@ and browser smoke flow.
   HTML rendering, DOM serialisation, and browser smoke flow. The editor
   serialises generated hard breaks with backslash-newline rather than trailing
   spaces.
-- Tables are explicitly deferred unless a later decision moves them into this
-  phase.
-- Phase Five should stop after hard breaks if the current basic non-asset subset
-  is enough for the next design discussion. Before Phase Six, revisit visual
-  controls and whether Tiptap should own the editing surface.
+Phase Five is complete because the basic non-asset Markdown subset now covers
+fenced code blocks, blockquotes, and hard line breaks through the editor-owned
+parse, render, serialise, validation, and browser smoke paths. Tables remain
+deferred to Phase Seven.
 
 ### Markdown Editor Spike Phase Six: In Progress
 
@@ -490,21 +489,36 @@ uses Tiptap/ProseMirror for visual editing behind the existing
 `<markdown-editor>` boundary. Later slices add toolbar controls, raw Markdown
 editing with CodeMirror, and Web Awesome controls.
 
-- Replaced the hand-built `contenteditable` visual surface with a Tiptap adapter.
-- Preserve the existing htmx form contract, autosave event, source mode, and
+- [x] Replace the hand-built `contenteditable` visual surface with a Tiptap
+  adapter.
+- [x] Preserve the existing htmx form contract, autosave event, source mode, and
   split mode.
-- Keep remark/mdast as a reference parser and validation fixture while Tiptap's
-  Markdown extension remains beta.
-- Observed that adding Tiptap grows the current minified Bun editor bundle to
-  roughly 0.62 MB.
-- Added a top toolbar shell with visual, Markdown source, and split mode
+- [x] Keep remark/mdast as a reference parser and validation fixture while
+  Tiptap's Markdown extension remains beta.
+- [x] Add a top toolbar shell with visual, Markdown source, and split mode
   switching inside the custom element.
-- Replaced the raw Markdown textarea with a CodeMirror source editor configured
-  for Markdown editing.
-- Add style controls, structure controls, and theme switching in later slices.
-- Use Web Awesome for future web-component controls and styling.
-- Consider Lit for the editor shell once manual DOM state management becomes the
-  main source of complexity.
+- [x] Replace the raw Markdown textarea with a CodeMirror source editor
+  configured for Markdown editing.
+- [x] Add the first style control: a block-style select that applies paragraph
+  and heading levels one to three through Tiptap in visual mode.
+- [ ] Add inline style controls for strong, emphasis, inline code, and links.
+- [ ] Add structure controls for lists, blockquotes, fenced code blocks, and
+  thematic breaks.
+- [ ] Add theme switching.
+- [ ] Revisit whether Web Awesome should replace native toolbar controls.
+- [ ] Consider Lit for the editor shell once manual DOM state management becomes
+  the main source of complexity.
+
+Phase Six findings so far:
+
+- Adding Tiptap grows the current minified Bun editor bundle to roughly 0.62 MB.
+- Adding CodeMirror grows the current minified Bun editor bundle to roughly
+  1.24 MB.
+- Tiptap is a good fit for the visual editing surface because toolbar actions
+  can stay behind the `TiptapVisualEditor` adapter instead of spreading
+  ProseMirror commands through the custom element.
+- Native toolbar controls are enough for the spike, but the toolbar is now the
+  area most likely to benefit from a component/styling library decision.
 
 ### Markdown Editor Spike Phase Seven: Planned
 

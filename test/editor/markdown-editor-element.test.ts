@@ -80,6 +80,20 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__surface strong")?.textContent).toBe("strong");
     });
 
+    it("given visual mode, when heading style is selected, then the current block becomes a heading", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        selectBlockStyle(editor, "heading-2");
+
+        expect(editor.querySelector(".markdown-editor__surface h2")?.textContent).toBe("Plain paragraph");
+        expect(editor.querySelector(".markdown-editor__preview h2")?.textContent).toBe("Plain paragraph");
+        expect(editor.toMarkdown().trim()).toBe("## Plain paragraph");
+    });
+
     it("given unsupported source Markdown, when edited, then it does not dispatch a changed event", async (): Promise<void> => {
         const editor = document.createElement(elementName);
         editor.setAttribute("mode", "source");
@@ -131,4 +145,16 @@ function clickToolbarButton(editor: Element, label: string): void {
     }
 
     button.click();
+}
+
+/** Selects a block style from the toolbar style control. */
+function selectBlockStyle(editor: Element, style: string): void {
+    const select = editor.querySelector(".markdown-editor__style-select");
+
+    if (!(select instanceof HTMLSelectElement)) {
+        throw new Error("Expected toolbar style select.");
+    }
+
+    select.value = style;
+    select.dispatchEvent(new Event("change", { bubbles: true }));
 }

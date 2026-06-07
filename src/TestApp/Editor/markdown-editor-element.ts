@@ -1,6 +1,6 @@
 import { CodeMirrorSourceEditor } from "./codemirror-source-editor.js";
 import { renderMarkdown } from "./markdown-render.js";
-import { TiptapVisualEditor } from "./tiptap-visual-editor.js";
+import { TiptapVisualEditor, type VisualBlockStyle } from "./tiptap-visual-editor.js";
 
 type EditorMode = "visual" | "source" | "split";
 
@@ -20,6 +20,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private parseError: HTMLDivElement | null = null;
     private preview: HTMLDivElement | null = null;
     private sourceEditor: CodeMirrorSourceEditor | null = null;
+    private styleSelect: HTMLSelectElement | null = null;
     private toolbar: HTMLDivElement | null = null;
     private visualEditor: TiptapVisualEditor | null = null;
 
@@ -79,6 +80,8 @@ export class MarkdownEditorElement extends HTMLElement {
         toolbar.append(this.createModeButton("visual", "Visual"));
         toolbar.append(this.createModeButton("source", "Markdown"));
         toolbar.append(this.createModeButton("split", "Split"));
+        this.styleSelect = this.createStyleSelect();
+        toolbar.append(this.styleSelect);
 
         return toolbar;
     }
@@ -93,6 +96,31 @@ export class MarkdownEditorElement extends HTMLElement {
         button.addEventListener("click", (): void => this.switchMode(mode));
 
         return button;
+    }
+
+    /** Creates the block style toolbar control. */
+    private createStyleSelect(): HTMLSelectElement {
+        const select = document.createElement("select");
+        select.className = "markdown-editor__style-select";
+        select.setAttribute("aria-label", "Block style");
+        select.append(
+            this.createStyleOption("paragraph", "Paragraph"),
+            this.createStyleOption("heading-1", "Heading 1"),
+            this.createStyleOption("heading-2", "Heading 2"),
+            this.createStyleOption("heading-3", "Heading 3"),
+        );
+        select.addEventListener("change", (): void => this.applyBlockStyle(select.value));
+
+        return select;
+    }
+
+    /** Creates one option in the block style toolbar control. */
+    private createStyleOption(value: VisualBlockStyle, label: string): HTMLOptionElement {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+
+        return option;
     }
 
     /** Re-renders the editor body for the current mode. */
@@ -180,6 +208,17 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         this.updatePreview();
+    }
+
+    /** Applies a visual block style through the active visual editor. */
+    private applyBlockStyle(style: string): void {
+        if (!this.visualEditor || !isVisualBlockStyle(style)) {
+            return;
+        }
+
+        if (this.visualEditor.applyBlockStyle(style)) {
+            this.handleInput();
+        }
     }
 
     /** Switches the active editor mode after validating the current Markdown. */
@@ -312,6 +351,11 @@ export class MarkdownEditorElement extends HTMLElement {
             const selected = button.dataset["mode"] === this.mode;
             button.setAttribute("aria-pressed", selected ? "true" : "false");
         }
+
+        if (this.styleSelect) {
+            this.styleSelect.disabled = this.mode !== "visual";
+            this.styleSelect.value = "paragraph";
+        }
     }
 }
 
@@ -322,4 +366,9 @@ function errorMessage(error: unknown): string {
     }
 
     return "Markdown could not be parsed.";
+}
+
+/** Checks that a toolbar value is a supported visual block style. */
+function isVisualBlockStyle(style: string): style is VisualBlockStyle {
+    return style === "paragraph" || style === "heading-1" || style === "heading-2" || style === "heading-3";
 }

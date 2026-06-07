@@ -446,6 +446,11 @@ Preview must not allow a broader content policy than saved page rendering.
   the typed editor document model.
 - Kept the local parser as the active editor parser while the remark adapter is
   proven with parity tests.
+- Switched the public editor parser to the remark/mdast adapter.
+- Kept the hand-written parser as a local legacy parser for parity tests while
+  the adapter settles.
+- Observed that bundling remark into the browser editor grows the editor bundle
+  to roughly 0.33 MB in the current Bun build.
 - Use remark and mdast as reference fixtures for editor-owned parsing and
   rendering behaviour.
 - Continue extracting stable editor code into typed editor modules.
@@ -473,9 +478,9 @@ static editor assets. The editor owns Markdown parsing, rendering, preview, and
 visual editing.
 
 remark and mdast are development/reference tools for fixtures and expected
-Markdown behaviour, not production server runtime dependencies. The first
-remark adapter now converts mdast into the typed editor document model behind
-the existing parser contract. It is not yet wired as the active browser parser.
+Markdown behaviour, not production server runtime dependencies. The editor's
+public parser now uses remark/mdast behind the existing parser contract. The
+hand-written parser remains only as a parity fixture while the adapter settles.
 
 Using an external Markdown parser spike versus a tiny local parser is now being
 tested with a remark and mdast spike. The current local parser should not grow

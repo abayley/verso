@@ -23,8 +23,10 @@ describe("renderMarkdown", (): void => {
         );
     });
 
-    it("escapes unsupported raw HTML", (): void => {
-        expect(renderMarkdown("<script>alert(1)</script>")).toBe("<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>");
+    it("given raw HTML, when rendering Markdown, then it rejects the unsupported node", (): void => {
+        expect((): void => {
+            renderMarkdown("<script>alert(1)</script>");
+        }).toThrow("Unsupported Markdown node for editor subset: html");
     });
 
     it("renders horizontal rules", (): void => {

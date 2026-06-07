@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdown } from "../../src/TestApp/Editor/markdown-parse.js";
+import { parseMarkdownLocally } from "../../src/TestApp/Editor/markdown-parse-local.js";
 import { parseMarkdownWithRemark } from "../../src/TestApp/Editor/remark-adapter.js";
 
 describe("parseMarkdownWithRemark", (): void => {
-    it("given supported Markdown, when parsed through remark, then it matches the editor document parser", (): void => {
+    it("given supported Markdown, when parsed through remark, then it matches the legacy local parser", (): void => {
         const markdown = [
             "# Heading",
             "",
@@ -18,7 +18,7 @@ describe("parseMarkdownWithRemark", (): void => {
             "---",
         ].join("\n");
 
-        expect(parseMarkdownWithRemark(markdown)).toEqual(parseMarkdown(markdown));
+        expect(parseMarkdownWithRemark(markdown)).toEqual(parseMarkdownLocally(markdown));
     });
 
     it("given unsupported Markdown, when parsed through remark, then it rejects the unsupported node", (): void => {

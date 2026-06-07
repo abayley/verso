@@ -54,15 +54,10 @@ describe("parseMarkdown", (): void => {
         });
     });
 
-    it("parses unsupported raw HTML as paragraph text", (): void => {
-        expect(parseMarkdown("<script>alert(1)</script>")).toEqual({
-            blocks: [
-                {
-                    children: [{ text: "<script>alert(1)</script>", type: "text" }],
-                    type: "paragraph",
-                },
-            ],
-        });
+    it("given raw HTML, when parsed, then it rejects the unsupported node", (): void => {
+        expect((): void => {
+            parseMarkdown("<script>alert(1)</script>");
+        }).toThrow("Unsupported Markdown node for editor subset: html");
     });
 
     it("parses horizontal rules into editor blocks", (): void => {

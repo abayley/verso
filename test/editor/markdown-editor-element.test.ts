@@ -30,6 +30,20 @@ describe("MarkdownEditorElement", (): void => {
         );
     });
 
+    it("given visual mode, when initialised, then it uses Tiptap and serialises Markdown", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "# Heading\n\nParagraph with **strong** text.";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        expect(editor.querySelector(".markdown-editor__surface .ProseMirror")).toBeInstanceOf(HTMLElement);
+        expect(editor.querySelector(".markdown-editor__surface h1")?.textContent).toBe("Heading");
+        expect(editor.querySelector(".markdown-editor__surface strong")?.textContent).toBe("strong");
+        expect(editor.toMarkdown()).toContain("# Heading");
+        expect(editor.toMarkdown()).toContain("**strong**");
+    });
+
     it("given unsupported source Markdown, when edited, then it does not dispatch a changed event", async (): Promise<void> => {
         const editor = document.createElement(elementName);
         editor.setAttribute("mode", "source");

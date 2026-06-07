@@ -483,17 +483,39 @@ and browser smoke flow.
   is enough for the next design discussion. Before Phase Six, revisit visual
   controls and whether Tiptap should own the editing surface.
 
-### Markdown Editor Spike Phase Six: Planned
+### Markdown Editor Spike Phase Six: In Progress
 
-Scope: add GitHub-Flavored Markdown tables after table normalisation rules are
-decided.
+Scope: introduce the next editor architecture before table work. The first slice
+uses Tiptap/ProseMirror for visual editing behind the existing
+`<markdown-editor>` boundary. Later slices add toolbar controls, raw Markdown
+editing with CodeMirror, and Web Awesome controls.
 
-- Parse table mdast nodes into the typed editor model.
-- Render table previews and visual editable projections.
-- Serialise supported table DOM back to normalised Markdown.
-- Extend TestApp save validation and browser smoke coverage.
+- Replaced the hand-built `contenteditable` visual surface with a Tiptap adapter.
+- Preserve the existing htmx form contract, autosave event, source mode, and
+  split mode.
+- Keep remark/mdast as a reference parser and validation fixture while Tiptap's
+  Markdown extension remains beta.
+- Observed that adding Tiptap grows the current minified Bun editor bundle to
+  roughly 0.62 MB.
+- Add a top toolbar in a later slice with mode switching, style controls,
+  structure controls, and theme switching.
+- Add CodeMirror for raw Markdown editing and syntax highlighting in a later
+  slice.
+- Use Web Awesome for future web-component controls and styling.
+- Consider Lit for the editor shell once manual DOM state management becomes the
+  main source of complexity.
 
 ### Markdown Editor Spike Phase Seven: Planned
+
+Scope: add GitHub-Flavored Markdown tables after table normalisation rules are
+decided and the Tiptap editing surface is stable.
+
+- Parse table mdast nodes into the typed editor model or Tiptap table schema.
+- Render table previews and visual editable projections.
+- Serialise supported table DOM or Tiptap state back to normalised Markdown.
+- Extend TestApp save validation and browser smoke coverage.
+
+### Markdown Editor Spike Phase Eight: Planned
 
 Scope: add image and attachment support once storage and path rules are decided.
 
@@ -502,7 +524,7 @@ Scope: add image and attachment support once storage and path rules are decided.
 - Add arbitrary attachment insertion as Markdown links.
 - Add asset storage, path normalisation, de-duplication, and deletion rules.
 
-### Markdown Editor Spike Phase Eight: Planned
+### Markdown Editor Spike Phase Nine: Planned
 
 Scope: decide whether the editor remains a TestApp spike or moves into a
 separate package/application boundary.

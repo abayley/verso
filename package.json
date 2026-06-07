@@ -2,7 +2,7 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "editor:build": "bun build src/TestApp/Editor/index.ts --target=browser --format=iife --outfile=static/editor/markdown-editor.js",
+        "editor:build": "bun scripts/build-editor.mjs",
         "editor:check": "bun run editor:lint && bun run editor:typecheck && bun run editor:test && bun run editor:build",
         "editor:format": "biome check --write src/TestApp/Editor test/editor package.json tsconfig.json biome.json",
         "editor:lint": "biome check src/TestApp/Editor test/editor package.json tsconfig.json biome.json",
@@ -11,6 +11,9 @@
     },
     "devDependencies": {
         "@biomejs/biome": "^2.4.16",
+        "@tiptap/core": "^3.26.0",
+        "@tiptap/markdown": "^3.26.0",
+        "@tiptap/starter-kit": "^3.26.0",
         "@types/mdast": "^4.0.4",
         "happy-dom": "^20.10.2",
         "playwright": "^1.60.0",

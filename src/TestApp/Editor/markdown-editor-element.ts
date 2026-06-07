@@ -1,5 +1,5 @@
 import { renderMarkdown } from "./markdown-render.js";
-import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
+import { TiptapVisualEditor } from "./tiptap-visual-editor.js";
 
 type EditorMode = "visual" | "source" | "split";
 
@@ -11,7 +11,6 @@ interface HtmxConfigRequestEvent extends Event {
 
 /** Web component that edits one Markdown document through an htmx form. */
 export class MarkdownEditorElement extends HTMLElement {
-    private editor: HTMLDivElement | null = null;
     private initialised = false;
     private markdown = "";
     private mode: EditorMode = "visual";
@@ -19,6 +18,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private parseError: HTMLDivElement | null = null;
     private preview: HTMLDivElement | null = null;
     private source: HTMLTextAreaElement | null = null;
+    private visualEditor: TiptapVisualEditor | null = null;
 
     /** Starts asynchronous element initialisation after connection. */
     connectedCallback(): void {
@@ -31,6 +31,12 @@ export class MarkdownEditorElement extends HTMLElement {
                 console.error(error);
             });
         }, 0);
+    }
+
+    /** Cleans up editor resources when the element leaves the document. */
+    disconnectedCallback(): void {
+        this.visualEditor?.destroy();
+        this.visualEditor = null;
     }
 
     /** Initialises the editor UI from inline content or a Markdown `src`. */
@@ -52,11 +58,7 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         if (this.mode === "visual") {
-            this.editor = document.createElement("div");
-            this.editor.className = "markdown-editor__surface";
-            this.editor.contentEditable = "true";
-            this.editor.innerHTML = renderMarkdown(this.markdown);
-            this.editor.addEventListener("input", (): void => this.handleInput());
+            this.visualEditor = new TiptapVisualEditor(this.markdown, (): void => this.handleInput());
         }
 
         this.preview = document.createElement("div");
@@ -73,7 +75,7 @@ export class MarkdownEditorElement extends HTMLElement {
             this.panes.append(this.sourceElement(), this.preview);
             this.append(this.panes, this.parseError);
         } else {
-            this.append(this.source ?? this.editorElement(), this.preview, this.parseError);
+            this.append(this.source ?? this.visualEditorElement(), this.preview, this.parseError);
         }
 
         this.updatePreview();
@@ -118,11 +120,11 @@ export class MarkdownEditorElement extends HTMLElement {
             return this.source.value;
         }
 
-        if (!this.editor) {
+        if (!this.visualEditor) {
             return this.markdown;
         }
 
-        return documentToMarkdown(documentFromElements(this.editor.children));
+        return this.visualEditor.toMarkdown();
     }
 
     /** Refreshes the preview pane from the current Markdown value. */
@@ -199,12 +201,12 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /** Returns the visual editor element after construction. */
-    private editorElement(): HTMLDivElement {
-        if (!this.editor) {
+    private visualEditorElement(): HTMLDivElement {
+        if (!this.visualEditor) {
             throw new Error("Markdown editor surface was not created.");
         }
 
-        return this.editor;
+        return this.visualEditor.element();
     }
 
     /** Returns the source editor element after construction. */

@@ -2,7 +2,7 @@ export interface EditorDocument {
     blocks: EditorBlock[];
 }
 
-export type EditorBlock = HeadingBlock | ListBlock | ParagraphBlock;
+export type EditorBlock = HeadingBlock | HorizontalRuleBlock | ListBlock | ParagraphBlock;
 
 export interface HeadingBlock {
     children: InlineNode[];
@@ -19,6 +19,10 @@ export interface ListBlock {
     items: InlineNode[][];
     ordered: boolean;
     type: "list";
+}
+
+export interface HorizontalRuleBlock {
+    type: "horizontalRule";
 }
 
 export type InlineNode = CodeInline | EmphasisInline | LinkInline | StrongInline | TextInline;

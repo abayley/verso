@@ -434,6 +434,8 @@ Preview must not allow a broader content policy than saved page rendering.
   rendering.
 - Changed visual DOM serialisation to produce the typed editor document before
   producing Markdown.
+- Added horizontal-rule support through Markdown parsing, the typed editor
+  document, HTML rendering, and DOM serialisation.
 - Changed `GET /documents/:id/edit` to return an editor shell that fetches the
   Markdown document through `<markdown-editor src="/documents/:id">`.
 - Changed `GET /documents/:id` to return raw `text/markdown`.

@@ -64,4 +64,14 @@ describe("parseMarkdown", (): void => {
             ],
         });
     });
+
+    it("parses horizontal rules into editor blocks", (): void => {
+        expect(parseMarkdown("---")).toEqual({
+            blocks: [
+                {
+                    type: "horizontalRule",
+                },
+            ],
+        });
+    });
 });

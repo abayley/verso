@@ -24,6 +24,12 @@ export function parseMarkdown(markdown: string): EditorDocument {
 
 /** Parses one Markdown block into an editor block. */
 function parseBlock(block: string): EditorBlock {
+    if (isHorizontalRuleBlock(block)) {
+        return {
+            type: "horizontalRule",
+        };
+    }
+
     if (isUnorderedListBlock(block)) {
         return {
             items: block.split("\n").map((line: string): InlineNode[] => parseInlineMarkdown(line.trim().slice(2))),
@@ -192,6 +198,11 @@ function takeLink(markdown: string): LinkMarkdown | null {
         url: rest.slice(0, urlEnd),
         rest: rest.slice(urlEnd + 1),
     };
+}
+
+/** Checks whether a block is a horizontal rule in the supported subset. */
+function isHorizontalRuleBlock(block: string): boolean {
+    return /^ {0,3}([-*_])(?: ?\1){2,} *$/.test(block);
 }
 
 /** Checks whether a block is an unordered list in the supported subset. */

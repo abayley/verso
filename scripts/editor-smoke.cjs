@@ -134,6 +134,8 @@ async function main() {
     "",
     "Split **source** paragraph.",
     "",
+    "---",
+    "",
     "1. first",
     "2. second",
   ].join("\n");
@@ -151,6 +153,7 @@ async function main() {
     await page.locator(".markdown-editor__split .markdown-editor__preview li").allInnerTexts(),
     ["first", "second"],
   );
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__preview hr");
 
   await page.getByRole("button", { name: "Save" }).click();
   await page.waitForFunction(() =>
@@ -162,6 +165,9 @@ async function main() {
 
   await page.goto(`${baseUrl}/documents/home`);
   assert.equal((await page.locator("body").innerText()).trim(), splitMarkdown);
+
+  await page.goto(`${baseUrl}/documents/home/edit`);
+  await page.waitForSelector(".markdown-editor__surface hr");
 
   await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
   await page.waitForSelector(".markdown-editor__source");

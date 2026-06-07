@@ -14,6 +14,12 @@ export function documentToMarkdown(document: EditorDocument): string {
 
 /** Converts a supported block element to an editor block. */
 export function blockFromElement(block: Element): EditorBlock {
+    if (block.tagName === "HR") {
+        return {
+            type: "horizontalRule",
+        };
+    }
+
     if (block.tagName === "H1") {
         return {
             children: inlineNodesFromElement(block),
@@ -119,6 +125,10 @@ export function inlineNodesFromNode(node: ChildNode): InlineNode[] {
 
 /** Serialises one editor block to Markdown. */
 function blockToMarkdown(block: EditorBlock): string {
+    if (block.type === "horizontalRule") {
+        return "---";
+    }
+
     if (block.type === "heading") {
         return `${"#".repeat(block.level)} ${inlineNodesToMarkdown(block.children).trim()}`;
     }

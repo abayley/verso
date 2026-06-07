@@ -50,6 +50,19 @@ describe("documentFromElements", (): void => {
             ],
         });
     });
+
+    it("serialises horizontal-rule elements into editor blocks", (): void => {
+        const root = document.createElement("div");
+        root.innerHTML = "<hr>";
+
+        expect(documentFromElements(root.children)).toEqual({
+            blocks: [
+                {
+                    type: "horizontalRule",
+                },
+            ],
+        });
+    });
 });
 
 describe("documentToMarkdown", (): void => {
@@ -84,5 +97,17 @@ describe("documentToMarkdown", (): void => {
                 ],
             }),
         ).toBe("# Heading\n\nParagraph with **strong**, [link](/target).\n\n- first\n- second");
+    });
+
+    it("serialises horizontal-rule blocks to Markdown", (): void => {
+        expect(
+            documentToMarkdown({
+                blocks: [
+                    {
+                        type: "horizontalRule",
+                    },
+                ],
+            }),
+        ).toBe("---");
     });
 });

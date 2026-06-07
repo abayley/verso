@@ -25,6 +25,10 @@ export function renderBlock(block: EditorBlock): string {
             .join("")}</${tag}>`;
     }
 
+    if (block.type === "horizontalRule") {
+        return "<hr>";
+    }
+
     return `<p>${renderInlineNodes(block.children)}</p>`;
 }
 

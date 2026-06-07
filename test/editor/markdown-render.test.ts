@@ -26,4 +26,8 @@ describe("renderMarkdown", (): void => {
     it("escapes unsupported raw HTML", (): void => {
         expect(renderMarkdown("<script>alert(1)</script>")).toBe("<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>");
     });
+
+    it("renders horizontal rules", (): void => {
+        expect(renderMarkdown("---")).toBe("<hr>");
+    });
 });

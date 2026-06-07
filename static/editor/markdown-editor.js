@@ -6,6 +6,11 @@
     };
   }
   function parseBlock(block) {
+    if (isHorizontalRuleBlock(block)) {
+      return {
+        type: "horizontalRule"
+      };
+    }
     if (isUnorderedListBlock(block)) {
       return {
         items: block.split(`
@@ -147,6 +152,9 @@
       rest: rest.slice(urlEnd + 1)
     };
   }
+  function isHorizontalRuleBlock(block) {
+    return /^ {0,3}([-*_])(?: ?\1){2,} *$/.test(block);
+  }
   function isUnorderedListBlock(block) {
     return block.split(`
 `).every((line) => /^[-*+] .+/.test(line.trim()));
@@ -173,6 +181,9 @@
     if (block.type === "list") {
       const tag = block.ordered ? "ol" : "ul";
       return `<${tag}>${block.items.map((item) => `<li>${renderInlineNodes(item)}</li>`).join("")}</${tag}>`;
+    }
+    if (block.type === "horizontalRule") {
+      return "<hr>";
     }
     return `<p>${renderInlineNodes(block.children)}</p>`;
   }
@@ -210,6 +221,11 @@
 `);
   }
   function blockFromElement(block) {
+    if (block.tagName === "HR") {
+      return {
+        type: "horizontalRule"
+      };
+    }
     if (block.tagName === "H1") {
       return {
         children: inlineNodesFromElement(block),
@@ -297,6 +313,9 @@
     return inlineNodesFromElement(element);
   }
   function blockToMarkdown(block) {
+    if (block.type === "horizontalRule") {
+      return "---";
+    }
     if (block.type === "heading") {
       return `${"#".repeat(block.level)} ${inlineNodesToMarkdown(block.children).trim()}`;
     }

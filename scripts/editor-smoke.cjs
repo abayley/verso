@@ -54,6 +54,7 @@ async function main() {
     "Visual",
     "Markdown",
     "Split",
+    "Bold",
   ]);
   assert.equal(
     await page.locator('.markdown-editor__toolbar button[data-mode="visual"]').getAttribute("aria-pressed"),
@@ -246,6 +247,12 @@ async function main() {
   await page.waitForSelector(".markdown-editor__surface h2");
   assert.equal(await page.locator(".markdown-editor__surface h2").innerText(), "Autosaved heading");
   assert.equal(await page.locator(".markdown-editor__preview h2").innerText(), "Autosaved heading");
+
+  await page.locator(".markdown-editor__surface p").selectText();
+  await page.getByRole("button", { name: "Bold" }).click();
+  await page.waitForSelector(".markdown-editor__surface strong");
+  assert.equal(await page.locator(".markdown-editor__surface strong").innerText(), "Autosaved source paragraph.");
+  assert.equal(await page.locator(".markdown-editor__preview strong").innerText(), "Autosaved source paragraph.");
 
   assert.deepEqual(consoleErrors, []);
 }

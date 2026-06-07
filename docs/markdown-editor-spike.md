@@ -502,6 +502,8 @@ editing with CodeMirror, and Web Awesome controls.
 - [x] Add the first style control: a block-style select that applies paragraph
   and heading levels one to three through Tiptap in visual mode.
 - [ ] Add inline style controls for strong, emphasis, inline code, and links.
+  Added a Bold control for the `strong` mark through Tiptap in visual mode.
+  Repeat the pattern for emphasis, inline code, and links.
 - [ ] Add structure controls for lists, blockquotes, fenced code blocks, and
   thematic breaks.
 - [ ] Add theme switching.
@@ -519,6 +521,9 @@ Phase Six findings so far:
   ProseMirror commands through the custom element.
 - Native toolbar controls are enough for the spike, but the toolbar is now the
   area most likely to benefit from a component/styling library decision.
+- Toolbar inline mark controls must preserve or recover the visual editor
+  selection before applying Tiptap commands; otherwise button focus can collapse
+  the selected text before the command runs.
 
 ### Markdown Editor Spike Phase Seven: Planned
 

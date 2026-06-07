@@ -1,6 +1,6 @@
 import { CodeMirrorSourceEditor } from "./codemirror-source-editor.js";
 import { renderMarkdown } from "./markdown-render.js";
-import { TiptapVisualEditor, type VisualBlockStyle } from "./tiptap-visual-editor.js";
+import { TiptapVisualEditor, type VisualBlockStyle, type VisualInlineStyle } from "./tiptap-visual-editor.js";
 
 type EditorMode = "visual" | "source" | "split";
 
@@ -19,6 +19,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private panes: HTMLDivElement | null = null;
     private parseError: HTMLDivElement | null = null;
     private preview: HTMLDivElement | null = null;
+    private readonly inlineStyleButtons: HTMLButtonElement[] = [];
     private sourceEditor: CodeMirrorSourceEditor | null = null;
     private styleSelect: HTMLSelectElement | null = null;
     private toolbar: HTMLDivElement | null = null;
@@ -82,6 +83,7 @@ export class MarkdownEditorElement extends HTMLElement {
         toolbar.append(this.createModeButton("split", "Split"));
         this.styleSelect = this.createStyleSelect();
         toolbar.append(this.styleSelect);
+        toolbar.append(this.createInlineStyleButton("strong", "Bold"));
 
         return toolbar;
     }
@@ -121,6 +123,22 @@ export class MarkdownEditorElement extends HTMLElement {
         option.textContent = label;
 
         return option;
+    }
+
+    /** Creates one inline style toolbar button. */
+    private createInlineStyleButton(style: VisualInlineStyle, label: string): HTMLButtonElement {
+        const button = document.createElement("button");
+        button.className = "markdown-editor__inline-button";
+        button.textContent = label;
+        button.type = "button";
+        button.dataset["inlineStyle"] = style;
+        button.addEventListener("mousedown", (event: MouseEvent): void => {
+            event.preventDefault();
+        });
+        button.addEventListener("click", (): void => this.toggleInlineStyle(style));
+        this.inlineStyleButtons.push(button);
+
+        return button;
     }
 
     /** Re-renders the editor body for the current mode. */
@@ -217,6 +235,17 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         if (this.visualEditor.applyBlockStyle(style)) {
+            this.handleInput();
+        }
+    }
+
+    /** Toggles an inline style through the active visual editor. */
+    private toggleInlineStyle(style: VisualInlineStyle): void {
+        if (!this.visualEditor) {
+            return;
+        }
+
+        if (this.visualEditor.toggleInlineStyle(style)) {
             this.handleInput();
         }
     }
@@ -355,6 +384,10 @@ export class MarkdownEditorElement extends HTMLElement {
         if (this.styleSelect) {
             this.styleSelect.disabled = this.mode !== "visual";
             this.styleSelect.value = "paragraph";
+        }
+
+        for (const button of this.inlineStyleButtons) {
+            button.disabled = this.mode !== "visual";
         }
     }
 }

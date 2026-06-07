@@ -8,6 +8,9 @@ export type TiptapChangeHandler = () => void;
 /** Supported visual block styles exposed by the editor toolbar. */
 export type VisualBlockStyle = "paragraph" | "heading-1" | "heading-2" | "heading-3";
 
+/** Supported visual inline styles exposed by the editor toolbar. */
+export type VisualInlineStyle = "strong";
+
 /** Markdown-in/Markdown-out adapter around Tiptap's visual editor. */
 export class TiptapVisualEditor {
     private readonly editor: Editor;
@@ -62,9 +65,47 @@ export class TiptapVisualEditor {
             .run();
     }
 
+    /** Toggles one supported inline style at the current visual selection. */
+    public toggleInlineStyle(style: VisualInlineStyle): boolean {
+        const selection = this.currentVisualSelection();
+
+        switch (style) {
+            case "strong": {
+                const command = this.editor.chain();
+
+                if (selection) {
+                    command.setTextSelection(selection);
+                }
+
+                return command.focus().toggleBold().run();
+            }
+        }
+    }
+
     /** Releases Tiptap resources when the custom element disconnects. */
     public destroy(): void {
         this.editor.destroy();
+    }
+
+    /** Converts the current browser selection into Tiptap document positions. */
+    private currentVisualSelection(): { from: number; to: number } | null {
+        const selection = window.getSelection();
+
+        if (!selection?.anchorNode || !selection.focusNode) {
+            return null;
+        }
+
+        if (!this.root.contains(selection.anchorNode) || !this.root.contains(selection.focusNode)) {
+            return null;
+        }
+
+        const anchor = this.editor.view.posAtDOM(selection.anchorNode, selection.anchorOffset);
+        const focus = this.editor.view.posAtDOM(selection.focusNode, selection.focusOffset);
+
+        return {
+            from: Math.min(anchor, focus),
+            to: Math.max(anchor, focus),
+        };
     }
 }
 

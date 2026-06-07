@@ -13,13 +13,20 @@ markdown-editor {
   padding: 0.5rem;
 }
 
-.markdown-editor__mode-button {
+.markdown-editor__mode-button,
+.markdown-editor__inline-button {
   background: #fff;
   border: 1px solid #94a3b8;
   color: #0f172a;
   cursor: pointer;
   font: 14px system-ui, sans-serif;
   padding: 0.35rem 0.65rem;
+}
+
+.markdown-editor__inline-button:disabled {
+  background: #e2e8f0;
+  color: #64748b;
+  cursor: default;
 }
 
 .markdown-editor__mode-button[aria-pressed="true"] {

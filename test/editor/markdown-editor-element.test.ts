@@ -94,6 +94,21 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown().trim()).toBe("## Plain paragraph");
     });
 
+    it("given visual mode, when bold is selected, then the selected text becomes strong", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectText(editor, "Plain");
+
+        clickToolbarButton(editor, "Bold");
+
+        expect(editor.querySelector(".markdown-editor__surface strong")?.textContent).toBe("Plain");
+        expect(editor.querySelector(".markdown-editor__preview strong")?.textContent).toBe("Plain");
+        expect(editor.toMarkdown()).toContain("**Plain** paragraph");
+    });
+
     it("given unsupported source Markdown, when edited, then it does not dispatch a changed event", async (): Promise<void> => {
         const editor = document.createElement(elementName);
         editor.setAttribute("mode", "source");
@@ -157,4 +172,45 @@ function selectBlockStyle(editor: Element, style: string): void {
 
     select.value = style;
     select.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/** Selects matching text inside the visual editor surface. */
+function selectText(editor: Element, text: string): void {
+    const surface = editor.querySelector(".markdown-editor__surface");
+
+    if (!(surface instanceof HTMLElement)) {
+        throw new Error("Expected visual editor surface.");
+    }
+
+    const textNode = findTextNode(surface, text);
+
+    if (!textNode) {
+        throw new Error(`Expected text node containing: ${text}`);
+    }
+
+    const start = textNode.data.indexOf(text);
+    const range = document.createRange();
+    range.setStart(textNode, start);
+    range.setEnd(textNode, start + text.length);
+
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+}
+
+/** Finds the first text node containing the requested text. */
+function findTextNode(root: Node, text: string): Text | null {
+    if (root instanceof Text && root.data.includes(text)) {
+        return root;
+    }
+
+    for (const child of root.childNodes) {
+        const match = findTextNode(child, text);
+
+        if (match) {
+            return match;
+        }
+    }
+
+    return null;
 }

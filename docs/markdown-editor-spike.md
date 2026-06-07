@@ -285,6 +285,23 @@ Markdown source
 That simplification is acceptable only while the supported content subset stays
 small and explicit.
 
+Phase Three showed that duplicating Markdown parsing and rendering in browser
+JavaScript and TestApp Haskell becomes awkward as soon as inline content and
+lists are added. The next design spike should evaluate a single Markdown AST
+contract before adding more editing behaviours.
+
+The first AST spike uses remark and mdast as a reference implementation:
+
+```sh
+make spike-remark-ast
+```
+
+This target installs JavaScript dependencies under `build/` only, parses the
+current supported subset with `remark-parse` and `remark-gfm`, validates the
+current subset against mdast node types, renders HTML through the
+remark-to-rehype pipeline, and writes a report to
+`build/remark-spike/report.json`.
+
 ## Markdown Editor Visual Editing Strategy
 
 The first visual editor can use a `contenteditable` region with a constrained
@@ -378,7 +395,11 @@ Preview must not allow a broader content policy than saved page rendering.
 
 ### Markdown Editor Spike Phase Four
 
-- Add split mode.
+- Evaluate remark and mdast as the reference AST contract for the current
+  Markdown subset.
+- Decide whether browser and server should share an AST-shaped contract before
+  adding more editor behaviours.
+- Add split mode after the AST contract decision.
 - Add autosave using an editor-dispatched event and htmx trigger.
 - Extract spike code that has become stable away from `src/TestApp.hs`.
 - Decide whether the Markdown parser and renderer belong in MicroHttp examples,
@@ -399,16 +420,18 @@ The first stable content contract should be a basic subset of
 GitHub-Flavored Markdown. The long-term direction is GitHub-Flavored Markdown
 plus selected MkDocs and Zensical extensions.
 
-Browser-owned versus server-owned Markdown parsing remains undecided. The
-current spike duplicates a tiny Markdown projection in the browser component and
-the TestApp server so the interaction model can be tested before choosing a
-long-term parser.
+Browser-owned versus server-owned Markdown parsing remains undecided. Phase Three
+duplicates a tiny Markdown projection in the browser component and the TestApp
+server so the interaction model can be tested before choosing a long-term parser.
+The remark AST spike should provide evidence for whether mdast is the right
+shared contract.
 
 Introducing a Markdown AST remains undecided. Source mode was implemented before
 an AST so the canonical Markdown submission contract could be proven first.
 
-Using an external Markdown parser spike versus a tiny local parser remains
-undecided.
+Using an external Markdown parser spike versus a tiny local parser is now being
+tested with a remark and mdast spike. The current local parser should not grow
+far beyond the Phase Three subset without a renewed decision.
 
 Table syntax and normalisation rules are deferred.
 

@@ -14,7 +14,7 @@ DOCS = docs
 DOC_FILES = README.md INSTALL.md STANDARDS.md TODO.md "$(DOCS)/**/*.md"
 HS_FILES = $(shell find $(SRC) $(TEST) -name '*.hs' | sort)
 
-.PHONY: docs format format-check lint run-test-app test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 all-spikes check clean
+.PHONY: docs format format-check lint run-test-app test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 all-spikes check clean
 
 spike1:
 	mkdir -p $(BUILD)
@@ -103,6 +103,11 @@ coverage-integration:
 	$(HPC) markup $(BUILD)/coverage/integration/integration-test.tix --hpcdir $(BUILD)/coverage/integration/mix --destdir $(BUILD)/coverage/integration/report
 
 coverage: coverage-unit coverage-integration
+
+spike-remark-ast:
+	mkdir -p $(BUILD)/remark-spike-deps
+	npm install --silent --no-save --prefix $(BUILD)/remark-spike-deps unified remark-parse remark-stringify remark-gfm remark-rehype rehype-stringify
+	node scripts/remark-ast-spike.mjs
 
 check: docs format-check lint test
 

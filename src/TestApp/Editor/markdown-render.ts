@@ -65,6 +65,10 @@ export function renderInlineNode(node: InlineNode): string {
         return `<a href="${escapeHtml(node.url)}">${renderInlineNodes(node.children)}</a>`;
     }
 
+    if (node.type === "break") {
+        return "<br>";
+    }
+
     return escapeHtml(node.text);
 }
 

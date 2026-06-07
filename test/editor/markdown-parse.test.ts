@@ -101,4 +101,19 @@ describe("parseMarkdown", (): void => {
             ],
         });
     });
+
+    it("given a hard line break, when parsed, then it returns a break inline node", (): void => {
+        expect(parseMarkdown(["First line\\", "second line."].join("\n"))).toEqual({
+            blocks: [
+                {
+                    children: [
+                        { text: "First line", type: "text" },
+                        { type: "break" },
+                        { text: "second line.", type: "text" },
+                    ],
+                    type: "paragraph",
+                },
+            ],
+        });
+    });
 });

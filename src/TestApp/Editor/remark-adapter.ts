@@ -1,5 +1,6 @@
 import type {
     Blockquote,
+    Break,
     Code,
     Heading,
     InlineCode,
@@ -149,7 +150,18 @@ function inlineNodeFromMdast(node: PhrasingContent): InlineNode {
         return linkInlineFromMdast(node);
     }
 
+    if (node.type === "break") {
+        return breakInlineFromMdast(node);
+    }
+
     throw unsupportedNode(node.type);
+}
+
+/** Converts a hard-break mdast node into an editor break node. */
+function breakInlineFromMdast(_node: Break): InlineNode {
+    return {
+        type: "break",
+    };
 }
 
 /** Converts a text mdast node into an editor text node. */

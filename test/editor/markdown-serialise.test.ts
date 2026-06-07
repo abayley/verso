@@ -101,6 +101,24 @@ describe("documentFromElements", (): void => {
             ],
         });
     });
+
+    it("serialises line break elements into editor break inline nodes", (): void => {
+        const root = document.createElement("div");
+        root.innerHTML = "<p>First line<br>second line.</p>";
+
+        expect(documentFromElements(root.children)).toEqual({
+            blocks: [
+                {
+                    children: [
+                        { text: "First line", type: "text" },
+                        { type: "break" },
+                        { text: "second line.", type: "text" },
+                    ],
+                    type: "paragraph",
+                },
+            ],
+        });
+    });
 });
 
 describe("documentToMarkdown", (): void => {
@@ -183,5 +201,22 @@ describe("documentToMarkdown", (): void => {
                 ],
             }),
         ).toBe("> Quoted **text**.");
+    });
+
+    it("serialises break inline nodes to Markdown hard breaks", (): void => {
+        expect(
+            documentToMarkdown({
+                blocks: [
+                    {
+                        children: [
+                            { text: "First line", type: "text" },
+                            { type: "break" },
+                            { text: "second line.", type: "text" },
+                        ],
+                        type: "paragraph",
+                    },
+                ],
+            }),
+        ).toBe(["First line\\", "second line."].join("\n"));
     });
 });

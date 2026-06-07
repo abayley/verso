@@ -44,4 +44,8 @@ describe("renderMarkdown", (): void => {
             "<blockquote><p>Quoted <strong>text</strong>.</p></blockquote>",
         );
     });
+
+    it("given a hard line break, when rendering, then it renders a line break element", (): void => {
+        expect(renderMarkdown(["First line\\", "second line."].join("\n"))).toBe("<p>First line<br>second line.</p>");
+    });
 });

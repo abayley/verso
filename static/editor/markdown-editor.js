@@ -9501,7 +9501,15 @@
     if (node2.type === "link") {
       return linkInlineFromMdast(node2);
     }
+    if (node2.type === "break") {
+      return breakInlineFromMdast(node2);
+    }
     throw unsupportedNode(node2.type);
+  }
+  function breakInlineFromMdast(_node) {
+    return {
+      type: "break"
+    };
   }
   function textInlineFromMdast(node2) {
     return {
@@ -9579,6 +9587,9 @@
     }
     if (node2.type === "link") {
       return `<a href="${escapeHtml(node2.url)}">${renderInlineNodes(node2.children)}</a>`;
+    }
+    if (node2.type === "break") {
+      return "<br>";
     }
     return escapeHtml(node2.text);
   }
@@ -9663,6 +9674,13 @@
       return [];
     }
     const element2 = node2;
+    if (element2.tagName === "BR") {
+      return [
+        {
+          type: "break"
+        }
+      ];
+    }
     if (element2.tagName === "STRONG" || element2.tagName === "B") {
       return [
         {
@@ -9746,6 +9764,9 @@
     }
     if (node2.type === "link") {
       return `[${inlineNodesToMarkdown(node2.children)}](${node2.url})`;
+    }
+    if (node2.type === "break") {
+      return "\\\n";
     }
     return node2.text;
   }

@@ -473,11 +473,15 @@ and browser smoke flow.
   editor subset.
 - Added blockquote support through the typed editor model, remark parser, HTML
   rendering, DOM serialisation, TestApp save validation, and browser smoke flow.
-- The next likely candidate is hard breaks.
+- Added hard line break support through the typed editor model, remark parser,
+  HTML rendering, DOM serialisation, and browser smoke flow. The editor
+  serialises generated hard breaks with backslash-newline rather than trailing
+  spaces.
 - Tables are explicitly deferred unless a later decision moves them into this
   phase.
-- Phase Five should stop once the basic non-asset block subset is implemented
-  and verified end to end.
+- Phase Five should stop after hard breaks if the current basic non-asset subset
+  is enough for the next design discussion. Before Phase Six, revisit visual
+  controls and whether Tiptap should own the editing surface.
 
 ### Markdown Editor Spike Phase Six: Planned
 

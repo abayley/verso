@@ -36,7 +36,11 @@ export interface HorizontalRuleBlock {
     type: "horizontalRule";
 }
 
-export type InlineNode = CodeInline | EmphasisInline | LinkInline | StrongInline | TextInline;
+export type InlineNode = BreakInline | CodeInline | EmphasisInline | LinkInline | StrongInline | TextInline;
+
+export interface BreakInline {
+    type: "break";
+}
 
 export interface TextInline {
     text: string;

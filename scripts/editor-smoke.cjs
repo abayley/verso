@@ -92,6 +92,9 @@ async function main() {
     "",
     "Exact **source** paragraph with [link](/target).",
     "",
+    "Hard break\\",
+    "continued.",
+    "",
     "- first",
     "- `second`",
     "",
@@ -109,6 +112,7 @@ async function main() {
       ?.innerText.includes("Exact source paragraph with link."),
   );
   assert.equal(await page.locator(".markdown-editor__preview p strong").first().innerText(), "source");
+  assert.equal(await page.locator(".markdown-editor__preview p br").count(), 1);
   assert.equal(await page.locator(".markdown-editor__preview a").getAttribute("href"), "/target");
   assert.deepEqual(await page.locator(".markdown-editor__preview li").allInnerTexts(), [
     "first",
@@ -136,6 +140,7 @@ async function main() {
   await page.goto(`${baseUrl}/documents/home/edit`);
   await page.waitForSelector(".markdown-editor__surface strong");
   assert.equal(await page.locator(".markdown-editor__surface p strong").first().innerText(), "source");
+  assert.equal(await page.locator(".markdown-editor__surface p br").count(), 1);
   assert.equal(await page.locator(".markdown-editor__surface blockquote strong").innerText(), "source");
   assert.equal(await page.locator(".markdown-editor__surface pre code").innerText(), "const value = 1;");
   assert.deepEqual(await page.locator(".markdown-editor__surface li").allInnerTexts(), [

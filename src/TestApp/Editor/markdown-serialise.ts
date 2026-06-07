@@ -94,6 +94,14 @@ export function inlineNodesFromNode(node: ChildNode): InlineNode[] {
 
     const element = node as Element;
 
+    if (element.tagName === "BR") {
+        return [
+            {
+                type: "break",
+            },
+        ];
+    }
+
     if (element.tagName === "STRONG" || element.tagName === "B") {
         return [
             {
@@ -200,6 +208,10 @@ function inlineNodeToMarkdown(node: InlineNode): string {
 
     if (node.type === "link") {
         return `[${inlineNodesToMarkdown(node.children)}](${node.url})`;
+    }
+
+    if (node.type === "break") {
+        return "\\\n";
     }
 
     return node.text;

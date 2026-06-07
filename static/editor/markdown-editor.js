@@ -9716,6 +9716,7 @@
     markdown = "";
     mode = "visual";
     panes = null;
+    parseError = null;
     preview = null;
     source = null;
     connectedCallback() {
@@ -9752,13 +9753,17 @@
       this.preview = document.createElement("div");
       this.preview.className = "markdown-editor__preview";
       this.preview.setAttribute("aria-live", "polite");
+      this.parseError = document.createElement("div");
+      this.parseError.className = "markdown-editor__error";
+      this.parseError.setAttribute("role", "alert");
+      this.parseError.hidden = true;
       if (this.mode === "split") {
         this.panes = document.createElement("div");
         this.panes.className = "markdown-editor__split";
         this.panes.append(this.sourceElement(), this.preview);
-        this.append(this.panes);
+        this.append(this.panes, this.parseError);
       } else {
-        this.append(this.source ?? this.editorElement(), this.preview);
+        this.append(this.source ?? this.editorElement(), this.preview, this.parseError);
       }
       this.updatePreview();
       this.configureFormSubmission();
@@ -9796,13 +9801,23 @@
     }
     updatePreview() {
       if (!this.preview) {
-        return;
+        return true;
       }
-      this.preview.innerHTML = renderMarkdown(this.toMarkdown());
+      try {
+        this.preview.innerHTML = renderMarkdown(this.toMarkdown());
+        this.hideParseError();
+        return true;
+      } catch (error) {
+        this.preview.innerHTML = "";
+        this.showParseError(errorMessage(error));
+        return false;
+      }
     }
     handleInput() {
       const markdown = this.toMarkdown();
-      this.updatePreview();
+      if (!this.updatePreview()) {
+        return;
+      }
       this.dispatchEvent(new CustomEvent("editor:changed", {
         bubbles: true,
         detail: {
@@ -9823,6 +9838,20 @@
         htmxEvent.detail.parameters["markdown"] = markdown;
       });
     }
+    showParseError(message) {
+      if (!this.parseError) {
+        return;
+      }
+      this.parseError.textContent = message;
+      this.parseError.hidden = false;
+    }
+    hideParseError() {
+      if (!this.parseError) {
+        return;
+      }
+      this.parseError.textContent = "";
+      this.parseError.hidden = true;
+    }
     editorElement() {
       if (!this.editor) {
         throw new Error("Markdown editor surface was not created.");
@@ -9835,6 +9864,12 @@
       }
       return this.source;
     }
+  }
+  function errorMessage(error) {
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return "Markdown could not be parsed.";
   }
 
   // src/TestApp/Editor/index.ts

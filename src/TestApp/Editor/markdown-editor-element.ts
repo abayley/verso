@@ -16,6 +16,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private markdown = "";
     private mode: EditorMode = "visual";
     private panes: HTMLDivElement | null = null;
+    private parseError: HTMLDivElement | null = null;
     private preview: HTMLDivElement | null = null;
     private source: HTMLTextAreaElement | null = null;
 
@@ -61,14 +62,18 @@ export class MarkdownEditorElement extends HTMLElement {
         this.preview = document.createElement("div");
         this.preview.className = "markdown-editor__preview";
         this.preview.setAttribute("aria-live", "polite");
+        this.parseError = document.createElement("div");
+        this.parseError.className = "markdown-editor__error";
+        this.parseError.setAttribute("role", "alert");
+        this.parseError.hidden = true;
 
         if (this.mode === "split") {
             this.panes = document.createElement("div");
             this.panes.className = "markdown-editor__split";
             this.panes.append(this.sourceElement(), this.preview);
-            this.append(this.panes);
+            this.append(this.panes, this.parseError);
         } else {
-            this.append(this.source ?? this.editorElement(), this.preview);
+            this.append(this.source ?? this.editorElement(), this.preview, this.parseError);
         }
 
         this.updatePreview();
@@ -121,19 +126,30 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /** Refreshes the preview pane from the current Markdown value. */
-    private updatePreview(): void {
+    private updatePreview(): boolean {
         if (!this.preview) {
-            return;
+            return true;
         }
 
-        this.preview.innerHTML = renderMarkdown(this.toMarkdown());
+        try {
+            this.preview.innerHTML = renderMarkdown(this.toMarkdown());
+            this.hideParseError();
+            return true;
+        } catch (error: unknown) {
+            this.preview.innerHTML = "";
+            this.showParseError(errorMessage(error));
+            return false;
+        }
     }
 
     /** Handles local edits and notifies htmx autosave listeners. */
     private handleInput(): void {
         const markdown = this.toMarkdown();
 
-        this.updatePreview();
+        if (!this.updatePreview()) {
+            return;
+        }
+
         this.dispatchEvent(
             new CustomEvent("editor:changed", {
                 bubbles: true,
@@ -162,6 +178,26 @@ export class MarkdownEditorElement extends HTMLElement {
         });
     }
 
+    /** Shows the latest Markdown parse error in the editor chrome. */
+    private showParseError(message: string): void {
+        if (!this.parseError) {
+            return;
+        }
+
+        this.parseError.textContent = message;
+        this.parseError.hidden = false;
+    }
+
+    /** Clears any visible Markdown parse error. */
+    private hideParseError(): void {
+        if (!this.parseError) {
+            return;
+        }
+
+        this.parseError.textContent = "";
+        this.parseError.hidden = true;
+    }
+
     /** Returns the visual editor element after construction. */
     private editorElement(): HTMLDivElement {
         if (!this.editor) {
@@ -179,4 +215,13 @@ export class MarkdownEditorElement extends HTMLElement {
 
         return this.source;
     }
+}
+
+/** Extracts a displayable error message from a thrown value. */
+function errorMessage(error: unknown): string {
+    if (error instanceof Error) {
+        return error.message;
+    }
+
+    return "Markdown could not be parsed.";
 }

@@ -451,6 +451,8 @@ Preview must not allow a broader content policy than saved page rendering.
   the adapter settles.
 - Observed that bundling remark into the browser editor grows the editor bundle
   to roughly 0.33 MB in the current Bun build.
+- Added editor-side parse error feedback for unsupported Markdown and suppress
+  autosave events while the source cannot be parsed.
 - Use remark and mdast as reference fixtures for editor-owned parsing and
   rendering behaviour.
 - Continue extracting stable editor code into typed editor modules.

@@ -80,6 +80,13 @@ async function main() {
     "Hello from MicroHttp",
   );
 
+  await page.locator(".markdown-editor__source").fill("<script>alert(1)</script>");
+  await page.waitForSelector(".markdown-editor__error:not([hidden])");
+  assert.equal(
+    await page.locator(".markdown-editor__error").innerText(),
+    "Unsupported Markdown node for editor subset: html",
+  );
+
   const sourceMarkdown = [
     "# Source heading",
     "",
@@ -89,6 +96,7 @@ async function main() {
     "- `second`",
   ].join("\n");
   await page.locator(".markdown-editor__source").fill(sourceMarkdown);
+  await page.waitForFunction(() => document.querySelector(".markdown-editor__error")?.hidden === true);
   await page.waitForFunction(() =>
     document
       .querySelector(".markdown-editor__preview")

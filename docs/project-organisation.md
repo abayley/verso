@@ -2,7 +2,8 @@
 
 ## MicroHttp Project Layout Decision
 
-Use a conventional Haskell layout, adapted for MicroHs:
+Use a conventional Haskell layout, adapted for MicroHs, with TestApp-owned
+TypeScript source under `src/` when browser components are part of the TestApp:
 
 ```text
 micro-http/
@@ -12,6 +13,13 @@ micro-http/
   src/
     MicroHttp.hs
     MicroHttp/
+      ...
+    TestApp.hs
+    TestApp/
+      Editor/
+        ...
+  static/
+    editor/
       ...
   test/
     unit/
@@ -27,7 +35,7 @@ micro-http/
       Spike*.hs
 ```
 
-## MicroHttp Haskell Layout Conventions
+## MicroHttp Source Layout Conventions
 
 Common Haskell package conventions are:
 
@@ -41,6 +49,16 @@ Common Haskell package conventions are:
 This project should follow those conventions even if the first build automation
 uses `Makefile` and `mhs` directly. That keeps the tree familiar to Haskell
 readers and leaves room for `mcabal` integration.
+
+The Markdown editor spike follows the same source-vs-asset distinction:
+
+- `src/TestApp/Editor/` contains TypeScript source for TestApp web components.
+- `static/editor/` contains files the TestApp serves directly, including the
+  generated JavaScript bundle and CSS.
+- `test/editor/` contains TypeScript tests for editor source modules.
+
+Do not put TypeScript source under `static/`; that directory is for served
+assets.
 
 ## MicroHttp Spike Code Policy
 

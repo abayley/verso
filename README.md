@@ -120,6 +120,24 @@ make test-editor-browser
 
 The browser smoke test starts and stops the TestApp itself.
 
+Run the TypeScript editor checks:
+
+```sh
+make editor-check
+```
+
+The editor source lives under `src/TestApp/Editor/`. Bun compiles it into the
+served bundle at `static/editor/markdown-editor.js`.
+
+Format TypeScript and editor package files with Biome:
+
+```sh
+make editor-format
+```
+
+Biome uses four-space indentation and a 120-character line length for the editor
+tooling.
+
 Run unit tests only:
 
 ```sh
@@ -181,9 +199,11 @@ http://127.0.0.1:8080/
 
 The app is implemented in `src/TestApp.hs` and serves `/`, `/index.html`, the
 Markdown editor spike under `/documents/home/edit`, and static editor assets
-under `/static/editor/`. It uses the normal `serve` loop. The socket adapter
-keeps listening and client sockets non-blocking so browser-style concurrent
-asset requests do not starve handler progress under MicroHs' socket FFI.
+under `/static/editor/`. The editor web-component source is TypeScript under
+`src/TestApp/Editor/`; `make editor-build` writes the served JavaScript bundle.
+The app uses the normal `serve` loop. The socket adapter keeps listening and
+client sockets non-blocking so browser-style concurrent asset requests do not
+starve handler progress under MicroHs' socket FFI.
 
 The current server entrypoints are library functions:
 

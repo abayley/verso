@@ -238,7 +238,8 @@ filesystem store.
 
 ## Markdown Editor Static Asset Scope
 
-The TestApp should use a dedicated static folder for editor assets.
+The TestApp should use a dedicated static folder for generated and hand-written
+editor assets that are served directly.
 
 ```text
 static/
@@ -247,12 +248,25 @@ static/
     markdown-editor.css
 ```
 
+The TypeScript source for the editor web component lives under `src/` with the
+TestApp source, not under `static/`:
+
+```text
+src/
+  TestApp/
+    Editor/
+      index.ts
+      markdown-editor-element.ts
+      markdown-render.ts
+      markdown-serialise.ts
+```
+
 The TestApp should serve these files through an explicit static route, such as
 `GET /static/:path`. The route should normalise requested paths and reject path
 traversal before reading from disk.
 
-The first spike only needs JavaScript and CSS for the editor shell. Later
-versions may add images, fonts, and web-component modules under the same static
+The first TypeScript build emits one browser JavaScript bundle. Later versions
+may add images, fonts, and generated web-component bundles under the same static
 root.
 
 ## Markdown Editor Rendering Pipeline
@@ -397,6 +411,8 @@ Preview must not allow a broader content policy than saved page rendering.
 - Added split mode with source and preview panes sharing one Markdown value.
 - Added autosave using an editor-dispatched `editor:changed` event and htmx
   delayed trigger.
+- Moved editor source to TypeScript under `src/TestApp/Editor/`, with Bun
+  building the served JavaScript bundle.
 - Changed `GET /documents/:id/edit` to return an editor shell that fetches the
   Markdown document through `<markdown-editor src="/documents/:id">`.
 - Changed `GET /documents/:id` to return raw `text/markdown`.
@@ -405,7 +421,8 @@ Preview must not allow a broader content policy than saved page rendering.
   responsibilities.
 - Use remark and mdast as reference fixtures for editor-owned parsing and
   rendering behaviour.
-- Extract spike code that has become stable away from `src/TestApp.hs`.
+- Continue extracting stable editor code out of the custom element class and
+  into typed editor modules.
 - Decide whether the editor parser and renderer belong in MicroHttp examples, a
   separate package, or a later application repository.
 

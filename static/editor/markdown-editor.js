@@ -4,16 +4,20 @@ class MarkdownEditor extends HTMLElement {
       return;
     }
 
-    window.setTimeout(() => this.initialise(), 0);
+    window.setTimeout(() => {
+      this.initialise().catch((error) => {
+        console.error(error);
+      });
+    }, 0);
   }
 
-  initialise() {
+  async initialise() {
     if (this.initialised) {
       return;
     }
 
     this.initialised = true;
-    this.markdown = this.textContent.trim();
+    this.markdown = await this.loadMarkdown();
     this.mode = this.getAttribute("mode") || "visual";
     this.textContent = "";
 
@@ -49,6 +53,26 @@ class MarkdownEditor extends HTMLElement {
         event.detail.parameters.markdown = markdown;
       });
     }
+  }
+
+  async loadMarkdown() {
+    const src = this.getAttribute("src");
+
+    if (!src) {
+      return this.textContent.trim();
+    }
+
+    const response = await fetch(src, {
+      headers: {
+        Accept: "text/markdown",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to load Markdown document: ${response.status}`);
+    }
+
+    return response.text();
   }
 
   toMarkdown() {

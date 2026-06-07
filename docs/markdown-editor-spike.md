@@ -119,7 +119,7 @@ custom elements inside the saved Markdown document.
 The browser should use a custom element as the editor boundary.
 
 ```html
-<markdown-editor name="markdown" mode="visual"></markdown-editor>
+<markdown-editor name="markdown" mode="visual" src="/documents/home"></markdown-editor>
 ```
 
 The custom element owns:
@@ -147,7 +147,7 @@ custom-element equivalent.
   hx-target="#save-status"
   hx-swap="innerHTML"
 >
-  <markdown-editor name="markdown" mode="visual"></markdown-editor>
+  <markdown-editor name="markdown" mode="visual" src="/documents/home"></markdown-editor>
   <input type="hidden" name="markdown" id="markdown-field">
   <button type="submit">Save</button>
 </form>
@@ -188,8 +188,8 @@ GET  /documents/:id
 GET  /static/:path
 ```
 
-`GET /documents/:id/edit` loads Markdown from the spike store and returns the
-editor page.
+`GET /documents/:id/edit` returns the editor shell with a document `src`. It
+does not embed the Markdown document in the page response.
 
 `POST /documents/:id` reads the submitted `markdown` field, validates the
 supported subset, writes the Markdown document, and returns a save-status
@@ -393,10 +393,12 @@ Preview must not allow a broader content policy than saved page rendering.
 
 - Moved preview rendering into the `<markdown-editor>` web component.
 - Kept htmx submissions as Markdown text only.
+- Changed `GET /documents/:id/edit` to return an editor shell that fetches the
+  Markdown document through `<markdown-editor src="/documents/:id">`.
 - Changed `GET /documents/:id` to return raw `text/markdown`.
 - Removed the server-side preview route from the active TestApp route set.
-- Kept server-side Markdown rendering as replaceable TestApp spike evidence, not
-  the active editor preview path.
+- Removed server-side Markdown rendering from the active TestApp
+  responsibilities.
 - Use remark and mdast as reference fixtures for editor-owned parsing and
   rendering behaviour.
 - Add split mode after browser-owned preview is proven.

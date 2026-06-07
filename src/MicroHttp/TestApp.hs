@@ -40,7 +40,7 @@ routes :: DocumentStore -> [Router.Route]
 routes store =
     [ Router.get "/" index
     , Router.get "/index.html" index
-    , Router.get "/documents/:id/edit" (editDocument store)
+    , Router.get "/documents/:id/edit" editDocument
     , Router.get "/documents/:id" (showDocument store)
     , Router.post "/documents/:id" (saveDocument store)
     , Router.get "/static/editor/:file" staticEditorAsset
@@ -50,11 +50,10 @@ index :: Router.Handler
 index _ _ =
     return (htmlResponse indexHtml)
 
-editDocument :: DocumentStore -> Router.Handler
-editDocument store captures request = do
+editDocument :: Router.Handler
+editDocument captures request = do
     let docId = documentId captures
-    markdown <- loadDocument store docId
-    return (htmlResponse (documentHtml (editorPage docId (editorMode request) markdown)))
+    return (htmlResponse (documentHtml (editorPage docId (editorMode request))))
 
 showDocument :: DocumentStore -> Router.Handler
 showDocument store captures _ = do
@@ -204,8 +203,8 @@ indexPage =
                 Html.p [] "The MicroHs HTTP server is running."
                 Html.custom "status-card" [Html.attr "data-state" "ok"] "Served by src/TestApp.hs"
 
-editorPage :: String -> String -> String -> Html.Html ()
-editorPage docId mode markdown =
+editorPage :: String -> String -> Html.Html ()
+editorPage docId mode =
     Html.html [Html.lang "en"] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
@@ -222,8 +221,13 @@ editorPage docId mode markdown =
                     , Html.hxSwap "innerHTML"
                     ]
                     $ do
-                        Html.custom "markdown-editor" [Html.attr "name" "markdown", Html.attr "mode" mode] $
-                            Html.text markdown
+                        Html.custom
+                            "markdown-editor"
+                            [ Html.attr "name" "markdown"
+                            , Html.attr "mode" mode
+                            , Html.attr "src" ("/documents/" ++ docId)
+                            ]
+                            (return ())
                         Html.input [Html.attr "type" "hidden", Html.attr "name" "markdown", Html.attr "id" "markdown-field"]
                         Html.button [Html.attr "type" "submit"] "Save"
                 Html.div [Html.attr "id" "save-status"] ""

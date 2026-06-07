@@ -15,13 +15,13 @@ spec =
             bodyText response `shouldInclude` "https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"
             bodyText response `shouldInclude` "<script src=\"/static/editor/markdown-editor.js\"></script>"
             bodyText response `shouldInclude` "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
-            bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" mode=\"visual\">"
+            bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" mode=\"visual\" src=\"/documents/home\"></markdown-editor>"
             bodyText response `shouldInclude` "<input type=\"hidden\" name=\"markdown\" id=\"markdown-field\">"
-            bodyText response `shouldInclude` "# Hello from MicroHttp"
+            bodyText response `shouldNotInclude` "# Hello from MicroHttp"
         it "given source mode editor request, when routing, then source mode is selected" $ do
             response <- appForTest ((request GET ["documents", "home", "edit"] ""){requestQuery = [("mode", "source")]})
             statusCode (responseStatus response) `shouldBe` 200
-            bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" mode=\"source\">"
+            bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" mode=\"source\" src=\"/documents/home\"></markdown-editor>"
         it "given markdown form post, when routing, then save status fragment is returned" $ do
             response <- appForTest (request POST ["documents", "home"] "markdown=%23+Saved+heading")
             statusCode (responseStatus response) `shouldBe` 200
@@ -79,3 +79,7 @@ bodyText response =
 shouldInclude :: String -> String -> Expectation
 shouldInclude actual expected =
     isInfixOf expected actual `shouldBe` True
+
+shouldNotInclude :: String -> String -> Expectation
+shouldNotInclude actual expected =
+    isInfixOf expected actual `shouldBe` False

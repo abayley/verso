@@ -112,6 +112,14 @@ Run all tests:
 make test
 ```
 
+Run the browser smoke test for the Markdown editor spike:
+
+```sh
+make test-editor-browser
+```
+
+The browser smoke test starts and stops the TestApp itself.
+
 Run unit tests only:
 
 ```sh
@@ -130,6 +138,16 @@ make test-integration
 
 Integration tests cover behaviour that needs real external effects, currently
 file-body response writing and socket listen/close behaviour.
+
+Generate developer-only coverage reports with GHC and HPC:
+
+```sh
+make coverage
+```
+
+Coverage is a secondary signal. The production compatibility gate remains the
+MicroHs-based `make check` target. The coverage target writes unit and
+integration HTML reports under `build/coverage/*/report/`.
 
 Compile all retained spikes:
 
@@ -161,9 +179,11 @@ Then open:
 http://127.0.0.1:8080/
 ```
 
-The app is implemented in `src/TestApp.hs` and serves `/` and `/index.html`.
-It uses a sequential `serveOne` loop because the current `serve` accept loop can
-block handler progress under MicroHs' socket FFI.
+The app is implemented in `src/TestApp.hs` and serves `/`, `/index.html`, the
+Markdown editor spike under `/documents/home/edit`, and static editor assets
+under `/static/editor/`. It uses the normal `serve` loop. The socket adapter
+keeps listening and client sockets non-blocking so browser-style concurrent
+asset requests do not starve handler progress under MicroHs' socket FFI.
 
 The current server entrypoints are library functions:
 

@@ -12,9 +12,10 @@ module MicroHttp.Network.Socket (
     sendAll,
 ) where
 
+import Control.Concurrent (threadDelay)
 import qualified Data.ByteString as BS
 import Data.Word (Word8)
-import Foreign.C.Error (Errno, getErrno)
+import Foreign.C.Error (Errno, eAGAIN, eWOULDBLOCK, getErrno)
 import Foreign.C.String (CString)
 import Foreign.Marshal.Alloc (alloca, allocaBytes)
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
@@ -22,6 +23,7 @@ import Foreign.Storable (poke, pokeByteOff, sizeOf)
 
 foreign import ccall "socket" c_socket :: Int -> Int -> Int -> IO Int
 foreign import ccall "setsockopt" c_setsockopt :: Int -> Int -> Int -> Ptr Int -> Int -> IO Int
+foreign import ccall "fcntl" c_fcntl :: Int -> Int -> Int -> IO Int
 foreign import ccall "bind" c_bind :: Int -> Ptr () -> Int -> IO Int
 foreign import ccall "listen" c_listen :: Int -> Int -> IO Int
 foreign import ccall "accept" c_accept :: Int -> Ptr () -> Ptr Int -> IO Int
@@ -33,6 +35,8 @@ foreign import capi "sys/socket.h value AF_INET" afInet :: Int
 foreign import capi "sys/socket.h value SOCK_STREAM" sockStream :: Int
 foreign import capi "sys/socket.h value SOL_SOCKET" solSocket :: Int
 foreign import capi "sys/socket.h value SO_REUSEADDR" soReuseAddr :: Int
+foreign import capi "fcntl.h value F_SETFL" fSetFl :: Int
+foreign import capi "fcntl.h value O_NONBLOCK" oNonBlock :: Int
 
 newtype ListenSocket = ListenSocket Int
     deriving (Eq, Show)
@@ -49,7 +53,10 @@ newtype Port = Port Int
     deriving (Eq, Show)
 
 data SocketError = SocketError String Errno
-    deriving (Eq, Show)
+    deriving (Eq)
+
+instance Show SocketError where
+    show (SocketError operation _) = "SocketError " ++ show operation
 
 listenTcp :: Host -> Port -> Int -> IO (Either SocketError ListenSocket)
 listenTcp host port backlog = do
@@ -69,24 +76,54 @@ listenTcp host port backlog = do
                                 listening <- checked "listen" (c_listen fd backlog)
                                 case listening of
                                     Left err -> closeAndReturn fd err
-                                    Right _ -> return (Right (ListenSocket fd))
+                                    Right _ -> do
+                                        nonBlocking <- setNonBlocking fd
+                                        case nonBlocking of
+                                            Left err -> closeAndReturn fd err
+                                            Right () -> return (Right (ListenSocket fd))
 
 accept :: ListenSocket -> IO (Either SocketError ClientSocket)
 accept (ListenSocket fd) =
     allocaBytes sockaddrInSize $ \addr ->
-        alloca $ \addrLen -> do
-            poke addrLen sockaddrInSize
-            accepted <- checked "accept" (c_accept fd (castPtr addr) addrLen)
-            return (fmap ClientSocket accepted)
+        alloca $ \addrLen ->
+            acceptLoop addr addrLen
+  where
+    acceptLoop addr addrLen = do
+        poke addrLen sockaddrInSize
+        accepted <- c_accept fd (castPtr addr) addrLen
+        if accepted < 0
+            then do
+                errno <- getErrno
+                if isWouldBlock errno
+                    then do
+                        threadDelay pollDelayMicros
+                        acceptLoop addr addrLen
+                    else return (Left (SocketError "accept" errno))
+            else do
+                nonBlocking <- setNonBlocking accepted
+                case nonBlocking of
+                    Left err -> do
+                        _ <- c_close accepted
+                        return (Left err)
+                    Right () -> return (Right (ClientSocket accepted))
 
 recv :: ClientSocket -> Int -> IO (Either SocketError BS.ByteString)
 recv (ClientSocket fd) byteCount =
-    allocaBytes byteCount $ \buf -> do
-        received <- checked "recv" (c_recv fd (castPtr buf) byteCount 0)
-        case received of
-            Left err -> return (Left err)
-            Right count -> do
-                bytes <- BS.packCStringLen (castPtr buf, count)
+    allocaBytes byteCount $ \buf ->
+        recvLoop buf
+  where
+    recvLoop buf = do
+        received <- c_recv fd (castPtr buf) byteCount 0
+        if received < 0
+            then do
+                errno <- getErrno
+                if isWouldBlock errno
+                    then do
+                        threadDelay pollDelayMicros
+                        recvLoop buf
+                    else return (Left (SocketError "recv" errno))
+            else do
+                bytes <- BS.packCStringLen (castPtr buf, received)
                 return (Right bytes)
 
 sendAll :: ClientSocket -> BS.ByteString -> IO (Either SocketError ())
@@ -102,10 +139,16 @@ closeClientSocket (ClientSocket fd) = closeFd fd
 sendLoop :: Int -> CString -> Int -> IO (Either SocketError ())
 sendLoop _ _ remaining | remaining <= 0 = return (Right ())
 sendLoop fd ptr remaining = do
-    sent <- checked "send" (c_send fd ptr remaining 0)
-    case sent of
-        Left err -> return (Left err)
-        Right count -> sendLoop fd (advanceCString ptr count) (remaining - count)
+    sent <- c_send fd ptr remaining 0
+    if sent < 0
+        then do
+            errno <- getErrno
+            if isWouldBlock errno
+                then do
+                    threadDelay pollDelayMicros
+                    sendLoop fd ptr remaining
+                else return (Left (SocketError "send" errno))
+        else sendLoop fd (advanceCString ptr sent) (remaining - sent)
 
 advanceCString :: CString -> Int -> CString
 advanceCString ptr count = castPtr (castPtr ptr `plusPtr` count)
@@ -128,6 +171,20 @@ setReuseAddr fd =
         case result of
             Left err -> return (Left err)
             Right _ -> return (Right ())
+
+setNonBlocking :: Int -> IO (Either SocketError ())
+setNonBlocking fd = do
+    result <- checked "fcntl" (c_fcntl fd fSetFl oNonBlock)
+    case result of
+        Left err -> return (Left err)
+        Right _ -> return (Right ())
+
+isWouldBlock :: Errno -> Bool
+isWouldBlock errno =
+    errno == eAGAIN || errno == eWOULDBLOCK
+
+pollDelayMicros :: Int
+pollDelayMicros = 1000
 
 closeAndReturn :: Int -> SocketError -> IO (Either SocketError ListenSocket)
 closeAndReturn fd err = do

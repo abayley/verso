@@ -1,0 +1,11 @@
+markdown-editor {
+  display: block;
+}
+
+.markdown-editor__surface {
+  border: 1px solid #777;
+  font: 16px system-ui, sans-serif;
+  min-height: 16rem;
+  padding: 1rem;
+  white-space: pre-wrap;
+}

@@ -1,0 +1,409 @@
+# Markdown Editor Spike Design
+
+## Markdown Editor Spike Goal
+
+Build a small TestApp spike that proves MicroHttp can serve an htmx-driven,
+web-component-based editor while keeping Markdown as the saved document format.
+
+The spike should validate the browser and server interaction model before the
+editor becomes a separate application or library. It should not attempt to build
+a complete Markdown editor.
+
+## Markdown Editor Spike Non-Goals
+
+- No general-purpose HTML page editor.
+- No arbitrary HTML persistence.
+- No JavaScript framework dependency.
+- No database-backed persistence.
+- No collaborative editing.
+- No complete CommonMark implementation in the first spike.
+- No reusable production editor package in the first spike.
+
+## Markdown Editor Source Of Truth
+
+Markdown is the canonical saved representation.
+
+The editable HTML view is a projection of Markdown, not the durable document
+model. Browser DOM content must be normalised back to Markdown before it is
+submitted to the server.
+
+This direction avoids a common failure mode where a visual editor starts as
+arbitrary `contenteditable` HTML and later cannot be converted to clean Markdown
+without data loss or surprising output.
+
+## Markdown Editor Supported Content Subset
+
+The long-term Markdown family should be GitHub-Flavored Markdown plus selected
+MkDocs and Zensical extensions. The first visual editor should expose only a
+small subset of that family with direct Markdown representations.
+
+Initial supported block content:
+
+- Paragraphs.
+- Headings from `h1` to `h3`.
+- Unordered lists.
+- Ordered lists.
+- Blockquotes.
+- Code blocks.
+- Horizontal rules.
+
+Initial supported inline content:
+
+- Plain text.
+- Strong emphasis.
+- Emphasis.
+- Inline code.
+- Links.
+
+Initial unsupported content:
+
+- Arbitrary `div` and `span` wrappers.
+- Inline styles.
+- Raw HTML blocks.
+- Script tags.
+- Event-handler attributes.
+- Tables.
+- Images, including SVG images.
+- Arbitrary attachments.
+- Embedded htmx attributes inside saved document content.
+- Custom elements inside saved document content.
+
+Tables, images, and attachments are expected later capabilities, but each needs
+a clear Markdown representation, asset-storage contract, and round-trip rule
+before it becomes editable content.
+
+## Markdown Editor Future Content Scope
+
+Later versions should support tables, images, SVG images, and arbitrary
+attachments after the core Markdown editing loop is proven.
+
+Tables should use a GitHub-Flavored Markdown table representation unless a later
+parser spike shows that a different table contract is more practical under
+MicroHs.
+
+Images should use ordinary Markdown image syntax for bitmap images:
+
+```markdown
+![Alt text](attachments/example.png)
+```
+
+SVG should initially be treated as an image asset referenced from Markdown, not
+as inline arbitrary HTML inside the document body.
+
+```markdown
+![Architecture sketch](attachments/sketch.svg)
+```
+
+Arbitrary attachments should use normal links from Markdown:
+
+```markdown
+[Download source file](attachments/source.zip)
+```
+
+Attachment uploads should be modelled as document-adjacent assets rather than
+embedded document content. A future store layout could keep a document and its
+assets together.
+
+```text
+data/documents/home/content.md
+data/documents/home/attachments/sketch.svg
+data/documents/home/attachments/source.zip
+```
+
+The editor shell may use web components for upload controls, asset pickers, and
+attachment previews. Those web components remain editor UI and should not become
+custom elements inside the saved Markdown document.
+
+## Markdown Editor Browser Architecture
+
+The browser should use a custom element as the editor boundary.
+
+```html
+<markdown-editor name="markdown" mode="visual"></markdown-editor>
+```
+
+The custom element owns:
+
+- The editable visual surface.
+- The raw Markdown textarea when source mode is enabled.
+- Conversion from the current visual state to Markdown before form submission.
+- Conversion from Markdown to an HTML projection for preview or visual editing.
+- Editor mode switching between visual, source, and split views.
+
+The custom element must expose its value through normal form submission
+mechanics. htmx should not need to know about the editor internals.
+
+## Markdown Editor htmx Boundary
+
+htmx should handle transport and server fragment replacement. It should not own
+editor state.
+
+The edit form should submit Markdown through a hidden input or form-associated
+custom-element equivalent.
+
+```html
+<form
+  hx-post="/documents/home"
+  hx-target="#save-status"
+  hx-swap="innerHTML"
+>
+  <markdown-editor name="markdown" mode="visual"></markdown-editor>
+  <input type="hidden" name="markdown" id="markdown-field">
+  <button type="submit">Save</button>
+</form>
+
+<div id="save-status"></div>
+```
+
+Before htmx submits the request, the editor should serialise the current
+document to Markdown and write it to the submitted field.
+
+```javascript
+form.addEventListener("htmx:configRequest", function () {
+  hiddenMarkdownField.value = editor.toMarkdown();
+});
+```
+
+The same contract can support autosave later by dispatching a custom event from
+the editor and using `hx-trigger` on the form.
+
+```html
+<form
+  hx-post="/documents/home"
+  hx-trigger="editor:changed delay:2s from:markdown-editor"
+  hx-target="#save-status"
+  hx-swap="innerHTML"
+>
+</form>
+```
+
+## Markdown Editor Server Routes
+
+The TestApp spike should keep routes small and explicit.
+
+```text
+GET  /documents/:id/edit
+POST /documents/:id
+POST /documents/:id/preview
+GET  /documents/:id
+GET  /static/:path
+```
+
+`GET /documents/:id/edit` loads Markdown from the spike store and returns the
+editor page.
+
+`POST /documents/:id` reads the submitted `markdown` field, validates the
+supported subset, writes the Markdown document, and returns a save-status
+fragment.
+
+`POST /documents/:id/preview` reads submitted Markdown and returns a rendered
+HTML fragment without saving.
+
+`GET /documents/:id` renders the saved Markdown as a normal page.
+
+`GET /static/:path` serves TestApp static assets such as editor JavaScript, CSS,
+images, fonts, and web-component source files.
+
+## Markdown Editor Server Responsibilities
+
+The server owns:
+
+- Route dispatch.
+- Request body parsing.
+- Markdown persistence.
+- Validation of the supported Markdown subset.
+- Rendering saved Markdown into public HTML.
+- Rendering htmx fragments for status, preview, and validation failures.
+
+The server must not trust submitted HTML as document content. If the browser
+submits HTML during an early experiment, the server should treat that as a spike
+shortcut only and the design should still record Markdown as the durable
+contract.
+
+## Markdown Editor TestApp Scope
+
+The first implementation can live inside `src/TestApp.hs` and supporting static
+assets served by the TestApp.
+
+This keeps the spike close to the running server and avoids introducing a new
+application structure before the interaction model is proven. The code should
+stay easy to delete or extract once the editor grows beyond a spike.
+
+The TestApp spike may use a simple file under a local data directory:
+
+```text
+data/documents/home.md
+```
+
+The first persistence implementation can be direct and synchronous. A later
+production implementation should move document writes behind the planned
+filesystem store.
+
+## Markdown Editor Static Asset Scope
+
+The TestApp should use a dedicated static folder for editor assets.
+
+```text
+static/
+  editor/
+    markdown-editor.js
+    markdown-editor.css
+```
+
+The TestApp should serve these files through an explicit static route, such as
+`GET /static/:path`. The route should normalise requested paths and reject path
+traversal before reading from disk.
+
+The first spike only needs JavaScript and CSS for the editor shell. Later
+versions may add images, fonts, and web-component modules under the same static
+root.
+
+## Markdown Editor Rendering Pipeline
+
+The intended long-term pipeline is:
+
+```text
+Markdown source
+  -> Markdown parse result
+  -> Markdown-shaped editor model
+  -> visual HTML projection
+  -> edit operation
+  -> normalised Markdown
+  -> saved Markdown
+```
+
+The first spike may simplify this pipeline:
+
+```text
+Markdown source
+  -> browser projection
+  -> visual edits
+  -> browser serialises supported DOM to Markdown
+  -> server saves Markdown
+```
+
+That simplification is acceptable only while the supported content subset stays
+small and explicit.
+
+## Markdown Editor Visual Editing Strategy
+
+The first visual editor can use a `contenteditable` region with a constrained
+toolbar. The toolbar should create only supported Markdown-compatible structures.
+
+The editor should avoid exposing native browser commands that generate
+uncontrolled markup. If browser commands are used for the spike, the component
+must normalise the resulting DOM before serialising Markdown.
+
+The visual surface should not include htmx attributes or custom elements inside
+the editable document. htmx and web components are part of the editor shell, not
+part of the saved document content.
+
+## Markdown Editor Mode Strategy
+
+The editor should eventually support three modes.
+
+`visual` mode shows the editable rendered projection.
+
+`source` mode shows the raw Markdown textarea.
+
+`split` mode shows source and rendered projection side by side.
+
+The first spike should start with `visual` mode and submit Markdown. The next
+increment should add `source` mode. Split mode should follow only after visual
+and source modes share a single Markdown value contract.
+
+## Markdown Editor Validation Strategy
+
+Validation should reject content that cannot round-trip through the supported
+Markdown subset.
+
+The first validation pass can be conservative:
+
+- Reject raw HTML in submitted Markdown.
+- Reject unsupported block structures.
+- Reject unsupported inline structures.
+- Return an htmx validation fragment instead of saving invalid content.
+
+The spike may initially validate only the obvious raw HTML and unsupported
+feature cases. The design should not imply that unsupported content is accepted.
+
+## Markdown Editor Security Boundary
+
+The saved Markdown should be rendered through a controlled renderer. Raw HTML in
+Markdown should be disabled or rejected unless a later decision explicitly
+allows trusted author HTML.
+
+Generated preview HTML should be treated the same way as public rendered HTML.
+Preview must not allow a broader content policy than saved page rendering.
+
+## Markdown Editor First Spike Plan
+
+### Markdown Editor Spike Phase One
+
+- Render `GET /documents/home/edit` from TestApp.
+- Include htmx and the `markdown-editor` custom element script.
+- Seed the editor with a small Markdown document.
+- Support a constrained visual editor for paragraphs and headings.
+- Submit Markdown through htmx to `POST /documents/home`.
+- Return a save-status fragment.
+
+### Markdown Editor Spike Phase Two
+
+- Add strong emphasis, emphasis, inline code, and links.
+- Add unordered and ordered lists.
+- Add server-side validation for the supported subset.
+- Persist the submitted Markdown to `data/documents/home.md`.
+- Render `GET /documents/home` from the saved Markdown.
+
+### Markdown Editor Spike Phase Three
+
+- Add raw Markdown source mode.
+- Keep source and visual modes synchronised through one Markdown value.
+- Add `POST /documents/home/preview`.
+- Return preview HTML as an htmx fragment.
+
+### Markdown Editor Spike Phase Four
+
+- Add split mode.
+- Add autosave using an editor-dispatched event and htmx trigger.
+- Extract spike code that has become stable away from `src/TestApp.hs`.
+- Decide whether the Markdown parser and renderer belong in MicroHttp examples,
+  a separate package, or a later application repository.
+
+### Markdown Editor Future Asset Phase
+
+- Add GitHub-Flavored Markdown tables after the parser and renderer contract is
+  clear.
+- Add image upload and insertion for Markdown image syntax.
+- Treat SVG as an image asset by default, not inline raw document HTML.
+- Add arbitrary attachment upload and insertion as Markdown links.
+- Add asset storage, path normalisation, and deletion rules.
+
+## Markdown Editor Decision Status
+
+The first stable content contract should be a basic subset of
+GitHub-Flavored Markdown. The long-term direction is GitHub-Flavored Markdown
+plus selected MkDocs and Zensical extensions.
+
+Browser-owned versus server-owned Markdown parsing remains undecided.
+
+Introducing a Markdown AST before source mode remains undecided, with a current
+preference toward introducing one.
+
+Using an external Markdown parser spike versus a tiny local parser remains
+undecided.
+
+Table syntax and normalisation rules are deferred.
+
+Allowed image and attachment file types are deferred.
+
+Inline SVG embedding versus linked SVG image assets is deferred. Until that
+decision is made, SVG should be treated as a linked image asset.
+
+Attachment path generation, normalisation, and de-duplication are deferred.
+
+The sanitisation policy for trusted local authoring versus multi-user authoring
+is deferred.
+
+TestApp static editor assets should live under a dedicated `static/` folder and
+be served by an explicit static route.

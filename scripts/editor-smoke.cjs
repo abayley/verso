@@ -1,9 +1,11 @@
 const assert = require("node:assert/strict");
 const { spawn } = require("node:child_process");
+const fs = require("node:fs");
 const http = require("node:http");
 const { chromium } = require("playwright");
 
 const baseUrl = "http://127.0.0.1:8080";
+const persistedDocument = "data/documents/home.md";
 
 let browser;
 let serverProcess;
@@ -23,9 +25,11 @@ main()
     }
 
     stopServer();
+    cleanPersistedDocument();
   });
 
 async function main() {
+  cleanPersistedDocument();
   serverProcess = startServer();
   await waitForServer(serverProcess);
 
@@ -70,7 +74,14 @@ async function main() {
   await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
   await page.waitForSelector(".markdown-editor__source");
 
-  const sourceMarkdown = "# Source heading\n\nExact source paragraph.";
+  const sourceMarkdown = [
+    "# Source heading",
+    "",
+    "Exact **source** paragraph with [link](/target).",
+    "",
+    "- first",
+    "- `second`",
+  ].join("\n");
   await page.locator(".markdown-editor__source").fill(sourceMarkdown);
   await page.getByRole("button", { name: "Save" }).click();
   await page.waitForFunction(() =>
@@ -80,6 +91,21 @@ async function main() {
   );
 
   assert.equal(await page.locator("#markdown-field").inputValue(), sourceMarkdown);
+
+  await page.goto(`${baseUrl}/documents/home`);
+  assert.equal(await page.locator("h1").innerText(), "Source heading");
+  assert.equal(await page.locator("strong").innerText(), "source");
+  assert.equal(await page.locator("a").getAttribute("href"), "/target");
+  assert.deepEqual(await page.locator("li").allInnerTexts(), ["first", "second"]);
+
+  await page.goto(`${baseUrl}/documents/home/edit`);
+  await page.waitForSelector(".markdown-editor__surface strong");
+  assert.equal(await page.locator(".markdown-editor__surface strong").innerText(), "source");
+  assert.deepEqual(await page.locator(".markdown-editor__surface li").allInnerTexts(), [
+    "first",
+    "second",
+  ]);
+
   assert.deepEqual(consoleErrors, []);
 }
 
@@ -148,5 +174,15 @@ function stopServer() {
     process.kill(-serverProcess.pid, "SIGTERM");
   } catch (_err) {
     serverProcess.kill("SIGTERM");
+  }
+}
+
+function cleanPersistedDocument() {
+  try {
+    fs.unlinkSync(persistedDocument);
+  } catch (err) {
+    if (err.code !== "ENOENT") {
+      throw err;
+    }
   }
 }

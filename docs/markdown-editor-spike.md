@@ -352,26 +352,29 @@ Preview must not allow a broader content policy than saved page rendering.
 - Added a browser smoke script that starts TestApp, exercises the editor save
   flow, and closes the browser and server afterwards.
 
-### Markdown Editor Spike Phase Two
+### Markdown Editor Spike Phase Two: Implemented
 
-- Add raw Markdown source mode with `GET /documents/home/edit?mode=source`.
-- Keep source and visual modes behind one submitted `markdown` field.
-- Preserve exact source textarea content when source mode submits.
-- Add conservative server-side validation for the current supported subset:
+- Added raw Markdown source mode with `GET /documents/home/edit?mode=source`.
+- Kept source and visual modes behind one submitted `markdown` field.
+- Preserved exact source textarea content when source mode submits.
+- Added conservative server-side validation for the current supported subset:
   headings from `h1` to `h3` and paragraphs.
-- Reject obvious raw HTML and unsupported Markdown syntax with an htmx status
+- Rejected obvious raw HTML and unsupported Markdown syntax with an htmx status
   fragment instead of saving.
-- Keep persistence deferred; the phase still returns save or validation status
+- Kept persistence deferred; the phase still returns save or validation status
   fragments from the TestApp spike.
 
-### Markdown Editor Spike Phase Three
+### Markdown Editor Spike Phase Three: Implemented
 
-- Add strong emphasis, emphasis, inline code, and links.
-- Add unordered and ordered lists.
-- Persist the submitted Markdown to `data/documents/home.md`.
-- Render `GET /documents/home` from the saved Markdown.
-- Add `POST /documents/home/preview`.
-- Return preview HTML as an htmx fragment.
+- Added strong emphasis, emphasis, inline code, and links.
+- Added unordered and ordered lists.
+- Persisted submitted Markdown to `data/documents/home.md` through a small
+  TestApp document-store seam.
+- Rendered `GET /documents/home` from the saved Markdown.
+- Added `POST /documents/home/preview`.
+- Returned preview HTML as an htmx fragment.
+- Kept the parser and renderer deliberately small and local to the TestApp
+  spike; it is not a complete Markdown implementation.
 
 ### Markdown Editor Spike Phase Four
 
@@ -396,10 +399,13 @@ The first stable content contract should be a basic subset of
 GitHub-Flavored Markdown. The long-term direction is GitHub-Flavored Markdown
 plus selected MkDocs and Zensical extensions.
 
-Browser-owned versus server-owned Markdown parsing remains undecided.
+Browser-owned versus server-owned Markdown parsing remains undecided. The
+current spike duplicates a tiny Markdown projection in the browser component and
+the TestApp server so the interaction model can be tested before choosing a
+long-term parser.
 
-Introducing a Markdown AST before source mode remains undecided, with a current
-preference toward introducing one.
+Introducing a Markdown AST remains undecided. Source mode was implemented before
+an AST so the canonical Markdown submission contract could be proven first.
 
 Using an external Markdown parser spike versus a tiny local parser remains
 undecided.

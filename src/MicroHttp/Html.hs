@@ -17,6 +17,8 @@ module MicroHttp.Html (
     h1_,
     h2,
     h2_,
+    h3,
+    h3_,
     head,
     head_,
     header,
@@ -196,6 +198,12 @@ h2_ = el "h2"
 
 h2 :: [(String, String)] -> Html () -> Html ()
 h2 = h2_
+
+h3_ :: [(String, String)] -> Html () -> Html ()
+h3_ = el "h3"
+
+h3 :: [(String, String)] -> Html () -> Html ()
+h3 = h3_
 
 p_ :: [(String, String)] -> Html () -> Html ()
 p_ = el "p"

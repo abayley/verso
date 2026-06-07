@@ -66,6 +66,20 @@ async function main() {
     await page.locator("#markdown-field").inputValue(),
     "# Hello from MicroHttp\n\nEdit this Markdown document.",
   );
+
+  await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
+  await page.waitForSelector(".markdown-editor__source");
+
+  const sourceMarkdown = "# Source heading\n\nExact source paragraph.";
+  await page.locator(".markdown-editor__source").fill(sourceMarkdown);
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.waitForFunction(() =>
+    document
+      .querySelector("#save-status")
+      ?.innerText.includes("Saved Markdown document: # Source heading"),
+  );
+
+  assert.equal(await page.locator("#markdown-field").inputValue(), sourceMarkdown);
   assert.deepEqual(consoleErrors, []);
 }
 

@@ -338,27 +338,38 @@ Preview must not allow a broader content policy than saved page rendering.
 
 ## Markdown Editor First Spike Plan
 
-### Markdown Editor Spike Phase One
+### Markdown Editor Spike Phase One: Implemented
 
-- Render `GET /documents/home/edit` from TestApp.
-- Include htmx and the `markdown-editor` custom element script.
-- Seed the editor with a small Markdown document.
-- Support a constrained visual editor for paragraphs and headings.
-- Submit Markdown through htmx to `POST /documents/home`.
-- Return a save-status fragment.
+- Rendered `GET /documents/home/edit` from TestApp.
+- Included htmx and the `markdown-editor` custom element script.
+- Added `static/editor/markdown-editor.js` and
+  `static/editor/markdown-editor.css`.
+- Served editor assets through explicit `GET /static/editor/:file` routes.
+- Seeded the editor with a small Markdown document.
+- Supported a constrained visual editor for paragraphs and headings.
+- Submitted Markdown through htmx to `POST /documents/home`.
+- Returned a save-status fragment.
+- Added a browser smoke script that starts TestApp, exercises the editor save
+  flow, and closes the browser and server afterwards.
 
 ### Markdown Editor Spike Phase Two
 
-- Add strong emphasis, emphasis, inline code, and links.
-- Add unordered and ordered lists.
-- Add server-side validation for the supported subset.
-- Persist the submitted Markdown to `data/documents/home.md`.
-- Render `GET /documents/home` from the saved Markdown.
+- Add raw Markdown source mode with `GET /documents/home/edit?mode=source`.
+- Keep source and visual modes behind one submitted `markdown` field.
+- Preserve exact source textarea content when source mode submits.
+- Add conservative server-side validation for the current supported subset:
+  headings from `h1` to `h3` and paragraphs.
+- Reject obvious raw HTML and unsupported Markdown syntax with an htmx status
+  fragment instead of saving.
+- Keep persistence deferred; the phase still returns save or validation status
+  fragments from the TestApp spike.
 
 ### Markdown Editor Spike Phase Three
 
-- Add raw Markdown source mode.
-- Keep source and visual modes synchronised through one Markdown value.
+- Add strong emphasis, emphasis, inline code, and links.
+- Add unordered and ordered lists.
+- Persist the submitted Markdown to `data/documents/home.md`.
+- Render `GET /documents/home` from the saved Markdown.
 - Add `POST /documents/home/preview`.
 - Return preview HTML as an htmx fragment.
 

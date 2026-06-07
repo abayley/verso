@@ -18,10 +18,26 @@ spec =
             bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" mode=\"visual\">"
             bodyText response `shouldInclude` "<input type=\"hidden\" name=\"markdown\" id=\"markdown-field\">"
             bodyText response `shouldInclude` "# Hello from MicroHttp"
+        it "given source mode editor request, when routing, then source mode is selected" $ do
+            response <- TestApp.app ((request GET ["documents", "home", "edit"] ""){requestQuery = [("mode", "source")]})
+            statusCode (responseStatus response) `shouldBe` 200
+            bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" mode=\"source\">"
         it "given markdown form post, when routing, then save status fragment is returned" $ do
             response <- TestApp.app (request POST ["documents", "home"] "markdown=%23+Saved+heading")
             statusCode (responseStatus response) `shouldBe` 200
             bodyText response `shouldBe` "<p id=\"save-status\">Saved Markdown document: # Saved heading</p>"
+        it "given source markdown form post, when routing, then exact markdown is returned" $ do
+            response <- TestApp.app (request POST ["documents", "home"] "markdown=%23+Saved+heading%0A%0AExact+paragraph.")
+            statusCode (responseStatus response) `shouldBe` 200
+            bodyText response `shouldBe` "<p id=\"save-status\">Saved Markdown document: # Saved heading\n\nExact paragraph.</p>"
+        it "given raw html form post, when routing, then validation fragment is returned" $ do
+            response <- TestApp.app (request POST ["documents", "home"] "markdown=%3Cscript%3Ealert(1)%3C%2Fscript%3E")
+            statusCode (responseStatus response) `shouldBe` 200
+            bodyText response `shouldBe` "<p id=\"save-status\">Unsupported Markdown: raw HTML is not supported in this spike.</p>"
+        it "given unsupported markdown form post, when routing, then validation fragment is returned" $ do
+            response <- TestApp.app (request POST ["documents", "home"] "markdown=-+item")
+            statusCode (responseStatus response) `shouldBe` 200
+            bodyText response `shouldBe` "<p id=\"save-status\">Unsupported Markdown: unsupported block syntax.</p>"
         it "given editor script request, when routing, then static script file response is returned" $ do
             response <- TestApp.app (request GET ["static", "editor", "markdown-editor.js"] "")
             statusCode (responseStatus response) `shouldBe` 200

@@ -14,12 +14,21 @@ class MarkdownEditor extends HTMLElement {
 
     this.initialised = true;
     this.markdown = this.textContent.trim();
+    this.mode = this.getAttribute("mode") || "visual";
     this.textContent = "";
-    this.editor = document.createElement("div");
-    this.editor.className = "markdown-editor__surface";
-    this.editor.contentEditable = "true";
-    this.editor.innerHTML = this.renderMarkdown(this.markdown);
-    this.append(this.editor);
+
+    if (this.mode === "source") {
+      this.source = document.createElement("textarea");
+      this.source.className = "markdown-editor__source";
+      this.source.value = this.markdown;
+      this.append(this.source);
+    } else {
+      this.editor = document.createElement("div");
+      this.editor.className = "markdown-editor__surface";
+      this.editor.contentEditable = "true";
+      this.editor.innerHTML = this.renderMarkdown(this.markdown);
+      this.append(this.editor);
+    }
 
     const form = this.closest("form");
     const field = document.getElementById("markdown-field");
@@ -35,6 +44,10 @@ class MarkdownEditor extends HTMLElement {
   }
 
   toMarkdown() {
+    if (this.source) {
+      return this.source.value;
+    }
+
     if (!this.editor) {
       return this.markdown;
     }

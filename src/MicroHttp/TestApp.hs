@@ -5,7 +5,7 @@ module MicroHttp.TestApp (
 ) where
 
 import qualified Data.ByteString.Char8 as BS
-import Data.Char (isDigit)
+import Data.Char (isDigit, isSpace)
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http as Http
 import qualified MicroHttp.Router as Router
@@ -29,12 +29,12 @@ index _ _ =
     return (htmlResponse indexHtml)
 
 editDocument :: Router.Handler
-editDocument _ _ =
-    return (htmlResponse (documentHtml editorPage))
+editDocument _ request =
+    return (htmlResponse (documentHtml (editorPage (editorMode request))))
 
 saveDocument :: Router.Handler
 saveDocument _ request =
-    return (htmlResponse (Html.renderHtml (saveStatusFragment (markdownValue request))))
+    return (htmlResponse (Html.renderHtml (saveResultFragment (markdownValue request))))
 
 staticEditorAsset :: Router.Handler
 staticEditorAsset captures _ =
@@ -69,6 +69,16 @@ capture _ [] = ""
 capture name ((key, value) : rest)
     | name == key = value
     | otherwise = capture name rest
+
+queryValue :: String -> Http.Request -> String
+queryValue name request =
+    capture name (Http.requestQuery request)
+
+editorMode :: Http.Request -> String
+editorMode request =
+    case queryValue "mode" request of
+        "source" -> "source"
+        _ -> "visual"
 
 markdownValue :: Http.Request -> String
 markdownValue request =
@@ -133,8 +143,8 @@ indexPage =
                 Html.p [] "The MicroHs HTTP server is running."
                 Html.custom "status-card" [Html.attr "data-state" "ok"] "Served by src/TestApp.hs"
 
-editorPage :: Html.Html ()
-editorPage =
+editorPage :: String -> Html.Html ()
+editorPage mode =
     Html.html [Html.lang "en"] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
@@ -151,7 +161,7 @@ editorPage =
                     , Html.hxSwap "innerHTML"
                     ]
                     $ do
-                        Html.custom "markdown-editor" [Html.attr "name" "markdown", Html.attr "mode" "visual"] $
+                        Html.custom "markdown-editor" [Html.attr "name" "markdown", Html.attr "mode" mode] $
                             Html.text seededMarkdown
                         Html.input [Html.attr "type" "hidden", Html.attr "name" "markdown", Html.attr "id" "markdown-field"]
                         Html.button [Html.attr "type" "submit"] "Save"
@@ -161,8 +171,92 @@ seededMarkdown :: String
 seededMarkdown =
     "# Hello from MicroHttp\n\nEdit this Markdown document."
 
+saveResultFragment :: String -> Html.Html ()
+saveResultFragment markdown =
+    case validateMarkdown markdown of
+        Nothing -> saveStatusFragment markdown
+        Just err -> validationStatusFragment err
+
 saveStatusFragment :: String -> Html.Html ()
 saveStatusFragment markdown =
     Html.p [Html.attr "id" "save-status"] $ do
         Html.text "Saved Markdown document: "
         Html.text markdown
+
+validationStatusFragment :: String -> Html.Html ()
+validationStatusFragment err =
+    Html.p [Html.attr "id" "save-status"] $ do
+        Html.text "Unsupported Markdown: "
+        Html.text err
+
+validateMarkdown :: String -> Maybe String
+validateMarkdown markdown
+    | containsRawHtml markdown = Just "raw HTML is not supported in this spike."
+    | otherwise = validateBlocks (paragraphBlocks markdown)
+
+containsRawHtml :: String -> Bool
+containsRawHtml [] = False
+containsRawHtml ('<' : _) = True
+containsRawHtml (_ : rest) = containsRawHtml rest
+
+paragraphBlocks :: String -> [String]
+paragraphBlocks markdown =
+    filter (not . null) (map trim (splitParagraphs (lines markdown)))
+
+splitParagraphs :: [String] -> [String]
+splitParagraphs [] = []
+splitParagraphs rows =
+    case break (all isSpace) rows of
+        (before, _ : after) -> unlinesNoTrailing before : splitParagraphs after
+        (before, []) -> [unlinesNoTrailing before]
+
+unlinesNoTrailing :: [String] -> String
+unlinesNoTrailing [] = ""
+unlinesNoTrailing [row] = row
+unlinesNoTrailing (row : rows) = row ++ "\n" ++ unlinesNoTrailing rows
+
+validateBlocks :: [String] -> Maybe String
+validateBlocks [] = Nothing
+validateBlocks (block : rest)
+    | supportedBlock block = validateBlocks rest
+    | otherwise = Just "unsupported block syntax."
+
+supportedBlock :: String -> Bool
+supportedBlock block =
+    isHeading block || isParagraph block
+
+isHeading :: String -> Bool
+isHeading ('#' : ' ' : rest) = not (null (trim rest))
+isHeading ('#' : '#' : ' ' : rest) = not (null (trim rest))
+isHeading ('#' : '#' : '#' : ' ' : rest) = not (null (trim rest))
+isHeading ('#' : _) = False
+isHeading _ = False
+
+isParagraph :: String -> Bool
+isParagraph block =
+    not (startsUnsupportedBlock block)
+
+startsUnsupportedBlock :: String -> Bool
+startsUnsupportedBlock block =
+    case trimStart block of
+        '-' : ' ' : _ -> True
+        '*' : ' ' : _ -> True
+        '+' : ' ' : _ -> True
+        '>' : _ -> True
+        '`' : '`' : '`' : _ -> True
+        _ -> startsOrderedList block
+
+startsOrderedList :: String -> Bool
+startsOrderedList block =
+    case span isDigit (trimStart block) of
+        ("", _) -> False
+        (_, '.' : ' ' : _) -> True
+        _ -> False
+
+trim :: String -> String
+trim =
+    reverse . trimStart . reverse . trimStart
+
+trimStart :: String -> String
+trimStart =
+    dropWhile isSpace

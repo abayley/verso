@@ -1,3 +1,4 @@
+import { CodeMirrorSourceEditor } from "./codemirror-source-editor.js";
 import { renderMarkdown } from "./markdown-render.js";
 import { TiptapVisualEditor } from "./tiptap-visual-editor.js";
 
@@ -18,7 +19,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private panes: HTMLDivElement | null = null;
     private parseError: HTMLDivElement | null = null;
     private preview: HTMLDivElement | null = null;
-    private source: HTMLTextAreaElement | null = null;
+    private sourceEditor: CodeMirrorSourceEditor | null = null;
     private toolbar: HTMLDivElement | null = null;
     private visualEditor: TiptapVisualEditor | null = null;
 
@@ -100,14 +101,15 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
+        this.sourceEditor?.destroy();
         this.visualEditor?.destroy();
+        this.sourceEditor = null;
         this.visualEditor = null;
-        this.source = null;
         this.panes = null;
         this.body.textContent = "";
 
         if (this.mode === "source" || this.mode === "split") {
-            this.source = this.createSourceEditor();
+            this.sourceEditor = new CodeMirrorSourceEditor(this.markdown, (): void => this.handleInput());
         }
 
         if (this.mode === "visual") {
@@ -120,18 +122,8 @@ export class MarkdownEditorElement extends HTMLElement {
             this.panes.append(this.sourceElement(), this.previewElement());
             this.body.append(this.panes);
         } else {
-            this.body.append(this.source ?? this.visualEditorElement(), this.previewElement());
+            this.body.append(this.sourceEditor?.element() ?? this.visualEditorElement(), this.previewElement());
         }
-    }
-
-    /** Creates the raw Markdown source editor. */
-    private createSourceEditor(): HTMLTextAreaElement {
-        const source = document.createElement("textarea");
-        source.className = "markdown-editor__source";
-        source.value = this.markdown;
-        source.addEventListener("input", (): void => this.handleInput());
-
-        return source;
     }
 
     /** Returns the selected editor mode, defaulting unknown values to visual. */
@@ -168,8 +160,8 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Serialises the current editor value to Markdown. */
     public toMarkdown(): string {
-        if (this.source) {
-            return this.source.value;
+        if (this.sourceEditor) {
+            return this.sourceEditor.toMarkdown();
         }
 
         if (!this.visualEditor) {
@@ -177,6 +169,17 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         return this.visualEditor.toMarkdown();
+    }
+
+    /** Replaces the current Markdown document and refreshes the active editor. */
+    public setMarkdown(markdown: string): void {
+        this.markdown = markdown;
+
+        if (this.sourceEditor) {
+            this.sourceEditor.setMarkdown(markdown);
+        }
+
+        this.updatePreview();
     }
 
     /** Switches the active editor mode after validating the current Markdown. */
@@ -223,6 +226,7 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
+        this.markdown = markdown;
         this.dispatchEvent(
             new CustomEvent("editor:changed", {
                 bubbles: true,
@@ -290,12 +294,12 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /** Returns the source editor element after construction. */
-    private sourceElement(): HTMLTextAreaElement {
-        if (!this.source) {
-            throw new Error("Markdown source textarea was not created.");
+    private sourceElement(): HTMLDivElement {
+        if (!this.sourceEditor) {
+            throw new Error("Markdown source editor was not created.");
         }
 
-        return this.source;
+        return this.sourceEditor.element();
     }
 
     /** Reflects the current editor mode into the toolbar buttons. */

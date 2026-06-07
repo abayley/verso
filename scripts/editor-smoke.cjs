@@ -82,11 +82,9 @@ async function main() {
   );
 
   await page.locator('.markdown-editor__toolbar button[data-mode="source"]').click();
-  await page.waitForSelector(".markdown-editor__source");
-  assert.equal(
-    await page.locator(".markdown-editor__source").inputValue(),
-    "# Hello from MicroHttp\n\nEdit this Markdown document.",
-  );
+  await page.waitForSelector(".markdown-editor__source .cm-editor");
+  assert.match(await sourceMarkdownValue(page), /# Hello from MicroHttp/);
+  assert.match(await sourceMarkdownValue(page), /Edit this Markdown document\./);
   assert.equal(
     await page.locator('.markdown-editor__toolbar button[data-mode="source"]').getAttribute("aria-pressed"),
     "true",
@@ -101,14 +99,14 @@ async function main() {
   await page.waitForSelector(".markdown-editor__surface .ProseMirror");
 
   await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
-  await page.waitForSelector(".markdown-editor__source");
+  await page.waitForSelector(".markdown-editor__source .cm-editor");
   await page.waitForSelector(".markdown-editor__preview h1");
   assert.equal(
     await page.locator(".markdown-editor__preview h1").innerText(),
     "Hello from MicroHttp",
   );
 
-  await page.locator(".markdown-editor__source").fill("<script>alert(1)</script>");
+  await fillSourceMarkdown(page, ".markdown-editor__source", "<script>alert(1)</script>");
   await page.waitForSelector(".markdown-editor__error:not([hidden])");
   assert.equal(
     await page.locator(".markdown-editor__error").innerText(),
@@ -132,7 +130,7 @@ async function main() {
     "const value = 1;",
     "```",
   ].join("\n");
-  await page.locator(".markdown-editor__source").fill(sourceMarkdown);
+  await fillSourceMarkdown(page, ".markdown-editor__source", sourceMarkdown);
   await page.waitForFunction(() => document.querySelector(".markdown-editor__error")?.hidden === true);
   await page.waitForFunction(() =>
     document
@@ -177,7 +175,7 @@ async function main() {
   ]);
 
   await page.goto(`${baseUrl}/documents/home/edit?mode=split`);
-  await page.waitForSelector(".markdown-editor__split .markdown-editor__source");
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__source .cm-editor");
   await page.waitForSelector(".markdown-editor__split .markdown-editor__preview strong");
   assert.equal(
     await page.locator(".markdown-editor__split .markdown-editor__preview p strong").first().innerText(),
@@ -194,7 +192,7 @@ async function main() {
     "1. first",
     "2. second",
   ].join("\n");
-  await page.locator(".markdown-editor__split .markdown-editor__source").fill(splitMarkdown);
+  await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", splitMarkdown);
   await page.waitForFunction(() =>
     document
       .querySelector(".markdown-editor__split .markdown-editor__preview")
@@ -225,13 +223,13 @@ async function main() {
   await page.waitForSelector(".markdown-editor__surface hr");
 
   await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
-  await page.waitForSelector(".markdown-editor__source");
+  await page.waitForSelector(".markdown-editor__source .cm-editor");
   const autosavedMarkdown = [
     "# Autosaved heading",
     "",
     "Autosaved **source** paragraph.",
   ].join("\n");
-  await page.locator(".markdown-editor__source").fill(autosavedMarkdown);
+  await fillSourceMarkdown(page, ".markdown-editor__source", autosavedMarkdown);
   await page.waitForFunction(() =>
     document
       .querySelector("#save-status")
@@ -249,6 +247,18 @@ async function assertPortFree() {
   if (await portIsOpen()) {
     throw new Error(`${baseUrl} is already in use; stop the existing TestApp server before running smoke tests.`);
   }
+}
+
+async function fillSourceMarkdown(page, rootSelector, markdown) {
+  await page.locator(`${rootSelector} .cm-content`).fill(markdown);
+}
+
+async function sourceMarkdownValue(page) {
+  return normaliseCodeMirrorText(await page.locator(".markdown-editor__source .cm-content").innerText());
+}
+
+function normaliseCodeMirrorText(text) {
+  return text.replaceAll("\u00a0", " ");
 }
 
 function portIsOpen() {

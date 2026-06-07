@@ -499,9 +499,9 @@ editing with CodeMirror, and Web Awesome controls.
   roughly 0.62 MB.
 - Added a top toolbar shell with visual, Markdown source, and split mode
   switching inside the custom element.
+- Replaced the raw Markdown textarea with a CodeMirror source editor configured
+  for Markdown editing.
 - Add style controls, structure controls, and theme switching in later slices.
-- Add CodeMirror for raw Markdown editing and syntax highlighting in a later
-  slice.
 - Use Web Awesome for future web-component controls and styling.
 - Consider Lit for the editor shell once manual DOM state management becomes the
   main source of complexity.

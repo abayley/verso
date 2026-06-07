@@ -20,14 +20,25 @@ describe("MarkdownEditorElement", (): void => {
         document.body.append(editor);
         await waitForInitialisation();
 
-        expect(editor.querySelector(".markdown-editor__source")).toBeInstanceOf(HTMLTextAreaElement);
-        expect(editor.querySelector(".markdown-editor__source")?.textContent).toBe("");
-        expect((editor.querySelector(".markdown-editor__source") as HTMLTextAreaElement | null)?.value).toBe(
-            "<script>alert(1)</script>",
-        );
+        expect(editor.querySelector(".markdown-editor__source .cm-editor")).toBeInstanceOf(HTMLElement);
+        expect((editor as MarkdownEditorElement).toMarkdown()).toBe("<script>alert(1)</script>");
         expect(editor.querySelector(".markdown-editor__error")?.textContent).toBe(
             "Unsupported Markdown node for editor subset: html",
         );
+    });
+
+    it("given source mode, when initialised, then it uses CodeMirror and serialises Markdown", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "source");
+        editor.textContent = "# Heading\n\nParagraph with **strong** text.";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        expect(editor.querySelector(".markdown-editor__source .cm-editor")).toBeInstanceOf(HTMLElement);
+        expect(editor.toMarkdown()).toContain("# Heading");
+        expect(editor.toMarkdown()).toContain("**strong**");
+        expect(editor.querySelector(".markdown-editor__preview strong")?.textContent).toBe("strong");
     });
 
     it("given visual mode, when initialised, then it uses Tiptap and serialises Markdown", async (): Promise<void> => {
@@ -52,13 +63,13 @@ describe("MarkdownEditorElement", (): void => {
         await waitForInitialisation();
 
         clickToolbarButton(editor, "Markdown");
-        expect(editor.querySelector(".markdown-editor__source")).toBeInstanceOf(HTMLTextAreaElement);
+        expect(editor.querySelector(".markdown-editor__source .cm-editor")).toBeInstanceOf(HTMLElement);
         expect(editor.toMarkdown()).toContain("# Heading");
         expect(editor.toMarkdown()).toContain("**strong**");
 
         clickToolbarButton(editor, "Split");
-        expect(editor.querySelector(".markdown-editor__split .markdown-editor__source")).toBeInstanceOf(
-            HTMLTextAreaElement,
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__source .cm-editor")).toBeInstanceOf(
+            HTMLElement,
         );
         expect(editor.querySelector(".markdown-editor__split .markdown-editor__preview strong")?.textContent).toBe(
             "strong",
@@ -80,9 +91,7 @@ describe("MarkdownEditorElement", (): void => {
 
         document.body.append(editor);
         await waitForInitialisation();
-        const source = requiredSource(editor);
-        source.value = "<script>alert(1)</script>";
-        source.dispatchEvent(new Event("input", { bubbles: true }));
+        (editor as MarkdownEditorElement).setMarkdown("<script>alert(1)</script>");
 
         expect(changedEvents).toBe(0);
         expect(editor.querySelector(".markdown-editor__error")?.textContent).toBe(
@@ -97,9 +106,7 @@ describe("MarkdownEditorElement", (): void => {
 
         document.body.append(editor);
         await waitForInitialisation();
-        const source = requiredSource(editor);
-        source.value = "# Recovered";
-        source.dispatchEvent(new Event("input", { bubbles: true }));
+        (editor as MarkdownEditorElement).setMarkdown("# Recovered");
 
         expect((editor.querySelector(".markdown-editor__error") as HTMLElement | null)?.hidden).toBe(true);
         expect(editor.querySelector(".markdown-editor__preview h1")?.textContent).toBe("Recovered");
@@ -111,17 +118,6 @@ function waitForInitialisation(): Promise<void> {
     return new Promise((resolve: () => void): void => {
         window.setTimeout(resolve, 0);
     });
-}
-
-/** Returns the source textarea from a test editor element. */
-function requiredSource(editor: Element): HTMLTextAreaElement {
-    const source = editor.querySelector(".markdown-editor__source");
-
-    if (!(source instanceof HTMLTextAreaElement)) {
-        throw new Error("Expected markdown source textarea.");
-    }
-
-    return source;
 }
 
 /** Clicks a toolbar button by its visible label. */

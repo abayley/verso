@@ -21,25 +21,34 @@ class MarkdownEditor extends HTMLElement {
     this.mode = this.getAttribute("mode") || "visual";
     this.textContent = "";
 
-    if (this.mode === "source") {
+    if (this.mode === "source" || this.mode === "split") {
       this.source = document.createElement("textarea");
       this.source.className = "markdown-editor__source";
       this.source.value = this.markdown;
       this.source.addEventListener("input", () => this.updatePreview());
-      this.append(this.source);
-    } else {
+    }
+
+    if (this.mode === "visual") {
       this.editor = document.createElement("div");
       this.editor.className = "markdown-editor__surface";
       this.editor.contentEditable = "true";
       this.editor.innerHTML = this.renderMarkdown(this.markdown);
       this.editor.addEventListener("input", () => this.updatePreview());
-      this.append(this.editor);
     }
 
     this.preview = document.createElement("div");
     this.preview.className = "markdown-editor__preview";
     this.preview.setAttribute("aria-live", "polite");
-    this.append(this.preview);
+
+    if (this.mode === "split") {
+      this.panes = document.createElement("div");
+      this.panes.className = "markdown-editor__split";
+      this.panes.append(this.source, this.preview);
+      this.append(this.panes);
+    } else {
+      this.append(this.source || this.editor, this.preview);
+    }
+
     this.updatePreview();
 
     const form = this.closest("form");

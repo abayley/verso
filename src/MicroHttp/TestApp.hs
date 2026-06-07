@@ -138,6 +138,7 @@ editorMode :: Http.Request -> String
 editorMode request =
     case queryValue "mode" request of
         "source" -> "source"
+        "split" -> "split"
         _ -> "visual"
 
 markdownValue :: Http.Request -> String

@@ -22,6 +22,10 @@ spec =
             response <- appForTest ((request GET ["documents", "home", "edit"] ""){requestQuery = [("mode", "source")]})
             statusCode (responseStatus response) `shouldBe` 200
             bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" mode=\"source\" src=\"/documents/home\"></markdown-editor>"
+        it "given split mode editor request, when routing, then split mode is selected" $ do
+            response <- appForTest ((request GET ["documents", "home", "edit"] ""){requestQuery = [("mode", "split")]})
+            statusCode (responseStatus response) `shouldBe` 200
+            bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" mode=\"split\" src=\"/documents/home\"></markdown-editor>"
         it "given markdown form post, when routing, then save status fragment is returned" $ do
             response <- appForTest (request POST ["documents", "home"] "markdown=%23+Saved+heading")
             statusCode (responseStatus response) `shouldBe` 200

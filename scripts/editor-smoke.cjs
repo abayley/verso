@@ -24,12 +24,13 @@ main()
       await browser.close();
     }
 
-    stopServer();
+    await stopServer();
     cleanPersistedDocument();
   });
 
 async function main() {
   cleanPersistedDocument();
+  await assertPortFree();
   serverProcess = startServer();
   await waitForServer(serverProcess);
 
@@ -120,7 +121,73 @@ async function main() {
     "second",
   ]);
 
+  await page.goto(`${baseUrl}/documents/home/edit?mode=split`);
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__source");
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__preview strong");
+  assert.equal(
+    await page.locator(".markdown-editor__split .markdown-editor__preview strong").innerText(),
+    "source",
+  );
+
+  const splitMarkdown = [
+    "# Split heading",
+    "",
+    "Split **source** paragraph.",
+    "",
+    "1. first",
+    "2. second",
+  ].join("\n");
+  await page.locator(".markdown-editor__split .markdown-editor__source").fill(splitMarkdown);
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".markdown-editor__split .markdown-editor__preview")
+      ?.innerText.includes("Split source paragraph."),
+  );
+  assert.equal(
+    await page.locator(".markdown-editor__split .markdown-editor__preview strong").innerText(),
+    "source",
+  );
+  assert.deepEqual(
+    await page.locator(".markdown-editor__split .markdown-editor__preview li").allInnerTexts(),
+    ["first", "second"],
+  );
+
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.waitForFunction(() =>
+    document
+      .querySelector("#save-status")
+      ?.innerText.includes("Saved Markdown document: # Split heading"),
+  );
+  assert.equal(await page.locator("#markdown-field").inputValue(), splitMarkdown);
+
+  await page.goto(`${baseUrl}/documents/home`);
+  assert.equal((await page.locator("body").innerText()).trim(), splitMarkdown);
+
   assert.deepEqual(consoleErrors, []);
+}
+
+async function assertPortFree() {
+  if (await portIsOpen()) {
+    throw new Error(`${baseUrl} is already in use; stop the existing TestApp server before running smoke tests.`);
+  }
+}
+
+function portIsOpen() {
+  return new Promise((resolve) => {
+    const request = http.get(baseUrl, (response) => {
+      response.resume();
+      resolve(true);
+    });
+
+    request.on("error", () => {
+      resolve(false);
+    });
+
+    request.setTimeout(1000, () => {
+      request.destroy();
+      resolve(false);
+    });
+  });
 }
 
 function startServer() {
@@ -180,15 +247,26 @@ function waitForServer(server) {
 }
 
 function stopServer() {
-  if (!serverProcess || serverProcess.killed) {
-    return;
+  if (
+    !serverProcess
+    || serverProcess.killed
+    || serverProcess.exitCode !== null
+    || serverProcess.signalCode !== null
+  ) {
+    return Promise.resolve();
   }
 
-  try {
-    process.kill(-serverProcess.pid, "SIGTERM");
-  } catch (_err) {
-    serverProcess.kill("SIGTERM");
-  }
+  return new Promise((resolve) => {
+    serverProcess.once("exit", () => {
+      resolve();
+    });
+
+    try {
+      process.kill(-serverProcess.pid, "SIGTERM");
+    } catch (_err) {
+      serverProcess.kill("SIGTERM");
+    }
+  });
 }
 
 function cleanPersistedDocument() {

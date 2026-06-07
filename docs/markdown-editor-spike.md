@@ -393,6 +393,7 @@ Preview must not allow a broader content policy than saved page rendering.
 
 - Moved preview rendering into the `<markdown-editor>` web component.
 - Kept htmx submissions as Markdown text only.
+- Added split mode with source and preview panes sharing one Markdown value.
 - Changed `GET /documents/:id/edit` to return an editor shell that fetches the
   Markdown document through `<markdown-editor src="/documents/:id">`.
 - Changed `GET /documents/:id` to return raw `text/markdown`.
@@ -401,7 +402,6 @@ Preview must not allow a broader content policy than saved page rendering.
   responsibilities.
 - Use remark and mdast as reference fixtures for editor-owned parsing and
   rendering behaviour.
-- Add split mode after browser-owned preview is proven.
 - Add autosave using an editor-dispatched event and htmx trigger.
 - Extract spike code that has become stable away from `src/TestApp.hs`.
 - Decide whether the editor parser and renderer belong in MicroHttp examples, a

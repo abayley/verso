@@ -24,3 +24,18 @@ markdown-editor {
   padding: 1rem;
   font: 16px system-ui, sans-serif;
 }
+
+.markdown-editor__split {
+  display: grid;
+  gap: 1rem;
+}
+
+.markdown-editor__split .markdown-editor__preview {
+  margin-top: 0;
+}
+
+@media (min-width: 48rem) {
+  .markdown-editor__split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}

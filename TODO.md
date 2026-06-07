@@ -1,5 +1,7 @@
 # Todos
 
+- logging
+- hot reload
 - improve socket testing
 - code coverage report
 - are web components in typescript or javascript

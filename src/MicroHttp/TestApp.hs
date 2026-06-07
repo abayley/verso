@@ -284,7 +284,7 @@ validateBlocks (block : rest)
 
 supportedBlock :: String -> Bool
 supportedBlock block =
-    isHeading block || isUnorderedListBlock block || isOrderedListBlock block || isParagraph block
+    isHeading block || isUnorderedListBlock block || isOrderedListBlock block || isFencedCodeBlock block || isBlockquoteBlock block || isParagraph block
 
 isHeading :: String -> Bool
 isHeading ('#' : ' ' : rest) = not (null (trim rest))
@@ -302,6 +302,37 @@ startsUnsupportedBlock block =
     case trimStart block of
         '>' : _ -> True
         '`' : '`' : '`' : _ -> True
+        _ -> False
+
+isFencedCodeBlock :: String -> Bool
+isFencedCodeBlock block =
+    case lines block of
+        opening : body -> isCodeFenceOpening opening && hasClosingCodeFence body
+        [] -> False
+
+isCodeFenceOpening :: String -> Bool
+isCodeFenceOpening row =
+    case trimStart row of
+        '`' : '`' : '`' : _ -> True
+        _ -> False
+
+hasClosingCodeFence :: [String] -> Bool
+hasClosingCodeFence [] = False
+hasClosingCodeFence [row] = isCodeFenceClosing row
+hasClosingCodeFence (_ : rows) = hasClosingCodeFence rows
+
+isCodeFenceClosing :: String -> Bool
+isCodeFenceClosing row =
+    trim row == "```"
+
+isBlockquoteBlock :: String -> Bool
+isBlockquoteBlock block =
+    all isBlockquoteLine (lines block)
+
+isBlockquoteLine :: String -> Bool
+isBlockquoteLine row =
+    case trimStart row of
+        '>' : ' ' : rest -> not (null (trim rest))
         _ -> False
 
 isUnorderedListBlock :: String -> Bool

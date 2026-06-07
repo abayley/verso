@@ -1,4 +1,6 @@
 import type {
+    Blockquote,
+    Code,
     Heading,
     InlineCode,
     Link,
@@ -44,7 +46,32 @@ function blockFromMdast(node: RootContent): EditorBlock {
         };
     }
 
+    if (node.type === "code") {
+        return codeBlockFromMdast(node);
+    }
+
+    if (node.type === "blockquote") {
+        return blockquoteFromMdast(node);
+    }
+
     throw unsupportedNode(node.type);
+}
+
+/** Converts a supported mdast blockquote node into an editor blockquote. */
+function blockquoteFromMdast(node: Blockquote): EditorBlock {
+    return {
+        blocks: node.children.map((child: RootContent): EditorBlock => blockFromMdast(child)),
+        type: "blockquote",
+    };
+}
+
+/** Converts a supported mdast code node into an editor code block. */
+function codeBlockFromMdast(node: Code): EditorBlock {
+    return {
+        language: node.lang ?? null,
+        text: node.value,
+        type: "codeBlock",
+    };
 }
 
 /** Converts a supported mdast heading node into an editor heading. */

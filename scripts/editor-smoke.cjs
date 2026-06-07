@@ -94,6 +94,12 @@ async function main() {
     "",
     "- first",
     "- `second`",
+    "",
+    "> Quoted **source** text.",
+    "",
+    "```typescript",
+    "const value = 1;",
+    "```",
   ].join("\n");
   await page.locator(".markdown-editor__source").fill(sourceMarkdown);
   await page.waitForFunction(() => document.querySelector(".markdown-editor__error")?.hidden === true);
@@ -102,12 +108,18 @@ async function main() {
       .querySelector(".markdown-editor__preview")
       ?.innerText.includes("Exact source paragraph with link."),
   );
-  assert.equal(await page.locator(".markdown-editor__preview strong").innerText(), "source");
+  assert.equal(await page.locator(".markdown-editor__preview p strong").first().innerText(), "source");
   assert.equal(await page.locator(".markdown-editor__preview a").getAttribute("href"), "/target");
   assert.deepEqual(await page.locator(".markdown-editor__preview li").allInnerTexts(), [
     "first",
     "second",
   ]);
+  assert.equal(await page.locator(".markdown-editor__preview blockquote strong").innerText(), "source");
+  assert.equal(await page.locator(".markdown-editor__preview pre code").innerText(), "const value = 1;");
+  assert.equal(
+    await page.locator(".markdown-editor__preview pre code").getAttribute("class"),
+    "language-typescript",
+  );
 
   await page.getByRole("button", { name: "Save" }).click();
   await page.waitForFunction(() =>
@@ -123,7 +135,9 @@ async function main() {
 
   await page.goto(`${baseUrl}/documents/home/edit`);
   await page.waitForSelector(".markdown-editor__surface strong");
-  assert.equal(await page.locator(".markdown-editor__surface strong").innerText(), "source");
+  assert.equal(await page.locator(".markdown-editor__surface p strong").first().innerText(), "source");
+  assert.equal(await page.locator(".markdown-editor__surface blockquote strong").innerText(), "source");
+  assert.equal(await page.locator(".markdown-editor__surface pre code").innerText(), "const value = 1;");
   assert.deepEqual(await page.locator(".markdown-editor__surface li").allInnerTexts(), [
     "first",
     "second",
@@ -133,7 +147,7 @@ async function main() {
   await page.waitForSelector(".markdown-editor__split .markdown-editor__source");
   await page.waitForSelector(".markdown-editor__split .markdown-editor__preview strong");
   assert.equal(
-    await page.locator(".markdown-editor__split .markdown-editor__preview strong").innerText(),
+    await page.locator(".markdown-editor__split .markdown-editor__preview p strong").first().innerText(),
     "source",
   );
 

@@ -20,6 +20,17 @@ export function blockFromElement(block: Element): EditorBlock {
         };
     }
 
+    if (block.tagName === "PRE") {
+        return codeBlockFromElement(block);
+    }
+
+    if (block.tagName === "BLOCKQUOTE") {
+        return {
+            blocks: documentFromElements(block.children).blocks,
+            type: "blockquote",
+        };
+    }
+
     if (block.tagName === "H1") {
         return {
             children: inlineNodesFromElement(block),
@@ -123,10 +134,32 @@ export function inlineNodesFromNode(node: ChildNode): InlineNode[] {
     return inlineNodesFromElement(element);
 }
 
+/** Converts a preformatted DOM block to an editor code block. */
+function codeBlockFromElement(block: Element): EditorBlock {
+    const code = block.querySelector("code");
+
+    return {
+        language: code ? codeLanguage(code) : null,
+        text: code?.textContent ?? block.textContent ?? "",
+        type: "codeBlock",
+    };
+}
+
 /** Serialises one editor block to Markdown. */
 function blockToMarkdown(block: EditorBlock): string {
     if (block.type === "horizontalRule") {
         return "---";
+    }
+
+    if (block.type === "codeBlock") {
+        return [`\`\`\`${block.language ?? ""}`, block.text, "```"].join("\n");
+    }
+
+    if (block.type === "blockquote") {
+        return documentToMarkdown({ blocks: block.blocks })
+            .split("\n")
+            .map((line: string): string => `> ${line}`)
+            .join("\n");
     }
 
     if (block.type === "heading") {
@@ -170,6 +203,19 @@ function inlineNodeToMarkdown(node: InlineNode): string {
     }
 
     return node.text;
+}
+
+/** Extracts a Markdown code-fence language from a DOM code class. */
+function codeLanguage(element: Element): string | null {
+    const languageClass = Array.from(element.classList).find((className: string): boolean =>
+        className.startsWith("language-"),
+    );
+
+    if (!languageClass) {
+        return null;
+    }
+
+    return languageClass.slice("language-".length);
 }
 
 /** Converts text to a text node unless it is empty. */

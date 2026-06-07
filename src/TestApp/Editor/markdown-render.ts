@@ -29,6 +29,16 @@ export function renderBlock(block: EditorBlock): string {
         return "<hr>";
     }
 
+    if (block.type === "codeBlock") {
+        const languageClass = block.language ? ` class="language-${escapeHtml(block.language)}"` : "";
+
+        return `<pre><code${languageClass}>${escapeHtml(block.text)}</code></pre>`;
+    }
+
+    if (block.type === "blockquote") {
+        return `<blockquote>${block.blocks.map((child: EditorBlock): string => renderBlock(child)).join("")}</blockquote>`;
+    }
+
     return `<p>${renderInlineNodes(block.children)}</p>`;
 }
 

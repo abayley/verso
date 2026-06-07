@@ -63,6 +63,44 @@ describe("documentFromElements", (): void => {
             ],
         });
     });
+
+    it("serialises preformatted code elements into editor code blocks", (): void => {
+        const root = document.createElement("div");
+        root.innerHTML = '<pre><code class="language-typescript">const value = 1;</code></pre>';
+
+        expect(documentFromElements(root.children)).toEqual({
+            blocks: [
+                {
+                    language: "typescript",
+                    text: "const value = 1;",
+                    type: "codeBlock",
+                },
+            ],
+        });
+    });
+
+    it("serialises blockquote elements into editor blockquote blocks", (): void => {
+        const root = document.createElement("div");
+        root.innerHTML = "<blockquote><p>Quoted <strong>text</strong>.</p></blockquote>";
+
+        expect(documentFromElements(root.children)).toEqual({
+            blocks: [
+                {
+                    blocks: [
+                        {
+                            children: [
+                                { text: "Quoted ", type: "text" },
+                                { children: [{ text: "text", type: "text" }], type: "strong" },
+                                { text: ".", type: "text" },
+                            ],
+                            type: "paragraph",
+                        },
+                    ],
+                    type: "blockquote",
+                },
+            ],
+        });
+    });
 });
 
 describe("documentToMarkdown", (): void => {
@@ -109,5 +147,41 @@ describe("documentToMarkdown", (): void => {
                 ],
             }),
         ).toBe("---");
+    });
+
+    it("serialises code blocks to fenced Markdown", (): void => {
+        expect(
+            documentToMarkdown({
+                blocks: [
+                    {
+                        language: "typescript",
+                        text: "const value = 1;",
+                        type: "codeBlock",
+                    },
+                ],
+            }),
+        ).toBe(["```typescript", "const value = 1;", "```"].join("\n"));
+    });
+
+    it("serialises blockquote blocks to quoted Markdown", (): void => {
+        expect(
+            documentToMarkdown({
+                blocks: [
+                    {
+                        blocks: [
+                            {
+                                children: [
+                                    { text: "Quoted ", type: "text" },
+                                    { children: [{ text: "text", type: "text" }], type: "strong" },
+                                    { text: ".", type: "text" },
+                                ],
+                                type: "paragraph",
+                            },
+                        ],
+                        type: "blockquote",
+                    },
+                ],
+            }),
+        ).toBe("> Quoted **text**.");
     });
 });

@@ -421,7 +421,7 @@ Preview must not allow a broader content policy than saved page rendering.
 - Kept the parser and renderer deliberately small and local to the TestApp
   spike; it is not a complete Markdown implementation.
 
-### Markdown Editor Spike Phase Four: In Progress
+### Markdown Editor Spike Phase Four: Implemented
 
 - Moved preview rendering into the `<markdown-editor>` web component.
 - Kept htmx submissions as Markdown text only.
@@ -455,18 +455,57 @@ Preview must not allow a broader content policy than saved page rendering.
   autosave events while the source cannot be parsed.
 - Use remark and mdast as reference fixtures for editor-owned parsing and
   rendering behaviour.
+
+Phase Four is complete because the browser now owns Markdown parsing, rendering,
+preview, and visual-editing projection. The TestApp server stores and serves
+Markdown text and static editor assets, but no longer owns Markdown rendering.
+
+### Markdown Editor Spike Phase Five: In Progress
+
+Scope: expand the basic non-asset Markdown subset after the browser-owned
+pipeline is in place. Each supported feature must pass through the typed editor
+model, remark parser, HTML rendering, DOM serialisation, TestApp save validation,
+and browser smoke flow.
+
+- Added fenced code block support through the typed editor model, remark parser,
+  HTML rendering, DOM serialisation, and browser smoke flow.
+- Updated the TestApp save validator to accept fenced code blocks in the current
+  editor subset.
+- Added blockquote support through the typed editor model, remark parser, HTML
+  rendering, DOM serialisation, TestApp save validation, and browser smoke flow.
+- The next likely candidate is hard breaks.
+- Tables are explicitly deferred unless a later decision moves them into this
+  phase.
+- Phase Five should stop once the basic non-asset block subset is implemented
+  and verified end to end.
+
+### Markdown Editor Spike Phase Six: Planned
+
+Scope: add GitHub-Flavored Markdown tables after table normalisation rules are
+decided.
+
+- Parse table mdast nodes into the typed editor model.
+- Render table previews and visual editable projections.
+- Serialise supported table DOM back to normalised Markdown.
+- Extend TestApp save validation and browser smoke coverage.
+
+### Markdown Editor Spike Phase Seven: Planned
+
+Scope: add image and attachment support once storage and path rules are decided.
+
+- Add image insertion for Markdown image syntax.
+- Treat SVG as a linked image asset by default, not inline raw HTML.
+- Add arbitrary attachment insertion as Markdown links.
+- Add asset storage, path normalisation, de-duplication, and deletion rules.
+
+### Markdown Editor Spike Phase Eight: Planned
+
+Scope: decide whether the editor remains a TestApp spike or moves into a
+separate package/application boundary.
+
 - Continue extracting stable editor code into typed editor modules.
 - Decide whether the editor parser and renderer belong in MicroHttp examples, a
   separate package, or a later application repository.
-
-### Markdown Editor Future Asset Phase
-
-- Add GitHub-Flavored Markdown tables after the parser and renderer contract is
-  clear.
-- Add image upload and insertion for Markdown image syntax.
-- Treat SVG as an image asset by default, not inline raw document HTML.
-- Add arbitrary attachment upload and insertion as Markdown links.
-- Add asset storage, path normalisation, and deletion rules.
 
 ## Markdown Editor Decision Status
 
@@ -484,9 +523,10 @@ Markdown behaviour, not production server runtime dependencies. The editor's
 public parser now uses remark/mdast behind the existing parser contract. The
 hand-written parser remains only as a parity fixture while the adapter settles.
 
-Using an external Markdown parser spike versus a tiny local parser is now being
-tested with a remark and mdast spike. The current local parser should not grow
-far beyond the Phase Three subset without a renewed decision.
+The external Markdown parser spike has selected remark and mdast for the active
+browser-owned parser path. The current local parser should stay as a temporary
+parity fixture and should not regain active editor-parser ownership without a
+renewed decision.
 
 Table syntax and normalisation rules are deferred.
 

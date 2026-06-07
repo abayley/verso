@@ -9425,7 +9425,26 @@
         type: "horizontalRule"
       };
     }
+    if (node2.type === "code") {
+      return codeBlockFromMdast(node2);
+    }
+    if (node2.type === "blockquote") {
+      return blockquoteFromMdast(node2);
+    }
     throw unsupportedNode(node2.type);
+  }
+  function blockquoteFromMdast(node2) {
+    return {
+      blocks: node2.children.map((child) => blockFromMdast(child)),
+      type: "blockquote"
+    };
+  }
+  function codeBlockFromMdast(node2) {
+    return {
+      language: node2.lang ?? null,
+      text: node2.value,
+      type: "codeBlock"
+    };
   }
   function headingFromMdast(node2) {
     if (node2.depth !== 1 && node2.depth !== 2 && node2.depth !== 3) {
@@ -9536,6 +9555,13 @@
     if (block.type === "horizontalRule") {
       return "<hr>";
     }
+    if (block.type === "codeBlock") {
+      const languageClass = block.language ? ` class="language-${escapeHtml(block.language)}"` : "";
+      return `<pre><code${languageClass}>${escapeHtml(block.text)}</code></pre>`;
+    }
+    if (block.type === "blockquote") {
+      return `<blockquote>${block.blocks.map((child) => renderBlock(child)).join("")}</blockquote>`;
+    }
     return `<p>${renderInlineNodes(block.children)}</p>`;
   }
   function renderInlineNodes(nodes) {
@@ -9575,6 +9601,15 @@
     if (block.tagName === "HR") {
       return {
         type: "horizontalRule"
+      };
+    }
+    if (block.tagName === "PRE") {
+      return codeBlockFromElement(block);
+    }
+    if (block.tagName === "BLOCKQUOTE") {
+      return {
+        blocks: documentFromElements(block.children).blocks,
+        type: "blockquote"
       };
     }
     if (block.tagName === "H1") {
@@ -9663,9 +9698,26 @@
     }
     return inlineNodesFromElement(element2);
   }
+  function codeBlockFromElement(block) {
+    const code3 = block.querySelector("code");
+    return {
+      language: code3 ? codeLanguage(code3) : null,
+      text: code3?.textContent ?? block.textContent ?? "",
+      type: "codeBlock"
+    };
+  }
   function blockToMarkdown(block) {
     if (block.type === "horizontalRule") {
       return "---";
+    }
+    if (block.type === "codeBlock") {
+      return [`\`\`\`${block.language ?? ""}`, block.text, "```"].join(`
+`);
+    }
+    if (block.type === "blockquote") {
+      return documentToMarkdown({ blocks: block.blocks }).split(`
+`).map((line) => `> ${line}`).join(`
+`);
     }
     if (block.type === "heading") {
       return `${"#".repeat(block.level)} ${inlineNodesToMarkdown(block.children).trim()}`;
@@ -9696,6 +9748,13 @@
       return `[${inlineNodesToMarkdown(node2.children)}](${node2.url})`;
     }
     return node2.text;
+  }
+  function codeLanguage(element2) {
+    const languageClass = Array.from(element2.classList).find((className) => className.startsWith("language-"));
+    if (!languageClass) {
+      return null;
+    }
+    return languageClass.slice("language-".length);
   }
   function textNode(text5) {
     if (text5.length === 0) {

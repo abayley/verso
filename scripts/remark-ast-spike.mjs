@@ -35,6 +35,12 @@ const acceptedMarkdown = [
   "- first",
   "- second",
   "",
+  "> Quoted **source** text.",
+  "",
+  "```typescript",
+  "const value = 1;",
+  "```",
+  "",
   "1. one",
   "2. two",
 ].join("\n");
@@ -107,6 +113,8 @@ function allowedNode(node) {
     "link",
     "list",
     "listItem",
+    "code",
+    "blockquote",
   ].includes(node.type);
 }
 

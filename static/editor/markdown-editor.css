@@ -33,6 +33,21 @@ markdown-editor {
   padding: 0.5rem 0.75rem;
 }
 
+.markdown-editor__surface pre,
+.markdown-editor__preview pre {
+  background: #f4f4f5;
+  border: 1px solid #d4d4d8;
+  overflow-x: auto;
+  padding: 0.75rem;
+}
+
+.markdown-editor__surface blockquote,
+.markdown-editor__preview blockquote {
+  border-left: 4px solid #a1a1aa;
+  margin-left: 0;
+  padding-left: 1rem;
+}
+
 .markdown-editor__split {
   display: grid;
   gap: 1rem;

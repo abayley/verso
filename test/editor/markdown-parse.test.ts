@@ -69,4 +69,36 @@ describe("parseMarkdown", (): void => {
             ],
         });
     });
+
+    it("given fenced code Markdown, when parsed, then it returns a code block", (): void => {
+        expect(parseMarkdown(["```typescript", "const value = 1;", "```"].join("\n"))).toEqual({
+            blocks: [
+                {
+                    language: "typescript",
+                    text: "const value = 1;",
+                    type: "codeBlock",
+                },
+            ],
+        });
+    });
+
+    it("given blockquote Markdown, when parsed, then it returns a blockquote block", (): void => {
+        expect(parseMarkdown("> Quoted **text**.")).toEqual({
+            blocks: [
+                {
+                    blocks: [
+                        {
+                            children: [
+                                { text: "Quoted ", type: "text" },
+                                { children: [{ text: "text", type: "text" }], type: "strong" },
+                                { text: ".", type: "text" },
+                            ],
+                            type: "paragraph",
+                        },
+                    ],
+                    type: "blockquote",
+                },
+            ],
+        });
+    });
 });

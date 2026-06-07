@@ -2,7 +2,18 @@ export interface EditorDocument {
     blocks: EditorBlock[];
 }
 
-export type EditorBlock = HeadingBlock | HorizontalRuleBlock | ListBlock | ParagraphBlock;
+export type EditorBlock = BlockquoteBlock | CodeBlock | HeadingBlock | HorizontalRuleBlock | ListBlock | ParagraphBlock;
+
+export interface BlockquoteBlock {
+    blocks: EditorBlock[];
+    type: "blockquote";
+}
+
+export interface CodeBlock {
+    language: string | null;
+    text: string;
+    type: "codeBlock";
+}
 
 export interface HeadingBlock {
     children: InlineNode[];

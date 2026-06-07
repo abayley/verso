@@ -35,12 +35,20 @@ spec =
             response <- appForTest (request POST ["documents", "home"] "markdown=%23+Saved+heading%0A%0AExact+paragraph.")
             statusCode (responseStatus response) `shouldBe` 200
             bodyText response `shouldBe` "<p id=\"save-status\">Saved Markdown document: # Saved heading\n\nExact paragraph.</p>"
+        it "given fenced code markdown form post, when routing, then save status fragment is returned" $ do
+            response <- appForTest (request POST ["documents", "home"] "markdown=%60%60%60typescript%0Aconst+value+%3D+1%3B%0A%60%60%60")
+            statusCode (responseStatus response) `shouldBe` 200
+            bodyText response `shouldBe` "<p id=\"save-status\">Saved Markdown document: ```typescript\nconst value = 1;\n```</p>"
+        it "given blockquote markdown form post, when routing, then save status fragment is returned" $ do
+            response <- appForTest (request POST ["documents", "home"] "markdown=%3E+Quoted+text.")
+            statusCode (responseStatus response) `shouldBe` 200
+            bodyText response `shouldBe` "<p id=\"save-status\">Saved Markdown document: &gt; Quoted text.</p>"
         it "given raw html form post, when routing, then validation fragment is returned" $ do
             response <- appForTest (request POST ["documents", "home"] "markdown=%3Cscript%3Ealert(1)%3C%2Fscript%3E")
             statusCode (responseStatus response) `shouldBe` 200
             bodyText response `shouldBe` "<p id=\"save-status\">Unsupported Markdown: raw HTML is not supported in this spike.</p>"
         it "given unsupported markdown form post, when routing, then validation fragment is returned" $ do
-            response <- appForTest (request POST ["documents", "home"] "markdown=%3E+quote")
+            response <- appForTest (request POST ["documents", "home"] "markdown=%60%60%60typescript%0Aunterminated")
             statusCode (responseStatus response) `shouldBe` 200
             bodyText response `shouldBe` "<p id=\"save-status\">Unsupported Markdown: unsupported block syntax.</p>"
         it "given saved markdown document, when routing document page, then raw markdown is returned" $ do

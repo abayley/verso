@@ -32,4 +32,16 @@ describe("renderMarkdown", (): void => {
     it("renders horizontal rules", (): void => {
         expect(renderMarkdown("---")).toBe("<hr>");
     });
+
+    it("given fenced code Markdown, when rendering, then it renders a preformatted code block", (): void => {
+        expect(renderMarkdown(["```typescript", "const value = 1 < 2;", "```"].join("\n"))).toBe(
+            '<pre><code class="language-typescript">const value = 1 &lt; 2;</code></pre>',
+        );
+    });
+
+    it("given blockquote Markdown, when rendering, then it renders a blockquote", (): void => {
+        expect(renderMarkdown("> Quoted **text**.")).toBe(
+            "<blockquote><p>Quoted <strong>text</strong>.</p></blockquote>",
+        );
+    });
 });

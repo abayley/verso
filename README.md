@@ -127,7 +127,7 @@ make editor-check
 ```
 
 The editor source lives under `src/TestApp/Editor/`. Bun compiles it into the
-served bundle at `static/editor/markdown-editor.js`.
+generated, untracked served bundle at `static/editor/markdown-editor.js`.
 
 Format TypeScript and editor package files with Biome:
 
@@ -200,7 +200,8 @@ http://127.0.0.1:8080/
 The app is implemented in `src/TestApp.hs` and serves `/`, `/index.html`, the
 Markdown editor spike under `/documents/home/edit`, and static editor assets
 under `/static/editor/`. The editor web-component source is TypeScript under
-`src/TestApp/Editor/`; `make editor-build` writes the served JavaScript bundle.
+`src/TestApp/Editor/`; `make run-test-app` depends on `make editor-build`, which
+writes the generated served JavaScript bundle.
 The app uses the normal `serve` loop. The socket adapter keeps listening and
 client sockets non-blocking so browser-style concurrent asset requests do not
 starve handler progress under MicroHs' socket FFI.

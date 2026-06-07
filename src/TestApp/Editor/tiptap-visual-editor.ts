@@ -1,4 +1,4 @@
-import { Editor } from "@tiptap/core";
+import { Editor, type SetContentOptions } from "@tiptap/core";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
 
@@ -10,6 +10,10 @@ export type VisualBlockStyle = "paragraph" | "heading-1" | "heading-2" | "headin
 
 /** Supported visual inline styles exposed by the editor toolbar. */
 export type VisualInlineStyle = "strong";
+
+type MarkdownSetContentOptions = SetContentOptions & {
+    contentType: "markdown";
+};
 
 /** Markdown-in/Markdown-out adapter around Tiptap's visual editor. */
 export class TiptapVisualEditor {
@@ -48,6 +52,16 @@ export class TiptapVisualEditor {
     /** Serialises the current Tiptap document to Markdown. */
     public toMarkdown(): string {
         return this.editor.getMarkdown();
+    }
+
+    /** Replaces the current visual document from Markdown. */
+    public setMarkdown(markdown: string): void {
+        const options: MarkdownSetContentOptions = {
+            contentType: "markdown",
+            emitUpdate: false,
+        };
+
+        this.editor.commands.setContent(markdown, options);
     }
 
     /** Applies one supported block style at the current visual selection. */

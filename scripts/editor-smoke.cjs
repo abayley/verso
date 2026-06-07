@@ -52,12 +52,14 @@ async function main() {
   await page.waitForSelector(".markdown-editor__surface h1");
   assert.deepEqual(await page.locator(".markdown-editor__toolbar button").allInnerTexts(), [
     "Visual",
-    "Markdown",
-    "Split",
     "Bold",
   ]);
   assert.equal(
-    await page.locator('.markdown-editor__toolbar button[data-mode="visual"]').getAttribute("aria-pressed"),
+    await page.locator(".markdown-editor__mode-button").innerText(),
+    "Visual",
+  );
+  assert.equal(
+    await page.locator(".markdown-editor__mode-button").getAttribute("aria-pressed"),
     "true",
   );
 
@@ -82,22 +84,30 @@ async function main() {
     "# Hello from MicroHttp\n\nEdit this Markdown document.",
   );
 
-  await page.locator('.markdown-editor__toolbar button[data-mode="source"]').click();
+  await page.locator(".markdown-editor__mode-button").click();
   await page.waitForSelector(".markdown-editor__source .cm-editor");
   assert.match(await sourceMarkdownValue(page), /# Hello from MicroHttp/);
   assert.match(await sourceMarkdownValue(page), /Edit this Markdown document\./);
   assert.equal(
-    await page.locator('.markdown-editor__toolbar button[data-mode="source"]').getAttribute("aria-pressed"),
-    "true",
+    await page.locator(".markdown-editor__mode-button").innerText(),
+    "Markdown",
   );
-  await page.locator('.markdown-editor__toolbar button[data-mode="split"]').click();
-  await page.waitForSelector(".markdown-editor__split .markdown-editor__preview h1");
+  await page.locator(".markdown-editor__mode-button").click();
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface h1");
   assert.equal(
-    await page.locator(".markdown-editor__split .markdown-editor__preview h1").innerText(),
+    await page.locator(".markdown-editor__split .markdown-editor__surface h1").innerText(),
     "Hello from MicroHttp",
   );
-  await page.locator('.markdown-editor__toolbar button[data-mode="visual"]').click();
+  assert.equal(
+    await page.locator(".markdown-editor__mode-button").innerText(),
+    "Split",
+  );
+  await page.locator(".markdown-editor__mode-button").click();
   await page.waitForSelector(".markdown-editor__surface .ProseMirror");
+  assert.equal(
+    await page.locator(".markdown-editor__mode-button").innerText(),
+    "Visual",
+  );
 
   await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
   await page.waitForSelector(".markdown-editor__source .cm-editor");
@@ -177,9 +187,9 @@ async function main() {
 
   await page.goto(`${baseUrl}/documents/home/edit?mode=split`);
   await page.waitForSelector(".markdown-editor__split .markdown-editor__source .cm-editor");
-  await page.waitForSelector(".markdown-editor__split .markdown-editor__preview strong");
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface strong");
   assert.equal(
-    await page.locator(".markdown-editor__split .markdown-editor__preview p strong").first().innerText(),
+    await page.locator(".markdown-editor__split .markdown-editor__surface p strong").first().innerText(),
     "source",
   );
 
@@ -196,18 +206,52 @@ async function main() {
   await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", splitMarkdown);
   await page.waitForFunction(() =>
     document
-      .querySelector(".markdown-editor__split .markdown-editor__preview")
+      .querySelector(".markdown-editor__split .markdown-editor__surface")
       ?.innerText.includes("Split source paragraph."),
   );
   assert.equal(
-    await page.locator(".markdown-editor__split .markdown-editor__preview strong").innerText(),
+    await page.locator(".markdown-editor__split .markdown-editor__surface strong").innerText(),
     "source",
   );
   assert.deepEqual(
-    await page.locator(".markdown-editor__split .markdown-editor__preview li").allInnerTexts(),
+    await page.locator(".markdown-editor__split .markdown-editor__surface li").allInnerTexts(),
     ["first", "second"],
   );
-  await page.waitForSelector(".markdown-editor__split .markdown-editor__preview hr");
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface hr");
+
+  const sourcePaneBoldMarkdown = "Source pane paragraph.";
+  await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", sourcePaneBoldMarkdown);
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".markdown-editor__split .markdown-editor__surface")
+      ?.innerText.includes("Source pane paragraph."),
+  );
+  await selectTextInElement(page, ".markdown-editor__split .markdown-editor__source .cm-content", "Source pane");
+  await page.getByRole("button", { name: "Bold" }).click();
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface strong");
+  assert.match(
+    await sourceMarkdownValue(page, ".markdown-editor__split .markdown-editor__source"),
+    /\*\*Source pane\*\* paragraph\./,
+  );
+  assert.equal(await page.locator(".markdown-editor__split .markdown-editor__surface strong").innerText(), "Source pane");
+
+  await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", splitMarkdown);
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".markdown-editor__split .markdown-editor__surface")
+      ?.innerText.includes("Split source paragraph."),
+  );
+  await page.locator(".markdown-editor__split .markdown-editor__surface p").first().selectText();
+  await page.getByRole("button", { name: "Bold" }).click();
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface p strong");
+  assert.match(
+    await sourceMarkdownValue(page, ".markdown-editor__split .markdown-editor__source"),
+    /# Split heading/,
+  );
+  assert.match(
+    await sourceMarkdownValue(page, ".markdown-editor__split .markdown-editor__source"),
+    /\*\*Split source paragraph\.\*\*/,
+  );
 
   await page.getByRole("button", { name: "Save" }).click();
   await page.waitForFunction(() =>
@@ -215,10 +259,10 @@ async function main() {
       .querySelector("#save-status")
       ?.innerText.includes("Saved Markdown document: # Split heading"),
   );
-  assert.equal(await page.locator("#markdown-field").inputValue(), splitMarkdown);
+  assert.match(await page.locator("#markdown-field").inputValue(), /\*\*Split source paragraph\.\*\*/);
 
   await page.goto(`${baseUrl}/documents/home`);
-  assert.equal((await page.locator("body").innerText()).trim(), splitMarkdown);
+  assert.match((await page.locator("body").innerText()).trim(), /\*\*Split source paragraph\.\*\*/);
 
   await page.goto(`${baseUrl}/documents/home/edit`);
   await page.waitForSelector(".markdown-editor__surface hr");
@@ -267,12 +311,39 @@ async function fillSourceMarkdown(page, rootSelector, markdown) {
   await page.locator(`${rootSelector} .cm-content`).fill(markdown);
 }
 
-async function sourceMarkdownValue(page) {
-  return normaliseCodeMirrorText(await page.locator(".markdown-editor__source .cm-content").innerText());
+async function sourceMarkdownValue(page, rootSelector = ".markdown-editor__source") {
+  return normaliseCodeMirrorText(await page.locator(`${rootSelector} .cm-content`).innerText());
 }
 
 function normaliseCodeMirrorText(text) {
   return text.replaceAll("\u00a0", " ");
+}
+
+async function selectTextInElement(page, selector, text) {
+  await page.locator(selector).evaluate((root, selectedText) => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+
+    while (node) {
+      const start = node.textContent.indexOf(selectedText);
+
+      if (start >= 0) {
+        const range = document.createRange();
+        range.setStart(node, start);
+        range.setEnd(node, start + selectedText.length);
+
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        root.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+        return;
+      }
+
+      node = walker.nextNode();
+    }
+
+    throw new Error(`Could not select text: ${selectedText}`);
+  }, text);
 }
 
 function portIsOpen() {

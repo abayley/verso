@@ -83,7 +83,7 @@ format-check:
 lint:
 	hlint $(SRC) $(TEST)
 
-run-test-app:
+run-test-app: editor-build
 	mkdir -p $(BUILD)
 	$(MHS) $(MHSFLAGS) -i$(SRC) $(SRC)/TestApp.hs -o $(BUILD)/test-app
 	$(BUILD)/test-app
@@ -128,3 +128,4 @@ check: docs format-check lint test editor-check
 
 clean:
 	rm -rf $(BUILD)
+	rm -f static/editor/markdown-editor.js

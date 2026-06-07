@@ -1,5 +1,6 @@
 import { markdown } from "@codemirror/lang-markdown";
 import { basicSetup, EditorView } from "codemirror";
+import type { VisualBlockStyle } from "./tiptap-visual-editor.js";
 
 /** Callback fired when the source editor content changes. */
 export type CodeMirrorChangeHandler = () => void;
@@ -46,6 +47,44 @@ export class CodeMirrorSourceEditor {
         });
     }
 
+    /** Applies a block style to the source line containing the cursor. */
+    public applyBlockStyle(style: VisualBlockStyle): boolean {
+        const selection = this.currentSourceSelection();
+        const line = this.view.state.doc.lineAt(selection?.to ?? this.view.state.selection.main.head);
+        const lineText = line.text.replace(/^#{1,6}\s+/, "");
+        const replacement = style === "paragraph" ? lineText : `${headingPrefix(style)} ${lineText}`;
+
+        this.view.dispatch({
+            changes: {
+                from: line.from,
+                insert: replacement,
+                to: line.to,
+            },
+        });
+
+        return true;
+    }
+
+    /** Toggles Markdown strong markers around the current source selection. */
+    public toggleStrong(): boolean {
+        const selection = this.currentSourceSelection();
+
+        if (!selection || selection.from === selection.to) {
+            return false;
+        }
+
+        const selectedText = this.view.state.doc.sliceString(selection.from, selection.to);
+        this.view.dispatch({
+            changes: {
+                from: selection.from,
+                insert: `**${selectedText}**`,
+                to: selection.to,
+            },
+        });
+
+        return true;
+    }
+
     /** Serialises the current source document to Markdown. */
     public toMarkdown(): string {
         return this.view.state.doc.toString();
@@ -55,4 +94,38 @@ export class CodeMirrorSourceEditor {
     public destroy(): void {
         this.view.destroy();
     }
+
+    /** Converts the current browser selection into CodeMirror document positions. */
+    private currentSourceSelection(): { from: number; to: number } | null {
+        const selection = window.getSelection();
+
+        if (!selection?.anchorNode || !selection.focusNode) {
+            return null;
+        }
+
+        if (!this.root.contains(selection.anchorNode) || !this.root.contains(selection.focusNode)) {
+            return null;
+        }
+
+        const anchor = this.view.posAtDOM(selection.anchorNode, selection.anchorOffset);
+        const focus = this.view.posAtDOM(selection.focusNode, selection.focusOffset);
+
+        return {
+            from: Math.min(anchor, focus),
+            to: Math.max(anchor, focus),
+        };
+    }
+}
+
+/** Converts a toolbar style identifier into a Markdown heading prefix. */
+function headingPrefix(style: Exclude<VisualBlockStyle, "paragraph">): string {
+    if (style === "heading-1") {
+        return "#";
+    }
+
+    if (style === "heading-2") {
+        return "##";
+    }
+
+    return "###";
 }

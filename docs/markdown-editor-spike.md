@@ -497,8 +497,13 @@ editing with CodeMirror, and Web Awesome controls.
   Tiptap's Markdown extension remains beta.
 - [x] Add a top toolbar shell with visual, Markdown source, and split mode
   switching inside the custom element.
+- [x] Replace the three separate mode buttons with one three-state mode button.
+  One button shows the active mode and cycles visual, Markdown, and split views.
 - [x] Replace the raw Markdown textarea with a CodeMirror source editor
   configured for Markdown editing.
+- [x] Make split view bidirectional between Markdown source and WYSIWYG editing.
+  Split view hosts CodeMirror and Tiptap side by side, and edits from either
+  side update the other immediately.
 - [x] Add the first style control: a block-style select that applies paragraph
   and heading levels one to three through Tiptap in visual mode.
 - [ ] Add inline style controls for strong, emphasis, inline code, and links.
@@ -524,6 +529,17 @@ Phase Six findings so far:
 - Toolbar inline mark controls must preserve or recover the visual editor
   selection before applying Tiptap commands; otherwise button focus can collapse
   the selected text before the command runs.
+- Tiptap split-view synchronisation must call `setContent` with
+  `contentType: "markdown"`; otherwise source-side Markdown updates are treated
+  as plain/HTML content rather than parsed Markdown.
+- Split-view toolbar actions must route to the active pane. Source-pane focus
+  should apply Markdown syntax through CodeMirror commands; visual-pane focus
+  should apply Tiptap commands. Inline source commands require a selection,
+  while block source commands use the current cursor line.
+- `static/editor/markdown-editor.js` is generated from `src/TestApp/Editor/`
+  and is no longer tracked. `make run-test-app` depends on `editor-build` so a
+  clean checkout can still serve the TestApp editor without committing the
+  bundle.
 
 ### Markdown Editor Spike Phase Seven: Planned
 

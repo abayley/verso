@@ -55,29 +55,34 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain("**strong**");
     });
 
-    it("given visual mode, when toolbar mode buttons are used, then it switches modes without losing Markdown", async (): Promise<void> => {
+    it("given visual mode, when the mode button is used, then it cycles modes without losing Markdown", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = "# Heading\n\nParagraph with **strong** text.";
 
         document.body.append(editor);
         await waitForInitialisation();
 
-        clickToolbarButton(editor, "Markdown");
+        expect(modeButton(editor).textContent).toBe("Visual");
+
+        modeButton(editor).click();
         expect(editor.querySelector(".markdown-editor__source .cm-editor")).toBeInstanceOf(HTMLElement);
+        expect(modeButton(editor).textContent).toBe("Markdown");
         expect(editor.toMarkdown()).toContain("# Heading");
         expect(editor.toMarkdown()).toContain("**strong**");
 
-        clickToolbarButton(editor, "Split");
+        modeButton(editor).click();
         expect(editor.querySelector(".markdown-editor__split .markdown-editor__source .cm-editor")).toBeInstanceOf(
             HTMLElement,
         );
-        expect(editor.querySelector(".markdown-editor__split .markdown-editor__preview strong")?.textContent).toBe(
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface strong")?.textContent).toBe(
             "strong",
         );
+        expect(modeButton(editor).textContent).toBe("Split");
 
-        clickToolbarButton(editor, "Visual");
+        modeButton(editor).click();
         expect(editor.querySelector(".markdown-editor__surface .ProseMirror")).toBeInstanceOf(HTMLElement);
         expect(editor.querySelector(".markdown-editor__surface strong")?.textContent).toBe("strong");
+        expect(modeButton(editor).textContent).toBe("Visual");
     });
 
     it("given visual mode, when heading style is selected, then the current block becomes a heading", async (): Promise<void> => {
@@ -107,6 +112,58 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__surface strong")?.textContent).toBe("Plain");
         expect(editor.querySelector(".markdown-editor__preview strong")?.textContent).toBe("Plain");
         expect(editor.toMarkdown()).toContain("**Plain** paragraph");
+    });
+
+    it("given split mode, when visual text is styled, then Markdown source is updated", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Split paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectText(editor, "Split");
+
+        clickToolbarButton(editor, "Bold");
+
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__source .cm-editor")).toBeInstanceOf(
+            HTMLElement,
+        );
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface strong")?.textContent).toBe(
+            "Split",
+        );
+        expect(editor.toMarkdown()).toContain("**Split** paragraph");
+    });
+
+    it("given split mode, when Markdown text is selected, then bold applies to the Markdown source", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Visual paragraph\n\nMarkdown paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectSourceText(editor, "Markdown");
+
+        clickToolbarButton(editor, "Bold");
+
+        expect(editor.toMarkdown()).toContain("**Markdown** paragraph");
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface strong")?.textContent).toBe(
+            "Markdown",
+        );
+    });
+
+    it("given source mode, when heading style is selected, then the current Markdown line becomes a heading", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "source");
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        placeSourceCursor(editor, "Plain");
+
+        selectBlockStyle(editor, "heading-2");
+
+        expect(editor.toMarkdown()).toBe("## Plain paragraph");
+        expect(editor.querySelector(".markdown-editor__preview h2")?.textContent).toBe("Plain paragraph");
     });
 
     it("given unsupported source Markdown, when edited, then it does not dispatch a changed event", async (): Promise<void> => {
@@ -162,6 +219,17 @@ function clickToolbarButton(editor: Element, label: string): void {
     button.click();
 }
 
+/** Returns the single mode cycling toolbar button. */
+function modeButton(editor: Element): HTMLButtonElement {
+    const button = editor.querySelector(".markdown-editor__mode-button");
+
+    if (!(button instanceof HTMLButtonElement)) {
+        throw new Error("Expected toolbar mode button.");
+    }
+
+    return button;
+}
+
 /** Selects a block style from the toolbar style control. */
 function selectBlockStyle(editor: Element, style: string): void {
     const select = editor.querySelector(".markdown-editor__style-select");
@@ -213,4 +281,54 @@ function findTextNode(root: Node, text: string): Text | null {
     }
 
     return null;
+}
+
+/** Selects matching text inside the CodeMirror source editor. */
+function selectSourceText(editor: Element, text: string): void {
+    const source = editor.querySelector(".markdown-editor__source .cm-content");
+
+    if (!(source instanceof HTMLElement)) {
+        throw new Error("Expected source editor content.");
+    }
+
+    const textNode = findTextNode(source, text);
+
+    if (!textNode) {
+        throw new Error(`Expected source text node containing: ${text}`);
+    }
+
+    const start = textNode.data.indexOf(text);
+    const range = document.createRange();
+    range.setStart(textNode, start);
+    range.setEnd(textNode, start + text.length);
+
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    source.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+}
+
+/** Places the cursor at the beginning of matching text inside the CodeMirror source editor. */
+function placeSourceCursor(editor: Element, text: string): void {
+    const source = editor.querySelector(".markdown-editor__source .cm-content");
+
+    if (!(source instanceof HTMLElement)) {
+        throw new Error("Expected source editor content.");
+    }
+
+    const textNode = findTextNode(source, text);
+
+    if (!textNode) {
+        throw new Error(`Expected source text node containing: ${text}`);
+    }
+
+    const start = textNode.data.indexOf(text);
+    const range = document.createRange();
+    range.setStart(textNode, start);
+    range.collapse(true);
+
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    source.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
 }

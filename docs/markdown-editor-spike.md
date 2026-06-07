@@ -442,6 +442,10 @@ Preview must not allow a broader content policy than saved page rendering.
 - Removed the server-side preview route from the active TestApp route set.
 - Removed server-side Markdown rendering from the active TestApp
   responsibilities.
+- Added a remark/mdast adapter that converts the current supported subset into
+  the typed editor document model.
+- Kept the local parser as the active editor parser while the remark adapter is
+  proven with parity tests.
 - Use remark and mdast as reference fixtures for editor-owned parsing and
   rendering behaviour.
 - Continue extracting stable editor code into typed editor modules.
@@ -469,8 +473,9 @@ static editor assets. The editor owns Markdown parsing, rendering, preview, and
 visual editing.
 
 remark and mdast are development/reference tools for fixtures and expected
-Markdown behaviour, not production server runtime dependencies. Introducing a
-Markdown AST inside the editor remains an open implementation decision.
+Markdown behaviour, not production server runtime dependencies. The first
+remark adapter now converts mdast into the typed editor document model behind
+the existing parser contract. It is not yet wired as the active browser parser.
 
 Using an external Markdown parser spike versus a tiny local parser is now being
 tested with a remark and mdast spike. The current local parser should not grow

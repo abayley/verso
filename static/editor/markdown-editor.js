@@ -199,51 +199,144 @@
   }
 
   // src/TestApp/Editor/markdown-serialise.ts
-  function blockToMarkdown(block) {
-    const text = inlineNodesToMarkdown(block).trim();
+  function documentFromElements(elements) {
+    return {
+      blocks: Array.from(elements).map((element) => blockFromElement(element))
+    };
+  }
+  function documentToMarkdown(document2) {
+    return document2.blocks.map((block) => blockToMarkdown(block)).join(`
+
+`);
+  }
+  function blockFromElement(block) {
     if (block.tagName === "H1") {
-      return `# ${text}`;
+      return {
+        children: inlineNodesFromElement(block),
+        level: 1,
+        type: "heading"
+      };
     }
     if (block.tagName === "H2") {
-      return `## ${text}`;
+      return {
+        children: inlineNodesFromElement(block),
+        level: 2,
+        type: "heading"
+      };
     }
     if (block.tagName === "H3") {
-      return `### ${text}`;
+      return {
+        children: inlineNodesFromElement(block),
+        level: 3,
+        type: "heading"
+      };
     }
     if (block.tagName === "UL") {
-      return Array.from(block.children).map((item) => `- ${inlineNodesToMarkdown(item).trim()}`).join(`
-`);
+      return {
+        items: Array.from(block.children).map((item) => inlineNodesFromElement(item)),
+        ordered: false,
+        type: "list"
+      };
     }
     if (block.tagName === "OL") {
-      return Array.from(block.children).map((item, index) => `${index + 1}. ${inlineNodesToMarkdown(item).trim()}`).join(`
-`);
+      return {
+        items: Array.from(block.children).map((item) => inlineNodesFromElement(item)),
+        ordered: true,
+        type: "list"
+      };
     }
-    return text;
+    return {
+      children: inlineNodesFromElement(block),
+      type: "paragraph"
+    };
   }
-  function inlineNodesToMarkdown(element) {
-    return Array.from(element.childNodes).map((node) => inlineNodeToMarkdown(node)).join("");
+  function inlineNodesFromElement(element) {
+    return Array.from(element.childNodes).flatMap((node) => inlineNodesFromNode(node));
   }
-  function inlineNodeToMarkdown(node) {
+  function inlineNodesFromNode(node) {
     if (node.nodeType === Node.TEXT_NODE) {
-      return node.textContent ?? "";
+      return textNode(node.textContent ?? "");
     }
     if (node.nodeType !== Node.ELEMENT_NODE) {
-      return "";
+      return [];
     }
     const element = node;
     if (element.tagName === "STRONG" || element.tagName === "B") {
-      return `**${inlineNodesToMarkdown(element)}**`;
+      return [
+        {
+          children: inlineNodesFromElement(element),
+          type: "strong"
+        }
+      ];
     }
     if (element.tagName === "EM" || element.tagName === "I") {
-      return `*${inlineNodesToMarkdown(element)}*`;
+      return [
+        {
+          children: inlineNodesFromElement(element),
+          type: "emphasis"
+        }
+      ];
     }
     if (element.tagName === "CODE") {
-      return `\`${element.innerText}\``;
+      return [
+        {
+          text: element.innerText,
+          type: "code"
+        }
+      ];
     }
     if (element.tagName === "A") {
-      return `[${inlineNodesToMarkdown(element)}](${element.getAttribute("href") ?? ""})`;
+      return [
+        {
+          children: inlineNodesFromElement(element),
+          type: "link",
+          url: element.getAttribute("href") ?? ""
+        }
+      ];
     }
-    return inlineNodesToMarkdown(element);
+    return inlineNodesFromElement(element);
+  }
+  function blockToMarkdown(block) {
+    if (block.type === "heading") {
+      return `${"#".repeat(block.level)} ${inlineNodesToMarkdown(block.children).trim()}`;
+    }
+    if (block.type === "list") {
+      return block.items.map((item, index) => {
+        const marker = block.ordered ? `${index + 1}.` : "-";
+        return `${marker} ${inlineNodesToMarkdown(item).trim()}`;
+      }).join(`
+`);
+    }
+    return inlineNodesToMarkdown(block.children).trim();
+  }
+  function inlineNodesToMarkdown(nodes) {
+    return nodes.map((node) => inlineNodeToMarkdown(node)).join("");
+  }
+  function inlineNodeToMarkdown(node) {
+    if (node.type === "strong") {
+      return `**${inlineNodesToMarkdown(node.children)}**`;
+    }
+    if (node.type === "emphasis") {
+      return `*${inlineNodesToMarkdown(node.children)}*`;
+    }
+    if (node.type === "code") {
+      return `\`${node.text}\``;
+    }
+    if (node.type === "link") {
+      return `[${inlineNodesToMarkdown(node.children)}](${node.url})`;
+    }
+    return node.text;
+  }
+  function textNode(text) {
+    if (text.length === 0) {
+      return [];
+    }
+    return [
+      {
+        text,
+        type: "text"
+      }
+    ];
   }
 
   // src/TestApp/Editor/markdown-editor-element.ts
@@ -329,9 +422,7 @@
       if (!this.editor) {
         return this.markdown;
       }
-      return Array.from(this.editor.children).map((child) => blockToMarkdown(child)).join(`
-
-`);
+      return documentToMarkdown(documentFromElements(this.editor.children));
     }
     updatePreview() {
       if (!this.preview) {

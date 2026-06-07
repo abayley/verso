@@ -1,5 +1,5 @@
 import { renderMarkdown } from "./markdown-render.js";
-import { blockToMarkdown } from "./markdown-serialise.js";
+import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
 
 type EditorMode = "visual" | "source" | "split";
 
@@ -117,9 +117,7 @@ export class MarkdownEditorElement extends HTMLElement {
             return this.markdown;
         }
 
-        return Array.from(this.editor.children)
-            .map((child: Element): string => blockToMarkdown(child))
-            .join("\n\n");
+        return documentToMarkdown(documentFromElements(this.editor.children));
     }
 
     /** Refreshes the preview pane from the current Markdown value. */

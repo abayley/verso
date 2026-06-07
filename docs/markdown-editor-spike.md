@@ -305,6 +305,14 @@ Markdown source
   -> visual HTML projection
 ```
 
+Visual-mode serialisation also uses the typed editor model:
+
+```text
+visual DOM projection
+  -> typed editor document
+  -> Markdown source
+```
+
 Phase Three showed that duplicating Markdown parsing and rendering in browser
 JavaScript and TestApp Haskell becomes awkward as soon as inline content and
 lists are added. The next design spike should evaluate a single Markdown AST
@@ -424,6 +432,8 @@ Preview must not allow a broader content policy than saved page rendering.
   building the served JavaScript bundle.
 - Added a typed editor document model between Markdown parsing and HTML
   rendering.
+- Changed visual DOM serialisation to produce the typed editor document before
+  producing Markdown.
 - Changed `GET /documents/:id/edit` to return an editor shell that fetches the
   Markdown document through `<markdown-editor src="/documents/:id">`.
 - Changed `GET /documents/:id` to return raw `text/markdown`.

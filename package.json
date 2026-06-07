@@ -6,11 +6,12 @@
         "editor:check": "bun run editor:lint && bun run editor:typecheck && bun run editor:test && bun run editor:build",
         "editor:format": "biome check --write src/TestApp/Editor test/editor package.json tsconfig.json biome.json",
         "editor:lint": "biome check src/TestApp/Editor test/editor package.json tsconfig.json biome.json",
-        "editor:test": "vitest run",
+        "editor:test": "vitest run --dom",
         "editor:typecheck": "tsc --noEmit"
     },
     "devDependencies": {
         "@biomejs/biome": "^2.4.16",
+        "happy-dom": "^20.10.2",
         "playwright": "^1.60.0",
         "rehype-stringify": "^10.0.1",
         "remark-gfm": "^4.0.1",

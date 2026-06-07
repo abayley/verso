@@ -76,7 +76,7 @@ Spike 1 and Spike 2 proved:
 - Do not introduce an external streaming library for the first server milestone.
 
 These decisions and their rationale are recorded in the
-[MicroHttp Design Decision Register](../decision-register.md).
+[MicroHttp ADR Registry](../decision-register.md).
 
 ## Network Socket Module Streaming Position
 

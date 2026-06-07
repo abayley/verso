@@ -21,14 +21,22 @@ class MarkdownEditor extends HTMLElement {
       this.source = document.createElement("textarea");
       this.source.className = "markdown-editor__source";
       this.source.value = this.markdown;
+      this.source.addEventListener("input", () => this.updatePreview());
       this.append(this.source);
     } else {
       this.editor = document.createElement("div");
       this.editor.className = "markdown-editor__surface";
       this.editor.contentEditable = "true";
       this.editor.innerHTML = this.renderMarkdown(this.markdown);
+      this.editor.addEventListener("input", () => this.updatePreview());
       this.append(this.editor);
     }
+
+    this.preview = document.createElement("div");
+    this.preview.className = "markdown-editor__preview";
+    this.preview.setAttribute("aria-live", "polite");
+    this.append(this.preview);
+    this.updatePreview();
 
     const form = this.closest("form");
     const field = document.getElementById("markdown-field");
@@ -55,6 +63,14 @@ class MarkdownEditor extends HTMLElement {
     return Array.from(this.editor.children)
       .map((child) => this.blockToMarkdown(child))
       .join("\n\n");
+  }
+
+  updatePreview() {
+    if (!this.preview) {
+      return;
+    }
+
+    this.preview.innerHTML = this.renderMarkdown(this.toMarkdown());
   }
 
   renderMarkdown(markdown) {

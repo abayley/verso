@@ -395,15 +395,17 @@ Preview must not allow a broader content policy than saved page rendering.
 
 ### Markdown Editor Spike Phase Four
 
-- Evaluate remark and mdast as the reference AST contract for the current
-  Markdown subset.
-- Decide whether browser and server should share an AST-shaped contract before
-  adding more editor behaviours.
-- Add split mode after the AST contract decision.
+- Move preview rendering into the `<markdown-editor>` web component.
+- Keep htmx submissions as Markdown text only.
+- Keep server-side Markdown rendering as replaceable TestApp spike evidence, not
+  the active editor preview path.
+- Use remark and mdast as reference fixtures for editor-owned parsing and
+  rendering behaviour.
+- Add split mode after browser-owned preview is proven.
 - Add autosave using an editor-dispatched event and htmx trigger.
 - Extract spike code that has become stable away from `src/TestApp.hs`.
-- Decide whether the Markdown parser and renderer belong in MicroHttp examples,
-  a separate package, or a later application repository.
+- Decide whether the editor parser and renderer belong in MicroHttp examples, a
+  separate package, or a later application repository.
 
 ### Markdown Editor Future Asset Phase
 
@@ -420,14 +422,14 @@ The first stable content contract should be a basic subset of
 GitHub-Flavored Markdown. The long-term direction is GitHub-Flavored Markdown
 plus selected MkDocs and Zensical extensions.
 
-Browser-owned versus server-owned Markdown parsing remains undecided. Phase Three
-duplicates a tiny Markdown projection in the browser component and the TestApp
-server so the interaction model can be tested before choosing a long-term parser.
-The remark AST spike should provide evidence for whether mdast is the right
-shared contract.
+ADR-019 decides that the MicroHttp server should stay minimal for Markdown
+documents. The server stores submitted Markdown and serves Markdown documents or
+static editor assets. The editor owns Markdown parsing, rendering, preview, and
+visual editing.
 
-Introducing a Markdown AST remains undecided. Source mode was implemented before
-an AST so the canonical Markdown submission contract could be proven first.
+remark and mdast are development/reference tools for fixtures and expected
+Markdown behaviour, not production server runtime dependencies. Introducing a
+Markdown AST inside the editor remains an open implementation decision.
 
 Using an external Markdown parser spike versus a tiny local parser is now being
 tested with a remark and mdast spike. The current local parser should not grow

@@ -206,9 +206,9 @@ Useful design documents:
 
 - [Starter Design](docs/starter-design.md)
 - [Module Design Index](docs/module-index.md)
-- [Decision Register](docs/decision-register.md)
+- [ADR Registry](docs/decision-register.md)
 - [Build Automation Design](docs/build-automation.md)
 - [Project Organisation](docs/project-organisation.md)
 
 New design decisions should be recorded in
-[Decision Register](docs/decision-register.md), not only in comments or chat.
+[ADR Registry](docs/decision-register.md), not only in comments or chat.

@@ -16,3 +16,11 @@ markdown-editor {
   width: 100%;
   resize: vertical;
 }
+
+.markdown-editor__preview {
+  border: 1px solid #bbb;
+  margin-top: 1rem;
+  min-height: 8rem;
+  padding: 1rem;
+  font: 16px system-ui, sans-serif;
+}

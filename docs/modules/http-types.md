@@ -66,7 +66,7 @@ HTTP wire types should move to strict `ByteString` before the first milestone.
 - Response bodies support strict bytes and files in the first implementation.
 
 These decisions and their rationale are recorded in the
-[MicroHttp Design Decision Register](../decision-register.md).
+[MicroHttp ADR Registry](../decision-register.md).
 
 ## HTTP Types Module Method Consequences
 

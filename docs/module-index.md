@@ -1,11 +1,10 @@
 # MicroHttp Module Design Index
 
-## MicroHttp Decision Register
+## MicroHttp ADR Registry
 
 Architectural decisions and rationale are recorded in the
-[MicroHttp Design Decision Register](decision-register.md). Module documents may
-describe local consequences, but new design decisions should be added to the
-register.
+[MicroHttp ADR Registry](decision-register.md). Module documents may describe
+local consequences, but new design decisions should be added to the registry.
 
 ## MicroHttp Module Boundary Decision
 

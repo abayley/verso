@@ -73,6 +73,11 @@ async function main() {
 
   await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
   await page.waitForSelector(".markdown-editor__source");
+  await page.waitForSelector(".markdown-editor__preview h1");
+  assert.equal(
+    await page.locator(".markdown-editor__preview h1").innerText(),
+    "Hello from MicroHttp",
+  );
 
   const sourceMarkdown = [
     "# Source heading",
@@ -83,6 +88,18 @@ async function main() {
     "- `second`",
   ].join("\n");
   await page.locator(".markdown-editor__source").fill(sourceMarkdown);
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".markdown-editor__preview")
+      ?.innerText.includes("Exact source paragraph with link."),
+  );
+  assert.equal(await page.locator(".markdown-editor__preview strong").innerText(), "source");
+  assert.equal(await page.locator(".markdown-editor__preview a").getAttribute("href"), "/target");
+  assert.deepEqual(await page.locator(".markdown-editor__preview li").allInnerTexts(), [
+    "first",
+    "second",
+  ]);
+
   await page.getByRole("button", { name: "Save" }).click();
   await page.waitForFunction(() =>
     document

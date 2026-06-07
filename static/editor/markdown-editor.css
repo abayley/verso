@@ -2,6 +2,32 @@ markdown-editor {
   display: block;
 }
 
+.markdown-editor__toolbar {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+
+.markdown-editor__mode-button {
+  background: #fff;
+  border: 1px solid #94a3b8;
+  color: #0f172a;
+  cursor: pointer;
+  font: 14px system-ui, sans-serif;
+  padding: 0.35rem 0.65rem;
+}
+
+.markdown-editor__mode-button[aria-pressed="true"] {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #fff;
+}
+
 .markdown-editor__surface,
 .markdown-editor__source {
   border: 1px solid #777;

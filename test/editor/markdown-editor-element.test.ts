@@ -44,6 +44,31 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain("**strong**");
     });
 
+    it("given visual mode, when toolbar mode buttons are used, then it switches modes without losing Markdown", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "# Heading\n\nParagraph with **strong** text.";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        clickToolbarButton(editor, "Markdown");
+        expect(editor.querySelector(".markdown-editor__source")).toBeInstanceOf(HTMLTextAreaElement);
+        expect(editor.toMarkdown()).toContain("# Heading");
+        expect(editor.toMarkdown()).toContain("**strong**");
+
+        clickToolbarButton(editor, "Split");
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__source")).toBeInstanceOf(
+            HTMLTextAreaElement,
+        );
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__preview strong")?.textContent).toBe(
+            "strong",
+        );
+
+        clickToolbarButton(editor, "Visual");
+        expect(editor.querySelector(".markdown-editor__surface .ProseMirror")).toBeInstanceOf(HTMLElement);
+        expect(editor.querySelector(".markdown-editor__surface strong")?.textContent).toBe("strong");
+    });
+
     it("given unsupported source Markdown, when edited, then it does not dispatch a changed event", async (): Promise<void> => {
         const editor = document.createElement(elementName);
         editor.setAttribute("mode", "source");
@@ -97,4 +122,17 @@ function requiredSource(editor: Element): HTMLTextAreaElement {
     }
 
     return source;
+}
+
+/** Clicks a toolbar button by its visible label. */
+function clickToolbarButton(editor: Element, label: string): void {
+    const button = Array.from(editor.querySelectorAll(".markdown-editor__toolbar button")).find(
+        (candidate: Element): boolean => candidate.textContent === label,
+    );
+
+    if (!(button instanceof HTMLButtonElement)) {
+        throw new Error(`Expected toolbar button: ${label}`);
+    }
+
+    button.click();
 }

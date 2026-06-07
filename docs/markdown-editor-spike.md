@@ -497,8 +497,9 @@ editing with CodeMirror, and Web Awesome controls.
   Markdown extension remains beta.
 - Observed that adding Tiptap grows the current minified Bun editor bundle to
   roughly 0.62 MB.
-- Add a top toolbar in a later slice with mode switching, style controls,
-  structure controls, and theme switching.
+- Added a top toolbar shell with visual, Markdown source, and split mode
+  switching inside the custom element.
+- Add style controls, structure controls, and theme switching in later slices.
 - Add CodeMirror for raw Markdown editing and syntax highlighting in a later
   slice.
 - Use Web Awesome for future web-component controls and styling.

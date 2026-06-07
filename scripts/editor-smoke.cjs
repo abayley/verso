@@ -50,6 +50,15 @@ async function main() {
 
   await page.goto(`${baseUrl}/documents/home/edit`);
   await page.waitForSelector(".markdown-editor__surface h1");
+  assert.deepEqual(await page.locator(".markdown-editor__toolbar button").allInnerTexts(), [
+    "Visual",
+    "Markdown",
+    "Split",
+  ]);
+  assert.equal(
+    await page.locator('.markdown-editor__toolbar button[data-mode="visual"]').getAttribute("aria-pressed"),
+    "true",
+  );
 
   assert.equal(
     await page.locator(".markdown-editor__surface h1").innerText(),
@@ -71,6 +80,25 @@ async function main() {
     await page.locator("#markdown-field").inputValue(),
     "# Hello from MicroHttp\n\nEdit this Markdown document.",
   );
+
+  await page.locator('.markdown-editor__toolbar button[data-mode="source"]').click();
+  await page.waitForSelector(".markdown-editor__source");
+  assert.equal(
+    await page.locator(".markdown-editor__source").inputValue(),
+    "# Hello from MicroHttp\n\nEdit this Markdown document.",
+  );
+  assert.equal(
+    await page.locator('.markdown-editor__toolbar button[data-mode="source"]').getAttribute("aria-pressed"),
+    "true",
+  );
+  await page.locator('.markdown-editor__toolbar button[data-mode="split"]').click();
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__preview h1");
+  assert.equal(
+    await page.locator(".markdown-editor__split .markdown-editor__preview h1").innerText(),
+    "Hello from MicroHttp",
+  );
+  await page.locator('.markdown-editor__toolbar button[data-mode="visual"]').click();
+  await page.waitForSelector(".markdown-editor__surface .ProseMirror");
 
   await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
   await page.waitForSelector(".markdown-editor__source");

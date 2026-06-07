@@ -13,6 +13,7 @@
         "@biomejs/biome": "^2.4.16",
         "@codemirror/lang-markdown": "^6.5.0",
         "@tiptap/core": "^3.26.0",
+        "@tiptap/extension-heading": "^3.26.0",
         "@tiptap/markdown": "^3.26.0",
         "@tiptap/starter-kit": "^3.26.0",
         "@types/mdast": "^4.0.4",

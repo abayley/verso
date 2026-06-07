@@ -1,4 +1,5 @@
-import { Editor, type SetContentOptions } from "@tiptap/core";
+import { Editor, type JSONContent, type SetContentOptions } from "@tiptap/core";
+import Heading from "@tiptap/extension-heading";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
 
@@ -15,6 +16,13 @@ type MarkdownSetContentOptions = SetContentOptions & {
     contentType: "markdown";
 };
 
+const HeadingWithoutInputRules = Heading.extend({
+    /** Keeps heading nodes available while preventing typed hash shortcuts. */
+    addInputRules() {
+        return [];
+    },
+});
+
 /** Markdown-in/Markdown-out adapter around Tiptap's visual editor. */
 export class TiptapVisualEditor {
     private readonly editor: Editor;
@@ -30,7 +38,10 @@ export class TiptapVisualEditor {
             contentType: "markdown",
             element: this.root,
             extensions: [
-                StarterKit,
+                StarterKit.configure({
+                    heading: false,
+                }),
+                HeadingWithoutInputRules,
                 Markdown.configure({
                     markedOptions: {
                         gfm: true,
@@ -39,6 +50,10 @@ export class TiptapVisualEditor {
             ],
             injectCSS: false,
             onUpdate: (): void => {
+                if (this.applyListMarkerShortcut()) {
+                    return;
+                }
+
                 onChange();
             },
         });
@@ -51,7 +66,7 @@ export class TiptapVisualEditor {
 
     /** Serialises the current Tiptap document to Markdown. */
     public toMarkdown(): string {
-        return this.editor.getMarkdown();
+        return escapeLiteralParagraphMarkers(this.editor.getMarkdown(), this.editor.getJSON());
     }
 
     /** Replaces the current visual document from Markdown. */
@@ -101,6 +116,23 @@ export class TiptapVisualEditor {
         this.editor.destroy();
     }
 
+    /** Converts supported literal list markers into list nodes while typing. */
+    private applyListMarkerShortcut(): boolean {
+        const text = this.editor.getText();
+
+        if (text === "- ") {
+            this.editor.chain().clearContent().toggleBulletList().focus().run();
+            return true;
+        }
+
+        if (text === "1. ") {
+            this.editor.chain().clearContent().toggleOrderedList().focus().run();
+            return true;
+        }
+
+        return false;
+    }
+
     /** Converts the current browser selection into Tiptap document positions. */
     private currentVisualSelection(): { from: number; to: number } | null {
         const selection = window.getSelection();
@@ -134,4 +166,20 @@ function headingLevel(style: Exclude<VisualBlockStyle, "paragraph">): 1 | 2 | 3 
     }
 
     return 3;
+}
+
+/** Escapes paragraph text that would otherwise be parsed back as Markdown block syntax. */
+function escapeLiteralParagraphMarkers(markdown: string, document: JSONContent): string {
+    const blocks = markdown.split("\n\n");
+    const nodes = document.content ?? [];
+
+    return blocks
+        .map((block: string, index: number): string => {
+            if (nodes[index]?.type !== "paragraph") {
+                return block;
+            }
+
+            return block.replace(/^(#{1,6}\s)/u, "\\$1");
+        })
+        .join("\n\n");
 }

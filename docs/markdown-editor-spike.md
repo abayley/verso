@@ -540,6 +540,17 @@ Phase Six findings so far:
   and is no longer tracked. `make run-test-app` depends on `editor-build` so a
   clean checkout can still serve the TestApp editor without committing the
   bundle.
+- Visual and Markdown-only modes should show only the active editor pane. The
+  rendered preview pane was removed from those modes; Markdown is still rendered
+  internally for validation and split-mode synchronisation.
+- The visual editor should not show the browser's default ProseMirror focus
+  outline because it can overlap the caret at the start of a line. The outer
+  editor border remains the visible editor boundary.
+- WYSIWYG typing should respect literal user text rather than interpreting
+  Markdown block markers such as hash-hash-space as formatting commands. Tiptap
+  input rules for headings are disabled, typed hashes serialise as escaped
+  Markdown text, and the editor adapter handles dash-space and one-dot-space as
+  explicit list marker shortcuts.
 
 ### Markdown Editor Spike Phase Seven: Planned
 

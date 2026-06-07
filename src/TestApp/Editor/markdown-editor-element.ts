@@ -62,9 +62,6 @@ export class MarkdownEditorElement extends HTMLElement {
         this.toolbar = this.createToolbar();
         this.body = document.createElement("div");
         this.body.className = "markdown-editor__body";
-        this.preview = document.createElement("div");
-        this.preview.className = "markdown-editor__preview";
-        this.preview.setAttribute("aria-live", "polite");
         this.parseError = document.createElement("div");
         this.parseError.className = "markdown-editor__error";
         this.parseError.setAttribute("role", "alert");
@@ -175,7 +172,7 @@ export class MarkdownEditorElement extends HTMLElement {
             this.panes.append(this.sourceElement(), this.visualEditorElement());
             this.body.append(this.panes);
         } else {
-            this.body.append(this.sourceEditor?.element() ?? this.visualEditorElement(), this.previewElement());
+            this.body.append(this.sourceEditor?.element() ?? this.visualEditorElement());
         }
     }
 
@@ -296,19 +293,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Refreshes the preview pane from the current Markdown value. */
     private updatePreview(): boolean {
-        if (!this.preview) {
-            return true;
-        }
-
-        try {
-            this.preview.innerHTML = renderMarkdown(this.toMarkdown());
-            this.hideParseError();
-            return true;
-        } catch (error: unknown) {
-            this.preview.innerHTML = "";
-            this.showParseError(errorMessage(error));
-            return false;
-        }
+        return this.updatePreviewFromMarkdown(this.toMarkdown());
     }
 
     /** Handles source editor edits and synchronises any visual split pane. */
@@ -380,16 +365,18 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Refreshes the preview pane from a known Markdown value. */
     private updatePreviewFromMarkdown(markdown: string): boolean {
-        if (!this.preview) {
-            return true;
-        }
-
         try {
-            this.preview.innerHTML = renderMarkdown(markdown);
+            if (this.preview) {
+                this.preview.innerHTML = renderMarkdown(markdown);
+            } else {
+                renderMarkdown(markdown);
+            }
             this.hideParseError();
             return true;
         } catch (error: unknown) {
-            this.preview.innerHTML = "";
+            if (this.preview) {
+                this.preview.innerHTML = "";
+            }
             this.showParseError(errorMessage(error));
             return false;
         }
@@ -440,15 +427,6 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         return this.visualEditor.element();
-    }
-
-    /** Returns the preview element after construction. */
-    private previewElement(): HTMLDivElement {
-        if (!this.preview) {
-            throw new Error("Markdown preview element was not created.");
-        }
-
-        return this.preview;
     }
 
     /** Returns the source editor element after construction. */

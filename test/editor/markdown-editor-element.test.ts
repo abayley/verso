@@ -38,7 +38,7 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__source .cm-editor")).toBeInstanceOf(HTMLElement);
         expect(editor.toMarkdown()).toContain("# Heading");
         expect(editor.toMarkdown()).toContain("**strong**");
-        expect(editor.querySelector(".markdown-editor__preview strong")?.textContent).toBe("strong");
+        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
     });
 
     it("given visual mode, when initialised, then it uses Tiptap and serialises Markdown", async (): Promise<void> => {
@@ -53,6 +53,7 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__surface strong")?.textContent).toBe("strong");
         expect(editor.toMarkdown()).toContain("# Heading");
         expect(editor.toMarkdown()).toContain("**strong**");
+        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
     });
 
     it("given visual mode, when the mode button is used, then it cycles modes without losing Markdown", async (): Promise<void> => {
@@ -95,7 +96,7 @@ describe("MarkdownEditorElement", (): void => {
         selectBlockStyle(editor, "heading-2");
 
         expect(editor.querySelector(".markdown-editor__surface h2")?.textContent).toBe("Plain paragraph");
-        expect(editor.querySelector(".markdown-editor__preview h2")?.textContent).toBe("Plain paragraph");
+        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
         expect(editor.toMarkdown().trim()).toBe("## Plain paragraph");
     });
 
@@ -110,7 +111,7 @@ describe("MarkdownEditorElement", (): void => {
         clickToolbarButton(editor, "Bold");
 
         expect(editor.querySelector(".markdown-editor__surface strong")?.textContent).toBe("Plain");
-        expect(editor.querySelector(".markdown-editor__preview strong")?.textContent).toBe("Plain");
+        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
         expect(editor.toMarkdown()).toContain("**Plain** paragraph");
     });
 
@@ -163,7 +164,7 @@ describe("MarkdownEditorElement", (): void => {
         selectBlockStyle(editor, "heading-2");
 
         expect(editor.toMarkdown()).toBe("## Plain paragraph");
-        expect(editor.querySelector(".markdown-editor__preview h2")?.textContent).toBe("Plain paragraph");
+        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
     });
 
     it("given unsupported source Markdown, when edited, then it does not dispatch a changed event", async (): Promise<void> => {
@@ -195,7 +196,7 @@ describe("MarkdownEditorElement", (): void => {
         (editor as MarkdownEditorElement).setMarkdown("# Recovered");
 
         expect((editor.querySelector(".markdown-editor__error") as HTMLElement | null)?.hidden).toBe(true);
-        expect(editor.querySelector(".markdown-editor__preview h1")?.textContent).toBe("Recovered");
+        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
     });
 });
 

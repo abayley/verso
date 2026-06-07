@@ -63,6 +63,10 @@ markdown-editor {
   resize: vertical;
 }
 
+.markdown-editor__surface .ProseMirror {
+  outline: none;
+}
+
 .markdown-editor__preview {
   border: 1px solid #bbb;
   margin-top: 1rem;

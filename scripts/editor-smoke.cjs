@@ -110,10 +110,7 @@ async function main() {
   assert.equal(await page.locator("#markdown-field").inputValue(), sourceMarkdown);
 
   await page.goto(`${baseUrl}/documents/home`);
-  assert.equal(await page.locator("h1").innerText(), "Source heading");
-  assert.equal(await page.locator("strong").innerText(), "source");
-  assert.equal(await page.locator("a").getAttribute("href"), "/target");
-  assert.deepEqual(await page.locator("li").allInnerTexts(), ["first", "second"]);
+  assert.equal((await page.locator("body").innerText()).trim(), sourceMarkdown);
 
   await page.goto(`${baseUrl}/documents/home/edit`);
   await page.waitForSelector(".markdown-editor__surface strong");

@@ -38,27 +38,14 @@ spec =
             response <- appForTest (request POST ["documents", "home"] "markdown=%3E+quote")
             statusCode (responseStatus response) `shouldBe` 200
             bodyText response `shouldBe` "<p id=\"save-status\">Unsupported Markdown: unsupported block syntax.</p>"
-        it "given saved markdown document, when routing document page, then rendered document html is returned" $ do
+        it "given saved markdown document, when routing document page, then raw markdown is returned" $ do
             response <- appForTest (request GET ["documents", "home"] "")
             statusCode (responseStatus response) `shouldBe` 200
-            bodyText response `shouldInclude` "<h1>Hello from MicroHttp</h1>"
-            bodyText response `shouldInclude` "<p>Edit this Markdown document.</p>"
-        it "given markdown preview post, when routing preview, then rendered preview fragment is returned" $ do
+            responseHeaders response `shouldBe` [(normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/markdown")]
+            bodyText response `shouldBe` "# Hello from MicroHttp\n\nEdit this Markdown document."
+        it "given markdown preview post, when routing preview, then preview endpoint is not found" $ do
             response <- appForTest (request POST ["documents", "home", "preview"] "markdown=%23+Preview+heading%0A%0APreview+paragraph.")
-            statusCode (responseStatus response) `shouldBe` 200
-            bodyText response `shouldBe` "<div id=\"preview\"><h1>Preview heading</h1><p>Preview paragraph.</p></div>"
-        it "given inline markdown preview post, when routing preview, then inline html is returned" $ do
-            response <- appForTest (request POST ["documents", "home", "preview"] "markdown=%2A%2Astrong%2A%2A+%2Aem%2A+%60code%60+%5Blink%5D(%2Ftarget)")
-            statusCode (responseStatus response) `shouldBe` 200
-            bodyText response `shouldBe` "<div id=\"preview\"><p><strong>strong</strong> <em>em</em> <code>code</code> <a href=\"/target\">link</a></p></div>"
-        it "given unordered list preview post, when routing preview, then unordered list html is returned" $ do
-            response <- appForTest (request POST ["documents", "home", "preview"] "markdown=-+first%0A-+%2A%2Asecond%2A%2A")
-            statusCode (responseStatus response) `shouldBe` 200
-            bodyText response `shouldBe` "<div id=\"preview\"><ul><li>first</li><li><strong>second</strong></li></ul></div>"
-        it "given ordered list preview post, when routing preview, then ordered list html is returned" $ do
-            response <- appForTest (request POST ["documents", "home", "preview"] "markdown=1.+first%0A2.+%60second%60")
-            statusCode (responseStatus response) `shouldBe` 200
-            bodyText response `shouldBe` "<div id=\"preview\"><ol><li>first</li><li><code>second</code></li></ol></div>"
+            statusCode (responseStatus response) `shouldBe` 404
         it "given editor script request, when routing, then static script file response is returned" $ do
             response <- appForTest (request GET ["static", "editor", "markdown-editor.js"] "")
             statusCode (responseStatus response) `shouldBe` 200

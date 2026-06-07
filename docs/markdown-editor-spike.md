@@ -184,7 +184,6 @@ The TestApp spike should keep routes small and explicit.
 ```text
 GET  /documents/:id/edit
 POST /documents/:id
-POST /documents/:id/preview
 GET  /documents/:id
 GET  /static/:path
 ```
@@ -196,10 +195,9 @@ editor page.
 supported subset, writes the Markdown document, and returns a save-status
 fragment.
 
-`POST /documents/:id/preview` reads submitted Markdown and returns a rendered
-HTML fragment without saving.
-
-`GET /documents/:id` renders the saved Markdown as a normal page.
+`GET /documents/:id` returns the saved Markdown document as `text/markdown`.
+The editor is responsible for parsing and rendering that Markdown for preview or
+visual editing.
 
 `GET /static/:path` serves TestApp static assets such as editor JavaScript, CSS,
 images, fonts, and web-component source files.
@@ -211,14 +209,12 @@ The server owns:
 - Route dispatch.
 - Request body parsing.
 - Markdown persistence.
-- Validation of the supported Markdown subset.
-- Rendering saved Markdown into public HTML.
-- Rendering htmx fragments for status, preview, and validation failures.
+- Minimal validation needed to reject clearly unsupported spike submissions.
+- Rendering htmx fragments for save status and validation failures.
 
-The server must not trust submitted HTML as document content. If the browser
-submits HTML during an early experiment, the server should treat that as a spike
-shortcut only and the design should still record Markdown as the durable
-contract.
+The server must not trust submitted HTML as document content. The durable
+contract is Markdown text. Markdown parsing, rendering, preview, and visual
+editing are editor responsibilities under ADR-019.
 
 ## Markdown Editor TestApp Scope
 
@@ -388,16 +384,18 @@ Preview must not allow a broader content policy than saved page rendering.
 - Persisted submitted Markdown to `data/documents/home.md` through a small
   TestApp document-store seam.
 - Rendered `GET /documents/home` from the saved Markdown.
-- Added `POST /documents/home/preview`.
+- Added `POST /documents/home/preview` as a temporary server-side preview path.
 - Returned preview HTML as an htmx fragment.
 - Kept the parser and renderer deliberately small and local to the TestApp
   spike; it is not a complete Markdown implementation.
 
-### Markdown Editor Spike Phase Four
+### Markdown Editor Spike Phase Four: In Progress
 
-- Move preview rendering into the `<markdown-editor>` web component.
-- Keep htmx submissions as Markdown text only.
-- Keep server-side Markdown rendering as replaceable TestApp spike evidence, not
+- Moved preview rendering into the `<markdown-editor>` web component.
+- Kept htmx submissions as Markdown text only.
+- Changed `GET /documents/:id` to return raw `text/markdown`.
+- Removed the server-side preview route from the active TestApp route set.
+- Kept server-side Markdown rendering as replaceable TestApp spike evidence, not
   the active editor preview path.
 - Use remark and mdast as reference fixtures for editor-owned parsing and
   rendering behaviour.

@@ -25,7 +25,7 @@ class MarkdownEditor extends HTMLElement {
       this.source = document.createElement("textarea");
       this.source.className = "markdown-editor__source";
       this.source.value = this.markdown;
-      this.source.addEventListener("input", () => this.updatePreview());
+      this.source.addEventListener("input", () => this.handleInput());
     }
 
     if (this.mode === "visual") {
@@ -33,7 +33,7 @@ class MarkdownEditor extends HTMLElement {
       this.editor.className = "markdown-editor__surface";
       this.editor.contentEditable = "true";
       this.editor.innerHTML = this.renderMarkdown(this.markdown);
-      this.editor.addEventListener("input", () => this.updatePreview());
+      this.editor.addEventListener("input", () => this.handleInput());
     }
 
     this.preview = document.createElement("div");
@@ -104,6 +104,20 @@ class MarkdownEditor extends HTMLElement {
     }
 
     this.preview.innerHTML = this.renderMarkdown(this.toMarkdown());
+  }
+
+  handleInput() {
+    const markdown = this.toMarkdown();
+
+    this.updatePreview();
+    this.dispatchEvent(
+      new CustomEvent("editor:changed", {
+        bubbles: true,
+        detail: {
+          markdown,
+        },
+      }),
+    );
   }
 
   renderMarkdown(markdown) {

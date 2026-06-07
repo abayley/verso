@@ -163,6 +163,24 @@ async function main() {
   await page.goto(`${baseUrl}/documents/home`);
   assert.equal((await page.locator("body").innerText()).trim(), splitMarkdown);
 
+  await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
+  await page.waitForSelector(".markdown-editor__source");
+  const autosavedMarkdown = [
+    "# Autosaved heading",
+    "",
+    "Autosaved **source** paragraph.",
+  ].join("\n");
+  await page.locator(".markdown-editor__source").fill(autosavedMarkdown);
+  await page.waitForFunction(() =>
+    document
+      .querySelector("#save-status")
+      ?.innerText.includes("Saved Markdown document: # Autosaved heading"),
+  );
+  assert.equal(await page.locator("#markdown-field").inputValue(), autosavedMarkdown);
+
+  await page.goto(`${baseUrl}/documents/home`);
+  assert.equal((await page.locator("body").innerText()).trim(), autosavedMarkdown);
+
   assert.deepEqual(consoleErrors, []);
 }
 

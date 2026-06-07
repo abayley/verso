@@ -220,6 +220,7 @@ editorPage docId mode =
                     [ Html.hxPost ("/documents/" ++ docId)
                     , Html.hxTarget "#save-status"
                     , Html.hxSwap "innerHTML"
+                    , Html.attr "hx-trigger" "submit, editor:changed delay:2s from:markdown-editor"
                     ]
                     $ do
                         Html.custom

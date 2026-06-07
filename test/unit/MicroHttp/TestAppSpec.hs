@@ -15,6 +15,7 @@ spec =
             bodyText response `shouldInclude` "https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"
             bodyText response `shouldInclude` "<script src=\"/static/editor/markdown-editor.js\"></script>"
             bodyText response `shouldInclude` "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
+            bodyText response `shouldInclude` "hx-trigger=\"submit, editor:changed delay:2s from:markdown-editor\""
             bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" mode=\"visual\" src=\"/documents/home\"></markdown-editor>"
             bodyText response `shouldInclude` "<input type=\"hidden\" name=\"markdown\" id=\"markdown-field\">"
             bodyText response `shouldNotInclude` "# Hello from MicroHttp"

@@ -144,6 +144,7 @@ custom-element equivalent.
 ```html
 <form
   hx-post="/documents/home"
+  hx-trigger="submit, editor:changed delay:2s from:markdown-editor"
   hx-target="#save-status"
   hx-swap="innerHTML"
 >
@@ -164,13 +165,13 @@ form.addEventListener("htmx:configRequest", function () {
 });
 ```
 
-The same contract can support autosave later by dispatching a custom event from
-the editor and using `hx-trigger` on the form.
+The same contract supports autosave by dispatching a custom event from the
+editor and using `hx-trigger` on the form.
 
 ```html
 <form
   hx-post="/documents/home"
-  hx-trigger="editor:changed delay:2s from:markdown-editor"
+  hx-trigger="submit, editor:changed delay:2s from:markdown-editor"
   hx-target="#save-status"
   hx-swap="innerHTML"
 >
@@ -394,6 +395,8 @@ Preview must not allow a broader content policy than saved page rendering.
 - Moved preview rendering into the `<markdown-editor>` web component.
 - Kept htmx submissions as Markdown text only.
 - Added split mode with source and preview panes sharing one Markdown value.
+- Added autosave using an editor-dispatched `editor:changed` event and htmx
+  delayed trigger.
 - Changed `GET /documents/:id/edit` to return an editor shell that fetches the
   Markdown document through `<markdown-editor src="/documents/:id">`.
 - Changed `GET /documents/:id` to return raw `text/markdown`.
@@ -402,7 +405,6 @@ Preview must not allow a broader content policy than saved page rendering.
   responsibilities.
 - Use remark and mdast as reference fixtures for editor-owned parsing and
   rendering behaviour.
-- Add autosave using an editor-dispatched event and htmx trigger.
 - Extract spike code that has become stable away from `src/TestApp.hs`.
 - Decide whether the editor parser and renderer belong in MicroHttp examples, a
   separate package, or a later application repository.

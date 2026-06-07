@@ -1,36 +1,67 @@
 (() => {
-  // src/TestApp/Editor/markdown-render.ts
-  function renderMarkdown(markdown) {
-    return markdown.split(/\n{2,}/).map((block) => renderBlock(block.trim())).join("");
+  // src/TestApp/Editor/markdown-parse.ts
+  function parseMarkdown(markdown) {
+    return {
+      blocks: markdown.split(/\n{2,}/).map((block) => block.trim()).filter((block) => block.length > 0).map((block) => parseBlock(block))
+    };
   }
-  function renderBlock(block) {
+  function parseBlock(block) {
     if (isUnorderedListBlock(block)) {
-      return `<ul>${block.split(`
-`).map((line) => `<li>${renderInlineMarkdown(line.trim().slice(2))}</li>`).join("")}</ul>`;
+      return {
+        items: block.split(`
+`).map((line) => parseInlineMarkdown(line.trim().slice(2))),
+        ordered: false,
+        type: "list"
+      };
     }
     if (isOrderedListBlock(block)) {
-      return `<ol>${block.split(`
-`).map((line) => `<li>${renderInlineMarkdown(orderedItemText(line))}</li>`).join("")}</ol>`;
+      return {
+        items: block.split(`
+`).map((line) => parseInlineMarkdown(orderedItemText(line))),
+        ordered: true,
+        type: "list"
+      };
     }
     if (block.startsWith("### ")) {
-      return `<h3>${renderInlineMarkdown(block.slice(4))}</h3>`;
+      return {
+        children: parseInlineMarkdown(block.slice(4)),
+        level: 3,
+        type: "heading"
+      };
     }
     if (block.startsWith("## ")) {
-      return `<h2>${renderInlineMarkdown(block.slice(3))}</h2>`;
+      return {
+        children: parseInlineMarkdown(block.slice(3)),
+        level: 2,
+        type: "heading"
+      };
     }
     if (block.startsWith("# ")) {
-      return `<h1>${renderInlineMarkdown(block.slice(2))}</h1>`;
+      return {
+        children: parseInlineMarkdown(block.slice(2)),
+        level: 1,
+        type: "heading"
+      };
     }
-    return `<p>${renderInlineMarkdown(block)}</p>`;
+    return {
+      children: parseInlineMarkdown(block),
+      type: "paragraph"
+    };
   }
-  function renderInlineMarkdown(markdown) {
-    let html = "";
+  function parseInlineMarkdown(markdown) {
+    const nodes = [];
+    let text = "";
     let remaining = markdown;
     while (remaining.length > 0) {
       if (remaining.startsWith("**")) {
         const parsed = takeDelimited(remaining.slice(2), "**");
         if (parsed) {
-          html += `<strong>${renderInlineMarkdown(parsed.value)}</strong>`;
+          appendText(nodes, text);
+          text = "";
+          nodes.push({
+            children: parseInlineMarkdown(parsed.value),
+            type: "strong"
+          });
           remaining = parsed.rest;
           continue;
         }
@@ -38,7 +69,12 @@
       if (remaining.startsWith("*")) {
         const parsed = takeDelimited(remaining.slice(1), "*");
         if (parsed) {
-          html += `<em>${renderInlineMarkdown(parsed.value)}</em>`;
+          appendText(nodes, text);
+          text = "";
+          nodes.push({
+            children: parseInlineMarkdown(parsed.value),
+            type: "emphasis"
+          });
           remaining = parsed.rest;
           continue;
         }
@@ -46,7 +82,12 @@
       if (remaining.startsWith("`")) {
         const parsed = takeDelimited(remaining.slice(1), "`");
         if (parsed) {
-          html += `<code>${escapeHtml(parsed.value)}</code>`;
+          appendText(nodes, text);
+          text = "";
+          nodes.push({
+            text: parsed.value,
+            type: "code"
+          });
           remaining = parsed.rest;
           continue;
         }
@@ -54,15 +95,31 @@
       if (remaining.startsWith("[")) {
         const parsed = takeLink(remaining.slice(1));
         if (parsed) {
-          html += `<a href="${escapeHtml(parsed.url)}">${renderInlineMarkdown(parsed.label)}</a>`;
+          appendText(nodes, text);
+          text = "";
+          nodes.push({
+            children: parseInlineMarkdown(parsed.label),
+            type: "link",
+            url: parsed.url
+          });
           remaining = parsed.rest;
           continue;
         }
       }
-      html += escapeHtml(remaining[0] ?? "");
+      text += remaining[0] ?? "";
       remaining = remaining.slice(1);
     }
-    return html;
+    appendText(nodes, text);
+    return nodes;
+  }
+  function appendText(nodes, text) {
+    if (text.length === 0) {
+      return;
+    }
+    nodes.push({
+      text,
+      type: "text"
+    });
   }
   function takeDelimited(markdown, delimiter) {
     const end = markdown.indexOf(delimiter);
@@ -100,6 +157,42 @@
   }
   function orderedItemText(line) {
     return line.trim().replace(/^\d+\. /, "");
+  }
+
+  // src/TestApp/Editor/markdown-render.ts
+  function renderMarkdown(markdown) {
+    return renderEditorDocument(parseMarkdown(markdown));
+  }
+  function renderEditorDocument(document2) {
+    return document2.blocks.map((block) => renderBlock(block)).join("");
+  }
+  function renderBlock(block) {
+    if (block.type === "heading") {
+      return `<h${block.level}>${renderInlineNodes(block.children)}</h${block.level}>`;
+    }
+    if (block.type === "list") {
+      const tag = block.ordered ? "ol" : "ul";
+      return `<${tag}>${block.items.map((item) => `<li>${renderInlineNodes(item)}</li>`).join("")}</${tag}>`;
+    }
+    return `<p>${renderInlineNodes(block.children)}</p>`;
+  }
+  function renderInlineNodes(nodes) {
+    return nodes.map((node) => renderInlineNode(node)).join("");
+  }
+  function renderInlineNode(node) {
+    if (node.type === "strong") {
+      return `<strong>${renderInlineNodes(node.children)}</strong>`;
+    }
+    if (node.type === "emphasis") {
+      return `<em>${renderInlineNodes(node.children)}</em>`;
+    }
+    if (node.type === "code") {
+      return `<code>${escapeHtml(node.text)}</code>`;
+    }
+    if (node.type === "link") {
+      return `<a href="${escapeHtml(node.url)}">${renderInlineNodes(node.children)}</a>`;
+    }
+    return escapeHtml(node.text);
   }
   function escapeHtml(value) {
     return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#39;");

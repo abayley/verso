@@ -1,0 +1,50 @@
+export interface EditorDocument {
+    blocks: EditorBlock[];
+}
+
+export type EditorBlock = HeadingBlock | ListBlock | ParagraphBlock;
+
+export interface HeadingBlock {
+    children: InlineNode[];
+    level: 1 | 2 | 3;
+    type: "heading";
+}
+
+export interface ParagraphBlock {
+    children: InlineNode[];
+    type: "paragraph";
+}
+
+export interface ListBlock {
+    items: InlineNode[][];
+    ordered: boolean;
+    type: "list";
+}
+
+export type InlineNode = CodeInline | EmphasisInline | LinkInline | StrongInline | TextInline;
+
+export interface TextInline {
+    text: string;
+    type: "text";
+}
+
+export interface StrongInline {
+    children: InlineNode[];
+    type: "strong";
+}
+
+export interface EmphasisInline {
+    children: InlineNode[];
+    type: "emphasis";
+}
+
+export interface CodeInline {
+    text: string;
+    type: "code";
+}
+
+export interface LinkInline {
+    children: InlineNode[];
+    type: "link";
+    url: string;
+}

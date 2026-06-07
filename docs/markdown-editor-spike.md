@@ -283,7 +283,7 @@ Markdown source
   -> saved Markdown
 ```
 
-The first spike may simplify this pipeline:
+The first spike originally simplified this pipeline:
 
 ```text
 Markdown source
@@ -295,6 +295,15 @@ Markdown source
 
 That simplification is acceptable only while the supported content subset stays
 small and explicit.
+
+Phase Four now introduces a small typed editor model in TypeScript. The browser
+pipeline for preview and visual rendering is:
+
+```text
+Markdown source
+  -> typed editor document
+  -> visual HTML projection
+```
 
 Phase Three showed that duplicating Markdown parsing and rendering in browser
 JavaScript and TestApp Haskell becomes awkward as soon as inline content and
@@ -413,6 +422,8 @@ Preview must not allow a broader content policy than saved page rendering.
   delayed trigger.
 - Moved editor source to TypeScript under `src/TestApp/Editor/`, with Bun
   building the served JavaScript bundle.
+- Added a typed editor document model between Markdown parsing and HTML
+  rendering.
 - Changed `GET /documents/:id/edit` to return an editor shell that fetches the
   Markdown document through `<markdown-editor src="/documents/:id">`.
 - Changed `GET /documents/:id` to return raw `text/markdown`.
@@ -421,8 +432,7 @@ Preview must not allow a broader content policy than saved page rendering.
   responsibilities.
 - Use remark and mdast as reference fixtures for editor-owned parsing and
   rendering behaviour.
-- Continue extracting stable editor code out of the custom element class and
-  into typed editor modules.
+- Continue extracting stable editor code into typed editor modules.
 - Decide whether the editor parser and renderer belong in MicroHttp examples, a
   separate package, or a later application repository.
 

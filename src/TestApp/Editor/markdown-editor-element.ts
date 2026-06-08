@@ -86,6 +86,7 @@ export class MarkdownEditorElement extends HTMLElement {
         toolbar.append(this.createInlineStyleButton("strong", "Bold"));
         toolbar.append(this.createInlineStyleButton("emphasis", "Italic"));
         toolbar.append(this.createInlineStyleButton("code", "Code"));
+        toolbar.append(this.createInlineStyleButton("link", "Link"));
 
         return toolbar;
     }
@@ -256,6 +257,12 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Toggles an inline style through the active visual editor. */
     private toggleInlineStyle(style: VisualInlineStyle): void {
+        const href = style === "link" ? this.promptForLinkTarget() : undefined;
+
+        if (style === "link" && !href) {
+            return;
+        }
+
         if (this.shouldUseSourceCommands()) {
             if (style === "strong") {
                 this.sourceEditor?.toggleStrong();
@@ -269,12 +276,27 @@ export class MarkdownEditorElement extends HTMLElement {
                 this.sourceEditor?.toggleCode();
             }
 
+            if (style === "link" && href) {
+                this.sourceEditor?.toggleLink(href);
+            }
+
             return;
         }
 
-        if (this.visualEditor?.toggleInlineStyle(style)) {
+        if (this.visualEditor?.toggleInlineStyle(style, href ?? undefined)) {
             this.handleVisualInput();
         }
+    }
+
+    /** Prompts for the link target used by the temporary link toolbar command. */
+    private promptForLinkTarget(): string | null {
+        const href = window.prompt("Link target");
+
+        if (!href?.trim()) {
+            return null;
+        }
+
+        return href.trim();
     }
 
     /** Checks whether toolbar commands should target the source editor. */

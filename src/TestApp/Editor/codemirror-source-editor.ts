@@ -80,6 +80,11 @@ export class CodeMirrorSourceEditor {
         return this.wrapSelection("`", "`");
     }
 
+    /** Toggles Markdown link markers around the current source selection. */
+    public toggleLink(href: string): boolean {
+        return this.wrapSelection("[", `](${href})`);
+    }
+
     /** Serialises the current source document to Markdown. */
     public toMarkdown(): string {
         return this.view.state.doc.toString();

@@ -62,6 +62,7 @@ async function main() {
     "Bold",
     "Italic",
     "Code",
+    "Link",
   ]);
   assert.equal(
     await page.locator(".markdown-editor__mode-button").innerText(),
@@ -115,8 +116,10 @@ async function main() {
   await page.locator(".markdown-editor__mode-button").click();
   await page.waitForSelector(".markdown-editor__surface .ProseMirror");
 
-  await page.locator(".markdown-editor__surface .ProseMirror").fill("");
   await page.locator(".markdown-editor__surface .ProseMirror").click();
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
+  await page.keyboard.press("Backspace");
+  await page.waitForFunction(() => document.querySelector(".markdown-editor__surface .ProseMirror")?.innerText.trim() === "");
   await page.keyboard.type("- ");
   await page.waitForSelector(".markdown-editor__surface li");
   await page.keyboard.type("List item");
@@ -289,6 +292,25 @@ async function main() {
     /`Source pane` paragraph\./,
   );
   assert.equal(await page.locator(".markdown-editor__split .markdown-editor__surface code").innerText(), "Source pane");
+
+  const sourcePaneLinkMarkdown = "Source pane paragraph.";
+  await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", sourcePaneLinkMarkdown);
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".markdown-editor__split .markdown-editor__surface")
+      ?.innerText.includes("Source pane paragraph."),
+  );
+  await selectTextInElement(page, ".markdown-editor__split .markdown-editor__source .cm-content", "Source pane");
+  page.once("dialog", async (dialog) => {
+    await dialog.accept("/target");
+  });
+  await page.getByRole("button", { name: "Link" }).click();
+  await page.waitForSelector('.markdown-editor__split .markdown-editor__surface a[href="/target"]');
+  assert.match(
+    await sourceMarkdownValue(page, ".markdown-editor__split .markdown-editor__source"),
+    /\[Source pane\]\(\/target\) paragraph\./,
+  );
+  assert.equal(await page.locator(".markdown-editor__split .markdown-editor__surface a").innerText(), "Source pane");
 
   await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", splitMarkdown);
   await page.waitForFunction(() =>

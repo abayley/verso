@@ -506,10 +506,10 @@ editing with CodeMirror, and Web Awesome controls.
   side update the other immediately.
 - [x] Add the first style control: a block-style select that applies paragraph
   and heading levels one to three through Tiptap in visual mode.
-- [ ] Add inline style controls for strong, emphasis, inline code, and links.
-  Added Bold, Italic, and Code controls for `strong`, `emphasis`, and inline
-  `code` marks through Tiptap visual mode and CodeMirror source mode. Links
-  remain.
+- [x] Add inline style controls for strong, emphasis, inline code, and links.
+  Added Bold, Italic, Code, and Link controls for `strong`, `emphasis`, inline
+  `code`, and `link` marks through Tiptap visual mode and CodeMirror source
+  mode.
 - [ ] Add structure controls for lists, blockquotes, fenced code blocks, and
   thematic breaks.
 - [ ] Add theme switching.
@@ -550,6 +550,11 @@ Phase Six findings so far:
 - The inline toolbar seam works for simple mark controls across both panes:
   visual commands stay in the Tiptap adapter, while source commands wrap the
   active CodeMirror selection with Markdown delimiters.
+- The Link control uses `window.prompt` as a temporary spike interaction. A
+  proper toolbar design should replace it with an in-editor link target control.
+- Browser smoke tests should clear the Tiptap surface with keyboard selection
+  rather than Playwright `fill("")`; contenteditable fill was flaky before
+  typing list-marker shortcuts.
 - The visual editor should not show the browser's default ProseMirror focus
   outline because it can overlap the caret at the start of a line. The outer
   editor border remains the visible editor boundary.

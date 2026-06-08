@@ -10,7 +10,7 @@ export type TiptapChangeHandler = () => void;
 export type VisualBlockStyle = "paragraph" | "heading-1" | "heading-2" | "heading-3";
 
 /** Supported visual inline styles exposed by the editor toolbar. */
-export type VisualInlineStyle = "strong" | "emphasis" | "code";
+export type VisualInlineStyle = "strong" | "emphasis" | "code" | "link";
 
 type MarkdownSetContentOptions = SetContentOptions & {
     contentType: "markdown";
@@ -95,7 +95,7 @@ export class TiptapVisualEditor {
     }
 
     /** Toggles one supported inline style at the current visual selection. */
-    public toggleInlineStyle(style: VisualInlineStyle): boolean {
+    public toggleInlineStyle(style: VisualInlineStyle, href?: string): boolean {
         const selection = this.currentVisualSelection();
 
         switch (style) {
@@ -114,6 +114,16 @@ export class TiptapVisualEditor {
             case "code": {
                 return this.withCurrentSelection(selection, (editor: Editor): boolean =>
                     editor.chain().focus().toggleCode().run(),
+                );
+            }
+
+            case "link": {
+                if (!href) {
+                    return false;
+                }
+
+                return this.withCurrentSelection(selection, (editor: Editor): boolean =>
+                    editor.chain().focus().setLink({ href }).run(),
                 );
             }
         }

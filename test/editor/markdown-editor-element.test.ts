@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MarkdownEditorElement } from "../../src/TestApp/Editor/markdown-editor-element.js";
 
 const elementName = "markdown-editor-test";
@@ -10,6 +10,10 @@ if (!customElements.get(elementName)) {
 describe("MarkdownEditorElement", (): void => {
     beforeEach((): void => {
         document.body.textContent = "";
+    });
+
+    afterEach((): void => {
+        vi.restoreAllMocks();
     });
 
     it("given unsupported source Markdown, when initialised, then it shows a parse error and keeps the source", async (): Promise<void> => {
@@ -145,6 +149,27 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain("`Plain` paragraph");
     });
 
+    it("given visual mode, when link is selected, then the selected text becomes a link", async (): Promise<void> => {
+        vi.stubGlobal(
+            "prompt",
+            vi.fn((): string => "/target"),
+        );
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectText(editor, "Plain");
+
+        clickToolbarButton(editor, "Link");
+
+        const link = editor.querySelector(".markdown-editor__surface a");
+        expect(link?.textContent).toBe("Plain");
+        expect(link?.getAttribute("href")).toBe("/target");
+        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
+        expect(editor.toMarkdown()).toContain("[Plain](/target) paragraph");
+    });
+
     it("given split mode, when visual text is styled, then Markdown source is updated", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.setAttribute("mode", "split");
@@ -214,6 +239,27 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface code")?.textContent).toBe(
             "Markdown",
         );
+    });
+
+    it("given split mode, when Markdown text is selected, then link applies to the Markdown source", async (): Promise<void> => {
+        vi.stubGlobal(
+            "prompt",
+            vi.fn((): string => "/target"),
+        );
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Visual paragraph\n\nMarkdown paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectSourceText(editor, "Markdown");
+
+        clickToolbarButton(editor, "Link");
+
+        expect(editor.toMarkdown()).toContain("[Markdown](/target) paragraph");
+        const link = editor.querySelector(".markdown-editor__split .markdown-editor__surface a");
+        expect(link?.textContent).toBe("Markdown");
+        expect(link?.getAttribute("href")).toBe("/target");
     });
 
     it("given source mode, when heading style is selected, then the current Markdown line becomes a heading", async (): Promise<void> => {

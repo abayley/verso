@@ -1,5 +1,6 @@
 # Todos
 
+- install and use knip
 - logging
 - hot reload
 - improve socket testing

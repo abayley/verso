@@ -7,12 +7,12 @@ export function renderMarkdown(markdown: string): string {
 }
 
 /** Renders an editor document to HTML. */
-export function renderEditorDocument(document: EditorDocument): string {
+function renderEditorDocument(document: EditorDocument): string {
     return document.blocks.map((block: EditorBlock): string => renderBlock(block)).join("");
 }
 
 /** Renders one editor block to HTML. */
-export function renderBlock(block: EditorBlock): string {
+function renderBlock(block: EditorBlock): string {
     if (block.type === "heading") {
         return `<h${block.level}>${renderInlineNodes(block.children)}</h${block.level}>`;
     }
@@ -43,12 +43,12 @@ export function renderBlock(block: EditorBlock): string {
 }
 
 /** Renders supported inline nodes to HTML. */
-export function renderInlineNodes(nodes: InlineNode[]): string {
+function renderInlineNodes(nodes: InlineNode[]): string {
     return nodes.map((node: InlineNode): string => renderInlineNode(node)).join("");
 }
 
 /** Renders one supported inline node to HTML. */
-export function renderInlineNode(node: InlineNode): string {
+function renderInlineNode(node: InlineNode): string {
     if (node.type === "strong") {
         return `<strong>${renderInlineNodes(node.children)}</strong>`;
     }

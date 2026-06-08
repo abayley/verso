@@ -4,65 +4,65 @@ export interface EditorDocument {
 
 export type EditorBlock = BlockquoteBlock | CodeBlock | HeadingBlock | HorizontalRuleBlock | ListBlock | ParagraphBlock;
 
-export interface BlockquoteBlock {
+interface BlockquoteBlock {
     blocks: EditorBlock[];
     type: "blockquote";
 }
 
-export interface CodeBlock {
+interface CodeBlock {
     language: string | null;
     text: string;
     type: "codeBlock";
 }
 
-export interface HeadingBlock {
+interface HeadingBlock {
     children: InlineNode[];
     level: 1 | 2 | 3;
     type: "heading";
 }
 
-export interface ParagraphBlock {
+interface ParagraphBlock {
     children: InlineNode[];
     type: "paragraph";
 }
 
-export interface ListBlock {
+interface ListBlock {
     items: InlineNode[][];
     ordered: boolean;
     type: "list";
 }
 
-export interface HorizontalRuleBlock {
+interface HorizontalRuleBlock {
     type: "horizontalRule";
 }
 
 export type InlineNode = BreakInline | CodeInline | EmphasisInline | LinkInline | StrongInline | TextInline;
 
-export interface BreakInline {
+interface BreakInline {
     type: "break";
 }
 
-export interface TextInline {
+interface TextInline {
     text: string;
     type: "text";
 }
 
-export interface StrongInline {
+interface StrongInline {
     children: InlineNode[];
     type: "strong";
 }
 
-export interface EmphasisInline {
+interface EmphasisInline {
     children: InlineNode[];
     type: "emphasis";
 }
 
-export interface CodeInline {
+interface CodeInline {
     text: string;
     type: "code";
 }
 
-export interface LinkInline {
+interface LinkInline {
     children: InlineNode[];
     type: "link";
     url: string;

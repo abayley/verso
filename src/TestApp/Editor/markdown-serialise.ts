@@ -13,7 +13,7 @@ export function documentToMarkdown(document: EditorDocument): string {
 }
 
 /** Converts a supported block element to an editor block. */
-export function blockFromElement(block: Element): EditorBlock {
+function blockFromElement(block: Element): EditorBlock {
     if (block.tagName === "HR") {
         return {
             type: "horizontalRule",
@@ -78,12 +78,12 @@ export function blockFromElement(block: Element): EditorBlock {
 }
 
 /** Converts child inline DOM nodes to editor inline nodes. */
-export function inlineNodesFromElement(element: Element): InlineNode[] {
+function inlineNodesFromElement(element: Element): InlineNode[] {
     return Array.from(element.childNodes).flatMap((node: ChildNode): InlineNode[] => inlineNodesFromNode(node));
 }
 
 /** Converts one inline DOM node to zero or more editor inline nodes. */
-export function inlineNodesFromNode(node: ChildNode): InlineNode[] {
+function inlineNodesFromNode(node: ChildNode): InlineNode[] {
     if (node.nodeType === Node.TEXT_NODE) {
         return textNode(node.textContent ?? "");
     }

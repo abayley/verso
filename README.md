@@ -81,6 +81,8 @@ make check
 - Fourmolu format checks for `src/` and `test/`.
 - HLint checks for `src/` and `test/`.
 - Unit and integration test executables under `test/`.
+- TypeScript editor linting, Knip unused-code checks, type checking, tests, and
+  bundling.
 
 Run only Markdown linting:
 
@@ -124,6 +126,12 @@ Run the TypeScript editor checks:
 
 ```sh
 make editor-check
+```
+
+Run only the TypeScript editor unused-code check:
+
+```sh
+make editor-knip
 ```
 
 The editor source lives under `src/TestApp/Editor/`. Bun compiles it into the

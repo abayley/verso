@@ -170,6 +170,21 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain("[Plain](/target) paragraph");
     });
 
+    it("given visual mode, when bullet list is selected, then the current block becomes an unordered list", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectText(editor, "Plain");
+
+        clickToolbarButton(editor, "Bullet List");
+
+        expect(editor.querySelector(".markdown-editor__surface ul li")?.textContent).toBe("Plain paragraph");
+        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
+        expect(editor.toMarkdown()).toContain("- Plain paragraph");
+    });
+
     it("given split mode, when visual text is styled, then Markdown source is updated", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.setAttribute("mode", "split");
@@ -260,6 +275,23 @@ describe("MarkdownEditorElement", (): void => {
         const link = editor.querySelector(".markdown-editor__split .markdown-editor__surface a");
         expect(link?.textContent).toBe("Markdown");
         expect(link?.getAttribute("href")).toBe("/target");
+    });
+
+    it("given split mode, when Markdown text is selected, then bullet list applies to the Markdown source", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Visual paragraph\n\nMarkdown paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectSourceText(editor, "Markdown");
+
+        clickToolbarButton(editor, "Bullet List");
+
+        expect(editor.toMarkdown()).toContain("- Markdown paragraph");
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface ul li")?.textContent).toBe(
+            "Markdown paragraph",
+        );
     });
 
     it("given source mode, when heading style is selected, then the current Markdown line becomes a heading", async (): Promise<void> => {

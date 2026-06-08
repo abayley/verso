@@ -12,6 +12,9 @@ export type VisualBlockStyle = "paragraph" | "heading-1" | "heading-2" | "headin
 /** Supported visual inline styles exposed by the editor toolbar. */
 export type VisualInlineStyle = "strong" | "emphasis" | "code" | "link";
 
+/** Supported visual structure commands exposed by the editor toolbar. */
+export type VisualStructureStyle = "bullet-list";
+
 type MarkdownSetContentOptions = SetContentOptions & {
     contentType: "markdown";
 };
@@ -127,6 +130,15 @@ export class TiptapVisualEditor {
                 );
             }
         }
+    }
+
+    /** Toggles one supported structural style at the current visual selection. */
+    public toggleStructure(style: VisualStructureStyle): boolean {
+        if (style === "bullet-list") {
+            return this.editor.chain().focus().toggleBulletList().run();
+        }
+
+        return false;
     }
 
     /** Releases Tiptap resources when the custom element disconnects. */

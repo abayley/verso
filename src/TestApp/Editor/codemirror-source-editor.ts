@@ -85,6 +85,23 @@ export class CodeMirrorSourceEditor {
         return this.wrapSelection("[", `](${href})`);
     }
 
+    /** Toggles a Markdown unordered-list marker on the current source line. */
+    public toggleBulletList(): boolean {
+        const selection = this.currentSourceSelection();
+        const line = this.view.state.doc.lineAt(selection?.to ?? this.view.state.selection.main.head);
+        const replacement = line.text.match(/^[-*+] /) ? line.text.replace(/^[-*+] /, "") : `- ${line.text}`;
+
+        this.view.dispatch({
+            changes: {
+                from: line.from,
+                insert: replacement,
+                to: line.to,
+            },
+        });
+
+        return true;
+    }
+
     /** Serialises the current source document to Markdown. */
     public toMarkdown(): string {
         return this.view.state.doc.toString();

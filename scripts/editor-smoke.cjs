@@ -63,6 +63,7 @@ async function main() {
     "Italic",
     "Code",
     "Link",
+    "Bullet List",
   ]);
   assert.equal(
     await page.locator(".markdown-editor__mode-button").innerText(),
@@ -311,6 +312,22 @@ async function main() {
     /\[Source pane\]\(\/target\) paragraph\./,
   );
   assert.equal(await page.locator(".markdown-editor__split .markdown-editor__surface a").innerText(), "Source pane");
+
+  const sourcePaneBulletMarkdown = "Source pane paragraph.";
+  await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", sourcePaneBulletMarkdown);
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".markdown-editor__split .markdown-editor__surface")
+      ?.innerText.includes("Source pane paragraph."),
+  );
+  await selectTextInElement(page, ".markdown-editor__split .markdown-editor__source .cm-content", "Source pane");
+  await page.getByRole("button", { name: "Bullet List" }).click();
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface ul li");
+  assert.match(
+    await sourceMarkdownValue(page, ".markdown-editor__split .markdown-editor__source"),
+    /- Source pane paragraph\./,
+  );
+  assert.equal(await page.locator(".markdown-editor__split .markdown-editor__surface ul li").innerText(), "Source pane paragraph.");
 
   await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", splitMarkdown);
   await page.waitForFunction(() =>

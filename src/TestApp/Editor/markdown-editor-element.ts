@@ -1,6 +1,11 @@
 import { CodeMirrorSourceEditor } from "./codemirror-source-editor.js";
 import { renderMarkdown } from "./markdown-render.js";
-import { TiptapVisualEditor, type VisualBlockStyle, type VisualInlineStyle } from "./tiptap-visual-editor.js";
+import {
+    TiptapVisualEditor,
+    type VisualBlockStyle,
+    type VisualInlineStyle,
+    type VisualStructureStyle,
+} from "./tiptap-visual-editor.js";
 
 type EditorMode = "visual" | "source" | "split";
 type ActivePane = "source" | "visual";
@@ -87,6 +92,7 @@ export class MarkdownEditorElement extends HTMLElement {
         toolbar.append(this.createInlineStyleButton("emphasis", "Italic"));
         toolbar.append(this.createInlineStyleButton("code", "Code"));
         toolbar.append(this.createInlineStyleButton("link", "Link"));
+        toolbar.append(this.createStructureButton("bullet-list", "Bullet List"));
 
         return toolbar;
     }
@@ -138,6 +144,21 @@ export class MarkdownEditorElement extends HTMLElement {
         });
         button.addEventListener("click", (): void => this.toggleInlineStyle(style));
         this.inlineStyleButtons.push(button);
+
+        return button;
+    }
+
+    /** Creates one structural style toolbar button. */
+    private createStructureButton(style: VisualStructureStyle, label: string): HTMLButtonElement {
+        const button = document.createElement("button");
+        button.className = "markdown-editor__structure-button";
+        button.textContent = label;
+        button.type = "button";
+        button.dataset["structureStyle"] = style;
+        button.addEventListener("mousedown", (event: MouseEvent): void => {
+            event.preventDefault();
+        });
+        button.addEventListener("click", (): void => this.toggleStructure(style));
 
         return button;
     }
@@ -297,6 +318,21 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         return href.trim();
+    }
+
+    /** Toggles a structural style through the active editor. */
+    private toggleStructure(style: VisualStructureStyle): void {
+        if (this.shouldUseSourceCommands()) {
+            if (style === "bullet-list") {
+                this.sourceEditor?.toggleBulletList();
+            }
+
+            return;
+        }
+
+        if (this.visualEditor?.toggleStructure(style)) {
+            this.handleVisualInput();
+        }
     }
 
     /** Checks whether toolbar commands should target the source editor. */

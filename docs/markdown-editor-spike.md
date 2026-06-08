@@ -511,9 +511,9 @@ editing with CodeMirror, and Web Awesome controls.
   `code`, and `link` marks through Tiptap visual mode and CodeMirror source
   mode.
 - [ ] Add structure controls for lists, blockquotes, fenced code blocks, and
-  thematic breaks. Added a Bullet List control through the visual/source command
-  seam. Ordered lists, blockquotes, fenced code blocks, and thematic breaks
-  remain.
+  thematic breaks. Added Bullet List and Ordered List controls through the
+  visual/source command seam. Blockquotes, fenced code blocks, and thematic
+  breaks remain.
 - [ ] Add theme switching.
 - [ ] Revisit whether Web Awesome should replace native toolbar controls.
 - [ ] Consider Lit for the editor shell once manual DOM state management becomes

@@ -64,6 +64,7 @@ async function main() {
     "Code",
     "Link",
     "Bullet List",
+    "Ordered List",
   ]);
   assert.equal(
     await page.locator(".markdown-editor__mode-button").innerText(),
@@ -328,6 +329,22 @@ async function main() {
     /- Source pane paragraph\./,
   );
   assert.equal(await page.locator(".markdown-editor__split .markdown-editor__surface ul li").innerText(), "Source pane paragraph.");
+
+  const sourcePaneOrderedMarkdown = "Source pane paragraph.";
+  await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", sourcePaneOrderedMarkdown);
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".markdown-editor__split .markdown-editor__surface")
+      ?.innerText.includes("Source pane paragraph."),
+  );
+  await selectTextInElement(page, ".markdown-editor__split .markdown-editor__source .cm-content", "Source pane");
+  await page.getByRole("button", { name: "Ordered List" }).click();
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface ol li");
+  assert.match(
+    await sourceMarkdownValue(page, ".markdown-editor__split .markdown-editor__source"),
+    /1\. Source pane paragraph\./,
+  );
+  assert.equal(await page.locator(".markdown-editor__split .markdown-editor__surface ol li").innerText(), "Source pane paragraph.");
 
   await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", splitMarkdown);
   await page.waitForFunction(() =>

@@ -87,9 +87,21 @@ export class CodeMirrorSourceEditor {
 
     /** Toggles a Markdown unordered-list marker on the current source line. */
     public toggleBulletList(): boolean {
+        return this.toggleLinePrefix(/^[-*+] /, "- ");
+    }
+
+    /** Toggles a Markdown ordered-list marker on the current source line. */
+    public toggleOrderedList(): boolean {
+        return this.toggleLinePrefix(/^\d+\. /, "1. ");
+    }
+
+    /** Toggles a Markdown line prefix on the current source line. */
+    private toggleLinePrefix(markerPattern: RegExp, marker: string): boolean {
         const selection = this.currentSourceSelection();
         const line = this.view.state.doc.lineAt(selection?.to ?? this.view.state.selection.main.head);
-        const replacement = line.text.match(/^[-*+] /) ? line.text.replace(/^[-*+] /, "") : `- ${line.text}`;
+        const replacement = line.text.match(markerPattern)
+            ? line.text.replace(markerPattern, "")
+            : `${marker}${line.text}`;
 
         this.view.dispatch({
             changes: {

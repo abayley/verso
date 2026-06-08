@@ -93,6 +93,7 @@ export class MarkdownEditorElement extends HTMLElement {
         toolbar.append(this.createInlineStyleButton("code", "Code"));
         toolbar.append(this.createInlineStyleButton("link", "Link"));
         toolbar.append(this.createStructureButton("bullet-list", "Bullet List"));
+        toolbar.append(this.createStructureButton("ordered-list", "Ordered List"));
 
         return toolbar;
     }
@@ -325,6 +326,10 @@ export class MarkdownEditorElement extends HTMLElement {
         if (this.shouldUseSourceCommands()) {
             if (style === "bullet-list") {
                 this.sourceEditor?.toggleBulletList();
+            }
+
+            if (style === "ordered-list") {
+                this.sourceEditor?.toggleOrderedList();
             }
 
             return;

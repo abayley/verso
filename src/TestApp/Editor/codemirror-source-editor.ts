@@ -75,6 +75,11 @@ export class CodeMirrorSourceEditor {
         return this.wrapSelection("*", "*");
     }
 
+    /** Toggles Markdown inline code markers around the current source selection. */
+    public toggleCode(): boolean {
+        return this.wrapSelection("`", "`");
+    }
+
     /** Serialises the current source document to Markdown. */
     public toMarkdown(): string {
         return this.view.state.doc.toString();

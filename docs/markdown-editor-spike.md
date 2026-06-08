@@ -507,8 +507,9 @@ editing with CodeMirror, and Web Awesome controls.
 - [x] Add the first style control: a block-style select that applies paragraph
   and heading levels one to three through Tiptap in visual mode.
 - [ ] Add inline style controls for strong, emphasis, inline code, and links.
-  Added Bold and Italic controls for `strong` and `emphasis` marks through
-  Tiptap visual mode and CodeMirror source mode. Inline code and links remain.
+  Added Bold, Italic, and Code controls for `strong`, `emphasis`, and inline
+  `code` marks through Tiptap visual mode and CodeMirror source mode. Links
+  remain.
 - [ ] Add structure controls for lists, blockquotes, fenced code blocks, and
   thematic breaks.
 - [ ] Add theme switching.

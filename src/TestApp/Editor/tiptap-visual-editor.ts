@@ -10,7 +10,7 @@ export type TiptapChangeHandler = () => void;
 export type VisualBlockStyle = "paragraph" | "heading-1" | "heading-2" | "heading-3";
 
 /** Supported visual inline styles exposed by the editor toolbar. */
-export type VisualInlineStyle = "strong" | "emphasis";
+export type VisualInlineStyle = "strong" | "emphasis" | "code";
 
 type MarkdownSetContentOptions = SetContentOptions & {
     contentType: "markdown";
@@ -100,23 +100,21 @@ export class TiptapVisualEditor {
 
         switch (style) {
             case "strong": {
-                const command = this.editor.chain();
-
-                if (selection) {
-                    command.setTextSelection(selection);
-                }
-
-                return command.focus().toggleBold().run();
+                return this.withCurrentSelection(selection, (editor: Editor): boolean =>
+                    editor.chain().focus().toggleBold().run(),
+                );
             }
 
             case "emphasis": {
-                const command = this.editor.chain();
+                return this.withCurrentSelection(selection, (editor: Editor): boolean =>
+                    editor.chain().focus().toggleItalic().run(),
+                );
+            }
 
-                if (selection) {
-                    command.setTextSelection(selection);
-                }
-
-                return command.focus().toggleItalic().run();
+            case "code": {
+                return this.withCurrentSelection(selection, (editor: Editor): boolean =>
+                    editor.chain().focus().toggleCode().run(),
+                );
             }
         }
     }
@@ -124,6 +122,18 @@ export class TiptapVisualEditor {
     /** Releases Tiptap resources when the custom element disconnects. */
     public destroy(): void {
         this.editor.destroy();
+    }
+
+    /** Restores the visual selection before running a toolbar command. */
+    private withCurrentSelection(
+        selection: { from: number; to: number } | null,
+        command: (editor: Editor) => boolean,
+    ): boolean {
+        if (selection) {
+            this.editor.commands.setTextSelection(selection);
+        }
+
+        return command(this.editor);
     }
 
     /** Converts supported literal list markers into list nodes while typing. */

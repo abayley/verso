@@ -85,6 +85,7 @@ export class MarkdownEditorElement extends HTMLElement {
         toolbar.append(this.styleSelect);
         toolbar.append(this.createInlineStyleButton("strong", "Bold"));
         toolbar.append(this.createInlineStyleButton("emphasis", "Italic"));
+        toolbar.append(this.createInlineStyleButton("code", "Code"));
 
         return toolbar;
     }
@@ -262,6 +263,10 @@ export class MarkdownEditorElement extends HTMLElement {
 
             if (style === "emphasis") {
                 this.sourceEditor?.toggleEmphasis();
+            }
+
+            if (style === "code") {
+                this.sourceEditor?.toggleCode();
             }
 
             return;

@@ -61,6 +61,7 @@ async function main() {
     "Visual",
     "Bold",
     "Italic",
+    "Code",
   ]);
   assert.equal(
     await page.locator(".markdown-editor__mode-button").innerText(),
@@ -272,6 +273,22 @@ async function main() {
     /\*Source pane\* paragraph\./,
   );
   assert.equal(await page.locator(".markdown-editor__split .markdown-editor__surface em").innerText(), "Source pane");
+
+  const sourcePaneCodeMarkdown = "Source pane paragraph.";
+  await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", sourcePaneCodeMarkdown);
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".markdown-editor__split .markdown-editor__surface")
+      ?.innerText.includes("Source pane paragraph."),
+  );
+  await selectTextInElement(page, ".markdown-editor__split .markdown-editor__source .cm-content", "Source pane");
+  await page.getByRole("button", { name: "Code" }).click();
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface code");
+  assert.match(
+    await sourceMarkdownValue(page, ".markdown-editor__split .markdown-editor__source"),
+    /`Source pane` paragraph\./,
+  );
+  assert.equal(await page.locator(".markdown-editor__split .markdown-editor__surface code").innerText(), "Source pane");
 
   await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", splitMarkdown);
   await page.waitForFunction(() =>

@@ -511,8 +511,8 @@ editing with CodeMirror, and Web Awesome controls.
   `code`, and `link` marks through Tiptap visual mode and CodeMirror source
   mode.
 - [ ] Add structure controls for lists, blockquotes, fenced code blocks, and
-  thematic breaks. Added Bullet List, Ordered List, and Blockquote controls
-  through the visual/source command seam. Fenced code blocks and thematic breaks
+  thematic breaks. Added Bullet List, Ordered List, Blockquote, and Thematic
+  Break controls through the visual/source command seam. Fenced code blocks
   remain.
 - [ ] Add theme switching.
 - [ ] Revisit whether Web Awesome should replace native toolbar controls.
@@ -563,6 +563,9 @@ Phase Six findings so far:
 - Blockquote works through the same structure-control seam as lists: the
   CodeMirror adapter toggles the current line prefix, while the Tiptap adapter
   owns the visual blockquote command.
+- Thematic Break follows the same active-pane structure-control seam: the source
+  adapter replaces the current line with `---`, while the Tiptap adapter owns
+  visual horizontal-rule insertion.
 - List items in the editor model now contain supported blocks, not only inline
   content. This keeps tight one-paragraph lists compact while allowing Markdown
   shapes such as blockquoted ordered lists with fenced code blocks.

@@ -279,6 +279,21 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain("> Plain paragraph");
     });
 
+    it("given visual mode, when thematic break is selected, then a horizontal rule is inserted", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectText(editor, "Plain");
+
+        clickToolbarButton(editor, "Thematic Break");
+
+        expect(editor.querySelector(".markdown-editor__surface hr")).toBeInstanceOf(HTMLElement);
+        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
+        expect(editor.toMarkdown()).toContain("---");
+    });
+
     it("given visual mode with a list, when tab and shift-tab are pressed, then the current list item indents and outdents", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = "- parent\n- child";
@@ -434,6 +449,23 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain("> Markdown paragraph");
         expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface blockquote")?.textContent).toBe(
             "Markdown paragraph",
+        );
+    });
+
+    it("given split mode, when Markdown text is selected, then thematic break applies to the Markdown source", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Visual paragraph\n\nMarkdown paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectSourceText(editor, "Markdown");
+
+        clickToolbarButton(editor, "Thematic Break");
+
+        expect(editor.toMarkdown()).toContain("Visual paragraph\n\n---");
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface hr")).toBeInstanceOf(
+            HTMLElement,
         );
     });
 

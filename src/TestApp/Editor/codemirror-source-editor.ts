@@ -103,6 +103,11 @@ export class CodeMirrorSourceEditor {
         return this.toggleLinePrefix(/^> /, "> ");
     }
 
+    /** Replaces the current source line with a Markdown thematic break. */
+    public insertThematicBreak(): boolean {
+        return this.replaceCurrentLine("---");
+    }
+
     /** Handles source editor keyboard shortcuts that should not leave the editor. */
     private handleKeyDown(event: KeyboardEvent): boolean {
         if (event.key !== "Tab") {
@@ -161,6 +166,22 @@ export class CodeMirrorSourceEditor {
             changes: {
                 from: line.from,
                 insert: replacement,
+                to: line.to,
+            },
+        });
+
+        return true;
+    }
+
+    /** Replaces the current source line with Markdown text. */
+    private replaceCurrentLine(markdownText: string): boolean {
+        const selection = this.currentSourceSelection();
+        const line = this.view.state.doc.lineAt(selection?.to ?? this.view.state.selection.main.head);
+
+        this.view.dispatch({
+            changes: {
+                from: line.from,
+                insert: markdownText,
                 to: line.to,
             },
         });

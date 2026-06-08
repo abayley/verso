@@ -66,6 +66,7 @@ async function main() {
     "Bullet List",
     "Ordered List",
     "Blockquote",
+    "Thematic Break",
   ]);
   assert.equal(
     await page.locator(".markdown-editor__mode-button").innerText(),
@@ -437,6 +438,18 @@ async function main() {
     await page.locator(".markdown-editor__split .markdown-editor__surface blockquote").innerText(),
     "Source pane paragraph.",
   );
+
+  const sourcePaneThematicBreakMarkdown = "Source pane paragraph.";
+  await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", sourcePaneThematicBreakMarkdown);
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".markdown-editor__split .markdown-editor__surface")
+      ?.innerText.includes("Source pane paragraph."),
+  );
+  await selectTextInElement(page, ".markdown-editor__split .markdown-editor__source .cm-content", "Source pane");
+  await page.getByRole("button", { name: "Thematic Break" }).click();
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface hr");
+  assert.equal(await sourceMarkdownValue(page, ".markdown-editor__split .markdown-editor__source"), "---");
 
   await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", splitMarkdown);
   await page.waitForFunction(() =>

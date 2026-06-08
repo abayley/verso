@@ -60,6 +60,7 @@ async function main() {
   assert.deepEqual(await page.locator(".markdown-editor__toolbar button").allInnerTexts(), [
     "Visual",
     "Bold",
+    "Italic",
   ]);
   assert.equal(
     await page.locator(".markdown-editor__mode-button").innerText(),
@@ -255,6 +256,22 @@ async function main() {
     /\*\*Source pane\*\* paragraph\./,
   );
   assert.equal(await page.locator(".markdown-editor__split .markdown-editor__surface strong").innerText(), "Source pane");
+
+  const sourcePaneItalicMarkdown = "Source pane paragraph.";
+  await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", sourcePaneItalicMarkdown);
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".markdown-editor__split .markdown-editor__surface")
+      ?.innerText.includes("Source pane paragraph."),
+  );
+  await selectTextInElement(page, ".markdown-editor__split .markdown-editor__source .cm-content", "Source pane");
+  await page.getByRole("button", { name: "Italic" }).click();
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface em");
+  assert.match(
+    await sourceMarkdownValue(page, ".markdown-editor__split .markdown-editor__source"),
+    /\*Source pane\* paragraph\./,
+  );
+  assert.equal(await page.locator(".markdown-editor__split .markdown-editor__surface em").innerText(), "Source pane");
 
   await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", splitMarkdown);
   await page.waitForFunction(() =>

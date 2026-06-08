@@ -507,8 +507,8 @@ editing with CodeMirror, and Web Awesome controls.
 - [x] Add the first style control: a block-style select that applies paragraph
   and heading levels one to three through Tiptap in visual mode.
 - [ ] Add inline style controls for strong, emphasis, inline code, and links.
-  Added a Bold control for the `strong` mark through Tiptap in visual mode.
-  Repeat the pattern for emphasis, inline code, and links.
+  Added Bold and Italic controls for `strong` and `emphasis` marks through
+  Tiptap visual mode and CodeMirror source mode. Inline code and links remain.
 - [ ] Add structure controls for lists, blockquotes, fenced code blocks, and
   thematic breaks.
 - [ ] Add theme switching.
@@ -543,6 +543,12 @@ Phase Six findings so far:
 - Visual and Markdown-only modes should show only the active editor pane. The
   rendered preview pane was removed from those modes; Markdown is still rendered
   internally for validation and split-mode synchronisation.
+- Tiptap's Markdown input rules should stay disabled for visual-mode headings so
+  typed hash prefixes remain literal text. List marker shortcuts are the current
+  exception because they map directly to Markdown list structure.
+- The inline toolbar seam works for simple mark controls across both panes:
+  visual commands stay in the Tiptap adapter, while source commands wrap the
+  active CodeMirror selection with Markdown delimiters.
 - The visual editor should not show the browser's default ProseMirror focus
   outline because it can overlap the caret at the start of a line. The outer
   editor border remains the visible editor boundary.

@@ -10,7 +10,7 @@ export type TiptapChangeHandler = () => void;
 export type VisualBlockStyle = "paragraph" | "heading-1" | "heading-2" | "heading-3";
 
 /** Supported visual inline styles exposed by the editor toolbar. */
-export type VisualInlineStyle = "strong";
+export type VisualInlineStyle = "strong" | "emphasis";
 
 type MarkdownSetContentOptions = SetContentOptions & {
     contentType: "markdown";
@@ -107,6 +107,16 @@ export class TiptapVisualEditor {
                 }
 
                 return command.focus().toggleBold().run();
+            }
+
+            case "emphasis": {
+                const command = this.editor.chain();
+
+                if (selection) {
+                    command.setTextSelection(selection);
+                }
+
+                return command.focus().toggleItalic().run();
             }
         }
     }

@@ -115,6 +115,21 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain("**Plain** paragraph");
     });
 
+    it("given visual mode, when italic is selected, then the selected text becomes emphasis", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectText(editor, "Plain");
+
+        clickToolbarButton(editor, "Italic");
+
+        expect(editor.querySelector(".markdown-editor__surface em")?.textContent).toBe("Plain");
+        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
+        expect(editor.toMarkdown()).toContain("*Plain* paragraph");
+    });
+
     it("given split mode, when visual text is styled, then Markdown source is updated", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.setAttribute("mode", "split");
@@ -148,6 +163,23 @@ describe("MarkdownEditorElement", (): void => {
 
         expect(editor.toMarkdown()).toContain("**Markdown** paragraph");
         expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface strong")?.textContent).toBe(
+            "Markdown",
+        );
+    });
+
+    it("given split mode, when Markdown text is selected, then italic applies to the Markdown source", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Visual paragraph\n\nMarkdown paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectSourceText(editor, "Markdown");
+
+        clickToolbarButton(editor, "Italic");
+
+        expect(editor.toMarkdown()).toContain("*Markdown* paragraph");
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface em")?.textContent).toBe(
             "Markdown",
         );
     });

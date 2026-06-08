@@ -67,22 +67,12 @@ export class CodeMirrorSourceEditor {
 
     /** Toggles Markdown strong markers around the current source selection. */
     public toggleStrong(): boolean {
-        const selection = this.currentSourceSelection();
+        return this.wrapSelection("**", "**");
+    }
 
-        if (!selection || selection.from === selection.to) {
-            return false;
-        }
-
-        const selectedText = this.view.state.doc.sliceString(selection.from, selection.to);
-        this.view.dispatch({
-            changes: {
-                from: selection.from,
-                insert: `**${selectedText}**`,
-                to: selection.to,
-            },
-        });
-
-        return true;
+    /** Toggles Markdown emphasis markers around the current source selection. */
+    public toggleEmphasis(): boolean {
+        return this.wrapSelection("*", "*");
     }
 
     /** Serialises the current source document to Markdown. */
@@ -93,6 +83,26 @@ export class CodeMirrorSourceEditor {
     /** Releases CodeMirror resources when the source editor is removed. */
     public destroy(): void {
         this.view.destroy();
+    }
+
+    /** Wraps the current source selection with Markdown marker text. */
+    private wrapSelection(prefix: string, suffix: string): boolean {
+        const selection = this.currentSourceSelection();
+
+        if (!selection || selection.from === selection.to) {
+            return false;
+        }
+
+        const selectedText = this.view.state.doc.sliceString(selection.from, selection.to);
+        this.view.dispatch({
+            changes: {
+                from: selection.from,
+                insert: `${prefix}${selectedText}${suffix}`,
+                to: selection.to,
+            },
+        });
+
+        return true;
     }
 
     /** Converts the current browser selection into CodeMirror document positions. */

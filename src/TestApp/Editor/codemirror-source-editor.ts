@@ -103,6 +103,27 @@ export class CodeMirrorSourceEditor {
         return this.toggleLinePrefix(/^> /, "> ");
     }
 
+    /** Wraps the source selection, or current line, in a Markdown fenced code block. */
+    public insertCodeBlock(): boolean {
+        const selection = this.currentSourceSelection();
+
+        if (selection && selection.from !== selection.to) {
+            const selectedText = this.view.state.doc.sliceString(selection.from, selection.to);
+
+            this.view.dispatch({
+                changes: {
+                    from: selection.from,
+                    insert: ["```", selectedText, "```"].join("\n"),
+                    to: selection.to,
+                },
+            });
+
+            return true;
+        }
+
+        return this.replaceCurrentLine(["```", this.currentLineText(), "```"].join("\n"));
+    }
+
     /** Replaces the current source line with a Markdown thematic break. */
     public insertThematicBreak(): boolean {
         return this.replaceCurrentLine("---");
@@ -187,6 +208,14 @@ export class CodeMirrorSourceEditor {
         });
 
         return true;
+    }
+
+    /** Returns the current source line text. */
+    private currentLineText(): string {
+        const selection = this.currentSourceSelection();
+        const line = this.view.state.doc.lineAt(selection?.to ?? this.view.state.selection.main.head);
+
+        return line.text;
     }
 
     /** Serialises the current source document to Markdown. */

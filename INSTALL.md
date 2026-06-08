@@ -10,10 +10,28 @@ Install or build these tools first:
 
 - MicroHs 0.16.0.0
 - MicroCabal 0.5.10.0
-- `fourmolu`
-- `hlint`
 - `make`
 - `markdownlint-cli2`
+
+### GHC-hosted tools
+
+Although this project uses MicroHs, some development tools still need GHC.
+
+- [ghcup][ghcup]
+  This asks several questions; the exact answers do not affect this project
+  setup.
+
+Once GHC is installed, use `cabal` to install the other tools:
+
+```shell
+cabal install fourmolu
+cabal install hlint
+cabal install haddock
+```
+
+The executables are typically installed to ~/.cabal/bin/, so ensure that is on your PATH.
+
+[ghcup]: https://www.haskell.org/ghcup/
 
 The current Makefile expects `mhs`, `fourmolu`, `hlint`, and
 `markdownlint-cli2` to be visible on `PATH`.

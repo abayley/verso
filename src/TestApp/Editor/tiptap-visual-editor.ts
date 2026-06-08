@@ -14,7 +14,7 @@ export type VisualBlockStyle = "paragraph" | "heading-1" | "heading-2" | "headin
 export type VisualInlineStyle = "strong" | "emphasis" | "code" | "link";
 
 /** Supported visual structure commands exposed by the editor toolbar. */
-export type VisualStructureStyle = "bullet-list" | "ordered-list" | "blockquote" | "thematic-break";
+export type VisualStructureStyle = "bullet-list" | "ordered-list" | "blockquote" | "code-block" | "thematic-break";
 
 type MarkdownSetContentOptions = SetContentOptions & {
     contentType: "markdown";
@@ -150,6 +150,10 @@ export class TiptapVisualEditor {
 
         if (style === "blockquote") {
             return this.editor.chain().focus().toggleBlockquote().run();
+        }
+
+        if (style === "code-block") {
+            return this.editor.chain().focus().toggleCodeBlock().run();
         }
 
         if (style === "thematic-break") {

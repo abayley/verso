@@ -95,6 +95,7 @@ export class MarkdownEditorElement extends HTMLElement {
         toolbar.append(this.createStructureButton("bullet-list", "Bullet List"));
         toolbar.append(this.createStructureButton("ordered-list", "Ordered List"));
         toolbar.append(this.createStructureButton("blockquote", "Blockquote"));
+        toolbar.append(this.createStructureButton("code-block", "Code Block"));
         toolbar.append(this.createStructureButton("thematic-break", "Thematic Break"));
 
         return toolbar;
@@ -336,6 +337,10 @@ export class MarkdownEditorElement extends HTMLElement {
 
             if (style === "blockquote") {
                 this.sourceEditor?.toggleBlockquote();
+            }
+
+            if (style === "code-block") {
+                this.sourceEditor?.insertCodeBlock();
             }
 
             if (style === "thematic-break") {

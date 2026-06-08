@@ -294,6 +294,21 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain("---");
     });
 
+    it("given visual mode, when code block is selected, then the current block becomes fenced code", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "const value = 1;";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectText(editor, "const value");
+
+        clickToolbarButton(editor, "Code Block");
+
+        expect(editor.querySelector(".markdown-editor__surface pre code")?.textContent).toBe("const value = 1;");
+        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
+        expect(editor.toMarkdown()).toBe(["```", "const value = 1;", "```"].join("\n"));
+    });
+
     it("given visual mode with a list, when tab and shift-tab are pressed, then the current list item indents and outdents", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = "- parent\n- child";
@@ -448,6 +463,23 @@ describe("MarkdownEditorElement", (): void => {
 
         expect(editor.toMarkdown()).toContain("> Markdown paragraph");
         expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface blockquote")?.textContent).toBe(
+            "Markdown paragraph",
+        );
+    });
+
+    it("given split mode, when Markdown text is selected, then code block applies to the Markdown source", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Visual paragraph\n\nMarkdown paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectSourceText(editor, "Markdown paragraph");
+
+        clickToolbarButton(editor, "Code Block");
+
+        expect(editor.toMarkdown()).toContain(["```", "Markdown paragraph", "```"].join("\n"));
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface pre code")?.textContent).toBe(
             "Markdown paragraph",
         );
     });

@@ -66,6 +66,7 @@ async function main() {
     "Bullet List",
     "Ordered List",
     "Blockquote",
+    "Code Block",
     "Thematic Break",
   ]);
   assert.equal(
@@ -361,7 +362,7 @@ async function main() {
       ?.innerText.includes("Source pane paragraph."),
   );
   await selectTextInElement(page, ".markdown-editor__split .markdown-editor__source .cm-content", "Source pane");
-  await page.getByRole("button", { name: "Code" }).click();
+  await page.getByRole("button", { exact: true, name: "Code" }).click();
   await page.waitForSelector(".markdown-editor__split .markdown-editor__surface code");
   assert.match(
     await sourceMarkdownValue(page, ".markdown-editor__split .markdown-editor__source"),
@@ -436,6 +437,25 @@ async function main() {
   );
   assert.equal(
     await page.locator(".markdown-editor__split .markdown-editor__surface blockquote").innerText(),
+    "Source pane paragraph.",
+  );
+
+  const sourcePaneCodeBlockMarkdown = "Source pane paragraph.";
+  await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", sourcePaneCodeBlockMarkdown);
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".markdown-editor__split .markdown-editor__surface")
+      ?.innerText.includes("Source pane paragraph."),
+  );
+  await selectTextInElement(page, ".markdown-editor__split .markdown-editor__source .cm-content", "Source pane paragraph.");
+  await page.getByRole("button", { name: "Code Block" }).click();
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface pre code");
+  assert.equal(
+    await sourceMarkdownValue(page, ".markdown-editor__split .markdown-editor__source"),
+    ["```", "Source pane paragraph.", "```"].join("\n"),
+  );
+  assert.equal(
+    await page.locator(".markdown-editor__split .markdown-editor__surface pre code").innerText(),
     "Source pane paragraph.",
   );
 

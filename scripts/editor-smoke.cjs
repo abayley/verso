@@ -130,6 +130,29 @@ async function main() {
   await page.locator(".markdown-editor__mode-button").click();
   await page.waitForSelector(".markdown-editor__source .cm-editor");
   assert.match(await sourceMarkdownValue(page), /- List item/);
+  await fillSourceMarkdown(page, ".markdown-editor__source", "Indented paragraph");
+  await selectTextInElement(page, ".markdown-editor__source .cm-content", "Indented");
+  await page.keyboard.press("Tab");
+  assert.equal(await sourceMarkdownValue(page), "    Indented paragraph");
+  await page.keyboard.press("Shift+Tab");
+  assert.equal(await sourceMarkdownValue(page), "Indented paragraph");
+
+  const visualNestedListMarkdown = "- parent\n- child";
+  await fillSourceMarkdown(page, ".markdown-editor__source", visualNestedListMarkdown);
+  await page.locator(".markdown-editor__mode-button").click();
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface li");
+  await page.locator(".markdown-editor__mode-button").click();
+  await page.waitForSelector(".markdown-editor__surface li");
+  await selectTextInElement(page, ".markdown-editor__surface .ProseMirror", "child");
+  await page.keyboard.press("Tab");
+  await page.waitForFunction(() => document.querySelector("markdown-editor")?.toMarkdown().includes("- parent\n  - child"));
+  assert.equal(await editorMarkdownValue(page), "- parent\n  - child");
+  await page.keyboard.press("Shift+Tab");
+  await page.waitForFunction(() => document.querySelector("markdown-editor")?.toMarkdown() === "- parent\n- child");
+  assert.equal(await editorMarkdownValue(page), visualNestedListMarkdown);
+
+  await page.locator(".markdown-editor__mode-button").click();
+  await page.waitForSelector(".markdown-editor__source .cm-editor");
   await fillSourceMarkdown(
     page,
     ".markdown-editor__source",
@@ -169,6 +192,55 @@ async function main() {
     await page.locator(".markdown-editor__error").innerText(),
     "Unsupported Markdown node for editor subset: html",
   );
+
+  const quotedSpreadListMarkdown = [
+    "> 1. xxx",
+    "> 2. yyy",
+    ">    ",
+    ">    ```typescript",
+    ">    export type EditorBlock = BlockquoteBlock | CodeBlock | HeadingBlock | HorizontalRuleBlock | ListBlock | ParagraphBlock;",
+    ">    ```",
+  ].join("\n");
+  await fillSourceMarkdown(page, ".markdown-editor__source", quotedSpreadListMarkdown);
+  await page.waitForFunction(() => document.querySelector(".markdown-editor__error")?.hidden === true);
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.waitForFunction(() =>
+    document
+      .querySelector("#save-status")
+      ?.innerText.includes("Saved Markdown document: > 1. xxx"),
+  );
+  assert.equal(await page.locator("#markdown-field").inputValue(), quotedSpreadListMarkdown);
+
+  const listBlockquoteMarkdown = ["- > # blockquote heading 1", "  >", "  > paragraph 1"].join("\n");
+  await fillSourceMarkdown(page, ".markdown-editor__source", listBlockquoteMarkdown);
+  await page.locator(".markdown-editor__mode-button").click();
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface blockquote h1");
+  await page.locator(".markdown-editor__mode-button").click();
+  await page.waitForSelector(".markdown-editor__surface blockquote h1");
+  assert.equal(await editorMarkdownValue(page), listBlockquoteMarkdown);
+
+  await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
+  await page.waitForSelector(".markdown-editor__source .cm-editor");
+  const quotedOrderedListWithCodeMarkdown = [
+    "> 1. item 1",
+    "> 2. item 2",
+    ">    ",
+    ">    ```shell",
+    ">    ls -al",
+    ">    ps -ef",
+    ">    ```",
+    ">",
+    "> 3. item 3",
+  ].join("\n");
+  await fillSourceMarkdown(page, ".markdown-editor__source", quotedOrderedListWithCodeMarkdown);
+  await page.locator(".markdown-editor__mode-button").click();
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface blockquote ol");
+  await page.locator(".markdown-editor__mode-button").click();
+  await page.waitForSelector(".markdown-editor__surface blockquote ol");
+  assert.equal(await editorMarkdownValue(page), quotedOrderedListWithCodeMarkdown);
+
+  await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
+  await page.waitForSelector(".markdown-editor__source .cm-editor");
 
   const sourceMarkdown = [
     "# Source heading",
@@ -446,12 +518,18 @@ async function sourceMarkdownValue(page, rootSelector = ".markdown-editor__sourc
   return normaliseCodeMirrorText(await page.locator(`${rootSelector} .cm-content`).innerText());
 }
 
+async function editorMarkdownValue(page) {
+  return page.locator("markdown-editor").evaluate((editor) => editor.toMarkdown());
+}
+
 function normaliseCodeMirrorText(text) {
   return text.replaceAll("\u00a0", " ");
 }
 
 async function selectTextInElement(page, selector, text) {
   await page.locator(selector).evaluate((root, selectedText) => {
+    root.focus();
+
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node = walker.nextNode();
 

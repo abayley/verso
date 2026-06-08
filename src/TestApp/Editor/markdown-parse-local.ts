@@ -1,4 +1,4 @@
-import type { EditorBlock, EditorDocument, InlineNode } from "./editor-model.js";
+import type { EditorBlock, EditorDocument, InlineNode, ListItemBlock } from "./editor-model.js";
 
 interface DelimitedMarkdown {
     value: string;
@@ -32,7 +32,7 @@ function parseBlock(block: string): EditorBlock {
 
     if (isUnorderedListBlock(block)) {
         return {
-            items: block.split("\n").map((line: string): InlineNode[] => parseInlineMarkdown(line.trim().slice(2))),
+            items: block.split("\n").map((line: string): ListItemBlock => listItemFromInlineText(line.trim().slice(2))),
             ordered: false,
             type: "list",
         };
@@ -40,7 +40,9 @@ function parseBlock(block: string): EditorBlock {
 
     if (isOrderedListBlock(block)) {
         return {
-            items: block.split("\n").map((line: string): InlineNode[] => parseInlineMarkdown(orderedItemText(line))),
+            items: block
+                .split("\n")
+                .map((line: string): ListItemBlock => listItemFromInlineText(orderedItemText(line))),
             ordered: true,
             type: "list",
         };
@@ -73,6 +75,18 @@ function parseBlock(block: string): EditorBlock {
     return {
         children: parseInlineMarkdown(block),
         type: "paragraph",
+    };
+}
+
+/** Builds a tight paragraph-only list item from inline Markdown. */
+function listItemFromInlineText(markdown: string): ListItemBlock {
+    return {
+        blocks: [
+            {
+                children: parseInlineMarkdown(markdown),
+                type: "paragraph",
+            },
+        ],
     };
 }
 

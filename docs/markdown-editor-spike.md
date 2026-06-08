@@ -563,6 +563,18 @@ Phase Six findings so far:
 - Blockquote works through the same structure-control seam as lists: the
   CodeMirror adapter toggles the current line prefix, while the Tiptap adapter
   owns the visual blockquote command.
+- List items in the editor model now contain supported blocks, not only inline
+  content. This keeps tight one-paragraph lists compact while allowing Markdown
+  shapes such as blockquoted ordered lists with fenced code blocks.
+- Visual serialisation now uses the local editor model rather than Tiptap's
+  Markdown serializer so nested list-item blocks keep their Markdown
+  indentation when switching modes.
+- Spread list items serialise as loose before the following item, and
+  blockquote serialisation avoids adding an extra optional space to already
+  indented code-block content.
+- Tab and Shift-Tab are handled inside both editor panes: CodeMirror indents or
+  outdents the current Markdown line, while Tiptap sinks or lifts the current
+  list item in visual mode.
 - The visual editor should not show the browser's default ProseMirror focus
   outline because it can overlap the caret at the start of a line. The outer
   editor border remains the visible editor boundary.

@@ -1,4 +1,4 @@
-import type { EditorBlock, EditorDocument, InlineNode } from "./editor-model.js";
+import type { EditorBlock, EditorDocument, InlineNode, ListItemBlock } from "./editor-model.js";
 import { parseMarkdown } from "./markdown-parse.js";
 
 /** Renders the supported Markdown subset to HTML. */
@@ -20,9 +20,7 @@ function renderBlock(block: EditorBlock): string {
     if (block.type === "list") {
         const tag = block.ordered ? "ol" : "ul";
 
-        return `<${tag}>${block.items
-            .map((item: InlineNode[]): string => `<li>${renderInlineNodes(item)}</li>`)
-            .join("")}</${tag}>`;
+        return `<${tag}>${block.items.map((item: ListItemBlock): string => renderListItem(item)).join("")}</${tag}>`;
     }
 
     if (block.type === "horizontalRule") {
@@ -40,6 +38,15 @@ function renderBlock(block: EditorBlock): string {
     }
 
     return `<p>${renderInlineNodes(block.children)}</p>`;
+}
+
+/** Renders one list item, keeping tight single-paragraph items compact. */
+function renderListItem(item: ListItemBlock): string {
+    if (item.blocks.length === 1 && item.blocks[0]?.type === "paragraph") {
+        return `<li>${renderInlineNodes(item.blocks[0].children)}</li>`;
+    }
+
+    return `<li>${item.blocks.map((child: EditorBlock): string => renderBlock(child)).join("")}</li>`;
 }
 
 /** Renders supported inline nodes to HTML. */

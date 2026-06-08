@@ -27,9 +27,13 @@ interface ParagraphBlock {
 }
 
 interface ListBlock {
-    items: InlineNode[][];
+    items: ListItemBlock[];
     ordered: boolean;
     type: "list";
+}
+
+export interface ListItemBlock {
+    blocks: EditorBlock[];
 }
 
 interface HorizontalRuleBlock {

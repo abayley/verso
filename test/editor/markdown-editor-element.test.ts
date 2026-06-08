@@ -45,6 +45,26 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
     });
 
+    it("given source mode with a quoted list item containing code, when initialised, then it accepts the Markdown", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "source");
+        editor.textContent = [
+            "> 1. xxx",
+            "> 2. yyy",
+            ">    ",
+            ">    ```typescript",
+            ">    export type EditorBlock = BlockquoteBlock | CodeBlock | HeadingBlock | HorizontalRuleBlock | ListBlock | ParagraphBlock;",
+            ">    ```",
+        ].join("\n");
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        expect((editor.querySelector(".markdown-editor__error") as HTMLElement | null)?.hidden).toBe(true);
+        expect(editor.toMarkdown()).toContain("export type EditorBlock");
+        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
+    });
+
     it("given visual mode, when initialised, then it uses Tiptap and serialises Markdown", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = "# Heading\n\nParagraph with **strong** text.";
@@ -88,6 +108,50 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__surface .ProseMirror")).toBeInstanceOf(HTMLElement);
         expect(editor.querySelector(".markdown-editor__surface strong")?.textContent).toBe("strong");
         expect(modeButton(editor).textContent).toBe("Visual");
+    });
+
+    it("given source mode with a list item containing a blockquote, when cycled through split to visual, then Markdown nesting is preserved", async (): Promise<void> => {
+        const markdown = ["- > # blockquote heading 1", "  >", "  > paragraph 1"].join("\n");
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "source");
+        editor.textContent = markdown;
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        modeButton(editor).click();
+        expect(modeButton(editor).textContent).toBe("Split");
+        modeButton(editor).click();
+        expect(modeButton(editor).textContent).toBe("Visual");
+
+        expect(editor.toMarkdown()).toBe(markdown);
+    });
+
+    it("given source mode with a blockquote containing a spread ordered list, when cycled through split to visual, then Markdown nesting is preserved", async (): Promise<void> => {
+        const markdown = [
+            "> 1. item 1",
+            "> 2. item 2",
+            ">    ",
+            ">    ```shell",
+            ">    ls -al",
+            ">    ps -ef",
+            ">    ```",
+            ">",
+            "> 3. item 3",
+        ].join("\n");
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "source");
+        editor.textContent = markdown;
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        modeButton(editor).click();
+        expect(modeButton(editor).textContent).toBe("Split");
+        modeButton(editor).click();
+        expect(modeButton(editor).textContent).toBe("Visual");
+
+        expect(editor.toMarkdown()).toBe(markdown);
     });
 
     it("given visual mode, when heading style is selected, then the current block becomes a heading", async (): Promise<void> => {
@@ -213,6 +277,21 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__surface blockquote")?.textContent).toBe("Plain paragraph");
         expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
         expect(editor.toMarkdown()).toContain("> Plain paragraph");
+    });
+
+    it("given visual mode with a list, when tab and shift-tab are pressed, then the current list item indents and outdents", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "- parent\n- child";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectText(editor, "child");
+
+        dispatchVisualKey(editor, "Tab");
+        expect(editor.toMarkdown()).toContain("- parent\n  - child");
+
+        dispatchVisualKey(editor, "Tab", true);
+        expect(editor.toMarkdown()).toContain("- parent\n- child");
     });
 
     it("given split mode, when visual text is styled, then Markdown source is updated", async (): Promise<void> => {
@@ -373,6 +452,22 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
     });
 
+    it("given source mode, when tab and shift-tab are pressed, then the current Markdown line indents and outdents", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "source");
+        editor.textContent = "Indented paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        placeSourceCursor(editor, "Indented");
+
+        dispatchSourceKey(editor, "Tab");
+        expect(editor.toMarkdown()).toBe("    Indented paragraph");
+
+        dispatchSourceKey(editor, "Tab", true);
+        expect(editor.toMarkdown()).toBe("Indented paragraph");
+    });
+
     it("given unsupported source Markdown, when edited, then it does not dispatch a changed event", async (): Promise<void> => {
         const editor = document.createElement(elementName);
         editor.setAttribute("mode", "source");
@@ -513,6 +608,28 @@ function selectSourceText(editor: Element, text: string): void {
     selection?.removeAllRanges();
     selection?.addRange(range);
     source.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+}
+
+/** Dispatches a keydown event to the CodeMirror source editor. */
+function dispatchSourceKey(editor: Element, key: string, shiftKey = false): void {
+    const source = editor.querySelector(".markdown-editor__source .cm-content");
+
+    if (!(source instanceof HTMLElement)) {
+        throw new Error("Expected source editor content.");
+    }
+
+    source.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key, shiftKey }));
+}
+
+/** Dispatches a keydown event to the visual editor surface. */
+function dispatchVisualKey(editor: Element, key: string, shiftKey = false): void {
+    const surface = editor.querySelector(".markdown-editor__surface .ProseMirror");
+
+    if (!(surface instanceof HTMLElement)) {
+        throw new Error("Expected visual editor content.");
+    }
+
+    surface.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key, shiftKey }));
 }
 
 /** Places the cursor at the beginning of matching text inside the CodeMirror source editor. */

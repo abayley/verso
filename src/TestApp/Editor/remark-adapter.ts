@@ -16,7 +16,7 @@ import type {
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
-import type { EditorBlock, EditorDocument, InlineNode } from "./editor-model.js";
+import type { EditorBlock, EditorDocument, InlineNode, ListItemBlock } from "./editor-model.js";
 
 /** Parses Markdown with remark and converts supported mdast nodes to the editor document model. */
 export function parseMarkdownWithRemark(markdown: string): EditorDocument {
@@ -99,25 +99,21 @@ function paragraphFromMdast(node: Paragraph): EditorBlock {
 /** Converts a supported mdast list node into an editor list. */
 function listFromMdast(node: List): EditorBlock {
     return {
-        items: node.children.map((item: ListItem): InlineNode[] => listItemInlineNodes(item)),
+        items: node.children.map((item: ListItem): ListItemBlock => listItemFromMdast(item)),
         ordered: node.ordered === true,
         type: "list",
     };
 }
 
-/** Converts a supported single-paragraph mdast list item into editor inline nodes. */
-function listItemInlineNodes(item: ListItem): InlineNode[] {
-    if (item.children.length !== 1) {
-        throw unsupportedNode("listItem:spread");
+/** Converts a supported mdast list item into editor item blocks. */
+function listItemFromMdast(item: ListItem): ListItemBlock {
+    if (item.children.length === 0) {
+        throw unsupportedNode("listItem:empty");
     }
 
-    const child = item.children[0];
-
-    if (child?.type !== "paragraph") {
-        throw unsupportedNode(`listItem:${child?.type ?? "empty"}`);
-    }
-
-    return inlineNodesFromMdast(child.children);
+    return {
+        blocks: item.children.map((child: RootContent): EditorBlock => blockFromMdast(child)),
+    };
 }
 
 /** Converts supported mdast phrasing nodes into editor inline nodes. */

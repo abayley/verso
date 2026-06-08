@@ -332,6 +332,7 @@ isBlockquoteBlock block =
 isBlockquoteLine :: String -> Bool
 isBlockquoteLine row =
     case trimStart row of
+        '>' : rest | all isSpace rest -> True
         '>' : ' ' : rest -> not (null (trim rest))
         _ -> False
 

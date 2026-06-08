@@ -2,6 +2,7 @@ import { Editor, type JSONContent, type SetContentOptions } from "@tiptap/core";
 import Heading from "@tiptap/extension-heading";
 import { Markdown } from "@tiptap/markdown";
 import StarterKit from "@tiptap/starter-kit";
+import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
 
 /** Callback fired when the visual editor content changes. */
 export type TiptapChangeHandler = () => void;
@@ -52,6 +53,9 @@ export class TiptapVisualEditor {
                 }),
             ],
             injectCSS: false,
+            editorProps: {
+                handleKeyDown: (_view, event: KeyboardEvent): boolean => this.handleKeyDown(event),
+            },
             onUpdate: (): void => {
                 if (this.applyListMarkerShortcut()) {
                     return;
@@ -69,7 +73,9 @@ export class TiptapVisualEditor {
 
     /** Serialises the current Tiptap document to Markdown. */
     public toMarkdown(): string {
-        return escapeLiteralParagraphMarkers(this.editor.getMarkdown(), this.editor.getJSON());
+        const markdown = documentToMarkdown(documentFromElements(editorContentElements(this.editor.view.dom)));
+
+        return escapeLiteralParagraphMarkers(markdown, this.editor.getJSON());
     }
 
     /** Replaces the current visual document from Markdown. */
@@ -154,6 +160,27 @@ export class TiptapVisualEditor {
         this.editor.destroy();
     }
 
+    /** Handles visual editor keyboard shortcuts that should stay inside the editor. */
+    private handleKeyDown(event: KeyboardEvent): boolean {
+        if (event.key !== "Tab") {
+            return false;
+        }
+
+        event.preventDefault();
+
+        const selection = this.currentVisualSelection();
+
+        if (event.shiftKey) {
+            return this.withCurrentSelection(selection, (editor: Editor): boolean =>
+                editor.chain().focus().liftListItem("listItem").run(),
+            );
+        }
+
+        return this.withCurrentSelection(selection, (editor: Editor): boolean =>
+            editor.chain().focus().sinkListItem("listItem").run(),
+        );
+    }
+
     /** Restores the visual selection before running a toolbar command. */
     private withCurrentSelection(
         selection: { from: number; to: number } | null,
@@ -203,6 +230,22 @@ export class TiptapVisualEditor {
             to: Math.max(anchor, focus),
         };
     }
+}
+
+/** Returns visual editor child blocks that represent Markdown content. */
+function editorContentElements(root: HTMLElement): Element[] {
+    return Array.from(root.children).filter((element: Element): boolean => !isEmptyParagraphElement(element));
+}
+
+/** Checks whether a visual paragraph is only Tiptap's empty trailing block. */
+function isEmptyParagraphElement(element: Element): boolean {
+    if (element.tagName !== "P" || element.textContent !== "") {
+        return false;
+    }
+
+    return Array.from(element.childNodes).every(
+        (child: ChildNode): boolean => child.nodeType === Node.ELEMENT_NODE && (child as Element).tagName === "BR",
+    );
 }
 
 /** Converts toolbar style identifiers into Tiptap heading levels. */

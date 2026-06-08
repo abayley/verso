@@ -43,6 +43,11 @@ spec =
             response <- appForTest (request POST ["documents", "home"] "markdown=%3E+Quoted+text.")
             statusCode (responseStatus response) `shouldBe` 200
             bodyText response `shouldBe` "<p id=\"save-status\">Saved Markdown document: &gt; Quoted text.</p>"
+        it "given blockquoted ordered list with fenced code, when routing, then save status fragment is returned" $ do
+            response <- appForTest (request POST ["documents", "home"] "markdown=%3E+1.+xxx%0A%3E+2.+yyy%0A%3E++++%0A%3E++++%60%60%60typescript%0A%3E++++export+type+EditorBlock+%3D+BlockquoteBlock+%7C+CodeBlock+%7C+HeadingBlock+%7C+HorizontalRuleBlock+%7C+ListBlock+%7C+ParagraphBlock%3B%0A%3E++++%60%60%60")
+            statusCode (responseStatus response) `shouldBe` 200
+            bodyText response `shouldInclude` "Saved Markdown document: &gt; 1. xxx"
+            bodyText response `shouldInclude` "export type EditorBlock"
         it "given raw html form post, when routing, then validation fragment is returned" $ do
             response <- appForTest (request POST ["documents", "home"] "markdown=%3Cscript%3Ealert(1)%3C%2Fscript%3E")
             statusCode (responseStatus response) `shouldBe` 200

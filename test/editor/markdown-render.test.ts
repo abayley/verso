@@ -45,6 +45,24 @@ describe("renderMarkdown", (): void => {
         );
     });
 
+    it("given a blockquote with a spread list item, when rendering, then it renders the nested blocks", (): void => {
+        const markdown = [
+            "> 1. xxx",
+            "> 2. yyy",
+            ">    ",
+            ">    ```typescript",
+            ">    export type EditorBlock = BlockquoteBlock | CodeBlock | HeadingBlock | HorizontalRuleBlock | ListBlock | ParagraphBlock;",
+            ">    ```",
+        ].join("\n");
+
+        expect(renderMarkdown(markdown)).toBe(
+            "<blockquote><ol><li>xxx</li><li>" +
+                "<p>yyy</p>" +
+                '<pre><code class="language-typescript">export type EditorBlock = BlockquoteBlock | CodeBlock | HeadingBlock | HorizontalRuleBlock | ListBlock | ParagraphBlock;</code></pre>' +
+                "</li></ol></blockquote>",
+        );
+    });
+
     it("given a hard line break, when rendering, then it renders a line break element", (): void => {
         expect(renderMarkdown(["First line\\", "second line."].join("\n"))).toBe("<p>First line<br>second line.</p>");
     });

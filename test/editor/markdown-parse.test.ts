@@ -41,12 +41,46 @@ describe("parseMarkdown", (): void => {
                     type: "paragraph",
                 },
                 {
-                    items: [[{ text: "first", type: "text" }], [{ text: "second", type: "text" }]],
+                    items: [
+                        {
+                            blocks: [
+                                {
+                                    children: [{ text: "first", type: "text" }],
+                                    type: "paragraph",
+                                },
+                            ],
+                        },
+                        {
+                            blocks: [
+                                {
+                                    children: [{ text: "second", type: "text" }],
+                                    type: "paragraph",
+                                },
+                            ],
+                        },
+                    ],
                     ordered: false,
                     type: "list",
                 },
                 {
-                    items: [[{ text: "ordered", type: "text" }], [{ text: "list", type: "text" }]],
+                    items: [
+                        {
+                            blocks: [
+                                {
+                                    children: [{ text: "ordered", type: "text" }],
+                                    type: "paragraph",
+                                },
+                            ],
+                        },
+                        {
+                            blocks: [
+                                {
+                                    children: [{ text: "list", type: "text" }],
+                                    type: "paragraph",
+                                },
+                            ],
+                        },
+                    ],
                     ordered: true,
                     type: "list",
                 },

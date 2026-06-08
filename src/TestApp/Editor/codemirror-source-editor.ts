@@ -21,6 +21,9 @@ export class CodeMirrorSourceEditor {
                 basicSetup,
                 markdown(),
                 EditorView.lineWrapping,
+                EditorView.domEventHandlers({
+                    keydown: (event: KeyboardEvent): boolean => this.handleKeyDown(event),
+                }),
                 EditorView.updateListener.of((update): void => {
                     if (update.docChanged) {
                         onChange();
@@ -98,6 +101,52 @@ export class CodeMirrorSourceEditor {
     /** Toggles a Markdown blockquote marker on the current source line. */
     public toggleBlockquote(): boolean {
         return this.toggleLinePrefix(/^> /, "> ");
+    }
+
+    /** Handles source editor keyboard shortcuts that should not leave the editor. */
+    private handleKeyDown(event: KeyboardEvent): boolean {
+        if (event.key !== "Tab") {
+            return false;
+        }
+
+        event.preventDefault();
+
+        if (event.shiftKey) {
+            this.outdentCurrentLine();
+        } else {
+            this.indentCurrentLine();
+        }
+
+        return true;
+    }
+
+    /** Adds one Markdown indentation level to the current source line. */
+    private indentCurrentLine(): void {
+        const line = this.view.state.doc.lineAt(this.view.state.selection.main.head);
+
+        this.view.dispatch({
+            changes: {
+                from: line.from,
+                insert: "    ",
+            },
+        });
+    }
+
+    /** Removes up to one Markdown indentation level from the current source line. */
+    private outdentCurrentLine(): void {
+        const line = this.view.state.doc.lineAt(this.view.state.selection.main.head);
+        const indentationWidth = Math.min(line.text.match(/^ */)?.[0].length ?? 0, 4);
+
+        if (indentationWidth === 0) {
+            return;
+        }
+
+        this.view.dispatch({
+            changes: {
+                from: line.from,
+                to: line.from + indentationWidth,
+            },
+        });
     }
 
     /** Toggles a Markdown line prefix on the current source line. */

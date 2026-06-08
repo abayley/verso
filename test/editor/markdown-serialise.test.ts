@@ -38,12 +38,46 @@ describe("documentFromElements", (): void => {
                     type: "paragraph",
                 },
                 {
-                    items: [[{ text: "first", type: "text" }], [{ text: "second", type: "text" }]],
+                    items: [
+                        {
+                            blocks: [
+                                {
+                                    children: [{ text: "first", type: "text" }],
+                                    type: "paragraph",
+                                },
+                            ],
+                        },
+                        {
+                            blocks: [
+                                {
+                                    children: [{ text: "second", type: "text" }],
+                                    type: "paragraph",
+                                },
+                            ],
+                        },
+                    ],
                     ordered: false,
                     type: "list",
                 },
                 {
-                    items: [[{ text: "ordered", type: "text" }], [{ text: "list", type: "text" }]],
+                    items: [
+                        {
+                            blocks: [
+                                {
+                                    children: [{ text: "ordered", type: "text" }],
+                                    type: "paragraph",
+                                },
+                            ],
+                        },
+                        {
+                            blocks: [
+                                {
+                                    children: [{ text: "list", type: "text" }],
+                                    type: "paragraph",
+                                },
+                            ],
+                        },
+                    ],
                     ordered: true,
                     type: "list",
                 },
@@ -146,7 +180,24 @@ describe("documentToMarkdown", (): void => {
                         type: "paragraph",
                     },
                     {
-                        items: [[{ text: "first", type: "text" }], [{ text: "second", type: "text" }]],
+                        items: [
+                            {
+                                blocks: [
+                                    {
+                                        children: [{ text: "first", type: "text" }],
+                                        type: "paragraph",
+                                    },
+                                ],
+                            },
+                            {
+                                blocks: [
+                                    {
+                                        children: [{ text: "second", type: "text" }],
+                                        type: "paragraph",
+                                    },
+                                ],
+                            },
+                        ],
                         ordered: false,
                         type: "list",
                     },
@@ -201,6 +252,100 @@ describe("documentToMarkdown", (): void => {
                 ],
             }),
         ).toBe("> Quoted **text**.");
+    });
+
+    it("given a list item containing a blockquote, when serialised, then continuation quote lines stay inside the list item", (): void => {
+        expect(
+            documentToMarkdown({
+                blocks: [
+                    {
+                        items: [
+                            {
+                                blocks: [
+                                    {
+                                        blocks: [
+                                            {
+                                                children: [{ text: "blockquote heading 1", type: "text" }],
+                                                level: 1,
+                                                type: "heading",
+                                            },
+                                            {
+                                                children: [{ text: "paragraph 1", type: "text" }],
+                                                type: "paragraph",
+                                            },
+                                        ],
+                                        type: "blockquote",
+                                    },
+                                ],
+                            },
+                        ],
+                        ordered: false,
+                        type: "list",
+                    },
+                ],
+            }),
+        ).toBe(["- > # blockquote heading 1", "  >", "  > paragraph 1"].join("\n"));
+    });
+
+    it("given a blockquote containing a spread ordered list, when serialised, then quoted list spacing is preserved", (): void => {
+        expect(
+            documentToMarkdown({
+                blocks: [
+                    {
+                        blocks: [
+                            {
+                                items: [
+                                    {
+                                        blocks: [
+                                            {
+                                                children: [{ text: "item 1", type: "text" }],
+                                                type: "paragraph",
+                                            },
+                                        ],
+                                    },
+                                    {
+                                        blocks: [
+                                            {
+                                                children: [{ text: "item 2", type: "text" }],
+                                                type: "paragraph",
+                                            },
+                                            {
+                                                language: "shell",
+                                                text: "ls -al\nps -ef",
+                                                type: "codeBlock",
+                                            },
+                                        ],
+                                    },
+                                    {
+                                        blocks: [
+                                            {
+                                                children: [{ text: "item 3", type: "text" }],
+                                                type: "paragraph",
+                                            },
+                                        ],
+                                    },
+                                ],
+                                ordered: true,
+                                type: "list",
+                            },
+                        ],
+                        type: "blockquote",
+                    },
+                ],
+            }),
+        ).toBe(
+            [
+                "> 1. item 1",
+                "> 2. item 2",
+                ">    ",
+                ">    ```shell",
+                ">    ls -al",
+                ">    ps -ef",
+                ">    ```",
+                ">",
+                "> 3. item 3",
+            ].join("\n"),
+        );
     });
 
     it("serialises break inline nodes to Markdown hard breaks", (): void => {

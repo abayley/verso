@@ -1,4 +1,4 @@
-import type { EditorBlock, EditorDocument, InlineNode } from "./editor-model.js";
+import type { EditorBlock, EditorDocument, InlineNode, ListItemBlock } from "./editor-model.js";
 
 /** Builds an editor document from supported DOM block elements. */
 export function documentFromElements(elements: HTMLCollection | Element[]): EditorDocument {
@@ -57,7 +57,7 @@ function blockFromElement(block: Element): EditorBlock {
 
     if (block.tagName === "UL") {
         return {
-            items: Array.from(block.children).map((item: Element): InlineNode[] => inlineNodesFromElement(item)),
+            items: Array.from(block.children).map((item: Element): ListItemBlock => listItemFromElement(item)),
             ordered: false,
             type: "list",
         };
@@ -65,7 +65,7 @@ function blockFromElement(block: Element): EditorBlock {
 
     if (block.tagName === "OL") {
         return {
-            items: Array.from(block.children).map((item: Element): InlineNode[] => inlineNodesFromElement(item)),
+            items: Array.from(block.children).map((item: Element): ListItemBlock => listItemFromElement(item)),
             ordered: true,
             type: "list",
         };
@@ -75,6 +75,34 @@ function blockFromElement(block: Element): EditorBlock {
         children: inlineNodesFromElement(block),
         type: "paragraph",
     };
+}
+
+/** Converts a list item element to editor item blocks. */
+function listItemFromElement(item: Element): ListItemBlock {
+    if (hasBlockChildren(item)) {
+        return {
+            blocks: documentFromElements(item.children).blocks,
+        };
+    }
+
+    return {
+        blocks: [
+            {
+                children: inlineNodesFromElement(item),
+                type: "paragraph",
+            },
+        ],
+    };
+}
+
+/** Checks whether an element contains child blocks rather than only phrasing content. */
+function hasBlockChildren(element: Element): boolean {
+    return Array.from(element.children).some((child: Element): boolean => isBlockElement(child));
+}
+
+/** Checks whether an element is a supported Markdown block element. */
+function isBlockElement(element: Element): boolean {
+    return ["BLOCKQUOTE", "H1", "H2", "H3", "HR", "OL", "P", "PRE", "UL"].includes(element.tagName);
 }
 
 /** Converts child inline DOM nodes to editor inline nodes. */
@@ -166,7 +194,7 @@ function blockToMarkdown(block: EditorBlock): string {
     if (block.type === "blockquote") {
         return documentToMarkdown({ blocks: block.blocks })
             .split("\n")
-            .map((line: string): string => `> ${line}`)
+            .map((line: string): string => blockquoteLineToMarkdown(line))
             .join("\n");
     }
 
@@ -175,16 +203,81 @@ function blockToMarkdown(block: EditorBlock): string {
     }
 
     if (block.type === "list") {
-        return block.items
-            .map((item: InlineNode[], index: number): string => {
-                const marker = block.ordered ? `${index + 1}.` : "-";
+        return block.items.reduce((markdown: string, item: ListItemBlock, index: number): string => {
+            const marker = block.ordered ? `${index + 1}.` : "-";
+            const separator = index === 0 ? "" : listItemSeparator(block.items[index - 1]);
 
-                return `${marker} ${inlineNodesToMarkdown(item).trim()}`;
-            })
-            .join("\n");
+            return `${markdown}${separator}${listItemToMarkdown(marker, item)}`;
+        }, "");
     }
 
     return inlineNodesToMarkdown(block.children).trim();
+}
+
+/** Serialises one blockquote body line while avoiding extra indentation in code content. */
+function blockquoteLineToMarkdown(line: string): string {
+    if (!line) {
+        return ">";
+    }
+
+    if (line.startsWith("    ")) {
+        return `>${line}`;
+    }
+
+    return `> ${line}`;
+}
+
+/** Returns the separator before the next item in a Markdown list. */
+function listItemSeparator(previousItem: ListItemBlock | undefined): string {
+    if (previousItem && !isTightListItem(previousItem)) {
+        return "\n\n";
+    }
+
+    return "\n";
+}
+
+/** Serialises one list item, preserving tight single-paragraph list Markdown. */
+function listItemToMarkdown(marker: string, item: ListItemBlock): string {
+    if (isTightListItem(item)) {
+        return `${marker} ${inlineNodesToMarkdown(item.blocks[0].children).trim()}`;
+    }
+
+    return prefixListItemMarkdown(marker, listItemBodyToMarkdown(item.blocks));
+}
+
+/** Checks whether a list item can be serialised without child block spacing. */
+function isTightListItem(
+    item: ListItemBlock,
+): item is ListItemBlock & { blocks: [Extract<EditorBlock, { type: "paragraph" }>] } {
+    return item.blocks.length === 1 && item.blocks[0]?.type === "paragraph";
+}
+
+/** Serialises list item child blocks with Markdown list nesting spacing. */
+function listItemBodyToMarkdown(blocks: EditorBlock[]): string {
+    return blocks.reduce((markdown: string, block: EditorBlock, index: number): string => {
+        const separator = index === 0 ? "" : listItemBlockSeparator(block);
+
+        return `${markdown}${separator}${blockToMarkdown(block)}`;
+    }, "");
+}
+
+/** Returns the separator before a child block inside a list item. */
+function listItemBlockSeparator(block: EditorBlock): string {
+    if (block.type === "list") {
+        return "\n";
+    }
+
+    return "\n\n";
+}
+
+/** Prefixes the first line of list-item Markdown and indents continuation lines. */
+function prefixListItemMarkdown(marker: string, markdown: string): string {
+    const continuationIndent = " ".repeat(marker.length + 1);
+    const [firstLine, ...remainingLines] = markdown.split("\n");
+    const first = `${marker} ${firstLine ?? ""}`;
+    const remaining = remainingLines.map((line: string): string => `${continuationIndent}${line}`).join("\n");
+
+    return remaining ? `${first}\n${remaining}` : first;
 }
 
 /** Serialises editor inline nodes to Markdown. */

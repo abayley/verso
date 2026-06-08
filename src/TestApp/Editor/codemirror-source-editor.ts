@@ -95,6 +95,11 @@ export class CodeMirrorSourceEditor {
         return this.toggleLinePrefix(/^\d+\. /, "1. ");
     }
 
+    /** Toggles a Markdown blockquote marker on the current source line. */
+    public toggleBlockquote(): boolean {
+        return this.toggleLinePrefix(/^> /, "> ");
+    }
+
     /** Toggles a Markdown line prefix on the current source line. */
     private toggleLinePrefix(markerPattern: RegExp, marker: string): boolean {
         const selection = this.currentSourceSelection();

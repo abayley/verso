@@ -511,9 +511,9 @@ editing with CodeMirror, and Web Awesome controls.
   `code`, and `link` marks through Tiptap visual mode and CodeMirror source
   mode.
 - [ ] Add structure controls for lists, blockquotes, fenced code blocks, and
-  thematic breaks. Added Bullet List and Ordered List controls through the
-  visual/source command seam. Blockquotes, fenced code blocks, and thematic
-  breaks remain.
+  thematic breaks. Added Bullet List, Ordered List, and Blockquote controls
+  through the visual/source command seam. Fenced code blocks and thematic breaks
+  remain.
 - [ ] Add theme switching.
 - [ ] Revisit whether Web Awesome should replace native toolbar controls.
 - [ ] Consider Lit for the editor shell once manual DOM state management becomes
@@ -560,6 +560,9 @@ Phase Six findings so far:
 - Structure toolbar controls should follow the same active-pane routing as
   inline controls. Source-pane list commands operate on the current CodeMirror
   line, while visual-pane list commands stay inside the Tiptap adapter.
+- Blockquote works through the same structure-control seam as lists: the
+  CodeMirror adapter toggles the current line prefix, while the Tiptap adapter
+  owns the visual blockquote command.
 - The visual editor should not show the browser's default ProseMirror focus
   outline because it can overlap the caret at the start of a line. The outer
   editor border remains the visible editor boundary.

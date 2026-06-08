@@ -200,6 +200,21 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain("1. Plain paragraph");
     });
 
+    it("given visual mode, when blockquote is selected, then the current block becomes a blockquote", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectText(editor, "Plain");
+
+        clickToolbarButton(editor, "Blockquote");
+
+        expect(editor.querySelector(".markdown-editor__surface blockquote")?.textContent).toBe("Plain paragraph");
+        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
+        expect(editor.toMarkdown()).toContain("> Plain paragraph");
+    });
+
     it("given split mode, when visual text is styled, then Markdown source is updated", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.setAttribute("mode", "split");
@@ -322,6 +337,23 @@ describe("MarkdownEditorElement", (): void => {
 
         expect(editor.toMarkdown()).toContain("1. Markdown paragraph");
         expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface ol li")?.textContent).toBe(
+            "Markdown paragraph",
+        );
+    });
+
+    it("given split mode, when Markdown text is selected, then blockquote applies to the Markdown source", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Visual paragraph\n\nMarkdown paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectSourceText(editor, "Markdown");
+
+        clickToolbarButton(editor, "Blockquote");
+
+        expect(editor.toMarkdown()).toContain("> Markdown paragraph");
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface blockquote")?.textContent).toBe(
             "Markdown paragraph",
         );
     });

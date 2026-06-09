@@ -102,6 +102,14 @@ async function main() {
   await page.keyboard.press("Shift+Tab");
   assert.equal(await sourceMarkdownValue(page), "Indented paragraph");
 
+  const multilineInlineCodeMarkdown = "`\n1\n2\n`";
+  await fillSourceMarkdown(page, ".markdown-editor__source", multilineInlineCodeMarkdown);
+  await selectEditorMode(page, "visual");
+  await page.waitForSelector(".markdown-editor__surface code");
+  await selectEditorMode(page, "source");
+  await page.waitForSelector(".markdown-editor__source .cm-editor");
+  assert.equal(await sourceMarkdownValue(page), multilineInlineCodeMarkdown);
+
   const visualNestedListMarkdown = "- parent\n- child";
   await fillSourceMarkdown(page, ".markdown-editor__source", visualNestedListMarkdown);
   await selectEditorMode(page, "split");
@@ -327,6 +335,26 @@ async function main() {
     /`Source pane` paragraph\./,
   );
   assert.equal(await page.locator(".markdown-editor__split .markdown-editor__surface code").innerText(), "Source pane");
+
+  const sourcePaneMultilineCodeMarkdown = "first line\nsecond line";
+  await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", sourcePaneMultilineCodeMarkdown);
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".markdown-editor__split .markdown-editor__surface")
+      ?.innerText.includes("first line"),
+  );
+  await selectTextRangeInElement(
+    page,
+    ".markdown-editor__split .markdown-editor__source .cm-content",
+    "first line",
+    "second line",
+  );
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+E" : "Control+E");
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface pre code");
+  assert.equal(
+    await sourceMarkdownValue(page, ".markdown-editor__split .markdown-editor__source"),
+    "```\nfirst line\nsecond line\n```",
+  );
 
   const sourcePaneStrikeMarkdown = "Source pane paragraph.";
   await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", sourcePaneStrikeMarkdown);
@@ -604,6 +632,46 @@ async function selectTextInElement(page, selector, text) {
 
     throw new Error(`Could not select text: ${selectedText}`);
   }, text);
+}
+
+async function selectTextRangeInElement(page, selector, startText, endText) {
+  await page.locator(selector).evaluate(
+    (root, rangeText) => {
+      root.focus();
+
+      const findTextNode = (nodeRoot, text) => {
+        const walker = document.createTreeWalker(nodeRoot, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+
+        while (node) {
+          if (node.textContent.includes(text)) {
+            return node;
+          }
+
+          node = walker.nextNode();
+        }
+
+        return null;
+      };
+
+      const startNode = findTextNode(root, rangeText.startText);
+      const endNode = findTextNode(root, rangeText.endText);
+
+      if (!startNode || !endNode) {
+        throw new Error(`Could not select range: ${rangeText.startText} to ${rangeText.endText}`);
+      }
+
+      const range = document.createRange();
+      range.setStart(startNode, startNode.textContent.indexOf(rangeText.startText));
+      range.setEnd(endNode, endNode.textContent.indexOf(rangeText.endText) + rangeText.endText.length);
+
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+      root.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    },
+    { endText, startText },
+  );
 }
 
 function portIsOpen() {

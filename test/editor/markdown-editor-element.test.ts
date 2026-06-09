@@ -199,6 +199,23 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toBe(markdown);
     });
 
+    it("given source mode with multiline inline code, when cycled through visual, then inline code newlines are preserved", async (): Promise<void> => {
+        const markdown = ["`", "1", "2", "`"].join("\n");
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "source");
+        editor.textContent = markdown;
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        selectMode(editor, "visual");
+        expect(modeControl(editor).getAttribute("value")).toBe("visual");
+        selectMode(editor, "source");
+        expect(modeControl(editor).getAttribute("value")).toBe("source");
+
+        expect(editor.toMarkdown()).toBe(markdown);
+    });
+
     it("given visual mode, when heading style is selected, then the current block becomes a heading", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = "Plain paragraph";
@@ -256,6 +273,22 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__surface code")?.textContent).toBe("Plain");
         expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
         expect(editor.toMarkdown()).toContain("`Plain` paragraph");
+    });
+
+    it("given visual mode, when multiline text is selected and code is pressed, then a fenced code block is inserted", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "First paragraph\n\nSecond paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectTextRange(editor, "First paragraph", "Second paragraph");
+
+        dispatchVisualKey(editor, "e", { primaryModifier: true });
+
+        expect(editor.toMarkdown()).toBe(["```", "First paragraph", "", "Second paragraph", "```"].join("\n"));
+        expect(editor.querySelector(".markdown-editor__surface pre code")?.textContent).toBe(
+            "First paragraph\n\nSecond paragraph",
+        );
     });
 
     it("given visual mode, when strike is selected, then the selected text becomes strikethrough", async (): Promise<void> => {
@@ -507,6 +540,24 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain("**Split** paragraph");
     });
 
+    it("given split mode, when the visual link shortcut is pressed, then link target applies to the Markdown source", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Split paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectText(editor, "Split");
+
+        dispatchVisualKey(editor, "k", { primaryModifier: true });
+        applyLinkTarget(editor, "/target");
+
+        expect(editor.toMarkdown()).toContain("[Split](/target) paragraph");
+        const link = editor.querySelector(".markdown-editor__split .markdown-editor__surface a");
+        expect(link?.textContent).toBe("Split");
+        expect(link?.getAttribute("href")).toBe("/target");
+    });
+
     it("given split mode, when Markdown text is selected, then bold applies to the Markdown source", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.setAttribute("mode", "split");
@@ -517,6 +568,23 @@ describe("MarkdownEditorElement", (): void => {
         selectSourceText(editor, "Markdown");
 
         clickToolbarButton(editor, "Bold");
+
+        expect(editor.toMarkdown()).toContain("**Markdown** paragraph");
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface strong")?.textContent).toBe(
+            "Markdown",
+        );
+    });
+
+    it("given split mode, when the source bold shortcut is pressed, then bold applies to the Markdown source", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Visual paragraph\n\nMarkdown paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectSourceText(editor, "Markdown");
+
+        dispatchSourceKey(editor, "b", { primaryModifier: true });
 
         expect(editor.toMarkdown()).toContain("**Markdown** paragraph");
         expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface strong")?.textContent).toBe(
@@ -541,6 +609,23 @@ describe("MarkdownEditorElement", (): void => {
         );
     });
 
+    it("given split mode, when the source italic shortcut is pressed, then italic applies to the Markdown source", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Visual paragraph\n\nMarkdown paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectSourceText(editor, "Markdown");
+
+        dispatchSourceKey(editor, "i", { primaryModifier: true });
+
+        expect(editor.toMarkdown()).toContain("*Markdown* paragraph");
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface em")?.textContent).toBe(
+            "Markdown",
+        );
+    });
+
     it("given split mode, when Markdown text is selected, then code applies to the Markdown source", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.setAttribute("mode", "split");
@@ -555,6 +640,40 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain("`Markdown` paragraph");
         expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface code")?.textContent).toBe(
             "Markdown",
+        );
+    });
+
+    it("given split mode, when the source code shortcut is pressed, then code applies to the Markdown source", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Visual paragraph\n\nMarkdown paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectSourceText(editor, "Markdown");
+
+        dispatchSourceKey(editor, "e", { primaryModifier: true });
+
+        expect(editor.toMarkdown()).toContain("`Markdown` paragraph");
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface code")?.textContent).toBe(
+            "Markdown",
+        );
+    });
+
+    it("given split mode, when multiline Markdown text is selected and source code is pressed, then a fenced code block is inserted", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Visual paragraph\n\nfirst line\nsecond line";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectSourceRange(editor, "first line", "second line");
+
+        dispatchSourceKey(editor, "e", { primaryModifier: true });
+
+        expect(editor.toMarkdown()).toContain(["```", "first line", "second line", "```"].join("\n"));
+        expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface pre code")?.textContent).toBe(
+            "first line\nsecond line",
         );
     });
 
@@ -577,6 +696,25 @@ describe("MarkdownEditorElement", (): void => {
         ).toBe("Markdown");
     });
 
+    it("given split mode, when the source strike shortcut is pressed, then strike applies to the Markdown source", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Visual paragraph\n\nMarkdown paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectSourceText(editor, "Markdown");
+
+        dispatchSourceKey(editor, "s", { primaryModifier: true, shiftKey: true });
+
+        expect(editor.toMarkdown()).toContain("~~Markdown~~ paragraph");
+        expect(
+            editor.querySelector(
+                ".markdown-editor__split .markdown-editor__surface del, .markdown-editor__split .markdown-editor__surface s",
+            )?.textContent,
+        ).toBe("Markdown");
+    });
+
     it("given split mode, when Markdown text is selected, then link target applies to the Markdown source", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.setAttribute("mode", "split");
@@ -587,6 +725,24 @@ describe("MarkdownEditorElement", (): void => {
         selectSourceText(editor, "Markdown");
 
         clickToolbarButton(editor, "Link");
+        applyLinkTarget(editor, "/target");
+
+        expect(editor.toMarkdown()).toContain("[Markdown](/target) paragraph");
+        const link = editor.querySelector(".markdown-editor__split .markdown-editor__surface a");
+        expect(link?.textContent).toBe("Markdown");
+        expect(link?.getAttribute("href")).toBe("/target");
+    });
+
+    it("given split mode, when the source link shortcut is pressed, then link target applies to the Markdown source", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Visual paragraph\n\nMarkdown paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectSourceText(editor, "Markdown");
+
+        dispatchSourceKey(editor, "k", { primaryModifier: true });
         applyLinkTarget(editor, "/target");
 
         expect(editor.toMarkdown()).toContain("[Markdown](/target) paragraph");
@@ -1085,6 +1241,25 @@ function selectText(editor: Element, text: string): void {
     selection?.addRange(range);
 }
 
+/** Selects rendered visual text from one fragment to another. */
+function selectTextRange(editor: Element, startText: string, endText: string): void {
+    const root = editor.querySelector(".markdown-editor__surface .ProseMirror") ?? editor;
+    const startNode = findTextNode(root, startText);
+    const endNode = findTextNode(root, endText);
+
+    if (!startNode || !endNode) {
+        throw new Error(`Expected rendered text range from ${startText} to ${endText}.`);
+    }
+
+    const range = document.createRange();
+    range.setStart(startNode, startNode.data.indexOf(startText));
+    range.setEnd(endNode, endNode.data.indexOf(endText) + endText.length);
+
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+}
+
 /** Finds the first text node containing the requested text. */
 function findTextNode(root: Node, text: string): Text | null {
     if (root instanceof Text && root.data.includes(text)) {
@@ -1127,26 +1302,78 @@ function selectSourceText(editor: Element, text: string): void {
     source.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
 }
 
-/** Dispatches a keydown event to the CodeMirror source editor. */
-function dispatchSourceKey(editor: Element, key: string, shiftKey = false): void {
+/** Selects a source range from the start of one text fragment to the end of another. */
+function selectSourceRange(editor: Element, startText: string, endText: string): void {
     const source = editor.querySelector(".markdown-editor__source .cm-content");
 
     if (!(source instanceof HTMLElement)) {
         throw new Error("Expected source editor content.");
     }
 
-    source.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key, shiftKey }));
+    const startNode = findTextNode(source, startText);
+    const endNode = findTextNode(source, endText);
+
+    if (!startNode || !endNode) {
+        throw new Error(`Expected source range from ${startText} to ${endText}.`);
+    }
+
+    const range = document.createRange();
+    range.setStart(startNode, startNode.data.indexOf(startText));
+    range.setEnd(endNode, endNode.data.indexOf(endText) + endText.length);
+
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    source.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+}
+
+interface EditorKeyOptions {
+    primaryModifier?: boolean;
+    shiftKey?: boolean;
+}
+
+/** Dispatches a keydown event to the CodeMirror source editor. */
+function dispatchSourceKey(editor: Element, key: string, options: EditorKeyOptions | boolean = {}): void {
+    const source = editor.querySelector(".markdown-editor__source .cm-content");
+
+    if (!(source instanceof HTMLElement)) {
+        throw new Error("Expected source editor content.");
+    }
+
+    const keyOptions = typeof options === "boolean" ? { shiftKey: options } : options;
+
+    source.dispatchEvent(
+        new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: Boolean(keyOptions.primaryModifier),
+            key,
+            metaKey: Boolean(keyOptions.primaryModifier),
+            shiftKey: Boolean(keyOptions.shiftKey),
+        }),
+    );
 }
 
 /** Dispatches a keydown event to the visual editor surface. */
-function dispatchVisualKey(editor: Element, key: string, shiftKey = false): void {
+function dispatchVisualKey(editor: Element, key: string, options: EditorKeyOptions | boolean = {}): void {
     const surface = editor.querySelector(".markdown-editor__surface .ProseMirror");
 
     if (!(surface instanceof HTMLElement)) {
         throw new Error("Expected visual editor content.");
     }
 
-    surface.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key, shiftKey }));
+    const keyOptions = typeof options === "boolean" ? { shiftKey: options } : options;
+
+    surface.dispatchEvent(
+        new KeyboardEvent("keydown", {
+            bubbles: true,
+            cancelable: true,
+            ctrlKey: Boolean(keyOptions.primaryModifier),
+            key,
+            metaKey: Boolean(keyOptions.primaryModifier),
+            shiftKey: Boolean(keyOptions.shiftKey),
+        }),
+    );
 }
 
 /** Places the cursor at the beginning of matching text inside the CodeMirror source editor. */

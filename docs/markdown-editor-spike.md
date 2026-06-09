@@ -533,6 +533,9 @@ editing with CodeMirror, and Web Awesome controls.
   exposes Edit and Remove actions; Edit reuses the link target control with the
   current target prefilled, while Remove clears the link mark and keeps the link
   text.
+- [x] Add keyboard shortcuts for the current inline controls across visual and
+  source panes. The editor now supports Bold, Italic, Code, Strike, and Link
+  shortcuts through the active editor pane.
 - [ ] Consider Lit for the editor shell once manual DOM state management becomes
   the main source of complexity.
 
@@ -555,9 +558,9 @@ Phase Six findings so far:
 - The toolbar layout currently uses a left-aligned view-mode radio group,
   block-style dropdown, inline style buttons, structure buttons, and a
   right-aligned Light/Dark/Match system radio group.
-- Toolbar controls are icon-first Web Awesome controls with native `title`
-  hover text and stable accessible labels. The Markdown thematic-break command
-  is exposed in the UI as `Horizontal rule`.
+- Toolbar controls are icon-first Web Awesome controls with editor-owned
+  tooltips and stable accessible labels. The Markdown thematic-break command is
+  exposed in the UI as `Horizontal rule`.
 - The block-style dropdown trigger must use Web Awesome's `with-caret`
   attribute on the slotted `wa-button`; `caret` is not the documented attribute.
 - Lit remains deferred for the editor shell. Web Awesome reduced the immediate
@@ -565,7 +568,11 @@ Phase Six findings so far:
   remaining complexity is mostly editor coordination between Tiptap, CodeMirror,
   Markdown parsing, htmx submission, and active-pane routing. Revisit Lit before
   table, image, or attachment UI work, or earlier if manual `createElement`
-  rendering becomes the main source of bugs.
+  rendering becomes the main source of bugs. A Lit decision needs evidence about
+  whether DOM construction or editor orchestration is now the dominant source of
+  complexity, whether reactive rendering would simplify the link popovers,
+  save-state UI, toolbar state, and mode/theme controls, whether Lit would
+  reduce tests or make them more stable, and what bundle/runtime cost it adds.
 - Toolbar inline mark controls must preserve or recover the visual editor
   selection before applying Tiptap commands; otherwise button focus can collapse
   the selected text before the command runs.
@@ -609,9 +616,17 @@ Phase Six findings so far:
   so the editor controls tooltip timing. The toolbar uses one shared tooltip:
   first hover shows after 500 milliseconds, leaving a control hides after 250
   milliseconds, and moving to another control while the tooltip is warm retargets
-  it immediately. Bold and Italic advertise the platform-specific Tiptap
-  visual-mode shortcuts; source-mode formatting shortcuts remain deferred until
-  the CodeMirror adapter owns equivalent key bindings.
+  it immediately. Inline controls advertise platform-specific shortcuts for
+  Bold, Italic, Code, Strike, and Link.
+- Keyboard shortcut ownership is split by command type. Tiptap keeps its built-in
+  shortcuts for Bold, Italic, Code, and Strike in visual mode; the CodeMirror
+  adapter mirrors those shortcuts in source mode with Markdown delimiters. Link
+  uses an editor-shell shortcut, `Mod+K`, in both panes because it opens the
+  shared link target control rather than applying a pure adapter command.
+- The Code inline control is context-sensitive. Single-line selections use
+  inline code spans; multi-line selections use fenced code blocks so selected
+  line structure is preserved rather than relying on Markdown code-span
+  whitespace normalisation.
 - The explicit Save button is also a save-state indicator. It starts disabled for
   clean content, becomes enabled after local edits, changes to `Auto-Saving...`
   during htmx save requests, keeps that saving state visible for at least 500
@@ -657,6 +672,11 @@ Phase Six findings so far:
   input rules for headings are disabled, typed hashes serialise as escaped
   Markdown text, and the editor adapter handles dash-space and one-dot-space as
   explicit list marker shortcuts.
+- Pure view switching should not rewrite source Markdown through Tiptap's
+  normalised Markdown model. Visual-only `toMarkdown()` preserves the last known
+  source text until the visual editor reports an actual edit; this prevents
+  view-only cycles from collapsing valid but source-sensitive Markdown such as
+  multiline inline code spans.
 
 ### Markdown Editor Spike Phase Seven: Planned
 

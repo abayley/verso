@@ -7,6 +7,9 @@ import { documentFromElements, documentToMarkdown } from "./markdown-serialise.j
 /** Callback fired when the visual editor content changes. */
 export type TiptapChangeHandler = () => void;
 
+/** Callback fired when the visual editor requests link target input. */
+export type TiptapLinkShortcutHandler = () => void;
+
 /** Supported visual block styles exposed by the editor toolbar. */
 export type VisualBlockStyle = "paragraph" | "heading-1" | "heading-2" | "heading-3";
 
@@ -37,12 +40,14 @@ const HeadingWithoutInputRules = Heading.extend({
 /** Markdown-in/Markdown-out adapter around Tiptap's visual editor. */
 export class TiptapVisualEditor {
     private readonly editor: Editor;
+    private readonly onLinkShortcut: TiptapLinkShortcutHandler;
     private readonly root: HTMLDivElement;
 
     /** Creates a Tiptap editor mounted inside a stable root element. */
-    public constructor(markdown: string, onChange: TiptapChangeHandler) {
+    public constructor(markdown: string, onChange: TiptapChangeHandler, onLinkShortcut: TiptapLinkShortcutHandler) {
         this.root = document.createElement("div");
         this.root.className = "markdown-editor__surface";
+        this.onLinkShortcut = onLinkShortcut;
 
         this.editor = new Editor({
             content: markdown,
@@ -128,6 +133,28 @@ export class TiptapVisualEditor {
             }
 
             case "code": {
+                const selectedText = selection
+                    ? this.editor.state.doc.textBetween(selection.from, selection.to, "\n\n", "\n")
+                    : "";
+
+                if (selectedText.includes("\n")) {
+                    return this.withCurrentSelection(selection, (editor: Editor): boolean =>
+                        editor
+                            .chain()
+                            .focus()
+                            .insertContent({
+                                content: [
+                                    {
+                                        text: selectedText,
+                                        type: "text",
+                                    },
+                                ],
+                                type: "codeBlock",
+                            })
+                            .run(),
+                    );
+                }
+
                 return this.withCurrentSelection(selection, (editor: Editor): boolean =>
                     editor.chain().focus().toggleCode().run(),
                 );
@@ -220,6 +247,17 @@ export class TiptapVisualEditor {
 
     /** Handles visual editor keyboard shortcuts that should stay inside the editor. */
     private handleKeyDown(event: KeyboardEvent): boolean {
+        if (isPrimaryModifierShortcut(event, "e")) {
+            event.preventDefault();
+            return this.toggleInlineStyle("code");
+        }
+
+        if (isPrimaryModifierShortcut(event, "k")) {
+            event.preventDefault();
+            this.onLinkShortcut();
+            return true;
+        }
+
         if (event.key !== "Tab") {
             return false;
         }
@@ -288,6 +326,11 @@ export class TiptapVisualEditor {
             to: Math.max(anchor, focus),
         };
     }
+}
+
+/** Checks whether a keyboard event matches a primary-modifier shortcut key. */
+function isPrimaryModifierShortcut(event: KeyboardEvent, key: string): boolean {
+    return (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === key;
 }
 
 /** Returns visual editor child blocks that represent Markdown content. */

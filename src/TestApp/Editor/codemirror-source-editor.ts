@@ -5,6 +5,9 @@ import type { VisualBlockStyle } from "./tiptap-visual-editor.js";
 /** Callback fired when the source editor content changes. */
 export type CodeMirrorChangeHandler = () => void;
 
+/** Callback fired when the source editor requests link target input. */
+export type CodeMirrorLinkShortcutHandler = () => void;
+
 export interface CodeMirrorSourceSelection {
     from: number;
     to: number;
@@ -14,11 +17,17 @@ export interface CodeMirrorSourceSelection {
 export class CodeMirrorSourceEditor {
     private readonly root: HTMLDivElement;
     private readonly view: EditorView;
+    private readonly onLinkShortcut: CodeMirrorLinkShortcutHandler;
 
     /** Creates a CodeMirror editor mounted inside a stable root element. */
-    public constructor(markdownText: string, onChange: CodeMirrorChangeHandler) {
+    public constructor(
+        markdownText: string,
+        onChange: CodeMirrorChangeHandler,
+        onLinkShortcut: CodeMirrorLinkShortcutHandler,
+    ) {
         this.root = document.createElement("div");
         this.root.className = "markdown-editor__source";
+        this.onLinkShortcut = onLinkShortcut;
 
         this.view = new EditorView({
             doc: markdownText,
@@ -85,6 +94,12 @@ export class CodeMirrorSourceEditor {
 
     /** Toggles Markdown inline code markers around the current source selection. */
     public toggleCode(): boolean {
+        const selection = this.currentSourceSelection();
+
+        if (selection && selection.from !== selection.to && this.selectedText(selection).includes("\n")) {
+            return this.insertCodeBlock();
+        }
+
         return this.wrapSelection("`", "`");
     }
 
@@ -151,6 +166,32 @@ export class CodeMirrorSourceEditor {
 
     /** Handles source editor keyboard shortcuts that should not leave the editor. */
     private handleKeyDown(event: KeyboardEvent): boolean {
+        if (isPrimaryModifierShortcut(event, "b")) {
+            event.preventDefault();
+            return this.toggleStrong();
+        }
+
+        if (isPrimaryModifierShortcut(event, "i")) {
+            event.preventDefault();
+            return this.toggleEmphasis();
+        }
+
+        if (isPrimaryModifierShortcut(event, "e")) {
+            event.preventDefault();
+            return this.toggleCode();
+        }
+
+        if (isPrimaryModifierShortcut(event, "s", { shiftKey: true })) {
+            event.preventDefault();
+            return this.toggleStrikethrough();
+        }
+
+        if (isPrimaryModifierShortcut(event, "k")) {
+            event.preventDefault();
+            this.onLinkShortcut();
+            return true;
+        }
+
         if (event.key !== "Tab") {
             return false;
         }
@@ -261,7 +302,7 @@ export class CodeMirrorSourceEditor {
 
     /** Wraps a known source selection with Markdown marker text. */
     private wrapSourceSelection(selection: CodeMirrorSourceSelection, prefix: string, suffix: string): boolean {
-        const selectedText = this.view.state.doc.sliceString(selection.from, selection.to);
+        const selectedText = this.selectedText(selection);
         this.view.dispatch({
             changes: {
                 from: selection.from,
@@ -271,6 +312,11 @@ export class CodeMirrorSourceEditor {
         });
 
         return true;
+    }
+
+    /** Returns the Markdown source covered by a known selection. */
+    private selectedText(selection: CodeMirrorSourceSelection): string {
+        return this.view.state.doc.sliceString(selection.from, selection.to);
     }
 
     /** Converts the current browser selection into CodeMirror document positions. */
@@ -306,4 +352,22 @@ function headingPrefix(style: Exclude<VisualBlockStyle, "paragraph">): string {
     }
 
     return "###";
+}
+
+interface PrimaryModifierShortcutOptions {
+    shiftKey?: boolean;
+}
+
+/** Checks whether a keyboard event matches a primary-modifier shortcut key. */
+function isPrimaryModifierShortcut(
+    event: KeyboardEvent,
+    key: string,
+    options: PrimaryModifierShortcutOptions = {},
+): boolean {
+    return (
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        Boolean(event.shiftKey) === Boolean(options.shiftKey) &&
+        event.key.toLowerCase() === key
+    );
 }

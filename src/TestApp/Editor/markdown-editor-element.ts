@@ -153,6 +153,7 @@ export class MarkdownEditorElement extends HTMLElement {
     };
     private toolbar: HTMLDivElement | null = null;
     private visualEditor: TiptapVisualEditor | null = null;
+    private visualEditorChanged = false;
 
     /** Starts asynchronous element initialisation after connection. */
     connectedCallback(): void {
@@ -608,18 +609,27 @@ export class MarkdownEditorElement extends HTMLElement {
         this.visualEditor?.destroy();
         this.sourceEditor = null;
         this.visualEditor = null;
+        this.visualEditorChanged = false;
         this.panes = null;
         this.body.textContent = "";
 
         if (this.mode === "source" || this.mode === "split") {
-            this.sourceEditor = new CodeMirrorSourceEditor(this.markdown, (): void => this.handleSourceInput());
+            this.sourceEditor = new CodeMirrorSourceEditor(
+                this.markdown,
+                (): void => this.handleSourceInput(),
+                (): void => this.handleSourceLinkShortcut(),
+            );
             this.sourceEditor.element().addEventListener("focusin", (): void => {
                 this.activePane = "source";
             });
         }
 
         if (this.mode === "visual" || this.mode === "split") {
-            this.visualEditor = new TiptapVisualEditor(this.markdown, (): void => this.handleVisualInput());
+            this.visualEditor = new TiptapVisualEditor(
+                this.markdown,
+                (): void => this.handleVisualInput(),
+                (): void => this.handleVisualLinkShortcut(),
+            );
             this.visualEditor.element().addEventListener("focusin", (): void => {
                 this.activePane = "visual";
             });
@@ -689,12 +699,17 @@ export class MarkdownEditorElement extends HTMLElement {
             return this.markdown;
         }
 
+        if (!this.visualEditorChanged) {
+            return this.markdown;
+        }
+
         return this.visualEditor.toMarkdown();
     }
 
     /** Replaces the current Markdown document and refreshes the active editor. */
     public setMarkdown(markdown: string): void {
         this.markdown = markdown;
+        this.visualEditorChanged = false;
 
         if (this.sourceEditor) {
             this.sourceEditor.setMarkdown(markdown);
@@ -780,6 +795,18 @@ export class MarkdownEditorElement extends HTMLElement {
                 document.addEventListener("pointerdown", this.handleDocumentPointerDown);
             }
         }, 0);
+    }
+
+    /** Opens link editing from a source-pane keyboard shortcut. */
+    private handleSourceLinkShortcut(): void {
+        this.activePane = "source";
+        this.showLinkEditor();
+    }
+
+    /** Opens link editing from a visual-pane keyboard shortcut. */
+    private handleVisualLinkShortcut(): void {
+        this.activePane = "visual";
+        this.showLinkEditor();
     }
 
     /** Positions the link editor near the selected text without covering it. */
@@ -1050,6 +1077,7 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
+        this.visualEditorChanged = true;
         this.syncSourceEditor(markdown);
         this.dispatchMarkdownChange(markdown);
     }
@@ -1525,6 +1553,18 @@ function shortcutForInlineStyle(style: VisualInlineStyle): string | null {
 
     if (style === "emphasis") {
         return `${primaryModifierLabel()}+I`;
+    }
+
+    if (style === "code") {
+        return `${primaryModifierLabel()}+E`;
+    }
+
+    if (style === "strikethrough") {
+        return `${primaryModifierLabel()}+Shift+S`;
+    }
+
+    if (style === "link") {
+        return `${primaryModifierLabel()}+K`;
     }
 
     return null;

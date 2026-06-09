@@ -74,6 +74,7 @@ staticEditorAsset captures _ =
     case capture "file" captures of
         "markdown-editor.js" -> return (fileResponse "text/javascript" "static/editor/markdown-editor.js")
         "markdown-editor.css" -> return (fileResponse "text/css" "static/editor/markdown-editor.css")
+        "webawesome.css" -> return (fileResponse "text/css" "static/editor/webawesome.css")
         _ -> return notFoundResponse
 
 htmlResponse :: String -> Http.Response
@@ -206,16 +207,16 @@ indexPage =
 
 editorPage :: String -> String -> Html.Html ()
 editorPage docId mode =
-    Html.html [Html.lang "en"] $ do
+    Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue"] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
             Html.title [] "MicroHttp Markdown Editor"
+            Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/webawesome.css\">"
             Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
             Html.rawTrusted "<script src=\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js\"></script>"
             Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\"></script>"
         Html.body [] $ do
             Html.main [] $ do
-                Html.h1 [] "Markdown Editor"
                 Html.form_
                     [ Html.hxPost ("/documents/" ++ docId)
                     , Html.hxTarget "#save-status"
@@ -231,7 +232,6 @@ editorPage docId mode =
                             ]
                             (return ())
                         Html.input [Html.attr "type" "hidden", Html.attr "name" "markdown", Html.attr "id" "markdown-field"]
-                        Html.button [Html.attr "type" "submit"] "Save"
                 Html.div [Html.attr "id" "save-status"] ""
 
 seededMarkdown :: String

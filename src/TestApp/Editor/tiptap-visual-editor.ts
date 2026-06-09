@@ -11,7 +11,7 @@ export type TiptapChangeHandler = () => void;
 export type VisualBlockStyle = "paragraph" | "heading-1" | "heading-2" | "heading-3";
 
 /** Supported visual inline styles exposed by the editor toolbar. */
-export type VisualInlineStyle = "strong" | "emphasis" | "code" | "link";
+export type VisualInlineStyle = "strong" | "emphasis" | "code" | "strikethrough" | "link";
 
 /** Supported visual structure commands exposed by the editor toolbar. */
 export type VisualStructureStyle = "bullet-list" | "ordered-list" | "blockquote" | "code-block" | "thematic-break";
@@ -123,6 +123,12 @@ export class TiptapVisualEditor {
             case "code": {
                 return this.withCurrentSelection(selection, (editor: Editor): boolean =>
                     editor.chain().focus().toggleCode().run(),
+                );
+            }
+
+            case "strikethrough": {
+                return this.withCurrentSelection(selection, (editor: Editor): boolean =>
+                    editor.chain().focus().toggleStrike().run(),
                 );
             }
 

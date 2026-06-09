@@ -1,56 +1,88 @@
 markdown-editor {
+  --markdown-editor-background: var(--wa-color-surface-default);
+  --markdown-editor-border: var(--wa-color-surface-border);
+  --markdown-editor-code-background: var(--wa-color-surface-lowered);
+  --markdown-editor-code-border: var(--wa-color-surface-border);
+  --markdown-editor-error-accent: var(--wa-color-danger-border-loud);
+  --markdown-editor-error-text: var(--wa-color-danger-on-quiet);
+  --markdown-editor-quote-border: var(--wa-color-neutral-border-loud);
+  --markdown-editor-surface-border: var(--wa-color-surface-border);
+  --markdown-editor-text: var(--wa-color-text-normal);
+  --markdown-editor-toolbar-background: var(--wa-color-surface-lowered);
+
+  background: var(--markdown-editor-background);
+  color: var(--markdown-editor-text);
   display: block;
 }
 
 .markdown-editor__toolbar {
   align-items: center;
-  background: #f8fafc;
-  border: 1px solid #cbd5e1;
+  background: var(--markdown-editor-toolbar-background);
+  border: 1px solid var(--markdown-editor-border);
   border-bottom: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.75rem;
   padding: 0.5rem;
 }
 
-.markdown-editor__mode-button,
-.markdown-editor__inline-button {
-  background: #fff;
-  border: 1px solid #94a3b8;
-  color: #0f172a;
-  cursor: pointer;
-  font: 14px system-ui, sans-serif;
-  padding: 0.35rem 0.65rem;
+.markdown-editor__button-group {
+  display: inline-flex;
 }
 
-.markdown-editor__inline-button:disabled {
-  background: #e2e8f0;
-  color: #64748b;
+.markdown-editor__button {
+  cursor: pointer;
+  font: 14px system-ui, sans-serif;
+}
+
+.markdown-editor__inline-button,
+.markdown-editor__structure-button {
+  inline-size: 2.75rem;
+}
+
+.markdown-editor__button-icon {
+  font-size: 1.4rem;
+}
+
+.markdown-editor__button[disabled] {
   cursor: default;
 }
 
-.markdown-editor__mode-button[aria-pressed="true"] {
-  background: #0f172a;
-  border-color: #0f172a;
-  color: #fff;
+.markdown-editor__mode-group {
+  inline-size: 9rem;
 }
 
-.markdown-editor__style-select {
-  background: #fff;
-  border: 1px solid #94a3b8;
-  color: #0f172a;
-  font: 14px system-ui, sans-serif;
-  padding: 0.35rem 0.5rem;
+.markdown-editor__mode-option,
+.markdown-editor__theme-option {
+  inline-size: 3rem;
+  text-align: center;
 }
 
-.markdown-editor__style-select:disabled {
-  background: #e2e8f0;
-  color: #64748b;
+.markdown-editor__mode-option::part(label),
+.markdown-editor__theme-option::part(label) {
+  align-items: center;
+  display: flex;
+  inline-size: 100%;
+  justify-content: center;
+}
+
+.markdown-editor__theme-group {
+  inline-size: 9rem;
+}
+
+.markdown-editor__save-button {
+  margin-left: auto;
+}
+
+.markdown-editor__style-trigger {
+  min-inline-size: 7rem;
 }
 
 .markdown-editor__surface,
 .markdown-editor__source {
-  border: 1px solid #777;
+  background: var(--markdown-editor-background);
+  border: 1px solid var(--markdown-editor-surface-border);
+  color: var(--markdown-editor-text);
   font: 16px system-ui, sans-serif;
   min-height: 16rem;
   padding: 1rem;
@@ -67,8 +99,19 @@ markdown-editor {
   outline: none;
 }
 
+.markdown-editor__source .cm-editor {
+  background: var(--markdown-editor-background);
+  color: var(--markdown-editor-text);
+}
+
+.markdown-editor__source .cm-gutters {
+  background: var(--markdown-editor-toolbar-background);
+  border-color: var(--markdown-editor-border);
+  color: var(--markdown-editor-text);
+}
+
 .markdown-editor__preview {
-  border: 1px solid #bbb;
+  border: 1px solid var(--markdown-editor-surface-border);
   margin-top: 1rem;
   min-height: 8rem;
   padding: 1rem;
@@ -76,8 +119,8 @@ markdown-editor {
 }
 
 .markdown-editor__error {
-  border-left: 4px solid #b42318;
-  color: #7a271a;
+  border-left: 4px solid var(--markdown-editor-error-accent);
+  color: var(--markdown-editor-error-text);
   font: 14px system-ui, sans-serif;
   margin-top: 0.75rem;
   padding: 0.5rem 0.75rem;
@@ -85,15 +128,15 @@ markdown-editor {
 
 .markdown-editor__surface pre,
 .markdown-editor__preview pre {
-  background: #f4f4f5;
-  border: 1px solid #d4d4d8;
+  background: var(--markdown-editor-code-background);
+  border: 1px solid var(--markdown-editor-code-border);
   overflow-x: auto;
   padding: 0.75rem;
 }
 
 .markdown-editor__surface blockquote,
 .markdown-editor__preview blockquote {
-  border-left: 4px solid #a1a1aa;
+  border-left: 4px solid var(--markdown-editor-quote-border);
   margin-left: 0;
   padding-left: 1rem;
 }

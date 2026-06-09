@@ -80,34 +80,34 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
     });
 
-    it("given visual mode, when the mode button is used, then it cycles modes without losing Markdown", async (): Promise<void> => {
+    it("given visual mode, when mode radio options are selected, then it changes modes without losing Markdown", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = "# Heading\n\nParagraph with **strong** text.";
 
         document.body.append(editor);
         await waitForInitialisation();
 
-        expect(modeButton(editor).textContent).toBe("Visual");
+        expect(modeControl(editor).getAttribute("value")).toBe("visual");
 
-        modeButton(editor).click();
+        selectMode(editor, "source");
         expect(editor.querySelector(".markdown-editor__source .cm-editor")).toBeInstanceOf(HTMLElement);
-        expect(modeButton(editor).textContent).toBe("Markdown");
+        expect(modeControl(editor).getAttribute("value")).toBe("source");
         expect(editor.toMarkdown()).toContain("# Heading");
         expect(editor.toMarkdown()).toContain("**strong**");
 
-        modeButton(editor).click();
+        selectMode(editor, "split");
         expect(editor.querySelector(".markdown-editor__split .markdown-editor__source .cm-editor")).toBeInstanceOf(
             HTMLElement,
         );
         expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface strong")?.textContent).toBe(
             "strong",
         );
-        expect(modeButton(editor).textContent).toBe("Split");
+        expect(modeControl(editor).getAttribute("value")).toBe("split");
 
-        modeButton(editor).click();
+        selectMode(editor, "visual");
         expect(editor.querySelector(".markdown-editor__surface .ProseMirror")).toBeInstanceOf(HTMLElement);
         expect(editor.querySelector(".markdown-editor__surface strong")?.textContent).toBe("strong");
-        expect(modeButton(editor).textContent).toBe("Visual");
+        expect(modeControl(editor).getAttribute("value")).toBe("visual");
     });
 
     it("given source mode with a list item containing a blockquote, when cycled through split to visual, then Markdown nesting is preserved", async (): Promise<void> => {
@@ -119,10 +119,10 @@ describe("MarkdownEditorElement", (): void => {
         document.body.append(editor);
         await waitForInitialisation();
 
-        modeButton(editor).click();
-        expect(modeButton(editor).textContent).toBe("Split");
-        modeButton(editor).click();
-        expect(modeButton(editor).textContent).toBe("Visual");
+        selectMode(editor, "split");
+        expect(modeControl(editor).getAttribute("value")).toBe("split");
+        selectMode(editor, "visual");
+        expect(modeControl(editor).getAttribute("value")).toBe("visual");
 
         expect(editor.toMarkdown()).toBe(markdown);
     });
@@ -146,10 +146,10 @@ describe("MarkdownEditorElement", (): void => {
         document.body.append(editor);
         await waitForInitialisation();
 
-        modeButton(editor).click();
-        expect(modeButton(editor).textContent).toBe("Split");
-        modeButton(editor).click();
-        expect(modeButton(editor).textContent).toBe("Visual");
+        selectMode(editor, "split");
+        expect(modeControl(editor).getAttribute("value")).toBe("split");
+        selectMode(editor, "visual");
+        expect(modeControl(editor).getAttribute("value")).toBe("visual");
 
         expect(editor.toMarkdown()).toBe(markdown);
     });
@@ -211,6 +211,23 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__surface code")?.textContent).toBe("Plain");
         expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
         expect(editor.toMarkdown()).toContain("`Plain` paragraph");
+    });
+
+    it("given visual mode, when strike is selected, then the selected text becomes strikethrough", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectText(editor, "Plain");
+
+        clickToolbarButton(editor, "Strike");
+
+        expect(editor.querySelector(".markdown-editor__surface del, .markdown-editor__surface s")?.textContent).toBe(
+            "Plain",
+        );
+        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
+        expect(editor.toMarkdown()).toContain("~~Plain~~ paragraph");
     });
 
     it("given visual mode, when link is selected, then the selected text becomes a link", async (): Promise<void> => {
@@ -287,7 +304,7 @@ describe("MarkdownEditorElement", (): void => {
         await waitForInitialisation();
         selectText(editor, "Plain");
 
-        clickToolbarButton(editor, "Thematic Break");
+        clickToolbarButton(editor, "Horizontal rule");
 
         expect(editor.querySelector(".markdown-editor__surface hr")).toBeInstanceOf(HTMLElement);
         expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
@@ -395,6 +412,25 @@ describe("MarkdownEditorElement", (): void => {
         );
     });
 
+    it("given split mode, when Markdown text is selected, then strike applies to the Markdown source", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Visual paragraph\n\nMarkdown paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectSourceText(editor, "Markdown");
+
+        clickToolbarButton(editor, "Strike");
+
+        expect(editor.toMarkdown()).toContain("~~Markdown~~ paragraph");
+        expect(
+            editor.querySelector(
+                ".markdown-editor__split .markdown-editor__surface del, .markdown-editor__split .markdown-editor__surface s",
+            )?.textContent,
+        ).toBe("Markdown");
+    });
+
     it("given split mode, when Markdown text is selected, then link applies to the Markdown source", async (): Promise<void> => {
         vi.stubGlobal(
             "prompt",
@@ -493,7 +529,7 @@ describe("MarkdownEditorElement", (): void => {
         await waitForInitialisation();
         selectSourceText(editor, "Markdown");
 
-        clickToolbarButton(editor, "Thematic Break");
+        clickToolbarButton(editor, "Horizontal rule");
 
         expect(editor.toMarkdown()).toContain("Visual paragraph\n\n---");
         expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface hr")).toBeInstanceOf(
@@ -574,38 +610,62 @@ function waitForInitialisation(): Promise<void> {
 
 /** Clicks a toolbar button by its visible label. */
 function clickToolbarButton(editor: Element, label: string): void {
-    const button = Array.from(editor.querySelectorAll(".markdown-editor__toolbar button")).find(
-        (candidate: Element): boolean => candidate.textContent === label,
+    const button = Array.from(editor.querySelectorAll(".markdown-editor__toolbar .markdown-editor__button")).find(
+        (candidate: Element): boolean => toolbarButtonLabel(candidate) === label,
     );
 
-    if (!(button instanceof HTMLButtonElement)) {
+    if (!(button instanceof HTMLElement)) {
         throw new Error(`Expected toolbar button: ${label}`);
     }
 
     button.click();
 }
 
-/** Returns the single mode cycling toolbar button. */
-function modeButton(editor: Element): HTMLButtonElement {
-    const button = editor.querySelector(".markdown-editor__mode-button");
+/** Returns the view mode radio group. */
+function modeControl(editor: Element): HTMLElement {
+    const control = editor.querySelector(".markdown-editor__mode-group");
 
-    if (!(button instanceof HTMLButtonElement)) {
-        throw new Error("Expected toolbar mode button.");
+    if (!(control instanceof HTMLElement)) {
+        throw new Error("Expected toolbar mode radio group.");
     }
 
-    return button;
+    return control;
+}
+
+/** Selects an editor mode through the toolbar radio group. */
+function selectMode(editor: Element, mode: string): void {
+    const control = modeControl(editor);
+    (control as HTMLElement & { value?: string }).value = mode;
+    control.setAttribute("value", mode);
+    control.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+/** Returns the block style dropdown. */
+function blockStyleDropdown(editor: Element): HTMLElement {
+    const dropdown = editor.querySelector(".markdown-editor__style-dropdown");
+
+    if (!(dropdown instanceof HTMLElement)) {
+        throw new Error("Expected toolbar style dropdown.");
+    }
+
+    return dropdown;
 }
 
 /** Selects a block style from the toolbar style control. */
 function selectBlockStyle(editor: Element, style: string): void {
-    const select = editor.querySelector(".markdown-editor__style-select");
+    const dropdown = blockStyleDropdown(editor);
+    const item = dropdown.querySelector(`wa-dropdown-item[value="${style}"]`);
 
-    if (!(select instanceof HTMLSelectElement)) {
-        throw new Error("Expected toolbar style select.");
+    if (!(item instanceof HTMLElement)) {
+        throw new Error(`Expected toolbar style dropdown item: ${style}`);
     }
 
-    select.value = style;
-    select.dispatchEvent(new Event("change", { bubbles: true }));
+    dropdown.dispatchEvent(new CustomEvent("wa-select", { bubbles: true, detail: { item } }));
+}
+
+/** Returns the stable label for a toolbar command button. */
+function toolbarButtonLabel(button: Element): string {
+    return button.getAttribute("aria-label") ?? button.textContent ?? "";
 }
 
 /** Selects matching text inside the visual editor surface. */

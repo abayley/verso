@@ -8,7 +8,15 @@ import {
 } from "./tiptap-visual-editor.js";
 
 type EditorMode = "visual" | "source" | "split";
+type EditorTheme = "light" | "dark" | "match-system";
 type ActivePane = "source" | "visual";
+type ToolbarButtonElement = HTMLElement;
+
+interface WaDropdownSelectEvent extends Event {
+    detail: {
+        item: Element;
+    };
+}
 
 interface HtmxConfigRequestEvent extends Event {
     detail: {
@@ -22,15 +30,23 @@ export class MarkdownEditorElement extends HTMLElement {
     private activePane: ActivePane | null = null;
     private initialised = false;
     private markdown = "";
-    private modeButton: HTMLButtonElement | null = null;
+    private modeGroup: HTMLElement | null = null;
     private mode: EditorMode = "visual";
     private panes: HTMLDivElement | null = null;
     private parseError: HTMLDivElement | null = null;
     private preview: HTMLDivElement | null = null;
-    private readonly inlineStyleButtons: HTMLButtonElement[] = [];
+    private readonly inlineStyleButtons: ToolbarButtonElement[] = [];
     private sourceEditor: CodeMirrorSourceEditor | null = null;
-    private styleSelect: HTMLSelectElement | null = null;
+    private styleDropdown: HTMLElement | null = null;
+    private styleTrigger: ToolbarButtonElement | null = null;
     private syncingEditors = false;
+    private theme: EditorTheme = "match-system";
+    private themeGroup: HTMLElement | null = null;
+    private readonly handleSystemThemeChange = (): void => {
+        if (this.theme === "match-system") {
+            this.applyDocumentTheme();
+        }
+    };
     private toolbar: HTMLDivElement | null = null;
     private visualEditor: TiptapVisualEditor | null = null;
 
@@ -49,6 +65,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Cleans up editor resources when the element leaves the document. */
     disconnectedCallback(): void {
+        this.systemThemeQuery()?.removeEventListener("change", this.handleSystemThemeChange);
         this.visualEditor?.destroy();
         this.visualEditor = null;
     }
@@ -62,6 +79,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.initialised = true;
         this.markdown = await this.loadMarkdown();
         this.mode = this.editorMode();
+        this.theme = this.editorTheme();
         this.textContent = "";
 
         this.toolbar = this.createToolbar();
@@ -77,6 +95,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.updateToolbarState();
         this.updatePreview();
         this.configureFormSubmission();
+        this.systemThemeQuery()?.addEventListener("change", this.handleSystemThemeChange);
     }
 
     /** Creates the top editor toolbar. */
@@ -84,64 +103,158 @@ export class MarkdownEditorElement extends HTMLElement {
         const toolbar = document.createElement("div");
         toolbar.className = "markdown-editor__toolbar";
         toolbar.setAttribute("role", "toolbar");
-        this.modeButton = this.createModeButton();
-        toolbar.append(this.modeButton);
-        this.styleSelect = this.createStyleSelect();
-        toolbar.append(this.styleSelect);
-        toolbar.append(this.createInlineStyleButton("strong", "Bold"));
-        toolbar.append(this.createInlineStyleButton("emphasis", "Italic"));
-        toolbar.append(this.createInlineStyleButton("code", "Code"));
-        toolbar.append(this.createInlineStyleButton("link", "Link"));
-        toolbar.append(this.createStructureButton("bullet-list", "Bullet List"));
-        toolbar.append(this.createStructureButton("ordered-list", "Ordered List"));
-        toolbar.append(this.createStructureButton("blockquote", "Blockquote"));
-        toolbar.append(this.createStructureButton("code-block", "Code Block"));
-        toolbar.append(this.createStructureButton("thematic-break", "Thematic Break"));
+        this.modeGroup = this.createModeGroup();
+        toolbar.append(this.modeGroup);
+        this.styleDropdown = this.createStyleDropdown();
+        toolbar.append(this.styleDropdown);
+        toolbar.append(
+            this.createToolbarButtonGroup(
+                this.createInlineStyleButton("strong", "Bold", "bold"),
+                this.createInlineStyleButton("emphasis", "Italic", "italic"),
+                this.createInlineStyleButton("strikethrough", "Strike", "strikethrough"),
+                this.createInlineStyleButton("code", "Code", "code"),
+                this.createInlineStyleButton("link", "Link", "link"),
+            ),
+            this.createToolbarButtonGroup(
+                this.createStructureButton("bullet-list", "Bullet List", "list"),
+                this.createStructureButton("ordered-list", "Ordered List", "list-ol"),
+                this.createStructureButton("blockquote", "Blockquote", "quote-left"),
+                this.createStructureButton("code-block", "Code Block", "file-code"),
+                this.createStructureButton("thematic-break", "Horizontal rule", "window-minimize"),
+            ),
+        );
+        toolbar.append(this.createSaveButton());
+        this.themeGroup = this.createThemeGroup();
+        toolbar.append(this.themeGroup);
 
         return toolbar;
     }
 
-    /** Creates the three-state mode-switching toolbar button. */
-    private createModeButton(): HTMLButtonElement {
-        const button = document.createElement("button");
-        button.className = "markdown-editor__mode-button";
-        button.type = "button";
-        button.addEventListener("click", (): void => this.switchMode(nextMode(this.mode)));
+    /** Creates the editor view mode radio group. */
+    private createModeGroup(): HTMLElement {
+        const group = document.createElement("wa-radio-group");
+        group.className = "markdown-editor__mode-group";
+        group.setAttribute("aria-label", "Editor view mode");
+        group.setAttribute("orientation", "horizontal");
+        group.setAttribute("size", "small");
+        group.append(
+            this.createModeOption("visual", "Visual", "html5", "brands"),
+            this.createModeOption("source", "Markdown", "markdown", "brands"),
+            this.createModeOption("split", "Split", "vr-cardboard"),
+        );
+        group.addEventListener("change", (): void => {
+            const mode = elementValue(group);
+
+            if (isEditorMode(mode) && mode !== this.mode) {
+                this.switchMode(mode);
+            }
+        });
+
+        return group;
+    }
+
+    /** Creates one editor view mode radio option. */
+    private createModeOption(mode: EditorMode, label: string, iconName: string, iconFamily?: string): HTMLElement {
+        const option = document.createElement("wa-radio");
+        option.className = "markdown-editor__mode-option";
+        option.append(createToolbarIcon(iconName, label, iconFamily));
+        option.setAttribute("appearance", "button");
+        option.setAttribute("aria-label", label);
+        option.setAttribute("title", label);
+        option.setAttribute("value", mode);
+
+        return option;
+    }
+
+    /** Creates the editor theme radio group. */
+    private createThemeGroup(): HTMLElement {
+        const group = document.createElement("wa-radio-group");
+        group.className = "markdown-editor__theme-group";
+        group.setAttribute("aria-label", "Editor colour theme");
+        group.setAttribute("orientation", "horizontal");
+        group.setAttribute("size", "small");
+        group.append(
+            this.createThemeOption("light", "Light", "sun"),
+            this.createThemeOption("dark", "Dark", "moon"),
+            this.createThemeOption("match-system", "Match system", "s"),
+        );
+        group.addEventListener("change", (): void => {
+            const theme = elementValue(group);
+
+            if (isEditorTheme(theme) && theme !== this.theme) {
+                this.theme = theme;
+                this.updateToolbarState();
+            }
+        });
+
+        return group;
+    }
+
+    /** Creates one editor theme radio option. */
+    private createThemeOption(theme: EditorTheme, label: string, iconName: string): HTMLElement {
+        const option = document.createElement("wa-radio");
+        option.className = "markdown-editor__theme-option";
+        option.append(createToolbarIcon(iconName, label));
+        option.setAttribute("appearance", "button");
+        option.setAttribute("aria-label", label);
+        option.setAttribute("title", label);
+        option.setAttribute("value", theme);
+
+        return option;
+    }
+
+    /** Creates the explicit form submit button for manual saves. */
+    private createSaveButton(): ToolbarButtonElement {
+        const button = this.createToolbarButton("markdown-editor__save-button", "Save");
+        button.setAttribute("appearance", "filled");
+        button.setAttribute("type", "submit");
 
         return button;
     }
 
     /** Creates the block style toolbar control. */
-    private createStyleSelect(): HTMLSelectElement {
-        const select = document.createElement("select");
-        select.className = "markdown-editor__style-select";
-        select.setAttribute("aria-label", "Block style");
-        select.append(
-            this.createStyleOption("paragraph", "Paragraph"),
-            this.createStyleOption("heading-1", "Heading 1"),
-            this.createStyleOption("heading-2", "Heading 2"),
-            this.createStyleOption("heading-3", "Heading 3"),
-        );
-        select.addEventListener("change", (): void => this.applyBlockStyle(select.value));
+    private createStyleDropdown(): HTMLElement {
+        const dropdown = document.createElement("wa-dropdown");
+        dropdown.className = "markdown-editor__style-dropdown";
+        dropdown.setAttribute("aria-label", "Block style");
+        dropdown.setAttribute("size", "small");
 
-        return select;
+        this.styleTrigger = this.createToolbarButton("markdown-editor__style-trigger", "Paragraph");
+        this.styleTrigger.setAttribute("slot", "trigger");
+        this.styleTrigger.setAttribute("with-caret", "");
+        dropdown.append(
+            this.styleTrigger,
+            this.createStyleDropdownItem("paragraph", "Paragraph"),
+            this.createStyleDropdownItem("heading-1", "Heading 1"),
+            this.createStyleDropdownItem("heading-2", "Heading 2"),
+            this.createStyleDropdownItem("heading-3", "Heading 3"),
+        );
+        dropdown.addEventListener("wa-select", (event: Event): void => {
+            const style = elementValue((event as WaDropdownSelectEvent).detail.item as HTMLElement);
+
+            if (isVisualBlockStyle(style)) {
+                this.setStyleDropdownValue(style);
+                this.applyBlockStyle(style);
+            }
+        });
+
+        return dropdown;
     }
 
-    /** Creates one option in the block style toolbar control. */
-    private createStyleOption(value: VisualBlockStyle, label: string): HTMLOptionElement {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = label;
+    /** Creates one item in the block style dropdown control. */
+    private createStyleDropdownItem(value: VisualBlockStyle, label: string): HTMLElement {
+        const item = document.createElement("wa-dropdown-item");
+        item.setAttribute("value", value);
+        item.textContent = label;
 
-        return option;
+        return item;
     }
 
     /** Creates one inline style toolbar button. */
-    private createInlineStyleButton(style: VisualInlineStyle, label: string): HTMLButtonElement {
-        const button = document.createElement("button");
-        button.className = "markdown-editor__inline-button";
-        button.textContent = label;
-        button.type = "button";
+    private createInlineStyleButton(style: VisualInlineStyle, label: string, iconName: string): ToolbarButtonElement {
+        const button = this.createToolbarButton("markdown-editor__inline-button", label);
+        button.textContent = "";
+        button.append(createToolbarIcon(iconName, label));
         button.dataset["inlineStyle"] = style;
         button.addEventListener("mousedown", (event: MouseEvent): void => {
             event.preventDefault();
@@ -153,11 +266,10 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /** Creates one structural style toolbar button. */
-    private createStructureButton(style: VisualStructureStyle, label: string): HTMLButtonElement {
-        const button = document.createElement("button");
-        button.className = "markdown-editor__structure-button";
-        button.textContent = label;
-        button.type = "button";
+    private createStructureButton(style: VisualStructureStyle, label: string, iconName: string): ToolbarButtonElement {
+        const button = this.createToolbarButton("markdown-editor__structure-button", label);
+        button.textContent = "";
+        button.append(createToolbarIcon(iconName, label));
         button.dataset["structureStyle"] = style;
         button.addEventListener("mousedown", (event: MouseEvent): void => {
             event.preventDefault();
@@ -165,6 +277,29 @@ export class MarkdownEditorElement extends HTMLElement {
         button.addEventListener("click", (): void => this.toggleStructure(style));
 
         return button;
+    }
+
+    /** Creates one Web Awesome toolbar command button. */
+    private createToolbarButton(className: string, label: string): ToolbarButtonElement {
+        const button = document.createElement("wa-button");
+        button.className = `markdown-editor__button ${className}`;
+        button.textContent = label;
+        button.setAttribute("appearance", "outlined");
+        button.setAttribute("size", "small");
+        button.setAttribute("type", "button");
+        button.setAttribute("aria-label", label);
+        button.setAttribute("title", label);
+
+        return button;
+    }
+
+    /** Creates one Web Awesome toolbar button group. */
+    private createToolbarButtonGroup(...buttons: ToolbarButtonElement[]): HTMLElement {
+        const group = document.createElement("wa-button-group");
+        group.className = "markdown-editor__button-group";
+        group.append(...buttons);
+
+        return group;
     }
 
     /** Re-renders the editor body for the current mode. */
@@ -213,6 +348,17 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         return "visual";
+    }
+
+    /** Returns the requested initial colour theme. */
+    private editorTheme(): EditorTheme {
+        const theme = this.getAttribute("theme");
+
+        if (theme === "light" || theme === "dark" || theme === "match-system") {
+            return theme;
+        }
+
+        return "match-system";
     }
 
     /** Loads Markdown from the `src` attribute, or from inline element text. */
@@ -299,6 +445,10 @@ export class MarkdownEditorElement extends HTMLElement {
 
             if (style === "code") {
                 this.sourceEditor?.toggleCode();
+            }
+
+            if (style === "strikethrough") {
+                this.sourceEditor?.toggleStrikethrough();
             }
 
             if (style === "link" && href) {
@@ -532,18 +682,90 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
-        if (this.modeButton) {
-            this.modeButton.textContent = modeLabel(this.mode);
-            this.modeButton.setAttribute("aria-pressed", "true");
+        if (this.modeGroup) {
+            setElementValue(this.modeGroup, this.mode);
+            this.modeGroup.setAttribute("value", this.mode);
+
+            for (const option of this.modeGroup.querySelectorAll("wa-radio")) {
+                if (option.getAttribute("value") === this.mode) {
+                    option.setAttribute("checked", "");
+                } else {
+                    option.removeAttribute("checked");
+                }
+            }
         }
 
-        if (this.styleSelect) {
-            this.styleSelect.disabled = !this.visualEditor && !this.sourceEditor;
-            this.styleSelect.value = "paragraph";
+        this.setAttribute("data-theme", this.theme);
+        this.applyDocumentTheme();
+
+        if (this.themeGroup) {
+            setElementValue(this.themeGroup, this.theme);
+            this.themeGroup.setAttribute("value", this.theme);
+
+            for (const option of this.themeGroup.querySelectorAll("wa-radio")) {
+                if (option.getAttribute("value") === this.theme) {
+                    option.setAttribute("checked", "");
+                } else {
+                    option.removeAttribute("checked");
+                }
+            }
+        }
+
+        if (this.styleTrigger) {
+            setToolbarButtonDisabled(this.styleTrigger, !this.visualEditor && !this.sourceEditor);
+            this.setStyleDropdownValue("paragraph");
         }
 
         for (const button of this.inlineStyleButtons) {
-            button.disabled = !this.visualEditor && !this.sourceEditor;
+            setToolbarButtonDisabled(button, !this.visualEditor && !this.sourceEditor);
+        }
+    }
+
+    /** Applies the editor theme selection to Web Awesome's document-level colour scheme classes. */
+    private applyDocumentTheme(): void {
+        const root = document.documentElement;
+        const theme = this.resolvedEditorTheme();
+
+        root.classList.toggle("wa-light", theme === "light");
+        root.classList.toggle("wa-dark", theme === "dark");
+    }
+
+    /** Resolves match-system to the current browser colour preference. */
+    private resolvedEditorTheme(): "light" | "dark" {
+        if (this.theme === "dark") {
+            return "dark";
+        }
+
+        if (this.theme === "light") {
+            return "light";
+        }
+
+        return this.systemThemeQuery()?.matches ? "dark" : "light";
+    }
+
+    /** Returns the browser colour-scheme media query when available. */
+    private systemThemeQuery(): MediaQueryList | null {
+        if (typeof window.matchMedia !== "function") {
+            return null;
+        }
+
+        return window.matchMedia("(prefers-color-scheme: dark)");
+    }
+
+    /** Reflects the current block style label into the dropdown trigger. */
+    private setStyleDropdownValue(style: VisualBlockStyle): void {
+        if (!this.styleDropdown || !this.styleTrigger) {
+            return;
+        }
+
+        this.styleTrigger.textContent = blockStyleLabel(style);
+
+        for (const item of this.styleDropdown.querySelectorAll("wa-dropdown-item")) {
+            if (item.getAttribute("value") === style) {
+                item.setAttribute("checked", "");
+            } else {
+                item.removeAttribute("checked");
+            }
         }
     }
 }
@@ -562,28 +784,70 @@ function isVisualBlockStyle(style: string): style is VisualBlockStyle {
     return style === "paragraph" || style === "heading-1" || style === "heading-2" || style === "heading-3";
 }
 
-/** Returns the next mode in the toolbar cycle. */
-function nextMode(mode: EditorMode): EditorMode {
-    if (mode === "visual") {
-        return "source";
+/** Returns the toolbar label for a supported block style. */
+function blockStyleLabel(style: VisualBlockStyle): string {
+    if (style === "heading-1") {
+        return "Heading 1";
     }
 
-    if (mode === "source") {
-        return "split";
+    if (style === "heading-2") {
+        return "Heading 2";
     }
 
-    return "visual";
+    if (style === "heading-3") {
+        return "Heading 3";
+    }
+
+    return "Paragraph";
 }
 
-/** Returns the display label for a toolbar mode. */
-function modeLabel(mode: EditorMode): string {
-    if (mode === "source") {
-        return "Markdown";
+/** Checks whether a value is an editor mode. */
+function isEditorMode(mode: string): mode is EditorMode {
+    return mode === "visual" || mode === "source" || mode === "split";
+}
+
+/** Checks whether a value is an editor colour theme. */
+function isEditorTheme(theme: string): theme is EditorTheme {
+    return theme === "light" || theme === "dark" || theme === "match-system";
+}
+
+/** Reads the string value from an HTML or custom form control host. */
+function elementValue(element: HTMLElement): string {
+    const value = (element as HTMLElement & { value?: unknown }).value;
+
+    if (typeof value === "string") {
+        return value;
     }
 
-    if (mode === "split") {
-        return "Split";
+    return element.getAttribute("value") ?? "";
+}
+
+/** Sets the string value on an HTML or custom form control host. */
+function setElementValue(element: HTMLElement, value: string): void {
+    (element as HTMLElement & { value?: string }).value = value;
+}
+
+/** Creates an icon for one toolbar command. */
+function createToolbarIcon(name: string, label: string, family?: string): HTMLElement {
+    const icon = document.createElement("wa-icon");
+    icon.className = "markdown-editor__button-icon";
+    icon.setAttribute("name", name);
+    icon.setAttribute("variant", "solid");
+    icon.setAttribute("label", label);
+
+    if (family) {
+        icon.setAttribute("family", family);
     }
 
-    return "Visual";
+    return icon;
+}
+
+/** Reflects disabled state onto custom toolbar command elements. */
+function setToolbarButtonDisabled(button: ToolbarButtonElement, disabled: boolean): void {
+    if (disabled) {
+        button.setAttribute("disabled", "");
+        return;
+    }
+
+    button.removeAttribute("disabled");
 }

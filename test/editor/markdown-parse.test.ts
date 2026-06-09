@@ -6,7 +6,7 @@ describe("parseMarkdown", (): void => {
         const markdown = [
             "# Heading",
             "",
-            "Paragraph with **strong**, *emphasis*, `code`, and [link](/target).",
+            "Paragraph with **strong**, *emphasis*, `code`, ~~strike~~, and [link](/target).",
             "",
             "- first",
             "- second",
@@ -30,6 +30,8 @@ describe("parseMarkdown", (): void => {
                         { children: [{ text: "emphasis", type: "text" }], type: "emphasis" },
                         { text: ", ", type: "text" },
                         { text: "code", type: "code" },
+                        { text: ", ", type: "text" },
+                        { children: [{ text: "strike", type: "text" }], type: "strikethrough" },
                         { text: ", and ", type: "text" },
                         {
                             children: [{ text: "link", type: "text" }],

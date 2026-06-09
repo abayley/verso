@@ -6,7 +6,7 @@ describe("renderMarkdown", (): void => {
         const markdown = [
             "# Heading",
             "",
-            "Paragraph with **strong**, *emphasis*, `code`, and [link](/target).",
+            "Paragraph with **strong**, *emphasis*, `code`, ~~strike~~, and [link](/target).",
             "",
             "- first",
             "- second",
@@ -17,7 +17,7 @@ describe("renderMarkdown", (): void => {
 
         expect(renderMarkdown(markdown)).toBe(
             "<h1>Heading</h1>" +
-                '<p>Paragraph with <strong>strong</strong>, <em>emphasis</em>, <code>code</code>, and <a href="/target">link</a>.</p>' +
+                '<p>Paragraph with <strong>strong</strong>, <em>emphasis</em>, <code>code</code>, <del>strike</del>, and <a href="/target">link</a>.</p>' +
                 "<ul><li>first</li><li>second</li></ul>" +
                 "<ol><li>ordered</li><li>list</li></ol>",
         );

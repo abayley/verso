@@ -12,8 +12,10 @@ spec =
         it "given editor request, when routing, then markdown editor page is returned" $ do
             response <- appForTest (request GET ["documents", "home", "edit"] "")
             statusCode (responseStatus response) `shouldBe` 200
+            bodyText response `shouldInclude` "<html lang=\"en\" class=\"wa-theme-default wa-palette-default wa-brand-blue\">"
             bodyText response `shouldInclude` "https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"
             bodyText response `shouldInclude` "<script src=\"/static/editor/markdown-editor.js\"></script>"
+            bodyText response `shouldInclude` "<link rel=\"stylesheet\" href=\"/static/editor/webawesome.css\">"
             bodyText response `shouldInclude` "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
             bodyText response `shouldInclude` "hx-trigger=\"submit, editor:changed delay:2s from:markdown-editor\""
             bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" mode=\"visual\" src=\"/documents/home\"></markdown-editor>"
@@ -68,6 +70,10 @@ spec =
             response <- appForTest (request GET ["static", "editor", "markdown-editor.js"] "")
             statusCode (responseStatus response) `shouldBe` 200
             responseBody response `shouldBe` FileBody "static/editor/markdown-editor.js"
+        it "given Web Awesome stylesheet request, when routing, then static stylesheet response is returned" $ do
+            response <- appForTest (request GET ["static", "editor", "webawesome.css"] "")
+            statusCode (responseStatus response) `shouldBe` 200
+            responseBody response `shouldBe` FileBody "static/editor/webawesome.css"
 
 request :: Method -> [String] -> String -> Request
 request method path body =

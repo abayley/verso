@@ -64,6 +64,10 @@ function renderInlineNode(node: InlineNode): string {
         return `<em>${renderInlineNodes(node.children)}</em>`;
     }
 
+    if (node.type === "strikethrough") {
+        return `<del>${renderInlineNodes(node.children)}</del>`;
+    }
+
     if (node.type === "code") {
         return `<code>${escapeHtml(node.text)}</code>`;
     }

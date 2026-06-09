@@ -83,6 +83,11 @@ export class CodeMirrorSourceEditor {
         return this.wrapSelection("`", "`");
     }
 
+    /** Toggles Markdown strikethrough markers around the current source selection. */
+    public toggleStrikethrough(): boolean {
+        return this.wrapSelection("~~", "~~");
+    }
+
     /** Toggles Markdown link markers around the current source selection. */
     public toggleLink(href: string): boolean {
         return this.wrapSelection("[", `](${href})`);

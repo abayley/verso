@@ -2,6 +2,7 @@ import type {
     Blockquote,
     Break,
     Code,
+    Delete,
     Heading,
     InlineCode,
     Link,
@@ -138,6 +139,10 @@ function inlineNodeFromMdast(node: PhrasingContent): InlineNode {
         };
     }
 
+    if (node.type === "delete") {
+        return strikethroughInlineFromMdast(node);
+    }
+
     if (node.type === "inlineCode") {
         return codeInlineFromMdast(node);
     }
@@ -157,6 +162,14 @@ function inlineNodeFromMdast(node: PhrasingContent): InlineNode {
 function breakInlineFromMdast(_node: Break): InlineNode {
     return {
         type: "break",
+    };
+}
+
+/** Converts a GFM delete mdast node into an editor strikethrough node. */
+function strikethroughInlineFromMdast(node: Delete): InlineNode {
+    return {
+        children: inlineNodesFromMdast(node.children),
+        type: "strikethrough",
     };
 }
 

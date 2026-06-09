@@ -51,32 +51,7 @@ async function main() {
   await page.goto(`${baseUrl}/documents/home/edit`);
   await page.waitForSelector(".markdown-editor__surface h1");
   assert.equal(await page.locator(".markdown-editor__preview").count(), 0);
-  assert.equal(
-    await page.locator(".markdown-editor__surface .ProseMirror").evaluate((element) =>
-      window.getComputedStyle(element).outlineStyle
-    ),
-    "none",
-  );
-  assert.deepEqual(await page.locator(".markdown-editor__toolbar button").allInnerTexts(), [
-    "Visual",
-    "Bold",
-    "Italic",
-    "Code",
-    "Link",
-    "Bullet List",
-    "Ordered List",
-    "Blockquote",
-    "Code Block",
-    "Thematic Break",
-  ]);
-  assert.equal(
-    await page.locator(".markdown-editor__mode-button").innerText(),
-    "Visual",
-  );
-  assert.equal(
-    await page.locator(".markdown-editor__mode-button").getAttribute("aria-pressed"),
-    "true",
-  );
+  assert.equal(await currentEditorMode(page), "visual");
 
   assert.equal(
     await page.locator(".markdown-editor__surface h1").innerText(),
@@ -108,7 +83,7 @@ async function main() {
       ?.innerText.includes("## Literal heading"),
   );
   assert.equal(await page.locator(".markdown-editor__surface h2").count(), 0);
-  await page.locator(".markdown-editor__mode-button").click();
+  await selectEditorMode(page, "source");
   await page.waitForSelector(".markdown-editor__source .cm-editor");
   assert.match(await sourceMarkdownValue(page), /\\## Literal heading/);
   await fillSourceMarkdown(
@@ -116,9 +91,9 @@ async function main() {
     ".markdown-editor__source",
     "# Hello from MicroHttp\n\nEdit this Markdown document.",
   );
-  await page.locator(".markdown-editor__mode-button").click();
+  await selectEditorMode(page, "split");
   await page.waitForSelector(".markdown-editor__split .markdown-editor__surface h1");
-  await page.locator(".markdown-editor__mode-button").click();
+  await selectEditorMode(page, "visual");
   await page.waitForSelector(".markdown-editor__surface .ProseMirror");
 
   await page.locator(".markdown-editor__surface .ProseMirror").click();
@@ -129,7 +104,7 @@ async function main() {
   await page.waitForSelector(".markdown-editor__surface li");
   await page.keyboard.type("List item");
   assert.equal(await page.locator(".markdown-editor__surface li").innerText(), "List item");
-  await page.locator(".markdown-editor__mode-button").click();
+  await selectEditorMode(page, "source");
   await page.waitForSelector(".markdown-editor__source .cm-editor");
   assert.match(await sourceMarkdownValue(page), /- List item/);
   await fillSourceMarkdown(page, ".markdown-editor__source", "Indented paragraph");
@@ -141,9 +116,9 @@ async function main() {
 
   const visualNestedListMarkdown = "- parent\n- child";
   await fillSourceMarkdown(page, ".markdown-editor__source", visualNestedListMarkdown);
-  await page.locator(".markdown-editor__mode-button").click();
+  await selectEditorMode(page, "split");
   await page.waitForSelector(".markdown-editor__split .markdown-editor__surface li");
-  await page.locator(".markdown-editor__mode-button").click();
+  await selectEditorMode(page, "visual");
   await page.waitForSelector(".markdown-editor__surface li");
   await selectTextInElement(page, ".markdown-editor__surface .ProseMirror", "child");
   await page.keyboard.press("Tab");
@@ -153,7 +128,7 @@ async function main() {
   await page.waitForFunction(() => document.querySelector("markdown-editor")?.toMarkdown() === "- parent\n- child");
   assert.equal(await editorMarkdownValue(page), visualNestedListMarkdown);
 
-  await page.locator(".markdown-editor__mode-button").click();
+  await selectEditorMode(page, "source");
   await page.waitForSelector(".markdown-editor__source .cm-editor");
   await fillSourceMarkdown(
     page,
@@ -163,26 +138,17 @@ async function main() {
 
   assert.match(await sourceMarkdownValue(page), /# Hello from MicroHttp/);
   assert.match(await sourceMarkdownValue(page), /Edit this Markdown document\./);
-  assert.equal(
-    await page.locator(".markdown-editor__mode-button").innerText(),
-    "Markdown",
-  );
-  await page.locator(".markdown-editor__mode-button").click();
+  assert.equal(await currentEditorMode(page), "source");
+  await selectEditorMode(page, "split");
   await page.waitForSelector(".markdown-editor__split .markdown-editor__surface h1");
   assert.equal(
     await page.locator(".markdown-editor__split .markdown-editor__surface h1").innerText(),
     "Hello from MicroHttp",
   );
-  assert.equal(
-    await page.locator(".markdown-editor__mode-button").innerText(),
-    "Split",
-  );
-  await page.locator(".markdown-editor__mode-button").click();
+  assert.equal(await currentEditorMode(page), "split");
+  await selectEditorMode(page, "visual");
   await page.waitForSelector(".markdown-editor__surface .ProseMirror");
-  assert.equal(
-    await page.locator(".markdown-editor__mode-button").innerText(),
-    "Visual",
-  );
+  assert.equal(await currentEditorMode(page), "visual");
 
   await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
   await page.waitForSelector(".markdown-editor__source .cm-editor");
@@ -215,9 +181,9 @@ async function main() {
 
   const listBlockquoteMarkdown = ["- > # blockquote heading 1", "  >", "  > paragraph 1"].join("\n");
   await fillSourceMarkdown(page, ".markdown-editor__source", listBlockquoteMarkdown);
-  await page.locator(".markdown-editor__mode-button").click();
+  await selectEditorMode(page, "split");
   await page.waitForSelector(".markdown-editor__split .markdown-editor__surface blockquote h1");
-  await page.locator(".markdown-editor__mode-button").click();
+  await selectEditorMode(page, "visual");
   await page.waitForSelector(".markdown-editor__surface blockquote h1");
   assert.equal(await editorMarkdownValue(page), listBlockquoteMarkdown);
 
@@ -235,9 +201,9 @@ async function main() {
     "> 3. item 3",
   ].join("\n");
   await fillSourceMarkdown(page, ".markdown-editor__source", quotedOrderedListWithCodeMarkdown);
-  await page.locator(".markdown-editor__mode-button").click();
+  await selectEditorMode(page, "split");
   await page.waitForSelector(".markdown-editor__split .markdown-editor__surface blockquote ol");
-  await page.locator(".markdown-editor__mode-button").click();
+  await selectEditorMode(page, "visual");
   await page.waitForSelector(".markdown-editor__surface blockquote ol");
   assert.equal(await editorMarkdownValue(page), quotedOrderedListWithCodeMarkdown);
 
@@ -370,6 +336,27 @@ async function main() {
   );
   assert.equal(await page.locator(".markdown-editor__split .markdown-editor__surface code").innerText(), "Source pane");
 
+  const sourcePaneStrikeMarkdown = "Source pane paragraph.";
+  await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", sourcePaneStrikeMarkdown);
+  await page.waitForFunction(() =>
+    document
+      .querySelector(".markdown-editor__split .markdown-editor__surface")
+      ?.innerText.includes("Source pane paragraph."),
+  );
+  await selectTextInElement(page, ".markdown-editor__split .markdown-editor__source .cm-content", "Source pane");
+  await page.getByRole("button", { name: "Strike" }).click();
+  await page.waitForSelector(".markdown-editor__split .markdown-editor__surface del, .markdown-editor__split .markdown-editor__surface s");
+  assert.match(
+    await sourceMarkdownValue(page, ".markdown-editor__split .markdown-editor__source"),
+    /~~Source pane~~ paragraph\./,
+  );
+  assert.equal(
+    await page
+      .locator(".markdown-editor__split .markdown-editor__surface del, .markdown-editor__split .markdown-editor__surface s")
+      .innerText(),
+    "Source pane",
+  );
+
   const sourcePaneLinkMarkdown = "Source pane paragraph.";
   await fillSourceMarkdown(page, ".markdown-editor__split .markdown-editor__source", sourcePaneLinkMarkdown);
   await page.waitForFunction(() =>
@@ -467,7 +454,7 @@ async function main() {
       ?.innerText.includes("Source pane paragraph."),
   );
   await selectTextInElement(page, ".markdown-editor__split .markdown-editor__source .cm-content", "Source pane");
-  await page.getByRole("button", { name: "Thematic Break" }).click();
+  await page.getByRole("button", { name: "Horizontal rule" }).click();
   await page.waitForSelector(".markdown-editor__split .markdown-editor__surface hr");
   assert.equal(await sourceMarkdownValue(page, ".markdown-editor__split .markdown-editor__source"), "---");
 
@@ -523,7 +510,7 @@ async function main() {
 
   await page.goto(`${baseUrl}/documents/home/edit`);
   await page.waitForSelector(".markdown-editor__surface h1");
-  await page.locator(".markdown-editor__style-select").selectOption("heading-2");
+  await selectBlockStyle(page, "heading-2");
   await page.waitForSelector(".markdown-editor__surface h2");
   assert.equal(await page.locator(".markdown-editor__surface h2").innerText(), "Autosaved heading");
   assert.equal(await page.locator(".markdown-editor__preview").count(), 0);
@@ -553,6 +540,23 @@ async function sourceMarkdownValue(page, rootSelector = ".markdown-editor__sourc
 
 async function editorMarkdownValue(page) {
   return page.locator("markdown-editor").evaluate((editor) => editor.toMarkdown());
+}
+
+async function currentEditorMode(page) {
+  return page.locator(".markdown-editor__mode-group").getAttribute("value");
+}
+
+async function selectEditorMode(page, mode) {
+  await page.locator(`.markdown-editor__mode-option[value="${mode}"]`).click();
+  await page.waitForFunction(
+    (expectedMode) => document.querySelector(".markdown-editor__mode-group")?.getAttribute("value") === expectedMode,
+    mode,
+  );
+}
+
+async function selectBlockStyle(page, style) {
+  await page.locator(".markdown-editor__style-trigger").click();
+  await page.locator(`.markdown-editor__style-dropdown wa-dropdown-item[value="${style}"]`).click();
 }
 
 function normaliseCodeMirrorText(text) {

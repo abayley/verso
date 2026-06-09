@@ -11,6 +11,7 @@
         "editor:typecheck": "tsc --noEmit"
     },
     "devDependencies": {
+        "@awesome.me/webawesome": "^3.8.0",
         "@biomejs/biome": "^2.4.16",
         "@codemirror/lang-markdown": "^6.5.0",
         "@tiptap/core": "^3.26.0",

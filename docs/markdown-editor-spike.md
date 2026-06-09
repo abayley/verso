@@ -53,6 +53,7 @@ Initial supported inline content:
 - Strong emphasis.
 - Emphasis.
 - Inline code.
+- Strikethrough.
 - Links.
 
 Initial unsupported content:
@@ -332,12 +333,14 @@ remark-to-rehype pipeline, and writes a report to
 
 ## Markdown Editor Visual Editing Strategy
 
-The first visual editor can use a `contenteditable` region with a constrained
-toolbar. The toolbar should create only supported Markdown-compatible structures.
+The visual editor now uses Tiptap/ProseMirror behind the `<markdown-editor>`
+boundary. The toolbar should create only supported Markdown-compatible
+structures.
 
 The editor should avoid exposing native browser commands that generate
-uncontrolled markup. If browser commands are used for the spike, the component
-must normalise the resulting DOM before serialising Markdown.
+uncontrolled markup. Tiptap commands should stay behind the
+`TiptapVisualEditor` adapter, and the component must normalise the resulting
+visual document before serialising Markdown.
 
 The visual surface should not include htmx attributes or custom elements inside
 the editable document. htmx and web components are part of the editor shell, not
@@ -497,24 +500,31 @@ editing with CodeMirror, and Web Awesome controls.
   Tiptap's Markdown extension remains beta.
 - [x] Add a top toolbar shell with visual, Markdown source, and split mode
   switching inside the custom element.
-- [x] Replace the three separate mode buttons with one three-state mode button.
-  One button shows the active mode and cycles visual, Markdown, and split views.
+- [x] Replace the three separate mode buttons with one three-state Web Awesome
+  radio group. The group switches between visual, Markdown, and split views.
 - [x] Replace the raw Markdown textarea with a CodeMirror source editor
   configured for Markdown editing.
 - [x] Make split view bidirectional between Markdown source and WYSIWYG editing.
   Split view hosts CodeMirror and Tiptap side by side, and edits from either
   side update the other immediately.
-- [x] Add the first style control: a block-style select that applies paragraph
-  and heading levels one to three through Tiptap in visual mode.
-- [x] Add inline style controls for strong, emphasis, inline code, and links.
-  Added Bold, Italic, Code, and Link controls for `strong`, `emphasis`, inline
-  `code`, and `link` marks through Tiptap visual mode and CodeMirror source
-  mode.
+- [x] Add the first style control: a Web Awesome dropdown that applies
+  paragraph and heading levels one to three through Tiptap in visual mode and
+  through CodeMirror in source mode.
+- [x] Add inline style controls for strong, emphasis, inline code,
+  strikethrough, and links. Added Bold, Italic, Code, Strike, and Link controls
+  for `strong`, `emphasis`, inline `code`, GFM strikethrough, and `link` marks
+  through Tiptap visual mode and CodeMirror source mode.
 - [x] Add structure controls for lists, blockquotes, fenced code blocks, and
-  thematic breaks. Added Bullet List, Ordered List, Blockquote, Code Block, and
-  Thematic Break controls through the visual/source command seam.
-- [ ] Add theme switching.
-- [ ] Revisit whether Web Awesome should replace native toolbar controls.
+  horizontal rules. Added Bullet List, Ordered List, Blockquote, Code Block, and
+  Horizontal rule controls through the visual/source command seam.
+- [x] Add theme switching. The toolbar exposes Light, Dark, and Match system
+  controls and applies Web Awesome's `wa-light` and `wa-dark` colour-scheme
+  classes on the document root.
+- [x] Install Web Awesome as the component/styling library.
+- [x] Replace native toolbar command buttons with Web Awesome button groups.
+- [x] Apply Web Awesome's documented default theme contract on the TestApp
+  editor page with `wa-theme-default`, `wa-palette-default`, and
+  `wa-brand-blue`.
 - [ ] Consider Lit for the editor shell once manual DOM state management becomes
   the main source of complexity.
 
@@ -526,8 +536,28 @@ Phase Six findings so far:
 - Tiptap is a good fit for the visual editing surface because toolbar actions
   can stay behind the `TiptapVisualEditor` adapter instead of spreading
   ProseMirror commands through the custom element.
-- Native toolbar controls are enough for the spike, but the toolbar is now the
-  area most likely to benefit from a component/styling library decision.
+- Web Awesome now provides the toolbar command buttons, button groups, radio
+  groups, dropdown, icons, and default theme tokens. The editor build emits a
+  generated Web Awesome theme stylesheet bundle so TestApp serves all required
+  editor assets from `/static/editor/`.
+- The TestApp editor page must opt into Web Awesome's theme contract with
+  `wa-theme-default wa-palette-default wa-brand-blue`. The editor's theme
+  control should switch `wa-light` and `wa-dark` on the document root instead
+  of restyling Web Awesome controls manually.
+- The toolbar layout currently uses a left-aligned view-mode radio group,
+  block-style dropdown, inline style buttons, structure buttons, and a
+  right-aligned Light/Dark/Match system radio group.
+- Toolbar controls are icon-first Web Awesome controls with native `title`
+  hover text and stable accessible labels. The Markdown thematic-break command
+  is exposed in the UI as `Horizontal rule`.
+- The block-style dropdown trigger must use Web Awesome's `with-caret`
+  attribute on the slotted `wa-button`; `caret` is not the documented attribute.
+- Lit remains deferred for the editor shell. Web Awesome reduced the immediate
+  need for Lit because the controls now own much of the UI behaviour, while the
+  remaining complexity is mostly editor coordination between Tiptap, CodeMirror,
+  Markdown parsing, htmx submission, and active-pane routing. Revisit Lit before
+  table, image, or attachment UI work, or earlier if manual `createElement`
+  rendering becomes the main source of bugs.
 - Toolbar inline mark controls must preserve or recover the visual editor
   selection before applying Tiptap commands; otherwise button focus can collapse
   the selected text before the command runs.
@@ -551,6 +581,10 @@ Phase Six findings so far:
 - The inline toolbar seam works for simple mark controls across both panes:
   visual commands stay in the Tiptap adapter, while source commands wrap the
   active CodeMirror selection with Markdown delimiters.
+- Strikethrough is part of the current GFM inline subset. The editor parses
+  mdast `delete` nodes, renders them as `del`, serialises visual `del`, `s`, and
+  `strike` elements as `~~text~~`, and routes the Strike toolbar control through
+  the same active-pane inline command seam as Bold, Italic, and Code.
 - The Link control uses `window.prompt` as a temporary spike interaction. A
   proper toolbar design should replace it with an in-editor link target control.
 - Browser smoke tests should clear the Tiptap surface with keyboard selection
@@ -562,9 +596,9 @@ Phase Six findings so far:
 - Blockquote works through the same structure-control seam as lists: the
   CodeMirror adapter toggles the current line prefix, while the Tiptap adapter
   owns the visual blockquote command.
-- Thematic Break follows the same active-pane structure-control seam: the source
-  adapter replaces the current line with `---`, while the Tiptap adapter owns
-  visual horizontal-rule insertion.
+- Horizontal rule follows the same active-pane structure-control seam: the
+  source adapter replaces the current line with `---`, while the Tiptap adapter
+  owns visual horizontal-rule insertion.
 - Code Block follows the same active-pane structure-control seam: the source
   adapter wraps the active selection, or current line, in an unlabelled fenced
   code block, while the Tiptap adapter owns visual code-block toggling.

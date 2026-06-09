@@ -29,7 +29,8 @@ cabal install hlint
 cabal install haddock
 ```
 
-The executables are typically installed to ~/.cabal/bin/, so ensure that is on your PATH.
+The executables are typically installed to ~/.cabal/bin/, so ensure that is on
+your PATH.
 
 [ghcup]: https://www.haskell.org/ghcup/
 

@@ -148,6 +148,15 @@ function inlineNodesFromNode(node: ChildNode): InlineNode[] {
         ];
     }
 
+    if (element.tagName === "DEL" || element.tagName === "S" || element.tagName === "STRIKE") {
+        return [
+            {
+                children: inlineNodesFromElement(element),
+                type: "strikethrough",
+            },
+        ];
+    }
+
     if (element.tagName === "CODE") {
         return [
             {
@@ -293,6 +302,10 @@ function inlineNodeToMarkdown(node: InlineNode): string {
 
     if (node.type === "emphasis") {
         return `*${inlineNodesToMarkdown(node.children)}*`;
+    }
+
+    if (node.type === "strikethrough") {
+        return `~~${inlineNodesToMarkdown(node.children)}~~`;
     }
 
     if (node.type === "code") {

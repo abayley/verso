@@ -40,7 +40,14 @@ interface HorizontalRuleBlock {
     type: "horizontalRule";
 }
 
-export type InlineNode = BreakInline | CodeInline | EmphasisInline | LinkInline | StrongInline | TextInline;
+export type InlineNode =
+    | BreakInline
+    | CodeInline
+    | EmphasisInline
+    | LinkInline
+    | StrikethroughInline
+    | StrongInline
+    | TextInline;
 
 interface BreakInline {
     type: "break";
@@ -59,6 +66,11 @@ interface StrongInline {
 interface EmphasisInline {
     children: InlineNode[];
     type: "emphasis";
+}
+
+interface StrikethroughInline {
+    children: InlineNode[];
+    type: "strikethrough";
 }
 
 interface CodeInline {

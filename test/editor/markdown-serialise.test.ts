@@ -7,7 +7,7 @@ describe("documentFromElements", (): void => {
 
         root.innerHTML = [
             "<h1>Heading</h1>",
-            '<p>Paragraph with <strong>strong</strong>, <em>emphasis</em>, <code>code</code>, and <a href="/target">link</a>.</p>',
+            '<p>Paragraph with <strong>strong</strong>, <em>emphasis</em>, <code>code</code>, <del>strike</del>, and <a href="/target">link</a>.</p>',
             "<ul><li>first</li><li>second</li></ul>",
             "<ol><li>ordered</li><li>list</li></ol>",
         ].join("");
@@ -27,6 +27,8 @@ describe("documentFromElements", (): void => {
                         { children: [{ text: "emphasis", type: "text" }], type: "emphasis" },
                         { text: ", ", type: "text" },
                         { text: "code", type: "code" },
+                        { text: ", ", type: "text" },
+                        { children: [{ text: "strike", type: "text" }], type: "strikethrough" },
                         { text: ", and ", type: "text" },
                         {
                             children: [{ text: "link", type: "text" }],

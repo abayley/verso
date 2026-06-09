@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign B: dark workbench</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root {
+  --font-sans: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --color-border-tertiary: rgba(0, 0, 0, 0.15);
+}
+body { margin: 0; padding: 32px 16px; background: #ECEAE4; font-family: var(--font-sans); }
+main { max-width: 680px; margin: 0 auto; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<main>
+<h2 class="sr-only">Mockup B: a dark IDE-style workbench with a tab bar, icon rail, always-on split between Markdown source and rendered preview, and a status bar.</h2>
+<div style="background:#15161E; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); overflow:hidden; font-family:var(--font-mono); color:#A9B1D6;">
+  <div style="display:flex; align-items:center; background:#101117; border-bottom:1px solid #242632;">
+    <div style="display:flex; align-items:center; gap:8px; background:#15161E; border-right:1px solid #242632; padding:9px 16px; font-size:12px; color:#C0CAF5;">
+      <i class="ti ti-markdown" aria-hidden="true" style="font-size:14px; color:#7AA2F7;"></i>home.md
+      <span style="width:7px; height:7px; border-radius:50%; background:#E0AF68;" title="Unsaved changes"></span>
+    </div>
+    <div style="flex:1;"></div>
+    <div style="display:flex; gap:14px; padding:0 14px; font-size:14px; color:#565F89;">
+      <i class="ti ti-bold" aria-hidden="true"></i><i class="ti ti-italic" aria-hidden="true"></i><i class="ti ti-strikethrough" aria-hidden="true"></i><i class="ti ti-code" aria-hidden="true"></i><i class="ti ti-link" aria-hidden="true"></i>
+      <span style="width:1px; background:#242632;"></span>
+      <i class="ti ti-list" aria-hidden="true"></i><i class="ti ti-list-numbers" aria-hidden="true"></i><i class="ti ti-blockquote" aria-hidden="true"></i><i class="ti ti-separator" aria-hidden="true"></i>
+    </div>
+  </div>
+  <div style="display:flex; min-height:280px;">
+    <div style="width:44px; background:#101117; border-right:1px solid #242632; display:flex; flex-direction:column; align-items:center; gap:18px; padding-top:14px; font-size:17px; color:#565F89;">
+      <i class="ti ti-files" aria-hidden="true" style="color:#C0CAF5;"></i>
+      <i class="ti ti-search" aria-hidden="true"></i>
+      <i class="ti ti-eye" aria-hidden="true"></i>
+      <i class="ti ti-settings" aria-hidden="true" style="margin-top:auto; margin-bottom:14px;"></i>
+    </div>
+    <div style="flex:1; padding:14px 0; font-size:13px; line-height:1.9; border-right:1px solid #242632;">
+      <div style="display:flex;"><span style="width:34px; text-align:right; padding-right:12px; color:#3B3F51;">1</span><span><span style="color:#565F89;">#&nbsp;</span><span style="color:#7AA2F7; font-weight:500;">Hello from MicroHttp</span></span></div>
+      <div style="display:flex;"><span style="width:34px; text-align:right; padding-right:12px; color:#3B3F51;">2</span><span>&nbsp;</span></div>
+      <div style="display:flex; background:#1C1E2A;"><span style="width:34px; text-align:right; padding-right:12px; color:#7AA2F7;">3</span><span>Edit this <span style="color:#BB9AF7;">**</span><span style="color:#C0CAF5; font-weight:500;">Markdown</span><span style="color:#BB9AF7;">**</span> document.<span style="display:inline-block; width:7px; height:15px; background:#C0CAF5; vertical-align:-2px;"></span></span></div>
+      <div style="display:flex;"><span style="width:34px; text-align:right; padding-right:12px; color:#3B3F51;">4</span><span>&nbsp;</span></div>
+      <div style="display:flex;"><span style="width:34px; text-align:right; padding-right:12px; color:#3B3F51;">5</span><span><span style="color:#565F89;">-&nbsp;</span>Source is always visible</span></div>
+      <div style="display:flex;"><span style="width:34px; text-align:right; padding-right:12px; color:#3B3F51;">6</span><span><span style="color:#565F89;">-&nbsp;</span>Preview tracks the caret</span></div>
+    </div>
+    <div style="flex:1; padding:18px 20px; font-family:var(--font-sans); color:#C0CAF5;">
+      <div style="font-size:11px; color:#565F89; font-family:var(--font-mono); margin-bottom:12px; display:flex; justify-content:space-between;"><span>preview</span><i class="ti ti-pin" aria-hidden="true"></i></div>
+      <h1 style="font-size:21px; font-weight:500; color:#E6EBFF; margin:0 0 10px;">Hello from MicroHttp</h1>
+      <p style="font-size:14px; line-height:1.7; margin:0 0 10px;">Edit this <span style="font-weight:500;">Markdown</span> document.</p>
+      <ul style="font-size:14px; line-height:1.7; margin:0; padding-left:20px;">
+        <li>Source is always visible</li>
+        <li>Preview tracks the caret</li>
+      </ul>
+    </div>
+  </div>
+  <div style="display:flex; justify-content:space-between; align-items:center; background:#7AA2F7; color:#101117; font-size:11px; padding:4px 14px;">
+    <span style="display:flex; gap:16px;"><span><i class="ti ti-refresh" aria-hidden="true" style="font-size:12px;"></i> autosave in 2s</span><span>markdown (gfm subset)</span></span>
+    <span style="display:flex; gap:16px;"><span>ln 3, col 14</span><span>12 words</span><span>utf-8</span></span>
+  </div>
+</div>
+</main>
+</body>
+</html>

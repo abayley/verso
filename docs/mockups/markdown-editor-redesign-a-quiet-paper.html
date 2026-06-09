@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign A: quiet paper</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root {
+  --font-sans: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --color-border-tertiary: rgba(0, 0, 0, 0.15);
+}
+body { margin: 0; padding: 32px 16px; background: #ECEAE4; font-family: var(--font-sans); }
+main { max-width: 680px; margin: 0 auto; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<main>
+<h2 class="sr-only">Mockup A: a minimal, writing-focused editor with a warm paper background, centred serif column, and a small floating toolbar pill at the bottom.</h2>
+<div style="background:#F4F0E6; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); overflow:hidden;">
+  <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 22px; font-size:12px; color:#8C8571;">
+    <span style="letter-spacing:0.04em;">home.md</span>
+    <span>
+      <span style="color:#2C2A22; border-bottom:1px solid #2C2A22; padding-bottom:2px;">Visual</span>
+      <span style="margin:0 7px;">&middot;</span><span>Source</span>
+      <span style="margin:0 7px;">&middot;</span><span>Split</span>
+      <span style="margin-left:18px;"><i class="ti ti-moon" aria-hidden="true" style="font-size:13px;"></i></span>
+    </span>
+  </div>
+  <div style="max-width:430px; margin:0 auto; padding:34px 20px 26px; font-family:var(--font-serif); color:#2C2A22;">
+    <h1 style="font-family:var(--font-serif); font-size:30px; font-weight:500; color:#2C2A22; margin:0 0 18px; line-height:1.25;">Hello from MicroHttp</h1>
+    <p style="font-size:17px; line-height:1.8; margin:0 0 14px;">Edit this Markdown document.</p>
+    <p style="font-size:17px; line-height:1.8; margin:0; color:#2C2A22;">The toolbar stays out of the way until you need it<span style="display:inline-block; width:1.5px; height:19px; background:#B0532F; vertical-align:-3px; margin-left:1px;"></span></p>
+  </div>
+  <div style="display:flex; justify-content:center; padding:26px 0 20px;">
+    <div style="display:flex; align-items:center; gap:4px; background:#FFFEFA; border:0.5px solid #DCD5C2; border-radius:999px; padding:7px 14px; color:#5F5A4C;">
+      <span style="font-size:13px; font-family:var(--font-serif); padding:0 6px;">Aa <i class="ti ti-chevron-down" aria-hidden="true" style="font-size:11px;"></i></span>
+      <span style="width:1px; height:16px; background:#E4DECD; margin:0 4px;"></span>
+      <i class="ti ti-bold" aria-hidden="true" style="font-size:15px; padding:0 5px;"></i>
+      <i class="ti ti-italic" aria-hidden="true" style="font-size:15px; padding:0 5px;"></i>
+      <i class="ti ti-strikethrough" aria-hidden="true" style="font-size:15px; padding:0 5px;"></i>
+      <i class="ti ti-code" aria-hidden="true" style="font-size:15px; padding:0 5px;"></i>
+      <i class="ti ti-link" aria-hidden="true" style="font-size:15px; padding:0 5px;"></i>
+      <span style="width:1px; height:16px; background:#E4DECD; margin:0 4px;"></span>
+      <i class="ti ti-list" aria-hidden="true" style="font-size:15px; padding:0 5px;"></i>
+      <i class="ti ti-blockquote" aria-hidden="true" style="font-size:15px; padding:0 5px;"></i>
+      <i class="ti ti-dots" aria-hidden="true" style="font-size:15px; padding:0 5px;"></i>
+      <span style="width:1px; height:16px; background:#E4DECD; margin:0 4px;"></span>
+      <span style="display:inline-flex; align-items:center; gap:6px; font-size:12px; padding:0 6px;"><span style="width:7px; height:7px; border-radius:50%; background:#1D9E75;"></span>Saved</span>
+    </div>
+  </div>
+  <div style="text-align:right; padding:0 22px 14px; font-size:11px; color:#A39B85;">14 words</div>
+</div>
+</main>
+</body>
+</html>

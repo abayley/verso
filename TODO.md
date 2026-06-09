@@ -2,6 +2,8 @@
 
 backend:
 
+- explore templating options - is blazeHtml style combinators the way to go?
+  maybe support both
 - http server logging
 - hot reload
 - improve socket testing

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign E: phosphor terminal</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root {
+  --font-sans: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --color-border-tertiary: rgba(0, 0, 0, 0.15);
+}
+body { margin: 0; padding: 32px 16px; background: #ECEAE4; font-family: var(--font-sans); }
+main { max-width: 680px; margin: 0 auto; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<main>
+<h2 class="sr-only">Mockup E: a retro phosphor-green terminal editor with a DOS-style menu bar, box-drawing frame, inverse-video heading, and a function-key command bar.</h2>
+<div style="background:#060A06; border-radius:var(--border-radius-lg); padding:16px 18px; font-family:var(--font-mono); color:#4AF626; overflow:hidden;">
+  <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:10px;">
+    <span><span style="background:#4AF626; color:#060A06; padding:1px 8px;">File</span><span style="padding:1px 8px;">Edit</span><span style="padding:1px 8px;">Insert</span><span style="padding:1px 8px;">View</span><span style="padding:1px 8px;">Help</span></span>
+    <span style="color:#E0AF68;">* modified</span>
+  </div>
+  <div style="border:1px solid #2E7D1F; position:relative; padding:18px 16px 14px; font-size:13px; line-height:1.8;">
+    <span style="position:absolute; top:-9px; left:14px; background:#060A06; padding:0 8px; color:#7CFF5B;">&#9508; home.md &#9500;&#9472; mode: <span style="background:#4AF626; color:#060A06; padding:0 6px;">visual</span> source split &#9509;</span>
+    <div style="background:#4AF626; color:#060A06; display:inline-block; padding:1px 10px; font-weight:500;">HELLO FROM MICROHTTP</div>
+    <div style="color:#2E7D1F;">&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;&#9552;</div>
+    <div style="margin-top:8px;">Edit this <span style="color:#B9FF9C; font-weight:500;">Markdown</span> document.</div>
+    <div style="margin-top:8px;">The whole interface is keyboard-first. Reach every</div>
+    <div>command without the mouse<span style="display:inline-block; width:8px; height:15px; background:#4AF626; vertical-align:-2px; margin-left:2px;"></span></div>
+    <div style="margin-top:8px; color:#2E7D1F;">~</div>
+    <div style="color:#2E7D1F;">~</div>
+  </div>
+  <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:10px; color:#7CFF5B;">
+    <span>-- insert --</span>
+    <span>ln 3, col 14 &#9474; 16 words &#9474; saved 12:04:31</span>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:2px 10px; font-size:12px; margin-top:8px;">
+    <span><span style="background:#4AF626; color:#060A06; padding:0 4px;">F2</span> save</span>
+    <span><span style="background:#4AF626; color:#060A06; padding:0 4px;">F3</span> bold</span>
+    <span><span style="background:#4AF626; color:#060A06; padding:0 4px;">F4</span> italic</span>
+    <span><span style="background:#4AF626; color:#060A06; padding:0 4px;">F5</span> strike</span>
+    <span><span style="background:#4AF626; color:#060A06; padding:0 4px;">F6</span> code</span>
+    <span><span style="background:#4AF626; color:#060A06; padding:0 4px;">F7</span> link</span>
+    <span><span style="background:#4AF626; color:#060A06; padding:0 4px;">F8</span> list</span>
+    <span><span style="background:#4AF626; color:#060A06; padding:0 4px;">F9</span> quote</span>
+    <span><span style="background:#4AF626; color:#060A06; padding:0 4px;">F10</span> rule</span>
+  </div>
+</div>
+</main>
+</body>
+</html>

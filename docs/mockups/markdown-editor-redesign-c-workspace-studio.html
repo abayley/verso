@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign C: workspace studio</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root {
+  --font-sans: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --color-border-tertiary: rgba(0, 0, 0, 0.15);
+}
+body { margin: 0; padding: 32px 16px; background: #ECEAE4; font-family: var(--font-sans); }
+main { max-width: 680px; margin: 0 auto; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<main>
+<h2 class="sr-only">Mockup C: a Notion-style document workspace with a sidebar of documents, breadcrumb header, large page title, and a floating selection toolbar instead of a fixed one.</h2>
+<div style="background:#FBFBFA; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); overflow:hidden; display:flex; min-height:380px; color:#37352F;">
+  <div style="width:168px; background:#F4F4F0; border-right:1px solid #E8E8E3; padding:14px 10px; font-size:13px; flex-shrink:0;">
+    <div style="display:flex; align-items:center; gap:8px; font-weight:500; padding:4px 8px 14px; color:#37352F;">
+      <span style="width:20px; height:20px; border-radius:5px; background:#37352F; color:#FFF; display:inline-flex; align-items:center; justify-content:center; font-size:11px;">M</span>MicroHttp
+    </div>
+    <div style="color:#91908C; font-size:11px; padding:0 8px 6px; letter-spacing:0.03em;">Documents</div>
+    <div style="display:flex; align-items:center; gap:7px; background:#E9E9E4; border-radius:6px; padding:5px 8px; font-weight:500;"><i class="ti ti-file-text" aria-hidden="true" style="font-size:14px;"></i>Home</div>
+    <div style="display:flex; align-items:center; gap:7px; padding:5px 8px; color:#6B6A66;"><i class="ti ti-file-text" aria-hidden="true" style="font-size:14px;"></i>Design notes</div>
+    <div style="display:flex; align-items:center; gap:7px; padding:5px 8px; color:#6B6A66;"><i class="ti ti-file-text" aria-hidden="true" style="font-size:14px;"></i>Install guide</div>
+    <div style="display:flex; align-items:center; gap:7px; padding:9px 8px 0; color:#91908C;"><i class="ti ti-plus" aria-hidden="true" style="font-size:14px;"></i>New document</div>
+  </div>
+  <div style="flex:1; display:flex; flex-direction:column; min-width:0;">
+    <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 18px; font-size:13px; border-bottom:1px solid #EFEFEA;">
+      <span style="color:#6B6A66;">Documents <span style="color:#C8C7C1;">/</span> <span style="color:#37352F;">Home</span></span>
+      <span style="display:flex; align-items:center; gap:14px; color:#91908C; font-size:12px;">
+        <span><i class="ti ti-cloud-check" aria-hidden="true" style="font-size:14px; vertical-align:-2px;"></i> Saved just now</span>
+        <i class="ti ti-markdown" aria-hidden="true" style="font-size:15px;" title="View raw Markdown"></i>
+        <i class="ti ti-moon" aria-hidden="true" style="font-size:15px;"></i>
+        <i class="ti ti-dots" aria-hidden="true" style="font-size:15px;"></i>
+      </span>
+    </div>
+    <div style="padding:34px 44px 24px; position:relative;">
+      <h1 style="font-size:28px; font-weight:500; color:#37352F; margin:0 0 16px;">Hello from MicroHttp</h1>
+      <div style="position:relative; display:inline-block;">
+        <div style="position:absolute; top:-44px; left:0; background:#FFFFFF; border:1px solid #E3E2DE; border-radius:8px; display:flex; align-items:center; font-size:13px; color:#37352F; overflow:hidden;">
+          <span style="padding:7px 10px; display:flex; align-items:center; gap:4px; border-right:1px solid #EFEFEA; white-space:nowrap;">Text <i class="ti ti-chevron-down" aria-hidden="true" style="font-size:11px; color:#91908C;"></i></span>
+          <i class="ti ti-bold" aria-hidden="true" style="padding:7px 8px; color:#2E66D0;"></i>
+          <i class="ti ti-italic" aria-hidden="true" style="padding:7px 8px;"></i>
+          <i class="ti ti-strikethrough" aria-hidden="true" style="padding:7px 8px;"></i>
+          <i class="ti ti-code" aria-hidden="true" style="padding:7px 8px;"></i>
+          <span style="padding:7px 10px; display:flex; align-items:center; gap:4px; border-left:1px solid #EFEFEA; white-space:nowrap;"><i class="ti ti-link" aria-hidden="true"></i> Link</span>
+        </div>
+        <p style="font-size:15px; line-height:1.7; margin:0;">Edit this <span style="background:#CFE2FF; font-weight:500;">Markdown</span> document.</p>
+      </div>
+      <p style="font-size:15px; line-height:1.7; margin:14px 0 0;">Select text to format it. Blocks are added in place.</p>
+      <p style="font-size:14px; color:#B7B6B0; margin:18px 0 0; display:flex; align-items:center; gap:8px;"><span style="width:18px; height:18px; border:1px solid #E3E2DE; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; font-size:12px; color:#91908C;">/</span>Type / for headings, lists, quotes, and code blocks</p>
+    </div>
+  </div>
+</div>
+</main>
+</body>
+</html>

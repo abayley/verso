@@ -1,0 +1,11 @@
+{
+    "version": "0.0.1",
+    "configurations": [
+        {
+            "name": "test-app",
+            "runtimeExecutable": "make",
+            "runtimeArgs": ["run-test-app"],
+            "port": 8080
+        }
+    ]
+}

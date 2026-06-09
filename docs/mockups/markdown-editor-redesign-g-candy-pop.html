@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign G: candy pop</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root {
+  --font-sans: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --color-border-tertiary: rgba(0, 0, 0, 0.15);
+}
+body { margin: 0; padding: 32px 16px; background: #ECEAE4; font-family: var(--font-sans); }
+main { max-width: 680px; margin: 0 auto; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<main>
+<h2 class="sr-only">Mockup G: a playful candy-coloured editor with pill mode tabs, big round pastel toolbar buttons, a soft white writing card, and a word-count progress bar.</h2>
+<div style="background:#FBEAF0; border-radius:var(--border-radius-lg); padding:18px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+    <div style="display:flex; background:#FFFFFF; border-radius:999px; padding:4px; gap:2px; font-size:13px; font-weight:500; color:#72243E;">
+      <span style="background:#D4537E; color:#FFFFFF; border-radius:999px; padding:7px 16px; display:flex; align-items:center; gap:6px;"><i class="ti ti-eye" aria-hidden="true" style="font-size:15px;"></i>Visual</span>
+      <span style="padding:7px 16px; display:flex; align-items:center; gap:6px;"><i class="ti ti-markdown" aria-hidden="true" style="font-size:15px;"></i>Markdown</span>
+      <span style="padding:7px 16px; display:flex; align-items:center; gap:6px;"><i class="ti ti-columns" aria-hidden="true" style="font-size:15px;"></i>Split</span>
+    </div>
+    <span style="background:#9FE1CB; color:#04342C; border-radius:999px; padding:9px 18px; font-size:13px; font-weight:500; display:flex; align-items:center; gap:7px;"><i class="ti ti-check" aria-hidden="true" style="font-size:15px;"></i>All saved</span>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+    <span style="background:#FFFFFF; color:#3C3489; border-radius:999px; padding:8px 14px; font-size:13px; font-weight:500; display:flex; align-items:center; gap:5px;">Heading <i class="ti ti-chevron-down" aria-hidden="true" style="font-size:12px;"></i></span>
+    <span style="width:38px; height:38px; border-radius:50%; background:#CECBF6; color:#26215C; display:inline-flex; align-items:center; justify-content:center;"><i class="ti ti-bold" aria-hidden="true" style="font-size:17px;"></i></span>
+    <span style="width:38px; height:38px; border-radius:50%; background:#CECBF6; color:#26215C; display:inline-flex; align-items:center; justify-content:center;"><i class="ti ti-italic" aria-hidden="true" style="font-size:17px;"></i></span>
+    <span style="width:38px; height:38px; border-radius:50%; background:#CECBF6; color:#26215C; display:inline-flex; align-items:center; justify-content:center;"><i class="ti ti-strikethrough" aria-hidden="true" style="font-size:17px;"></i></span>
+    <span style="width:38px; height:38px; border-radius:50%; background:#CECBF6; color:#26215C; display:inline-flex; align-items:center; justify-content:center;"><i class="ti ti-code" aria-hidden="true" style="font-size:17px;"></i></span>
+    <span style="width:38px; height:38px; border-radius:50%; background:#CECBF6; color:#26215C; display:inline-flex; align-items:center; justify-content:center;"><i class="ti ti-link" aria-hidden="true" style="font-size:17px;"></i></span>
+    <span style="width:38px; height:38px; border-radius:50%; background:#9FE1CB; color:#04342C; display:inline-flex; align-items:center; justify-content:center;"><i class="ti ti-list" aria-hidden="true" style="font-size:17px;"></i></span>
+    <span style="width:38px; height:38px; border-radius:50%; background:#9FE1CB; color:#04342C; display:inline-flex; align-items:center; justify-content:center;"><i class="ti ti-list-numbers" aria-hidden="true" style="font-size:17px;"></i></span>
+    <span style="width:38px; height:38px; border-radius:50%; background:#9FE1CB; color:#04342C; display:inline-flex; align-items:center; justify-content:center;"><i class="ti ti-blockquote" aria-hidden="true" style="font-size:17px;"></i></span>
+    <span style="width:38px; height:38px; border-radius:50%; background:#F5C4B3; color:#4A1B0C; display:inline-flex; align-items:center; justify-content:center;"><i class="ti ti-code-dots" aria-hidden="true" style="font-size:17px;"></i></span>
+    <span style="width:38px; height:38px; border-radius:50%; background:#F5C4B3; color:#4A1B0C; display:inline-flex; align-items:center; justify-content:center;"><i class="ti ti-separator" aria-hidden="true" style="font-size:17px;"></i></span>
+    <span style="width:38px; height:38px; border-radius:50%; background:#FFFFFF; color:#72243E; display:inline-flex; align-items:center; justify-content:center; margin-left:auto;"><i class="ti ti-moon" aria-hidden="true" style="font-size:17px;"></i></span>
+  </div>
+  <div style="background:#FFFFFF; border-radius:22px; padding:26px 30px; color:#37323A;">
+    <h1 style="font-size:25px; font-weight:500; color:#37323A; margin:0 0 12px;">Hello from MicroHttp</h1>
+    <p style="font-size:15px; line-height:1.8; margin:0 0 10px;">Edit this <span style="background:#F4C0D1; border-radius:6px; padding:0 5px; color:#4B1528; font-weight:500;">Markdown</span> document.</p>
+    <p style="font-size:15px; line-height:1.8; margin:0;">Writing should feel light. Every control is big, friendly, and forgiving<span style="display:inline-block; width:3px; height:17px; background:#D4537E; border-radius:2px; vertical-align:-3px; margin-left:2px;"></span></p>
+  </div>
+  <div style="display:flex; align-items:center; gap:12px; margin-top:14px; font-size:12px; font-weight:500; color:#72243E;">
+    <span>Today&rsquo;s writing</span>
+    <span style="flex:1; height:10px; background:#FFFFFF; border-radius:999px; overflow:hidden;"><span style="display:block; width:38%; height:100%; background:#D4537E; border-radius:999px;"></span></span>
+    <span>19 of 50 words</span>
+  </div>
+</div>
+</main>
+</body>
+</html>

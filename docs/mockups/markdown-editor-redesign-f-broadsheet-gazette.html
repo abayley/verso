@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign F: broadsheet gazette</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root {
+  --font-sans: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --color-border-tertiary: rgba(0, 0, 0, 0.15);
+}
+body { margin: 0; padding: 32px 16px; background: #ECEAE4; font-family: var(--font-sans); }
+main { max-width: 680px; margin: 0 auto; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<main>
+<h2 class="sr-only">Mockup F: a broadsheet newspaper layout with a masthead, dateline, small-caps proofing toolbar, headline, drop cap, and two justified text columns.</h2>
+<div style="background:#F9F6EC; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:24px 30px 20px; font-family:var(--font-serif); color:#1C1A14;">
+  <div style="display:flex; justify-content:space-between; font-size:11px; letter-spacing:0.08em; color:#6B6552; border-bottom:1px solid #1C1A14; padding-bottom:4px;">
+    <span>Vol. 1, No. 6</span><span>Wednesday 10 June 2026</span><span>Saved 12:04</span>
+  </div>
+  <div style="text-align:center; font-size:32px; font-weight:500; letter-spacing:0.02em; padding:12px 0 8px; border-bottom:3px double #1C1A14;">The MicroHttp Gazette</div>
+  <div style="display:flex; justify-content:center; flex-wrap:wrap; gap:4px 14px; font-size:12px; font-variant:small-caps; letter-spacing:0.06em; color:#3D3A2E; border-bottom:1px solid #1C1A14; padding:7px 0;">
+    <span>Edition: <span style="border-bottom:2px solid #8C2B1A; color:#1C1A14;">visual</span> &middot; source &middot; split</span>
+    <span style="color:#C5BFA8;">&#124;</span>
+    <span>Set: <span style="font-weight:500;">roman</span> &middot; <span style="font-style:italic;">italic</span> &middot; <span style="text-decoration:line-through;">struck</span> &middot; <span style="font-family:var(--font-mono); font-size:11px;">code</span> &middot; <span style="border-bottom:1px solid #3D3A2E;">link</span></span>
+    <span style="color:#C5BFA8;">&#124;</span>
+    <span>Insert: list &middot; quote &middot; rule</span>
+    <span style="color:#C5BFA8;">&#124;</span>
+    <span style="border:1px solid #1C1A14; padding:0 8px; font-weight:500;">Save edition</span>
+  </div>
+  <div style="text-align:center; padding:18px 0 4px;">
+    <div style="font-size:27px; font-weight:500; line-height:1.2;">Hello from MicroHttp</div>
+    <div style="font-style:italic; font-size:14px; color:#55503F; padding-top:6px;">Edit this Markdown document &mdash; the page is typeset as you write</div>
+  </div>
+  <div style="column-count:2; column-gap:26px; column-rule:1px solid #D8D2BE; font-size:13.5px; line-height:1.75; text-align:justify; padding-top:10px;">
+    <p style="margin:0 0 10px;"><span style="float:left; font-size:42px; line-height:0.85; padding:4px 7px 0 0; font-weight:500;">E</span>very paragraph sits in a measured column, justified and hyphenated like print. The block-style menu reads as a typesetting instruction, and inline marks are previewed in the toolbar itself rather than behind icons.</p>
+    <p style="margin:0 0 10px;">Saving files a new edition. The dateline above carries the save state, so the writing surface stays free of buttons and status chrome.</p>
+    <p style="margin:0;">Lists, quotations, and rules are inserted as column furniture, each with its proper Markdown form behind the scenes<span style="display:inline-block; width:2px; height:14px; background:#8C2B1A; vertical-align:-2px; margin-left:1px;"></span></p>
+  </div>
+  <div style="text-align:center; font-style:italic; font-size:11px; color:#8A8268; border-top:1px solid #1C1A14; margin-top:16px; padding-top:6px;">62 words set &middot; proofs clean &middot; autosaves with each edition</div>
+</div>
+</main>
+</body>
+</html>

@@ -566,13 +566,17 @@ Phase Six findings so far:
 - Lit remains deferred for the editor shell. Web Awesome reduced the immediate
   need for Lit because the controls now own much of the UI behaviour, while the
   remaining complexity is mostly editor coordination between Tiptap, CodeMirror,
-  Markdown parsing, htmx submission, and active-pane routing. Revisit Lit before
-  table, image, or attachment UI work, or earlier if manual `createElement`
-  rendering becomes the main source of bugs. A Lit decision needs evidence about
-  whether DOM construction or editor orchestration is now the dominant source of
-  complexity, whether reactive rendering would simplify the link popovers,
-  save-state UI, toolbar state, and mode/theme controls, whether Lit would
-  reduce tests or make them more stable, and what bundle/runtime cost it adds.
+  Markdown parsing, htmx submission, and active-pane routing. The current bias is
+  to defer Lit until just before table work, because table editing is likely to
+  add selected-node controls, more popovers, and more toolbar state. Revisit
+  earlier only if manual `createElement` rendering becomes the main source of
+  bugs. The Lit decision test should be a small spike, not a preference debate:
+  rebuild only the toolbar rendering plus save/link popover state in Lit while
+  keeping the Tiptap and CodeMirror adapters unchanged, then compare line count,
+  event wiring clarity, state-transition clarity, test stability, Web Awesome
+  interop, and bundle/runtime cost. Adopt Lit before tables if the spike makes
+  mode, theme, save, toolbar, and popover state obviously simpler; otherwise keep
+  the current custom-element shell.
 - Toolbar inline mark controls must preserve or recover the visual editor
   selection before applying Tiptap commands; otherwise button focus can collapse
   the selected text before the command runs.

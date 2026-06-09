@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign D: bold press</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root {
+  --font-sans: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --color-border-tertiary: rgba(0, 0, 0, 0.15);
+}
+body { margin: 0; padding: 32px 16px; background: #ECEAE4; font-family: var(--font-sans); }
+main { max-width: 680px; margin: 0 auto; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+</head>
+<body>
+<main>
+<h2 class="sr-only">Mockup D: a bold neo-brutalist editor with thick black borders, a yellow page background, chunky labelled text buttons, and a prominent save slab.</h2>
+<div style="background:#FFD83D; border-radius:var(--border-radius-lg); padding:18px; overflow:hidden;">
+  <div style="display:flex; justify-content:space-between; align-items:stretch; gap:12px; margin-bottom:12px;">
+    <div style="background:#111111; color:#FFD83D; padding:10px 16px; font-family:var(--font-mono); font-size:15px; font-weight:500; border:2px solid #111;">home.md</div>
+    <div style="display:flex; border:2px solid #111; background:#FFFFFF; font-size:13px; font-weight:500; color:#111;">
+      <span style="padding:10px 14px; background:#111; color:#FFD83D; display:flex; align-items:center;">Visual</span>
+      <span style="padding:10px 14px; border-left:2px solid #111; display:flex; align-items:center;">Markdown</span>
+      <span style="padding:10px 14px; border-left:2px solid #111; display:flex; align-items:center;">Split</span>
+    </div>
+    <div style="background:#D85A30; color:#FFFFFF; border:2px solid #111; box-shadow:4px 4px 0 #111; padding:10px 20px; font-size:14px; font-weight:500; display:flex; align-items:center; gap:8px;"><i class="ti ti-device-floppy" aria-hidden="true" style="font-size:16px;"></i>Save</div>
+  </div>
+  <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; font-size:12px; font-weight:500; color:#111;">
+    <span style="background:#FFF; border:2px solid #111; padding:6px 12px; display:flex; align-items:center; gap:5px;">Paragraph <i class="ti ti-chevron-down" aria-hidden="true" style="font-size:12px;"></i></span>
+    <span style="background:#FFF; border:2px solid #111; padding:6px 10px;">Bold</span>
+    <span style="background:#FFF; border:2px solid #111; padding:6px 10px; font-style:italic;">Italic</span>
+    <span style="background:#FFF; border:2px solid #111; padding:6px 10px; text-decoration:line-through;">Strike</span>
+    <span style="background:#FFF; border:2px solid #111; padding:6px 10px; font-family:var(--font-mono);">Code</span>
+    <span style="background:#FFF; border:2px solid #111; padding:6px 10px;">Link</span>
+    <span style="background:#FFF; border:2px solid #111; padding:6px 10px;">&bull; List</span>
+    <span style="background:#FFF; border:2px solid #111; padding:6px 10px;">1. List</span>
+    <span style="background:#FFF; border:2px solid #111; padding:6px 10px;">Quote</span>
+    <span style="background:#FFF; border:2px solid #111; padding:6px 10px;">Block</span>
+    <span style="background:#FFF; border:2px solid #111; padding:6px 10px;">Rule</span>
+    <span style="background:#111; color:#FFD83D; border:2px solid #111; padding:6px 10px; margin-left:auto; display:flex; align-items:center; gap:6px;"><i class="ti ti-sun" aria-hidden="true" style="font-size:14px;"></i><i class="ti ti-moon" aria-hidden="true" style="font-size:14px; opacity:0.45;"></i></span>
+  </div>
+  <div style="background:#FFFFFF; border:2px solid #111; box-shadow:6px 6px 0 #111; padding:26px 28px; color:#111;">
+    <h1 style="font-size:26px; font-weight:500; color:#111; margin:0 0 6px;">Hello from MicroHttp</h1>
+    <div style="height:4px; background:#111; width:120px; margin:0 0 16px;"></div>
+    <p style="font-size:16px; line-height:1.7; margin:0 0 12px;">Edit this <span style="background:#FFD83D; border:1.5px solid #111; padding:0 4px; font-weight:500;">Markdown</span> document.</p>
+    <p style="font-size:16px; line-height:1.7; margin:0;">Every control is a labelled button. Nothing hides behind an icon.<span style="display:inline-block; width:9px; height:18px; background:#D85A30; vertical-align:-3px; margin-left:2px;"></span></p>
+  </div>
+  <div style="display:flex; justify-content:space-between; margin-top:12px; font-family:var(--font-mono); font-size:12px; font-weight:500; color:#111;">
+    <span style="background:#FFF; border:2px solid #111; padding:5px 10px;">18 words</span>
+    <span style="background:#9FE1CB; border:2px solid #111; padding:5px 10px;">Saved 12:04:31</span>
+  </div>
+</div>
+</main>
+</body>
+</html>

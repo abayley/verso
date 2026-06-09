@@ -146,19 +146,17 @@ custom-element equivalent.
 <form
   hx-post="/documents/home"
   hx-trigger="submit, editor:changed delay:2s from:markdown-editor"
-  hx-target="#save-status"
-  hx-swap="innerHTML"
+  hx-swap="none"
 >
   <markdown-editor name="markdown" mode="visual" src="/documents/home"></markdown-editor>
   <input type="hidden" name="markdown" id="markdown-field">
-  <button type="submit">Save</button>
 </form>
-
-<div id="save-status"></div>
 ```
 
 Before htmx submits the request, the editor should serialise the current
-document to Markdown and write it to the submitted field.
+document to Markdown and write it to the submitted field. The editor toolbar may
+own the visible submit control, but htmx should still see a normal form
+submission.
 
 ```javascript
 form.addEventListener("htmx:configRequest", function () {
@@ -173,8 +171,7 @@ editor and using `hx-trigger` on the form.
 <form
   hx-post="/documents/home"
   hx-trigger="submit, editor:changed delay:2s from:markdown-editor"
-  hx-target="#save-status"
-  hx-swap="innerHTML"
+  hx-swap="none"
 >
 </form>
 ```
@@ -525,6 +522,13 @@ editing with CodeMirror, and Web Awesome controls.
 - [x] Apply Web Awesome's documented default theme contract on the TestApp
   editor page with `wa-theme-default`, `wa-palette-default`, and
   `wa-brand-blue`.
+- [x] Replace the temporary link prompt with an editor-owned link target control.
+  The control applies links in visual mode through Tiptap and in source mode
+  through a captured CodeMirror selection.
+- [x] Make the explicit Save button reflect save state. Clean content disables
+  Save, dirty content enables it, in-flight htmx saves show `Auto-Saving...` for
+  at least 500 milliseconds, and failed or timed-out saves show `Retry` with an
+  inline error message such as `Save failed: HTTP 500`.
 - [ ] Consider Lit for the editor shell once manual DOM state management becomes
   the main source of complexity.
 
@@ -585,8 +589,20 @@ Phase Six findings so far:
   mdast `delete` nodes, renders them as `del`, serialises visual `del`, `s`, and
   `strike` elements as `~~text~~`, and routes the Strike toolbar control through
   the same active-pane inline command seam as Bold, Italic, and Code.
-- The Link control uses `window.prompt` as a temporary spike interaction. A
-  proper toolbar design should replace it with an in-editor link target control.
+- The Link control uses an editor-owned link target control rather than
+  `window.prompt`. Source-mode link editing captures the CodeMirror selection
+  when Link is clicked so the target input can take focus without losing the
+  Markdown range.
+- The explicit Save button is also a save-state indicator. It starts disabled for
+  clean content, becomes enabled after local edits, changes to `Auto-Saving...`
+  during htmx save requests, keeps that saving state visible for at least 500
+  milliseconds, returns to disabled `Save` after a positive server response, and
+  changes to enabled `Retry` with inline error text after a failed response or a
+  ten second save timeout. Error text uses the `Save failed: <reason>` shape,
+  with concise reasons such as `HTTP 500`, `connection error`, or `request timed
+  out`. htmx save responses use `hx-swap="none"`; the editor owns visible save
+  status and errors instead of rendering the server's save fragment into a
+  bottom notification area.
 - Browser smoke tests should clear the Tiptap surface with keyboard selection
   rather than Playwright `fill("")`; contenteditable fill was flaky before
   typing list-marker shortcuts.

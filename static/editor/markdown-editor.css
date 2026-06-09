@@ -13,6 +13,7 @@ markdown-editor {
   background: var(--markdown-editor-background);
   color: var(--markdown-editor-text);
   display: block;
+  position: relative;
 }
 
 .markdown-editor__toolbar {
@@ -71,7 +72,37 @@ markdown-editor {
 }
 
 .markdown-editor__save-button {
+  inline-size: 8.5rem;
   margin-left: auto;
+}
+
+.markdown-editor__save-error {
+  color: var(--markdown-editor-error-text);
+  font: 14px system-ui, sans-serif;
+}
+
+.markdown-editor__link-editor {
+  align-items: center;
+  background: var(--markdown-editor-background);
+  border: 1px solid var(--markdown-editor-border);
+  display: inline-flex;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  position: absolute;
+  z-index: 10;
+}
+
+.markdown-editor__link-editor[hidden] {
+  display: none;
+}
+
+.markdown-editor__link-target {
+  background: var(--markdown-editor-background);
+  border: 1px solid var(--markdown-editor-border);
+  color: var(--markdown-editor-text);
+  font: 14px system-ui, sans-serif;
+  min-inline-size: 12rem;
+  padding: 0.35rem 0.5rem;
 }
 
 .markdown-editor__style-trigger {

@@ -18,8 +18,10 @@ spec =
             bodyText response `shouldInclude` "<link rel=\"stylesheet\" href=\"/static/editor/webawesome.css\">"
             bodyText response `shouldInclude` "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
             bodyText response `shouldInclude` "hx-trigger=\"submit, editor:changed delay:2s from:markdown-editor\""
+            bodyText response `shouldInclude` "hx-swap=\"none\""
             bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" mode=\"visual\" src=\"/documents/home\"></markdown-editor>"
             bodyText response `shouldInclude` "<input type=\"hidden\" name=\"markdown\" id=\"markdown-field\">"
+            bodyText response `shouldNotInclude` "id=\"save-status\""
             bodyText response `shouldNotInclude` "# Hello from MicroHttp"
         it "given source mode editor request, when routing, then source mode is selected" $ do
             response <- appForTest ((request GET ["documents", "home", "edit"] ""){requestQuery = [("mode", "source")]})

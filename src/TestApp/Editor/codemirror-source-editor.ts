@@ -5,6 +5,11 @@ import type { VisualBlockStyle } from "./tiptap-visual-editor.js";
 /** Callback fired when the source editor content changes. */
 export type CodeMirrorChangeHandler = () => void;
 
+export interface CodeMirrorSourceSelection {
+    from: number;
+    to: number;
+}
+
 /** Markdown source editor adapter around CodeMirror. */
 export class CodeMirrorSourceEditor {
     private readonly root: HTMLDivElement;
@@ -91,6 +96,16 @@ export class CodeMirrorSourceEditor {
     /** Toggles Markdown link markers around the current source selection. */
     public toggleLink(href: string): boolean {
         return this.wrapSelection("[", `](${href})`);
+    }
+
+    /** Returns the current source selection as CodeMirror document offsets. */
+    public currentSelection(): CodeMirrorSourceSelection | null {
+        return this.currentSourceSelection();
+    }
+
+    /** Toggles Markdown link markers around a previously captured source selection. */
+    public toggleLinkAt(selection: CodeMirrorSourceSelection, href: string): boolean {
+        return this.wrapSourceSelection(selection, "[", `](${href})`);
     }
 
     /** Toggles a Markdown unordered-list marker on the current source line. */
@@ -241,6 +256,11 @@ export class CodeMirrorSourceEditor {
             return false;
         }
 
+        return this.wrapSourceSelection(selection, prefix, suffix);
+    }
+
+    /** Wraps a known source selection with Markdown marker text. */
+    private wrapSourceSelection(selection: CodeMirrorSourceSelection, prefix: string, suffix: string): boolean {
         const selectedText = this.view.state.doc.sliceString(selection.from, selection.to);
         this.view.dispatch({
             changes: {
@@ -254,7 +274,7 @@ export class CodeMirrorSourceEditor {
     }
 
     /** Converts the current browser selection into CodeMirror document positions. */
-    private currentSourceSelection(): { from: number; to: number } | null {
+    private currentSourceSelection(): CodeMirrorSourceSelection | null {
         const selection = window.getSelection();
 
         if (!selection?.anchorNode || !selection.focusNode) {

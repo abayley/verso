@@ -219,8 +219,7 @@ editorPage docId mode =
             Html.main [] $ do
                 Html.form_
                     [ Html.hxPost ("/documents/" ++ docId)
-                    , Html.hxTarget "#save-status"
-                    , Html.hxSwap "innerHTML"
+                    , Html.hxSwap "none"
                     , Html.attr "hx-trigger" "submit, editor:changed delay:2s from:markdown-editor"
                     ]
                     $ do
@@ -232,7 +231,6 @@ editorPage docId mode =
                             ]
                             (return ())
                         Html.input [Html.attr "type" "hidden", Html.attr "name" "markdown", Html.attr "id" "markdown-field"]
-                Html.div [Html.attr "id" "save-status"] ""
 
 seededMarkdown :: String
 seededMarkdown =

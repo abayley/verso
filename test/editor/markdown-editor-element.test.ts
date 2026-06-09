@@ -13,6 +13,7 @@ describe("MarkdownEditorElement", (): void => {
     });
 
     afterEach((): void => {
+        vi.useRealTimers();
         vi.restoreAllMocks();
     });
 
@@ -230,11 +231,7 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain("~~Plain~~ paragraph");
     });
 
-    it("given visual mode, when link is selected, then the selected text becomes a link", async (): Promise<void> => {
-        vi.stubGlobal(
-            "prompt",
-            vi.fn((): string => "/target"),
-        );
+    it("given visual mode, when link target is applied, then the selected text becomes a link", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = "Plain paragraph";
 
@@ -243,12 +240,33 @@ describe("MarkdownEditorElement", (): void => {
         selectText(editor, "Plain");
 
         clickToolbarButton(editor, "Link");
+        applyLinkTarget(editor, "/target");
 
         const link = editor.querySelector(".markdown-editor__surface a");
         expect(link?.textContent).toBe("Plain");
         expect(link?.getAttribute("href")).toBe("/target");
         expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
         expect(editor.toMarkdown()).toContain("[Plain](/target) paragraph");
+    });
+
+    it("given link target editor is open, when the user clicks elsewhere, then it closes without applying a link", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        const outside = document.createElement("button");
+        outside.textContent = "Outside";
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor, outside);
+        await waitForInitialisation();
+        selectText(editor, "Plain");
+
+        clickToolbarButton(editor, "Link");
+        expect(linkEditor(editor).hidden).toBe(false);
+        await waitForInitialisation();
+
+        outside.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+
+        expect(linkEditor(editor).hidden).toBe(true);
+        expect(editor.toMarkdown()).toBe("Plain paragraph");
     });
 
     it("given visual mode, when bullet list is selected, then the current block becomes an unordered list", async (): Promise<void> => {
@@ -431,11 +449,7 @@ describe("MarkdownEditorElement", (): void => {
         ).toBe("Markdown");
     });
 
-    it("given split mode, when Markdown text is selected, then link applies to the Markdown source", async (): Promise<void> => {
-        vi.stubGlobal(
-            "prompt",
-            vi.fn((): string => "/target"),
-        );
+    it("given split mode, when Markdown text is selected, then link target applies to the Markdown source", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.setAttribute("mode", "split");
         editor.textContent = "Visual paragraph\n\nMarkdown paragraph";
@@ -445,11 +459,105 @@ describe("MarkdownEditorElement", (): void => {
         selectSourceText(editor, "Markdown");
 
         clickToolbarButton(editor, "Link");
+        applyLinkTarget(editor, "/target");
 
         expect(editor.toMarkdown()).toContain("[Markdown](/target) paragraph");
         const link = editor.querySelector(".markdown-editor__split .markdown-editor__surface a");
         expect(link?.textContent).toBe("Markdown");
         expect(link?.getAttribute("href")).toBe("/target");
+    });
+
+    it("given unchanged editor content, when initialised, then explicit save is disabled", async (): Promise<void> => {
+        const editor = document.createElement(elementName);
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        expect(saveButton(editor).textContent).toBe("Save");
+        expect(saveButton(editor).hasAttribute("disabled")).toBe(true);
+    });
+
+    it("given edited content, when htmx save succeeds, then save returns to clean disabled state after minimum saving time", async (): Promise<void> => {
+        const { editor, field } = await initialiseEditorForm();
+        vi.useFakeTimers();
+
+        selectText(editor, "Plain");
+        clickToolbarButton(editor, "Bold");
+
+        expect(saveButton(editor).textContent).toBe("Save");
+        expect(saveButton(editor).hasAttribute("disabled")).toBe(false);
+
+        dispatchHtmxConfigRequest(editor, field);
+        dispatchHtmxRequestEvent(editor, "htmx:beforeRequest");
+
+        expect(saveButton(editor).textContent).toBe("Auto-Saving...");
+        expect(saveButton(editor).hasAttribute("disabled")).toBe(true);
+
+        dispatchHtmxRequestEvent(editor, "htmx:afterRequest", { successful: true });
+
+        expect(saveButton(editor).textContent).toBe("Auto-Saving...");
+        expect(saveButton(editor).hasAttribute("disabled")).toBe(true);
+
+        vi.advanceTimersByTime(499);
+
+        expect(saveButton(editor).textContent).toBe("Auto-Saving...");
+        expect(saveButton(editor).hasAttribute("disabled")).toBe(true);
+
+        vi.advanceTimersByTime(1);
+
+        expect(saveButton(editor).textContent).toBe("Save");
+        expect(saveButton(editor).hasAttribute("disabled")).toBe(true);
+        expect(saveError(editor).hidden).toBe(true);
+    });
+
+    it("given edited content, when htmx save fails with an HTTP status, then save becomes retry and shows the status", async (): Promise<void> => {
+        const { editor, field } = await initialiseEditorForm();
+
+        selectText(editor, "Plain");
+        clickToolbarButton(editor, "Bold");
+        dispatchHtmxConfigRequest(editor, field);
+        dispatchHtmxRequestEvent(editor, "htmx:beforeRequest");
+
+        dispatchHtmxRequestEvent(editor, "htmx:afterRequest", { successful: false, xhr: { status: 500 } });
+
+        expect(saveButton(editor).textContent).toBe("Retry");
+        expect(saveButton(editor).hasAttribute("disabled")).toBe(false);
+        expect(saveError(editor).hidden).toBe(false);
+        expect(saveError(editor).textContent).toBe("Save failed: HTTP 500");
+    });
+
+    it("given edited content, when htmx cannot send the save request, then save shows a connection error", async (): Promise<void> => {
+        const { editor, field } = await initialiseEditorForm();
+
+        selectText(editor, "Plain");
+        clickToolbarButton(editor, "Bold");
+        dispatchHtmxConfigRequest(editor, field);
+        dispatchHtmxRequestEvent(editor, "htmx:beforeRequest");
+
+        dispatchHtmxRequestEvent(editor, "htmx:sendError");
+
+        expect(saveButton(editor).textContent).toBe("Retry");
+        expect(saveButton(editor).hasAttribute("disabled")).toBe(false);
+        expect(saveError(editor).hidden).toBe(false);
+        expect(saveError(editor).textContent).toBe("Save failed: connection error");
+    });
+
+    it("given auto-save starts, when no response arrives within ten seconds, then save becomes retry and shows an error", async (): Promise<void> => {
+        const { editor, field } = await initialiseEditorForm();
+        vi.useFakeTimers();
+
+        selectText(editor, "Plain");
+        clickToolbarButton(editor, "Bold");
+        dispatchHtmxConfigRequest(editor, field);
+        dispatchHtmxRequestEvent(editor, "htmx:beforeRequest");
+
+        vi.advanceTimersByTime(10_000);
+
+        expect(saveButton(editor).textContent).toBe("Retry");
+        expect(saveButton(editor).hasAttribute("disabled")).toBe(false);
+        expect(saveError(editor).hidden).toBe(false);
+        expect(saveError(editor).textContent).toBe("Save failed: request timed out");
     });
 
     it("given split mode, when Markdown text is selected, then bullet list applies to the Markdown source", async (): Promise<void> => {
@@ -619,6 +727,94 @@ function clickToolbarButton(editor: Element, label: string): void {
     }
 
     button.click();
+}
+
+/** Applies a link target through the editor link popover form. */
+function applyLinkTarget(editor: Element, target: string): void {
+    const input = editor.querySelector(".markdown-editor__link-target");
+    const applyButton = editor.querySelector(".markdown-editor__link-apply");
+
+    if (!(input instanceof HTMLInputElement) || !(applyButton instanceof HTMLElement)) {
+        throw new Error("Expected link target editor.");
+    }
+
+    input.value = target;
+    input.dispatchEvent(new InputEvent("input", { bubbles: true }));
+    applyButton.click();
+}
+
+/** Returns the link target editor. */
+function linkEditor(editor: Element): HTMLElement {
+    const targetEditor = editor.querySelector(".markdown-editor__link-editor");
+
+    if (!(targetEditor instanceof HTMLElement)) {
+        throw new Error("Expected link target editor.");
+    }
+
+    return targetEditor;
+}
+
+/** Returns the explicit save button from the editor toolbar. */
+function saveButton(editor: Element): HTMLElement {
+    const button = editor.querySelector(".markdown-editor__save-button");
+
+    if (!(button instanceof HTMLElement)) {
+        throw new Error("Expected save button.");
+    }
+
+    return button;
+}
+
+/** Returns the save error message element from the editor toolbar. */
+function saveError(editor: Element): HTMLElement {
+    const error = editor.querySelector(".markdown-editor__save-error");
+
+    if (!(error instanceof HTMLElement)) {
+        throw new Error("Expected save error element.");
+    }
+
+    return error;
+}
+
+/** Creates an editor inside the same htmx form shape used by TestApp. */
+async function initialiseEditorForm(): Promise<{ editor: MarkdownEditorElement; field: HTMLInputElement }> {
+    const form = document.createElement("form");
+    const editor = document.createElement(elementName) as MarkdownEditorElement;
+    const field = document.createElement("input");
+    field.id = "markdown-field";
+    field.name = "markdown";
+    field.type = "hidden";
+    editor.textContent = "Plain paragraph";
+    form.append(editor, field);
+    document.body.append(form);
+    await waitForInitialisation();
+
+    return { editor, field };
+}
+
+/** Dispatches the htmx config request event used to copy Markdown into transport parameters. */
+function dispatchHtmxConfigRequest(editor: Element, field: HTMLInputElement): void {
+    editor.dispatchEvent(
+        new CustomEvent("htmx:configRequest", {
+            bubbles: true,
+            detail: {
+                parameters: {},
+            },
+        }),
+    );
+
+    expect(field.value).toBe((editor as MarkdownEditorElement).toMarkdown());
+}
+
+/** Dispatches an htmx request lifecycle event from the editor form. */
+function dispatchHtmxRequestEvent(editor: Element, name: string, detail: Record<string, unknown> = {}): void {
+    const form = editor.closest("form");
+
+    if (!(form instanceof HTMLFormElement)) {
+        throw new Error("Expected editor form.");
+    }
+
+    form.dispatchEvent(new CustomEvent(name, { bubbles: true, detail }));
 }
 
 /** Returns the view mode radio group. */

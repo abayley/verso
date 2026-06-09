@@ -1,4 +1,4 @@
-import { CodeMirrorSourceEditor } from "./codemirror-source-editor.js";
+import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
 import { renderMarkdown } from "./markdown-render.js";
 import {
     TiptapVisualEditor,
@@ -10,6 +10,7 @@ import {
 type EditorMode = "visual" | "source" | "split";
 type EditorTheme = "light" | "dark" | "match-system";
 type ActivePane = "source" | "visual";
+type SaveState = "clean" | "dirty" | "saving" | "retry";
 type ToolbarButtonElement = HTMLElement;
 
 interface WaDropdownSelectEvent extends Event {
@@ -21,6 +22,15 @@ interface WaDropdownSelectEvent extends Event {
 interface HtmxConfigRequestEvent extends Event {
     detail: {
         parameters: Record<string, string>;
+    };
+}
+
+interface HtmxAfterRequestEvent extends Event {
+    detail: {
+        successful?: boolean;
+        xhr?: {
+            status: number;
+        };
     };
 }
 
@@ -36,6 +46,17 @@ export class MarkdownEditorElement extends HTMLElement {
     private parseError: HTMLDivElement | null = null;
     private preview: HTMLDivElement | null = null;
     private readonly inlineStyleButtons: ToolbarButtonElement[] = [];
+    private linkEditor: HTMLDivElement | null = null;
+    private linkTargetInput: HTMLInputElement | null = null;
+    private lastSubmittedMarkdown = "";
+    private pendingLink = false;
+    private pendingLinkSourceSelection: CodeMirrorSourceSelection | null = null;
+    private saveButton: ToolbarButtonElement | null = null;
+    private saveError: HTMLSpanElement | null = null;
+    private saveStartedAt = 0;
+    private saveState: SaveState = "clean";
+    private saveTransitionTimeout: number | null = null;
+    private saveTimeout: number | null = null;
     private sourceEditor: CodeMirrorSourceEditor | null = null;
     private styleDropdown: HTMLElement | null = null;
     private styleTrigger: ToolbarButtonElement | null = null;
@@ -46,6 +67,19 @@ export class MarkdownEditorElement extends HTMLElement {
         if (this.theme === "match-system") {
             this.applyDocumentTheme();
         }
+    };
+    private readonly handleDocumentPointerDown = (event: PointerEvent): void => {
+        if (!this.pendingLink || !this.linkEditor) {
+            return;
+        }
+
+        const target = event.target;
+
+        if (target instanceof Node && this.linkEditor.contains(target)) {
+            return;
+        }
+
+        this.hideLinkEditor();
     };
     private toolbar: HTMLDivElement | null = null;
     private visualEditor: TiptapVisualEditor | null = null;
@@ -66,6 +100,7 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Cleans up editor resources when the element leaves the document. */
     disconnectedCallback(): void {
         this.systemThemeQuery()?.removeEventListener("change", this.handleSystemThemeChange);
+        document.removeEventListener("pointerdown", this.handleDocumentPointerDown);
         this.visualEditor?.destroy();
         this.visualEditor = null;
     }
@@ -83,6 +118,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.textContent = "";
 
         this.toolbar = this.createToolbar();
+        this.linkEditor = this.createLinkEditor();
         this.body = document.createElement("div");
         this.body.className = "markdown-editor__body";
         this.parseError = document.createElement("div");
@@ -90,7 +126,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.parseError.setAttribute("role", "alert");
         this.parseError.hidden = true;
 
-        this.append(this.toolbar, this.body, this.parseError);
+        this.append(this.toolbar, this.linkEditor, this.body, this.parseError);
         this.renderMode();
         this.updateToolbarState();
         this.updatePreview();
@@ -123,6 +159,7 @@ export class MarkdownEditorElement extends HTMLElement {
                 this.createStructureButton("thematic-break", "Horizontal rule", "window-minimize"),
             ),
         );
+        toolbar.append(this.createSaveError());
         toolbar.append(this.createSaveButton());
         this.themeGroup = this.createThemeGroup();
         toolbar.append(this.themeGroup);
@@ -176,7 +213,7 @@ export class MarkdownEditorElement extends HTMLElement {
         group.append(
             this.createThemeOption("light", "Light", "sun"),
             this.createThemeOption("dark", "Dark", "moon"),
-            this.createThemeOption("match-system", "Match system", "s"),
+            this.createThemeOption("match-system", "Match system", "display"),
         );
         group.addEventListener("change", (): void => {
             const theme = elementValue(group);
@@ -208,8 +245,56 @@ export class MarkdownEditorElement extends HTMLElement {
         const button = this.createToolbarButton("markdown-editor__save-button", "Save");
         button.setAttribute("appearance", "filled");
         button.setAttribute("type", "submit");
+        this.saveButton = button;
 
         return button;
+    }
+
+    /** Creates the save error message shown when the last save failed. */
+    private createSaveError(): HTMLSpanElement {
+        const error = document.createElement("span");
+        error.className = "markdown-editor__save-error";
+        error.setAttribute("role", "status");
+        error.hidden = true;
+        this.saveError = error;
+
+        return error;
+    }
+
+    /** Creates the link target editor shown when the Link command is active. */
+    private createLinkEditor(): HTMLDivElement {
+        const editor = document.createElement("div");
+        editor.className = "markdown-editor__link-editor";
+        editor.hidden = true;
+
+        const input = document.createElement("input");
+        input.className = "markdown-editor__link-target";
+        input.placeholder = "Link target";
+        input.type = "url";
+
+        const applyButton = this.createToolbarButton("markdown-editor__link-apply", "Apply");
+        applyButton.addEventListener("click", (): void => this.applyPendingLinkTarget());
+
+        const cancelButton = this.createToolbarButton("markdown-editor__link-cancel", "Cancel");
+        cancelButton.addEventListener("click", (): void => this.hideLinkEditor());
+
+        input.addEventListener("keydown", (event: KeyboardEvent): void => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                this.applyPendingLinkTarget();
+            }
+
+            if (event.key === "Escape") {
+                event.preventDefault();
+                this.hideLinkEditor();
+            }
+        });
+
+        editor.append(input, applyButton, cancelButton);
+        this.linkEditor = editor;
+        this.linkTargetInput = input;
+
+        return editor;
     }
 
     /** Creates the block style toolbar control. */
@@ -428,9 +513,8 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Toggles an inline style through the active visual editor. */
     private toggleInlineStyle(style: VisualInlineStyle): void {
-        const href = style === "link" ? this.promptForLinkTarget() : undefined;
-
-        if (style === "link" && !href) {
+        if (style === "link") {
+            this.showLinkEditor();
             return;
         }
 
@@ -451,27 +535,106 @@ export class MarkdownEditorElement extends HTMLElement {
                 this.sourceEditor?.toggleStrikethrough();
             }
 
-            if (style === "link" && href) {
-                this.sourceEditor?.toggleLink(href);
-            }
-
             return;
         }
 
-        if (this.visualEditor?.toggleInlineStyle(style, href ?? undefined)) {
+        if (this.visualEditor?.toggleInlineStyle(style)) {
             this.handleVisualInput();
         }
     }
 
-    /** Prompts for the link target used by the temporary link toolbar command. */
-    private promptForLinkTarget(): string | null {
-        const href = window.prompt("Link target");
-
-        if (!href?.trim()) {
-            return null;
+    /** Shows the link target editor for the current visual or source selection. */
+    private showLinkEditor(): void {
+        if (!this.linkEditor || !this.linkTargetInput) {
+            return;
         }
 
-        return href.trim();
+        this.pendingLink = true;
+        this.pendingLinkSourceSelection = this.shouldUseSourceCommands()
+            ? (this.sourceEditor?.currentSelection() ?? null)
+            : null;
+        this.linkTargetInput.value = "";
+        this.linkEditor.hidden = false;
+        this.positionLinkEditor(selectionClientRect());
+        this.linkTargetInput.focus();
+        window.setTimeout((): void => {
+            if (this.pendingLink) {
+                document.addEventListener("pointerdown", this.handleDocumentPointerDown);
+            }
+        }, 0);
+    }
+
+    /** Positions the link editor near the selected text without covering it. */
+    private positionLinkEditor(selectionRect: DOMRect | null): void {
+        if (!this.linkEditor) {
+            return;
+        }
+
+        const hostRect = this.getBoundingClientRect();
+        const editorRect = this.linkEditor.getBoundingClientRect();
+        const anchor = selectionRect ?? this.activeEditPaneRect() ?? this.body?.getBoundingClientRect() ?? hostRect;
+        const gap = 8;
+        const preferredTop = anchor.bottom - hostRect.top + gap;
+        const fallbackTop = anchor.top - hostRect.top - editorRect.height - gap;
+        const availableBelow = window.innerHeight - anchor.bottom;
+        const top = availableBelow >= editorRect.height + gap ? preferredTop : Math.max(gap, fallbackTop);
+        const preferredLeft = anchor.left - hostRect.left;
+        const maxLeft = Math.max(gap, hostRect.width - editorRect.width - gap);
+        const left = Math.max(gap, Math.min(preferredLeft, maxLeft));
+
+        this.linkEditor.style.left = `${left}px`;
+        this.linkEditor.style.top = `${top}px`;
+    }
+
+    /** Returns the active edit pane rectangle for overlay anchoring. */
+    private activeEditPaneRect(): DOMRect | null {
+        if (this.shouldUseSourceCommands()) {
+            return this.sourceEditor?.element().getBoundingClientRect() ?? null;
+        }
+
+        return this.visualEditor?.element().getBoundingClientRect() ?? null;
+    }
+
+    /** Hides the link target editor and discards any pending link command. */
+    private hideLinkEditor(): void {
+        if (!this.linkEditor || !this.linkTargetInput) {
+            return;
+        }
+
+        this.pendingLink = false;
+        this.pendingLinkSourceSelection = null;
+        this.linkTargetInput.value = "";
+        this.linkEditor.hidden = true;
+        document.removeEventListener("pointerdown", this.handleDocumentPointerDown);
+    }
+
+    /** Applies the pending link target to the active editor pane. */
+    private applyPendingLinkTarget(): void {
+        if (!this.pendingLink || !this.linkTargetInput) {
+            return;
+        }
+
+        const href = this.linkTargetInput.value.trim();
+
+        if (!href) {
+            return;
+        }
+
+        const sourceSelection = this.pendingLinkSourceSelection;
+        this.hideLinkEditor();
+
+        if (this.shouldUseSourceCommands()) {
+            if (sourceSelection) {
+                this.sourceEditor?.toggleLinkAt(sourceSelection, href);
+            } else {
+                this.sourceEditor?.toggleLink(href);
+            }
+            return;
+        }
+
+        if (this.visualEditor?.toggleInlineStyle("link", href)) {
+            this.handleVisualInput();
+        }
     }
 
     /** Toggles a structural style through the active editor. */
@@ -569,6 +732,7 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Records a valid Markdown change and notifies htmx autosave listeners. */
     private dispatchMarkdownChange(markdown: string): void {
         this.markdown = markdown;
+        this.markDirty();
         this.dispatchEvent(
             new CustomEvent("editor:changed", {
                 bubbles: true,
@@ -635,7 +799,128 @@ export class MarkdownEditorElement extends HTMLElement {
 
             field.value = markdown;
             htmxEvent.detail.parameters["markdown"] = markdown;
+            this.lastSubmittedMarkdown = markdown;
         });
+        form.addEventListener("htmx:beforeRequest", (): void => {
+            this.markSaving();
+        });
+        form.addEventListener("htmx:afterRequest", (event: Event): void => {
+            this.handleSaveResponse(event as HtmxAfterRequestEvent);
+        });
+        form.addEventListener("htmx:responseError", (): void => {
+            this.markRetry("connection error");
+        });
+        form.addEventListener("htmx:sendError", (): void => {
+            this.markRetry("connection error");
+        });
+        form.addEventListener("htmx:timeout", (): void => {
+            this.markRetry("request timed out");
+        });
+    }
+
+    /** Marks the editor dirty after a local content change. */
+    private markDirty(): void {
+        if (this.saveState === "saving") {
+            return;
+        }
+
+        this.clearSaveTransitionTimeout();
+        this.hideSaveError();
+        this.saveState = "dirty";
+        this.updateSaveButton();
+    }
+
+    /** Marks the current htmx request as an in-progress save. */
+    private markSaving(): void {
+        this.clearSaveTimeout();
+        this.clearSaveTransitionTimeout();
+        this.hideSaveError();
+        this.saveStartedAt = Date.now();
+        this.saveState = "saving";
+        this.updateSaveButton();
+        this.saveTimeout = window.setTimeout((): void => {
+            if (this.saveState === "saving") {
+                this.markRetry("request timed out");
+            }
+        }, 10_000);
+    }
+
+    /** Applies the save state after htmx reports the request outcome. */
+    private handleSaveResponse(event: HtmxAfterRequestEvent): void {
+        const successful = event.detail.successful ?? isSuccessfulStatus(event.detail.xhr?.status);
+
+        if (!successful) {
+            this.markRetry(saveFailureReason(event));
+            return;
+        }
+
+        const remainingSavingTime = 500 - (Date.now() - this.saveStartedAt);
+
+        if (remainingSavingTime <= 0) {
+            this.markSaved();
+            return;
+        }
+
+        this.clearSaveTransitionTimeout();
+        this.saveTransitionTimeout = window.setTimeout((): void => this.markSaved(), remainingSavingTime);
+    }
+
+    /** Marks the submitted Markdown as saved after a positive server response. */
+    private markSaved(): void {
+        this.clearSaveTimeout();
+        this.clearSaveTransitionTimeout();
+        this.hideSaveError();
+        this.saveState = this.toMarkdown() === this.lastSubmittedMarkdown ? "clean" : "dirty";
+        this.updateSaveButton();
+    }
+
+    /** Marks the last save as failed and allows the user to retry. */
+    private markRetry(reason: string): void {
+        this.clearSaveTimeout();
+        this.clearSaveTransitionTimeout();
+        this.saveState = "retry";
+        this.showSaveError(`Save failed: ${reason}`);
+        this.updateSaveButton();
+    }
+
+    /** Clears the outstanding save timeout, if any. */
+    private clearSaveTimeout(): void {
+        if (this.saveTimeout === null) {
+            return;
+        }
+
+        window.clearTimeout(this.saveTimeout);
+        this.saveTimeout = null;
+    }
+
+    /** Clears a delayed save completion transition, if any. */
+    private clearSaveTransitionTimeout(): void {
+        if (this.saveTransitionTimeout === null) {
+            return;
+        }
+
+        window.clearTimeout(this.saveTransitionTimeout);
+        this.saveTransitionTimeout = null;
+    }
+
+    /** Shows a save transport error next to the Save button. */
+    private showSaveError(message: string): void {
+        if (!this.saveError) {
+            return;
+        }
+
+        this.saveError.textContent = message;
+        this.saveError.hidden = false;
+    }
+
+    /** Clears the save transport error. */
+    private hideSaveError(): void {
+        if (!this.saveError) {
+            return;
+        }
+
+        this.saveError.textContent = "";
+        this.saveError.hidden = true;
     }
 
     /** Shows the latest Markdown parse error in the editor chrome. */
@@ -719,6 +1004,30 @@ export class MarkdownEditorElement extends HTMLElement {
         for (const button of this.inlineStyleButtons) {
             setToolbarButtonDisabled(button, !this.visualEditor && !this.sourceEditor);
         }
+
+        this.updateSaveButton();
+    }
+
+    /** Reflects the current save state onto the explicit Save button. */
+    private updateSaveButton(): void {
+        if (!this.saveButton) {
+            return;
+        }
+
+        if (this.saveState === "saving") {
+            this.saveButton.textContent = "Auto-Saving...";
+            setToolbarButtonDisabled(this.saveButton, true);
+            return;
+        }
+
+        if (this.saveState === "retry") {
+            this.saveButton.textContent = "Retry";
+            setToolbarButtonDisabled(this.saveButton, false);
+            return;
+        }
+
+        this.saveButton.textContent = "Save";
+        setToolbarButtonDisabled(this.saveButton, this.saveState === "clean");
     }
 
     /** Applies the editor theme selection to Web Awesome's document-level colour scheme classes. */
@@ -809,6 +1118,47 @@ function isEditorMode(mode: string): mode is EditorMode {
 /** Checks whether a value is an editor colour theme. */
 function isEditorTheme(theme: string): theme is EditorTheme {
     return theme === "light" || theme === "dark" || theme === "match-system";
+}
+
+/** Checks whether an HTTP status code should be treated as a successful save. */
+function isSuccessfulStatus(status: number | undefined): boolean {
+    return typeof status === "number" && status >= 200 && status < 300;
+}
+
+/** Returns a concise user-facing save failure reason from an htmx response event. */
+function saveFailureReason(event: HtmxAfterRequestEvent): string {
+    const status = event.detail.xhr?.status;
+
+    if (typeof status === "number" && status > 0) {
+        return `HTTP ${status}`;
+    }
+
+    return "connection error";
+}
+
+/** Returns the current non-empty selection rectangle, if the browser can provide one. */
+function selectionClientRect(): DOMRect | null {
+    const selection = window.getSelection();
+
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+        return null;
+    }
+
+    const range = selection.getRangeAt(0);
+    const rect = firstUsableClientRect(range.getClientRects());
+
+    return rect ?? range.getBoundingClientRect();
+}
+
+/** Finds the first selection rectangle with useful dimensions. */
+function firstUsableClientRect(rects: DOMRectList): DOMRect | null {
+    for (const rect of rects) {
+        if (rect.width > 0 && rect.height > 0) {
+            return rect;
+        }
+    }
+
+    return null;
 }
 
 /** Reads the string value from an HTML or custom form control host. */

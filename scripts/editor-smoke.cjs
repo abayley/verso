@@ -62,18 +62,6 @@ async function main() {
     "Edit this Markdown document.",
   );
 
-  await page.getByRole("button", { name: "Save" }).click();
-  await page.waitForFunction(() =>
-    document
-      .querySelector("#save-status")
-      ?.innerText.includes("Saved Markdown document: # Hello from MicroHttp"),
-  );
-
-  assert.equal(
-    await page.locator("#markdown-field").inputValue(),
-    "# Hello from MicroHttp\n\nEdit this Markdown document.",
-  );
-
   await page.locator(".markdown-editor__surface .ProseMirror").click();
   await page.keyboard.press(process.platform === "darwin" ? "Meta+A" : "Control+A");
   await page.keyboard.type("## Literal heading");
@@ -172,11 +160,7 @@ async function main() {
   await fillSourceMarkdown(page, ".markdown-editor__source", quotedSpreadListMarkdown);
   await page.waitForFunction(() => document.querySelector(".markdown-editor__error")?.hidden === true);
   await page.getByRole("button", { name: "Save" }).click();
-  await page.waitForFunction(() =>
-    document
-      .querySelector("#save-status")
-      ?.innerText.includes("Saved Markdown document: > 1. xxx"),
-  );
+  await waitForSavedDocument(page, quotedSpreadListMarkdown);
   assert.equal(await page.locator("#markdown-field").inputValue(), quotedSpreadListMarkdown);
 
   const listBlockquoteMarkdown = ["- > # blockquote heading 1", "  >", "  > paragraph 1"].join("\n");
@@ -232,11 +216,7 @@ async function main() {
   assert.equal(await page.locator(".markdown-editor__preview").count(), 0);
 
   await page.getByRole("button", { name: "Save" }).click();
-  await page.waitForFunction(() =>
-    document
-      .querySelector("#save-status")
-      ?.innerText.includes("Saved Markdown document: # Source heading"),
-  );
+  await waitForSavedDocument(page, sourceMarkdown);
 
   assert.equal(await page.locator("#markdown-field").inputValue(), sourceMarkdown);
 
@@ -365,10 +345,9 @@ async function main() {
       ?.innerText.includes("Source pane paragraph."),
   );
   await selectTextInElement(page, ".markdown-editor__split .markdown-editor__source .cm-content", "Source pane");
-  page.once("dialog", async (dialog) => {
-    await dialog.accept("/target");
-  });
   await page.getByRole("button", { name: "Link" }).click();
+  await page.locator(".markdown-editor__link-target").fill("/target");
+  await page.getByRole("button", { name: "Apply" }).click();
   await page.waitForSelector('.markdown-editor__split .markdown-editor__surface a[href="/target"]');
   assert.match(
     await sourceMarkdownValue(page, ".markdown-editor__split .markdown-editor__source"),
@@ -477,11 +456,7 @@ async function main() {
   );
 
   await page.getByRole("button", { name: "Save" }).click();
-  await page.waitForFunction(() =>
-    document
-      .querySelector("#save-status")
-      ?.innerText.includes("Saved Markdown document: # Split heading"),
-  );
+  await waitForSavedDocument(page, /\*\*Split source paragraph\.\*\*/);
   assert.match(await page.locator("#markdown-field").inputValue(), /\*\*Split source paragraph\.\*\*/);
 
   await page.goto(`${baseUrl}/documents/home`);
@@ -498,12 +473,7 @@ async function main() {
     "Autosaved **source** paragraph.",
   ].join("\n");
   await fillSourceMarkdown(page, ".markdown-editor__source", autosavedMarkdown);
-  await page.waitForFunction(() =>
-    document
-      .querySelector("#save-status")
-      ?.innerText.includes("Saved Markdown document: # Autosaved heading"),
-  );
-  assert.equal(await page.locator("#markdown-field").inputValue(), autosavedMarkdown);
+  await waitForSavedDocument(page, autosavedMarkdown);
 
   await page.goto(`${baseUrl}/documents/home`);
   assert.equal((await page.locator("body").innerText()).trim(), autosavedMarkdown);
@@ -540,6 +510,28 @@ async function sourceMarkdownValue(page, rootSelector = ".markdown-editor__sourc
 
 async function editorMarkdownValue(page) {
   return page.locator("markdown-editor").evaluate((editor) => editor.toMarkdown());
+}
+
+async function waitForSavedDocument(page, expected) {
+  const deadline = Date.now() + 5000;
+
+  while (Date.now() < deadline) {
+    const response = await fetch(`${baseUrl}/documents/home`, {
+      headers: {
+        Accept: "text/markdown",
+      },
+    });
+    const text = await response.text();
+    const matched = expected instanceof RegExp ? expected.test(text) : text === expected;
+
+    if (matched) {
+      return;
+    }
+
+    await page.waitForTimeout(100);
+  }
+
+  throw new Error(`Timed out waiting for saved document: ${expected.toString()}`);
 }
 
 async function currentEditorMode(page) {

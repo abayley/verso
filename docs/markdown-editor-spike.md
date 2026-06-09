@@ -529,6 +529,10 @@ editing with CodeMirror, and Web Awesome controls.
   Save, dirty content enables it, in-flight htmx saves show `Auto-Saving...` for
   at least 500 milliseconds, and failed or timed-out saves show `Retry` with an
   inline error message such as `Save failed: HTTP 500`.
+- [x] Add existing-link hover actions in visual mode. Hovering a rendered link
+  exposes Edit and Remove actions; Edit reuses the link target control with the
+  current target prefilled, while Remove clears the link mark and keeps the link
+  text.
 - [ ] Consider Lit for the editor shell once manual DOM state management becomes
   the main source of complexity.
 
@@ -593,6 +597,14 @@ Phase Six findings so far:
   `window.prompt`. Source-mode link editing captures the CodeMirror selection
   when Link is clicked so the target input can take focus without losing the
   Markdown range.
+- Existing visual links use editor-shell hover actions for editing and
+  unlinking. The web component owns the popover and command routing, while the
+  Tiptap adapter owns resolving a rendered anchor to a document mark range and
+  applying or removing the link mark.
+- Existing-link hover actions use a short grace period when the pointer leaves
+  the link. Moving over non-link editor content starts a 500 millisecond hide
+  timer; reaching the action popover or another link cancels that timer. The
+  actions are still dismissed by click-away, edit, or remove.
 - The explicit Save button is also a save-state indicator. It starts disabled for
   clean content, becomes enabled after local edits, changes to `Auto-Saving...`
   during htmx save requests, keeps that saving state visible for at least 500

@@ -226,7 +226,19 @@ async function main() {
   await page.goto(`${baseUrl}/documents/home/edit`);
   await page.waitForSelector(".markdown-editor__surface strong");
   assert.equal(await page.locator(".markdown-editor__surface p strong").first().innerText(), "source");
-  assert.equal(await page.locator(".markdown-editor__surface p br").count(), 1);
+  await page.locator('.markdown-editor__surface a[href="/target"]').hover();
+  await moveMouseToParagraphEdge(page);
+  await page.getByRole("button", { name: "Edit link" }).click();
+  assert.equal(await page.locator(".markdown-editor__link-target").inputValue(), "/target");
+  await page.locator(".markdown-editor__link-target").fill("/updated-target");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await page.waitForSelector('.markdown-editor__surface a[href="/updated-target"]');
+  assert.match(await editorMarkdownValue(page), /\[link\]\(\/updated-target\)/);
+  await page.locator('.markdown-editor__surface a[href="/updated-target"]').hover();
+  await page.getByRole("button", { name: "Remove link" }).click();
+  await page.waitForFunction(() => !document.querySelector(".markdown-editor__surface a"));
+  assert.match(await editorMarkdownValue(page), /paragraph with link\./);
+  assert.match(await editorMarkdownValue(page), /Hard break\\\ncontinued\./);
   assert.equal(await page.locator(".markdown-editor__surface blockquote strong").innerText(), "source");
   assert.equal(await page.locator(".markdown-editor__surface pre code").innerText(), "const value = 1;");
   assert.deepEqual(await page.locator(".markdown-editor__surface li").allInnerTexts(), [
@@ -470,7 +482,7 @@ async function main() {
   const autosavedMarkdown = [
     "# Autosaved heading",
     "",
-    "Autosaved **source** paragraph.",
+    "Autosaved source paragraph.",
   ].join("\n");
   await fillSourceMarkdown(page, ".markdown-editor__source", autosavedMarkdown);
   await waitForSavedDocument(page, autosavedMarkdown);
@@ -549,6 +561,16 @@ async function selectEditorMode(page, mode) {
 async function selectBlockStyle(page, style) {
   await page.locator(".markdown-editor__style-trigger").click();
   await page.locator(`.markdown-editor__style-dropdown wa-dropdown-item[value="${style}"]`).click();
+}
+
+async function moveMouseToParagraphEdge(page) {
+  const box = await page.locator(".markdown-editor__surface p").first().boundingBox();
+
+  if (!box) {
+    throw new Error("Expected visual editor paragraph bounds.");
+  }
+
+  await page.mouse.move(box.x + 4, box.y + box.height / 2);
 }
 
 function normaliseCodeMirrorText(text) {

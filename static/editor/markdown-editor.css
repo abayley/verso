@@ -81,7 +81,8 @@ markdown-editor {
   font: 14px system-ui, sans-serif;
 }
 
-.markdown-editor__link-editor {
+.markdown-editor__link-editor,
+.markdown-editor__link-actions {
   align-items: center;
   background: var(--markdown-editor-background);
   border: 1px solid var(--markdown-editor-border);
@@ -92,7 +93,8 @@ markdown-editor {
   z-index: 10;
 }
 
-.markdown-editor__link-editor[hidden] {
+.markdown-editor__link-editor[hidden],
+.markdown-editor__link-actions[hidden] {
   display: none;
 }
 

@@ -4,6 +4,7 @@ import {
     TiptapVisualEditor,
     type VisualBlockStyle,
     type VisualInlineStyle,
+    type VisualLinkSelection,
     type VisualStructureStyle,
 } from "./tiptap-visual-editor.js";
 
@@ -12,6 +13,8 @@ type EditorTheme = "light" | "dark" | "match-system";
 type ActivePane = "source" | "visual";
 type SaveState = "clean" | "dirty" | "saving" | "retry";
 type ToolbarButtonElement = HTMLElement;
+
+const linkActionsHideDelayMilliseconds = 500;
 
 interface WaDropdownSelectEvent extends Event {
     detail: {
@@ -46,11 +49,16 @@ export class MarkdownEditorElement extends HTMLElement {
     private parseError: HTMLDivElement | null = null;
     private preview: HTMLDivElement | null = null;
     private readonly inlineStyleButtons: ToolbarButtonElement[] = [];
+    private activeVisualLinkRect: DOMRect | null = null;
+    private activeVisualLinkSelection: VisualLinkSelection | null = null;
+    private linkActionsHideTimeout: number | null = null;
+    private linkActions: HTMLDivElement | null = null;
     private linkEditor: HTMLDivElement | null = null;
     private linkTargetInput: HTMLInputElement | null = null;
     private lastSubmittedMarkdown = "";
     private pendingLink = false;
     private pendingLinkSourceSelection: CodeMirrorSourceSelection | null = null;
+    private pendingVisualLinkSelection: VisualLinkSelection | null = null;
     private saveButton: ToolbarButtonElement | null = null;
     private saveError: HTMLSpanElement | null = null;
     private saveStartedAt = 0;
@@ -69,17 +77,72 @@ export class MarkdownEditorElement extends HTMLElement {
         }
     };
     private readonly handleDocumentPointerDown = (event: PointerEvent): void => {
-        if (!this.pendingLink || !this.linkEditor) {
+        if (!this.pendingLink && !this.isLinkActionsVisible()) {
             return;
         }
 
         const target = event.target;
 
-        if (target instanceof Node && this.linkEditor.contains(target)) {
+        if (target instanceof Node && this.linkEditor?.contains(target)) {
             return;
         }
 
-        this.hideLinkEditor();
+        if (target instanceof Node && this.linkActions?.contains(target)) {
+            return;
+        }
+
+        if (this.pendingLink) {
+            this.hideLinkEditor();
+        }
+
+        if (this.isLinkActionsVisible()) {
+            this.hideLinkActions();
+        }
+    };
+    private readonly handleDocumentPointerOver = (event: PointerEvent): void => {
+        const target = event.target;
+
+        if (!(target instanceof Element) || !this.visualEditor) {
+            this.scheduleLinkActionsHide();
+            return;
+        }
+
+        if (this.linkActions?.contains(target)) {
+            this.cancelLinkActionsHide();
+            return;
+        }
+
+        const anchor = target.closest("a");
+
+        if (anchor instanceof HTMLAnchorElement && this.visualEditor.element().contains(anchor)) {
+            this.cancelLinkActionsHide();
+            return;
+        }
+
+        this.scheduleLinkActionsHide();
+    };
+    private readonly handleVisualPointerOver = (event: PointerEvent): void => {
+        const target = event.target;
+
+        if (!(target instanceof Element) || !this.visualEditor) {
+            return;
+        }
+
+        const anchor = target.closest("a");
+
+        if (!(anchor instanceof HTMLAnchorElement) || !this.visualEditor.element().contains(anchor)) {
+            this.scheduleLinkActionsHide();
+            return;
+        }
+
+        const selection = this.visualEditor.linkSelectionFromAnchor(anchor);
+
+        if (!selection) {
+            this.hideLinkActions();
+            return;
+        }
+
+        this.showLinkActions(selection, anchor.getBoundingClientRect());
     };
     private toolbar: HTMLDivElement | null = null;
     private visualEditor: TiptapVisualEditor | null = null;
@@ -101,6 +164,8 @@ export class MarkdownEditorElement extends HTMLElement {
     disconnectedCallback(): void {
         this.systemThemeQuery()?.removeEventListener("change", this.handleSystemThemeChange);
         document.removeEventListener("pointerdown", this.handleDocumentPointerDown);
+        document.removeEventListener("pointerover", this.handleDocumentPointerOver);
+        this.cancelLinkActionsHide();
         this.visualEditor?.destroy();
         this.visualEditor = null;
     }
@@ -119,6 +184,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
         this.toolbar = this.createToolbar();
         this.linkEditor = this.createLinkEditor();
+        this.linkActions = this.createLinkActions();
         this.body = document.createElement("div");
         this.body.className = "markdown-editor__body";
         this.parseError = document.createElement("div");
@@ -126,7 +192,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.parseError.setAttribute("role", "alert");
         this.parseError.hidden = true;
 
-        this.append(this.toolbar, this.linkEditor, this.body, this.parseError);
+        this.append(this.toolbar, this.linkEditor, this.linkActions, this.body, this.parseError);
         this.renderMode();
         this.updateToolbarState();
         this.updatePreview();
@@ -297,6 +363,35 @@ export class MarkdownEditorElement extends HTMLElement {
         return editor;
     }
 
+    /** Creates the existing-link hover actions. */
+    private createLinkActions(): HTMLDivElement {
+        const actions = document.createElement("div");
+        actions.className = "markdown-editor__link-actions";
+        actions.hidden = true;
+
+        const editButton = this.createToolbarButton("markdown-editor__link-edit", "Edit link");
+        editButton.textContent = "";
+        editButton.append(createToolbarIcon("pencil", "Edit link"));
+        editButton.addEventListener("mousedown", (event: MouseEvent): void => {
+            event.preventDefault();
+        });
+        editButton.addEventListener("click", (): void => this.editActiveVisualLink());
+
+        const removeButton = this.createToolbarButton("markdown-editor__link-remove", "Remove link");
+        removeButton.textContent = "";
+        removeButton.append(createToolbarIcon("link-slash", "Remove link"));
+        removeButton.addEventListener("mousedown", (event: MouseEvent): void => {
+            event.preventDefault();
+        });
+        removeButton.addEventListener("click", (): void => this.removeActiveVisualLink());
+        actions.addEventListener("pointerover", (): void => this.cancelLinkActionsHide());
+
+        actions.append(editButton, removeButton);
+        this.linkActions = actions;
+
+        return actions;
+    }
+
     /** Creates the block style toolbar control. */
     private createStyleDropdown(): HTMLElement {
         const dropdown = document.createElement("wa-dropdown");
@@ -412,6 +507,7 @@ export class MarkdownEditorElement extends HTMLElement {
             this.visualEditor.element().addEventListener("focusin", (): void => {
                 this.activePane = "visual";
             });
+            this.visualEditor.element().addEventListener("pointerover", this.handleVisualPointerOver);
         }
 
         if (this.mode === "split") {
@@ -544,18 +640,24 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /** Shows the link target editor for the current visual or source selection. */
-    private showLinkEditor(): void {
+    private showLinkEditor(
+        href = "",
+        visualLinkSelection: VisualLinkSelection | null = null,
+        anchorRect: DOMRect | null = null,
+    ): void {
         if (!this.linkEditor || !this.linkTargetInput) {
             return;
         }
 
+        this.hideLinkActions();
         this.pendingLink = true;
         this.pendingLinkSourceSelection = this.shouldUseSourceCommands()
             ? (this.sourceEditor?.currentSelection() ?? null)
             : null;
-        this.linkTargetInput.value = "";
+        this.pendingVisualLinkSelection = visualLinkSelection;
+        this.linkTargetInput.value = href;
         this.linkEditor.hidden = false;
-        this.positionLinkEditor(selectionClientRect());
+        this.positionLinkEditor(anchorRect ?? selectionClientRect());
         this.linkTargetInput.focus();
         window.setTimeout((): void => {
             if (this.pendingLink) {
@@ -570,20 +672,30 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
+        const anchor =
+            selectionRect ??
+            this.activeEditPaneRect() ??
+            this.body?.getBoundingClientRect() ??
+            this.getBoundingClientRect();
+
+        this.positionOverlay(this.linkEditor, anchor);
+    }
+
+    /** Positions an editor overlay near an anchor without covering it. */
+    private positionOverlay(overlay: HTMLElement, anchor: DOMRect): void {
         const hostRect = this.getBoundingClientRect();
-        const editorRect = this.linkEditor.getBoundingClientRect();
-        const anchor = selectionRect ?? this.activeEditPaneRect() ?? this.body?.getBoundingClientRect() ?? hostRect;
+        const overlayRect = overlay.getBoundingClientRect();
         const gap = 8;
         const preferredTop = anchor.bottom - hostRect.top + gap;
-        const fallbackTop = anchor.top - hostRect.top - editorRect.height - gap;
+        const fallbackTop = anchor.top - hostRect.top - overlayRect.height - gap;
         const availableBelow = window.innerHeight - anchor.bottom;
-        const top = availableBelow >= editorRect.height + gap ? preferredTop : Math.max(gap, fallbackTop);
+        const top = availableBelow >= overlayRect.height + gap ? preferredTop : Math.max(gap, fallbackTop);
         const preferredLeft = anchor.left - hostRect.left;
-        const maxLeft = Math.max(gap, hostRect.width - editorRect.width - gap);
+        const maxLeft = Math.max(gap, hostRect.width - overlayRect.width - gap);
         const left = Math.max(gap, Math.min(preferredLeft, maxLeft));
 
-        this.linkEditor.style.left = `${left}px`;
-        this.linkEditor.style.top = `${top}px`;
+        overlay.style.left = `${left}px`;
+        overlay.style.top = `${top}px`;
     }
 
     /** Returns the active edit pane rectangle for overlay anchoring. */
@@ -603,9 +715,13 @@ export class MarkdownEditorElement extends HTMLElement {
 
         this.pendingLink = false;
         this.pendingLinkSourceSelection = null;
+        this.pendingVisualLinkSelection = null;
         this.linkTargetInput.value = "";
         this.linkEditor.hidden = true;
-        document.removeEventListener("pointerdown", this.handleDocumentPointerDown);
+
+        if (!this.isLinkActionsVisible()) {
+            document.removeEventListener("pointerdown", this.handleDocumentPointerDown);
+        }
     }
 
     /** Applies the pending link target to the active editor pane. */
@@ -621,6 +737,7 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         const sourceSelection = this.pendingLinkSourceSelection;
+        const visualLinkSelection = this.pendingVisualLinkSelection;
         this.hideLinkEditor();
 
         if (this.shouldUseSourceCommands()) {
@@ -632,7 +749,99 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
+        if (visualLinkSelection) {
+            if (this.visualEditor?.setLinkAt(visualLinkSelection, href)) {
+                this.handleVisualInput();
+            }
+            return;
+        }
+
         if (this.visualEditor?.toggleInlineStyle("link", href)) {
+            this.handleVisualInput();
+        }
+    }
+
+    /** Shows existing-link hover actions near a rendered link. */
+    private showLinkActions(selection: VisualLinkSelection, anchorRect: DOMRect): void {
+        if (!this.linkActions || this.pendingLink) {
+            return;
+        }
+
+        this.activeVisualLinkRect = anchorRect;
+        this.activeVisualLinkSelection = selection;
+        this.cancelLinkActionsHide();
+        this.linkActions.hidden = false;
+        this.positionOverlay(this.linkActions, anchorRect);
+        document.addEventListener("pointerdown", this.handleDocumentPointerDown);
+        document.addEventListener("pointerover", this.handleDocumentPointerOver);
+    }
+
+    /** Hides existing-link hover actions. */
+    private hideLinkActions(): void {
+        if (!this.linkActions) {
+            return;
+        }
+
+        this.activeVisualLinkSelection = null;
+        this.activeVisualLinkRect = null;
+        this.cancelLinkActionsHide();
+        this.linkActions.hidden = true;
+        document.removeEventListener("pointerover", this.handleDocumentPointerOver);
+
+        if (!this.pendingLink) {
+            document.removeEventListener("pointerdown", this.handleDocumentPointerDown);
+        }
+    }
+
+    /** Starts the delayed hide timer for existing-link actions. */
+    private scheduleLinkActionsHide(): void {
+        if (!this.isLinkActionsVisible() || this.linkActionsHideTimeout !== null) {
+            return;
+        }
+
+        this.linkActionsHideTimeout = window.setTimeout((): void => {
+            this.linkActionsHideTimeout = null;
+            this.hideLinkActions();
+        }, linkActionsHideDelayMilliseconds);
+    }
+
+    /** Cancels the delayed hide timer for existing-link actions. */
+    private cancelLinkActionsHide(): void {
+        if (this.linkActionsHideTimeout === null) {
+            return;
+        }
+
+        window.clearTimeout(this.linkActionsHideTimeout);
+        this.linkActionsHideTimeout = null;
+    }
+
+    /** Checks whether existing-link hover actions are visible. */
+    private isLinkActionsVisible(): boolean {
+        return Boolean(this.linkActions && !this.linkActions.hidden);
+    }
+
+    /** Opens the link target editor for the active rendered link. */
+    private editActiveVisualLink(): void {
+        const selection = this.activeVisualLinkSelection;
+
+        if (!selection) {
+            return;
+        }
+
+        this.showLinkEditor(selection.href, selection, this.activeVisualLinkRect);
+    }
+
+    /** Removes the link mark from the active rendered link while keeping its text. */
+    private removeActiveVisualLink(): void {
+        const selection = this.activeVisualLinkSelection;
+
+        if (!selection) {
+            return;
+        }
+
+        this.hideLinkActions();
+
+        if (this.visualEditor?.unsetLinkAt(selection)) {
             this.handleVisualInput();
         }
     }

@@ -249,6 +249,90 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain("[Plain](/target) paragraph");
     });
 
+    it("given visual mode with an existing link, when its hover edit action is applied, then the link target changes", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "[Plain](/old) paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        showLinkActions(editor, "Plain");
+        clickLinkAction(editor, "Edit link");
+
+        expect(linkTargetInput(editor).value).toBe("/old");
+
+        applyLinkTarget(editor, "/new");
+
+        const link = editor.querySelector(".markdown-editor__surface a");
+        expect(link?.textContent).toBe("Plain");
+        expect(link?.getAttribute("href")).toBe("/new");
+        expect(editor.toMarkdown()).toContain("[Plain](/new) paragraph");
+    });
+
+    it("given visual mode with existing-link actions visible, when the pointer leaves the link, then the actions stay reachable", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "[Plain](/old) paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        vi.useFakeTimers();
+
+        showLinkActions(editor, "Plain");
+        editor
+            .querySelector(".markdown-editor__surface p")
+            ?.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+
+        expect(linkActions(editor).hidden).toBe(false);
+
+        vi.advanceTimersByTime(499);
+
+        expect(linkActions(editor).hidden).toBe(false);
+
+        linkActions(editor).dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+        vi.advanceTimersByTime(1);
+
+        expect(linkActions(editor).hidden).toBe(false);
+
+        clickLinkAction(editor, "Edit link");
+
+        expect(linkTargetInput(editor).value).toBe("/old");
+    });
+
+    it("given visual mode with existing-link actions visible, when the pointer moves elsewhere, then the actions hide after a short delay", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "[Plain](/old) paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        vi.useFakeTimers();
+
+        showLinkActions(editor, "Plain");
+        editor
+            .querySelector(".markdown-editor__surface p")
+            ?.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+
+        expect(linkActions(editor).hidden).toBe(false);
+
+        vi.advanceTimersByTime(500);
+
+        expect(linkActions(editor).hidden).toBe(true);
+    });
+
+    it("given visual mode with an existing link, when its hover remove action is applied, then the link text remains", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "[Plain](/old) paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        showLinkActions(editor, "Plain");
+        clickLinkAction(editor, "Remove link");
+
+        expect(editor.querySelector(".markdown-editor__surface a")).toBeNull();
+        expect(editor.querySelector(".markdown-editor__surface p")?.textContent).toBe("Plain paragraph");
+        expect(editor.toMarkdown()).toBe("Plain paragraph");
+    });
+
     it("given link target editor is open, when the user clicks elsewhere, then it closes without applying a link", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         const outside = document.createElement("button");
@@ -731,16 +815,27 @@ function clickToolbarButton(editor: Element, label: string): void {
 
 /** Applies a link target through the editor link popover form. */
 function applyLinkTarget(editor: Element, target: string): void {
-    const input = editor.querySelector(".markdown-editor__link-target");
+    const input = linkTargetInput(editor);
     const applyButton = editor.querySelector(".markdown-editor__link-apply");
 
-    if (!(input instanceof HTMLInputElement) || !(applyButton instanceof HTMLElement)) {
+    if (!(applyButton instanceof HTMLElement)) {
         throw new Error("Expected link target editor.");
     }
 
     input.value = target;
     input.dispatchEvent(new InputEvent("input", { bubbles: true }));
     applyButton.click();
+}
+
+/** Returns the link target input. */
+function linkTargetInput(editor: Element): HTMLInputElement {
+    const input = editor.querySelector(".markdown-editor__link-target");
+
+    if (!(input instanceof HTMLInputElement)) {
+        throw new Error("Expected link target input.");
+    }
+
+    return input;
 }
 
 /** Returns the link target editor. */
@@ -752,6 +847,43 @@ function linkEditor(editor: Element): HTMLElement {
     }
 
     return targetEditor;
+}
+
+/** Returns the existing-link action popover. */
+function linkActions(editor: Element): HTMLElement {
+    const actions = editor.querySelector(".markdown-editor__link-actions");
+
+    if (!(actions instanceof HTMLElement)) {
+        throw new Error("Expected link actions.");
+    }
+
+    return actions;
+}
+
+/** Shows existing-link hover actions for the visual link with matching text. */
+function showLinkActions(editor: Element, linkText: string): void {
+    const link = Array.from(editor.querySelectorAll(".markdown-editor__surface a")).find(
+        (candidate: Element): boolean => candidate.textContent === linkText,
+    );
+
+    if (!(link instanceof HTMLAnchorElement)) {
+        throw new Error(`Expected visual editor link: ${linkText}`);
+    }
+
+    link.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+}
+
+/** Clicks an existing-link action button by its accessible label. */
+function clickLinkAction(editor: Element, label: string): void {
+    const action = Array.from(editor.querySelectorAll(".markdown-editor__link-actions .markdown-editor__button")).find(
+        (candidate: Element): boolean => toolbarButtonLabel(candidate) === label,
+    );
+
+    if (!(action instanceof HTMLElement)) {
+        throw new Error(`Expected link action: ${label}`);
+    }
+
+    action.click();
 }
 
 /** Returns the explicit save button from the editor toolbar. */

@@ -16,6 +16,13 @@ export type VisualInlineStyle = "strong" | "emphasis" | "code" | "strikethrough"
 /** Supported visual structure commands exposed by the editor toolbar. */
 export type VisualStructureStyle = "bullet-list" | "ordered-list" | "blockquote" | "code-block" | "thematic-break";
 
+/** A link mark range resolved from the rendered visual editor. */
+export interface VisualLinkSelection {
+    from: number;
+    href: string;
+    to: number;
+}
+
 type MarkdownSetContentOptions = SetContentOptions & {
     contentType: "markdown";
 };
@@ -144,6 +151,43 @@ export class TiptapVisualEditor {
         }
     }
 
+    /** Resolves a rendered link element to the Tiptap document range it covers. */
+    public linkSelectionFromAnchor(anchor: HTMLAnchorElement): VisualLinkSelection | null {
+        if (!this.root.contains(anchor)) {
+            return null;
+        }
+
+        const first = firstTextDescendant(anchor);
+        const last = lastTextDescendant(anchor);
+
+        if (!first || !last) {
+            return null;
+        }
+
+        const from = this.editor.view.posAtDOM(first, 0);
+        const to = this.editor.view.posAtDOM(last, last.data.length);
+
+        return {
+            from: Math.min(from, to),
+            href: anchor.getAttribute("href") ?? "",
+            to: Math.max(from, to),
+        };
+    }
+
+    /** Updates the link target at a previously resolved visual link range. */
+    public setLinkAt(selection: VisualLinkSelection, href: string): boolean {
+        return this.withCurrentSelection(selection, (editor: Editor): boolean =>
+            editor.chain().focus().setLink({ href }).run(),
+        );
+    }
+
+    /** Removes the link mark at a previously resolved visual link range. */
+    public unsetLinkAt(selection: VisualLinkSelection): boolean {
+        return this.withCurrentSelection(selection, (editor: Editor): boolean =>
+            editor.chain().focus().unsetLink().run(),
+        );
+    }
+
     /** Toggles one supported structural style at the current visual selection. */
     public toggleStructure(style: VisualStructureStyle): boolean {
         if (style === "bullet-list") {
@@ -260,6 +304,40 @@ function isEmptyParagraphElement(element: Element): boolean {
     return Array.from(element.childNodes).every(
         (child: ChildNode): boolean => child.nodeType === Node.ELEMENT_NODE && (child as Element).tagName === "BR",
     );
+}
+
+/** Returns the first text node inside a rendered visual editor element. */
+function firstTextDescendant(node: Node): Text | null {
+    if (node instanceof Text) {
+        return node;
+    }
+
+    for (const child of node.childNodes) {
+        const text = firstTextDescendant(child);
+
+        if (text) {
+            return text;
+        }
+    }
+
+    return null;
+}
+
+/** Returns the last text node inside a rendered visual editor element. */
+function lastTextDescendant(node: Node): Text | null {
+    if (node instanceof Text) {
+        return node;
+    }
+
+    for (const child of Array.from(node.childNodes).reverse()) {
+        const text = lastTextDescendant(child);
+
+        if (text) {
+            return text;
+        }
+    }
+
+    return null;
 }
 
 /** Converts toolbar style identifiers into Tiptap heading levels. */

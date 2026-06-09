@@ -605,6 +605,13 @@ Phase Six findings so far:
   the link. Moving over non-link editor content starts a 500 millisecond hide
   timer; reaching the action popover or another link cancels that timer. The
   actions are still dismissed by click-away, edit, or remove.
+- Toolbar controls use Web Awesome tooltips instead of native `title` hover text
+  so the editor controls tooltip timing. The toolbar uses one shared tooltip:
+  first hover shows after 500 milliseconds, leaving a control hides after 250
+  milliseconds, and moving to another control while the tooltip is warm retargets
+  it immediately. Bold and Italic advertise the platform-specific Tiptap
+  visual-mode shortcuts; source-mode formatting shortcuts remain deferred until
+  the CodeMirror adapter owns equivalent key bindings.
 - The explicit Save button is also a save-state indicator. It starts disabled for
   clean content, becomes enabled after local edits, changes to `Auto-Saving...`
   during htmx save requests, keeps that saving state visible for at least 500

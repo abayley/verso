@@ -111,6 +111,50 @@ describe("MarkdownEditorElement", (): void => {
         expect(modeControl(editor).getAttribute("value")).toBe("visual");
     });
 
+    it("given toolbar controls, when scanning across buttons, then the shared tooltip retargets before hiding", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        vi.useFakeTimers();
+
+        const boldButton = toolbarButton(editor, "Bold");
+        const italicButton = toolbarButton(editor, "Italic");
+        const tooltip = toolbarTooltip(editor);
+
+        boldButton.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+
+        expect(tooltip.hasAttribute("open")).toBe(false);
+
+        vi.advanceTimersByTime(499);
+
+        expect(tooltip.hasAttribute("open")).toBe(false);
+
+        vi.advanceTimersByTime(1);
+
+        expect(tooltip.hasAttribute("open")).toBe(true);
+        expect(tooltip.getAttribute("for")).toBe(boldButton.id);
+        expect(tooltip.textContent).toBe(`Bold (${primaryModifierLabel()}+B)`);
+
+        boldButton.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
+        italicButton.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+
+        expect(tooltip.hasAttribute("open")).toBe(true);
+        expect(tooltip.getAttribute("for")).toBe(italicButton.id);
+        expect(tooltip.textContent).toBe(`Italic (${primaryModifierLabel()}+I)`);
+
+        italicButton.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
+
+        vi.advanceTimersByTime(249);
+
+        expect(tooltip.hasAttribute("open")).toBe(true);
+
+        vi.advanceTimersByTime(1);
+
+        expect(tooltip.hasAttribute("open")).toBe(false);
+    });
+
     it("given source mode with a list item containing a blockquote, when cycled through split to visual, then Markdown nesting is preserved", async (): Promise<void> => {
         const markdown = ["- > # blockquote heading 1", "  >", "  > paragraph 1"].join("\n");
         const editor = document.createElement(elementName) as MarkdownEditorElement;
@@ -802,6 +846,11 @@ function waitForInitialisation(): Promise<void> {
 
 /** Clicks a toolbar button by its visible label. */
 function clickToolbarButton(editor: Element, label: string): void {
+    toolbarButton(editor, label).click();
+}
+
+/** Returns a toolbar button by its visible label. */
+function toolbarButton(editor: Element, label: string): HTMLElement {
     const button = Array.from(editor.querySelectorAll(".markdown-editor__toolbar .markdown-editor__button")).find(
         (candidate: Element): boolean => toolbarButtonLabel(candidate) === label,
     );
@@ -810,7 +859,23 @@ function clickToolbarButton(editor: Element, label: string): void {
         throw new Error(`Expected toolbar button: ${label}`);
     }
 
-    button.click();
+    return button;
+}
+
+/** Returns the shared toolbar tooltip. */
+function toolbarTooltip(editor: Element): HTMLElement {
+    const tooltip = editor.querySelector(".markdown-editor__tooltip");
+
+    if (!(tooltip instanceof HTMLElement)) {
+        throw new Error("Expected toolbar tooltip.");
+    }
+
+    return tooltip;
+}
+
+/** Returns the platform-specific primary command modifier label. */
+function primaryModifierLabel(): string {
+    return /\bMac/.test(navigator.platform) ? "Cmd" : "Ctrl";
 }
 
 /** Applies a link target through the editor link popover form. */

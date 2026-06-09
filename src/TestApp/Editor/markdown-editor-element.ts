@@ -15,6 +15,10 @@ type SaveState = "clean" | "dirty" | "saving" | "retry";
 type ToolbarButtonElement = HTMLElement;
 
 const linkActionsHideDelayMilliseconds = 500;
+const toolbarTooltipHideDelayMilliseconds = 250;
+const toolbarTooltipShowDelayMilliseconds = 500;
+
+let tooltipTargetSequence = 0;
 
 interface WaDropdownSelectEvent extends Event {
     detail: {
@@ -71,6 +75,9 @@ export class MarkdownEditorElement extends HTMLElement {
     private syncingEditors = false;
     private theme: EditorTheme = "match-system";
     private themeGroup: HTMLElement | null = null;
+    private toolbarTooltip: HTMLElement | null = null;
+    private toolbarTooltipHideTimeout: number | null = null;
+    private toolbarTooltipShowTimeout: number | null = null;
     private readonly handleSystemThemeChange = (): void => {
         if (this.theme === "match-system") {
             this.applyDocumentTheme();
@@ -166,6 +173,7 @@ export class MarkdownEditorElement extends HTMLElement {
         document.removeEventListener("pointerdown", this.handleDocumentPointerDown);
         document.removeEventListener("pointerover", this.handleDocumentPointerOver);
         this.cancelLinkActionsHide();
+        this.hideToolbarTooltip();
         this.visualEditor?.destroy();
         this.visualEditor = null;
     }
@@ -182,6 +190,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.theme = this.editorTheme();
         this.textContent = "";
 
+        this.toolbarTooltip = this.createToolbarTooltip();
         this.toolbar = this.createToolbar();
         this.linkEditor = this.createLinkEditor();
         this.linkActions = this.createLinkActions();
@@ -192,7 +201,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.parseError.setAttribute("role", "alert");
         this.parseError.hidden = true;
 
-        this.append(this.toolbar, this.linkEditor, this.linkActions, this.body, this.parseError);
+        this.append(this.toolbar, this.linkEditor, this.linkActions, this.toolbarTooltip, this.body, this.parseError);
         this.renderMode();
         this.updateToolbarState();
         this.updatePreview();
@@ -263,8 +272,8 @@ export class MarkdownEditorElement extends HTMLElement {
         option.append(createToolbarIcon(iconName, label, iconFamily));
         option.setAttribute("appearance", "button");
         option.setAttribute("aria-label", label);
-        option.setAttribute("title", label);
         option.setAttribute("value", mode);
+        this.addTooltip(option, label);
 
         return option;
     }
@@ -300,8 +309,8 @@ export class MarkdownEditorElement extends HTMLElement {
         option.append(createToolbarIcon(iconName, label));
         option.setAttribute("appearance", "button");
         option.setAttribute("aria-label", label);
-        option.setAttribute("title", label);
         option.setAttribute("value", theme);
+        this.addTooltip(option, label);
 
         return option;
     }
@@ -432,7 +441,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Creates one inline style toolbar button. */
     private createInlineStyleButton(style: VisualInlineStyle, label: string, iconName: string): ToolbarButtonElement {
-        const button = this.createToolbarButton("markdown-editor__inline-button", label);
+        const button = this.createToolbarButton("markdown-editor__inline-button", label, shortcutForInlineStyle(style));
         button.textContent = "";
         button.append(createToolbarIcon(iconName, label));
         button.dataset["inlineStyle"] = style;
@@ -460,7 +469,11 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /** Creates one Web Awesome toolbar command button. */
-    private createToolbarButton(className: string, label: string): ToolbarButtonElement {
+    private createToolbarButton(
+        className: string,
+        label: string,
+        shortcut: string | null = null,
+    ): ToolbarButtonElement {
         const button = document.createElement("wa-button");
         button.className = `markdown-editor__button ${className}`;
         button.textContent = label;
@@ -468,9 +481,112 @@ export class MarkdownEditorElement extends HTMLElement {
         button.setAttribute("size", "small");
         button.setAttribute("type", "button");
         button.setAttribute("aria-label", label);
-        button.setAttribute("title", label);
+        this.addTooltip(button, label, shortcut);
 
         return button;
+    }
+
+    /** Registers a Web Awesome tooltip for one editor control. */
+    private addTooltip(target: HTMLElement, label: string, shortcut: string | null = null): void {
+        const tooltipId = `markdown-editor-control-${++tooltipTargetSequence}`;
+        const tooltipText = shortcut ? `${label} (${shortcut})` : label;
+
+        target.id = target.id || tooltipId;
+        target.dataset["tooltipText"] = tooltipText;
+        target.addEventListener("pointerover", (): void => this.showToolbarTooltip(target));
+        target.addEventListener("focusin", (): void => this.showToolbarTooltip(target));
+        target.addEventListener("pointerout", (): void => this.scheduleToolbarTooltipHide());
+        target.addEventListener("focusout", (): void => this.scheduleToolbarTooltipHide());
+    }
+
+    /** Creates the shared toolbar tooltip. */
+    private createToolbarTooltip(): HTMLElement {
+        const tooltip = document.createElement("wa-tooltip");
+        tooltip.className = "markdown-editor__tooltip";
+        tooltip.setAttribute("trigger", "manual");
+
+        return tooltip;
+    }
+
+    /** Shows or schedules the shared toolbar tooltip for a target control. */
+    private showToolbarTooltip(target: HTMLElement): void {
+        const tooltipText = target.dataset["tooltipText"];
+
+        if (!tooltipText) {
+            return;
+        }
+
+        const warmTooltip = this.isToolbarTooltipVisible() || this.toolbarTooltipHideTimeout !== null;
+
+        this.cancelToolbarTooltipHide();
+        this.cancelToolbarTooltipShow();
+
+        if (warmTooltip) {
+            this.openToolbarTooltip(target, tooltipText);
+            return;
+        }
+
+        this.toolbarTooltipShowTimeout = window.setTimeout((): void => {
+            this.toolbarTooltipShowTimeout = null;
+            this.openToolbarTooltip(target, tooltipText);
+        }, toolbarTooltipShowDelayMilliseconds);
+    }
+
+    /** Opens the shared toolbar tooltip on a target control. */
+    private openToolbarTooltip(target: HTMLElement, tooltipText: string): void {
+        if (!this.toolbarTooltip) {
+            return;
+        }
+
+        this.toolbarTooltip.setAttribute("for", target.id);
+        this.toolbarTooltip.textContent = tooltipText;
+        this.toolbarTooltip.setAttribute("open", "");
+    }
+
+    /** Hides the shared toolbar tooltip after a short grace period. */
+    private scheduleToolbarTooltipHide(): void {
+        this.cancelToolbarTooltipShow();
+
+        if (!this.isToolbarTooltipVisible() || this.toolbarTooltipHideTimeout !== null) {
+            return;
+        }
+
+        this.toolbarTooltipHideTimeout = window.setTimeout((): void => {
+            this.toolbarTooltipHideTimeout = null;
+            this.hideToolbarTooltip();
+        }, toolbarTooltipHideDelayMilliseconds);
+    }
+
+    /** Hides the shared toolbar tooltip immediately. */
+    private hideToolbarTooltip(): void {
+        this.cancelToolbarTooltipShow();
+        this.cancelToolbarTooltipHide();
+        this.toolbarTooltip?.removeAttribute("open");
+    }
+
+    /** Cancels a pending toolbar tooltip show timer. */
+    private cancelToolbarTooltipShow(): void {
+        if (this.toolbarTooltipShowTimeout === null) {
+            return;
+        }
+
+        window.clearTimeout(this.toolbarTooltipShowTimeout);
+        this.toolbarTooltipShowTimeout = null;
+    }
+
+    /** Cancels a pending toolbar tooltip hide timer. */
+    private cancelToolbarTooltipHide(): void {
+        if (this.toolbarTooltipHideTimeout === null) {
+            return;
+        }
+
+        window.clearTimeout(this.toolbarTooltipHideTimeout);
+        this.toolbarTooltipHideTimeout = null;
+    }
+
+    /** Checks whether the shared toolbar tooltip is currently open. */
+    private isToolbarTooltipVisible(): boolean {
+        return Boolean(this.toolbarTooltip?.hasAttribute("open"));
     }
 
     /** Creates one Web Awesome toolbar button group. */
@@ -1399,6 +1515,24 @@ function createToolbarIcon(name: string, label: string, family?: string): HTMLEl
     }
 
     return icon;
+}
+
+/** Returns the shortcut label for inline controls backed by editor keymaps. */
+function shortcutForInlineStyle(style: VisualInlineStyle): string | null {
+    if (style === "strong") {
+        return `${primaryModifierLabel()}+B`;
+    }
+
+    if (style === "emphasis") {
+        return `${primaryModifierLabel()}+I`;
+    }
+
+    return null;
+}
+
+/** Returns the platform-specific primary command modifier label. */
+function primaryModifierLabel(): string {
+    return /\bMac/.test(navigator.platform) ? "Cmd" : "Ctrl";
 }
 
 /** Reflects disabled state onto custom toolbar command elements. */

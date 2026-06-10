@@ -243,6 +243,7 @@ Useful design documents:
 - [RFC-0001: Editor Progressive Enhancement](docs/rfcs/rfc-0001-editor-progressive-enhancement.md)
 - [RFC-0002: Editor Shell Decomposition](docs/rfcs/rfc-0002-editor-shell-decomposition.md)
 - [RFC-0003: Socket Payload Correctness and Testability](docs/rfcs/rfc-0003-socket-correctness-and-testability.md)
+- [RFC-0004: Iteratee Streaming IO](docs/rfcs/rfc-0004-iteratee-streaming-io.md)
 
 New design decisions should be recorded in
 [ADR Registry](docs/decision-register.md), not only in comments or chat.

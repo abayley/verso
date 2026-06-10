@@ -14,7 +14,7 @@ DOCS = docs
 DOC_FILES = README.md INSTALL.md STANDARDS.md TODO.md "$(DOCS)/**/*.md"
 HS_FILES = $(shell find $(SRC) $(TEST) -name '*.hs' | sort)
 
-.PHONY: docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-test-app test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 all-spikes check clean
+.PHONY: docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-test-app test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 all-spikes check clean
 
 spike1:
 	mkdir -p $(BUILD)
@@ -52,7 +52,11 @@ spike9:
 	mkdir -p $(BUILD)
 	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike9.hs -o $(BUILD)/spike9
 
-all-spikes: spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9
+spike10:
+	mkdir -p $(BUILD)
+	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike10.hs -o $(BUILD)/spike10
+
+all-spikes: spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10
 
 docs:
 	markdownlint-cli2 $(DOC_FILES)

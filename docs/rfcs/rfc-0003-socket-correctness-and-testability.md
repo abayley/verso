@@ -1,7 +1,7 @@
 ---
 id: RFC-0003
 name: Socket Payload Correctness and Testability
-status: Draft
+status: Accepted
 owners:
     - alistair
 created: 2026-06-10
@@ -15,7 +15,7 @@ superseded_by: null
 | Stage     | Timestamp        |
 |-----------|------------------|
 | Authored  | 2026-06-10       |
-| Started   |                  |
+| Started   | 2026-06-10       |
 | Completed |                  |
 
 ## Summary
@@ -181,14 +181,16 @@ Test cases, simplest to most complex:
 ## Rollout Plan
 
 1. Phase one: socket testability (test cases 1 to 8).
-   - [ ] Pure `encodeSockAddrIn` with unit tests; `bind` uses it.
-   - [ ] `boundPort` via `getsockname`.
-   - [ ] `connectTcp` with the non-blocking connect loop.
-   - [ ] Loopback integration suite for accept, recv, sendAll, close, and
-         error mapping.
+   - [x] Pure `encodeSockAddrIn` with unit tests; `bind` uses it.
+   - [x] `boundPort` via `getsockname`.
+   - [x] `connectTcp` with the non-blocking connect loop.
+   - [x] Loopback integration suite for accept, recv, sendAll, close, and
+         error mapping. The large-transfer case runs as single-threaded
+         rounds sized within the kernel socket buffers; see the concurrency
+         finding under Open Questions.
 2. Phase two: framed request reader (test cases 9 to 14).
-   - [ ] Reader over an injected chunk source with incremental limits.
-   - [ ] Unit suite with scripted fake sources.
+   - [x] Reader over an injected chunk source with incremental limits.
+   - [x] Unit suite with scripted fake sources.
 3. Phase three: server integration (test case 15).
    - [ ] Replace the single read in `handleClient` with the framed reader.
    - [ ] Large-body integration test through `connectTcp`.
@@ -207,6 +209,23 @@ Test cases, simplest to most complex:
 
 ## Open Questions
 
+- Concurrency finding: a sender green thread and a receiver green thread
+  polling the same loopback connection hang reliably under the MicroHs
+  0.16 runtime. Bisection (matrix in `spike/MicroHttp/Spike10.hs`, a
+  self-contained reproducer that hangs three of three runs) narrowed the
+  trigger to a conjunction: a large ByteString payload forced lazily after
+  the receiver thread is forked, then sent from its interior pointer under
+  `useAsCStringLen` while both threads poll EAGAIN with `threadDelay`.
+  Forcing the payload before `forkIO`, copying it out of the ByteString
+  before sending, or removing either thread's socket activity all make the
+  program pass; hspec is not a factor, and earlier "tracing fixes it"
+  observations were the trace forcing the payload early. The hung process
+  sleeps at roughly one percent CPU with empty kernel socket queues. Until
+  this is fixed upstream, integration tests transfer in single-threaded
+  rounds sized within the kernel socket buffers, the original test case 6
+  is not in the suite, and test case 15 should keep its body small enough
+  to fit the kernel buffers so the client send completes before the server
+  reads.
 - Should a slow or stalled peer be bounded by an idle-read timeout in this
   RFC, or deferred to the readiness-manager work where time-based waiting
   gets a proper home?

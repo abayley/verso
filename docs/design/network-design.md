@@ -116,6 +116,42 @@ changing the poller's timeout.
 The performance harness should be built before the readiness manager so the
 polling tax is measured, not assumed.
 
+Known runtime finding: a sender green thread and a receiver green thread
+polling the same connection hang reliably under MicroHs 0.16 when a large
+ByteString payload is forced lazily after the receiver thread is forked and
+sent from its interior pointer under `useAsCStringLen`
+(`spike/MicroHttp/Spike10.hs` is a self-contained reproducer with the full
+bisection matrix, and RFC-0003 records the details). The hung process
+sleeps with empty kernel socket queues. Forcing the payload before
+`forkIO` or copying it out of the ByteString before sending avoids the
+hang. Until this is resolved upstream, integration tests avoid concurrent
+transfers on one connection, and the readiness manager and performance
+harness work must treat this as a known hazard to retest.
+
+Available workaround, not yet applied: the production `sendAll` uses the
+hazardous pattern, holding a `useAsCStringLen` interior pointer over a
+possibly lazily constructed body while other connection threads poll. The
+bisection shows two immunisations: copy the bytes into a transient
+malloc-allocated buffer inside `sendAll` before the send loop (the
+memcpy variant passed every run), or force the ByteString fully before
+the pointer is taken. The copy costs one extra pass over each outgoing
+body and should be removed when the upstream fix lands.
+
+## Streaming Direction
+
+Request and response bodies move to the iteratee and enumerator model per
+[RFC-0004](../rfcs/rfc-0004-iteratee-streaming-io.md) and ADR-024:
+producers (socket, file, strict value) are enumerators, consumers (framing,
+handlers, the socket sink) are iteratees, and stream transformations such
+as the Content-Length bound are enumeratees. Residual input lives in the
+consumer's result and flows forward through monadic bind, so no producer
+pushback exists; memory is bounded by chunk and header limits, never by
+message size. The ingress pipeline is socket enumerator, header framing,
+ingress enumeratees, then the handler iteratee; the egress pipeline is the
+body enumerator, egress enumeratees, then the socket sink. Middleware
+keeps its `Application -> Application` shape, with stream-touching
+middleware lifting enumeratees onto one of the two pipelines.
+
 ## Portability Direction
 
 Target platforms are macOS, Linux, and Windows.

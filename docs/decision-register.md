@@ -371,6 +371,38 @@ becomes the chunk seam for future streaming request bodies. The parser
 continues to receive complete request bytes. One request per connection
 (ADR-011) and the chunked-transfer-encoding rejection are unchanged.
 
+### ADR-024: Stream Bodies With Iteratees and Enumerators
+
+Status: Proposed.
+
+Context: Request handling after RFC-0003 is correct but strict: memory is
+proportional to message size, and response bodies other than files are
+strict values. The project wants constant-memory streaming on both sides
+without an external streaming library (ADR-010) and without producer
+pushback: the design discussion settled on the iteratee model, where
+residual input lives in the consumer's result and flows forward through
+monadic bind, enumerators own resource acquisition and release, and
+enumerators return the consumer's final state, which a future keep-alive
+loop needs.
+
+Decision: Implement a local iteratee core (`Stream`, `Iter`, `Enumerator`,
+concrete `ByteString` and `IO`). Producers are enumerators (socket, file,
+strict value), consumers are iteratees (framing, handlers, the socket
+sink), and stream transformations are enumeratees. The `Application`
+contract becomes `RequestHead -> Iter Response`, with the body consumed as
+a stream and `ResponseBody` gaining a streaming variant. Middleware keeps
+its `Application -> Application` shape (ADR-015); stream-touching
+middleware lifts enumeratees onto the ingress or egress pipeline. The
+design and migration plan are RFC-0004.
+
+Consequences: Bodies of any size are handled in constant memory. The body
+limit relocates from central parsing to a default size-cap stage in the
+server pipeline, and handlers wanting strict bodies state an explicit
+bound. The pure parser shrinks to header bytes only. The `Application` and
+router payload types change, and TestApp handlers migrate. Unconsumed body
+bytes are disposed of by the server's close-per-connection policy until
+keep-alive is revisited.
+
 ## ADR Registry Open Review Items
 
 - Verify socket layout assumptions on non-macOS platforms before treating

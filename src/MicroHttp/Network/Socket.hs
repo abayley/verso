@@ -5,8 +5,11 @@ module MicroHttp.Network.Socket (
     Port (..),
     SocketError (..),
     accept,
+    boundPort,
     closeClientSocket,
     closeListenSocket,
+    connectTcp,
+    encodeSockAddrIn,
     listenTcp,
     recv,
     sendAll,
@@ -15,18 +18,20 @@ module MicroHttp.Network.Socket (
 import Control.Concurrent (threadDelay)
 import qualified Data.ByteString as BS
 import Data.Word (Word8)
-import Foreign.C.Error (Errno, eAGAIN, eWOULDBLOCK, getErrno)
+import Foreign.C.Error (Errno, eAGAIN, eALREADY, eINPROGRESS, eISCONN, eWOULDBLOCK, getErrno)
 import Foreign.C.String (CString)
 import Foreign.Marshal.Alloc (alloca, allocaBytes)
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
-import Foreign.Storable (poke, pokeByteOff, sizeOf)
+import Foreign.Storable (peekByteOff, poke, pokeByteOff, sizeOf)
 
 foreign import ccall "socket" c_socket :: Int -> Int -> Int -> IO Int
 foreign import ccall "setsockopt" c_setsockopt :: Int -> Int -> Int -> Ptr Int -> Int -> IO Int
 foreign import ccall "fcntl" c_fcntl :: Int -> Int -> Int -> IO Int
 foreign import ccall "bind" c_bind :: Int -> Ptr () -> Int -> IO Int
+foreign import ccall "connect" c_connect :: Int -> Ptr () -> Int -> IO Int
 foreign import ccall "listen" c_listen :: Int -> Int -> IO Int
 foreign import ccall "accept" c_accept :: Int -> Ptr () -> Ptr Int -> IO Int
+foreign import ccall "getsockname" c_getsockname :: Int -> Ptr () -> Ptr Int -> IO Int
 foreign import ccall "recv" c_recv :: Int -> CString -> Int -> Int -> IO Int
 foreign import ccall "send" c_send :: Int -> CString -> Int -> Int -> IO Int
 foreign import ccall "close" c_close :: Int -> IO Int
@@ -106,6 +111,62 @@ accept (ListenSocket fd) =
                         _ <- c_close accepted
                         return (Left err)
                     Right () -> return (Right (ClientSocket accepted))
+
+{- | Connects a non-blocking TCP client socket to a host and port.
+The socket is non-blocking before connecting, so connection progress is
+polled: in-progress results retry until the socket reports connected.
+-}
+connectTcp :: Host -> Port -> IO (Either SocketError ClientSocket)
+connectTcp host port = do
+    opened <- checked "socket" (c_socket afInet sockStream 0)
+    case opened of
+        Left err -> return (Left err)
+        Right fd -> do
+            nonBlocking <- setNonBlocking fd
+            case nonBlocking of
+                Left err -> do
+                    _ <- c_close fd
+                    return (Left err)
+                Right () -> withSockAddrIn host port (connectLoop fd)
+
+connectLoop :: Int -> Ptr () -> Int -> IO (Either SocketError ClientSocket)
+connectLoop fd addr addrLen = do
+    connected <- c_connect fd addr addrLen
+    if connected >= 0
+        then return (Right (ClientSocket fd))
+        else do
+            errno <- getErrno
+            if errno == eISCONN
+                then return (Right (ClientSocket fd))
+                else
+                    if isConnectPending errno
+                        then do
+                            threadDelay pollDelayMicros
+                            connectLoop fd addr addrLen
+                        else do
+                            _ <- c_close fd
+                            return (Left (SocketError "connect" errno))
+
+isConnectPending :: Errno -> Bool
+isConnectPending errno =
+    errno == eINPROGRESS || errno == eALREADY || isWouldBlock errno
+
+-- | Returns the locally bound port of a listening socket.
+boundPort :: ListenSocket -> IO (Either SocketError Port)
+boundPort (ListenSocket fd) =
+    allocaBytes sockaddrInSize $ \addr ->
+        alloca $ \addrLen -> do
+            poke addrLen sockaddrInSize
+            queried <- checked "getsockname" (c_getsockname fd (castPtr addr) addrLen)
+            case queried of
+                Left err -> return (Left err)
+                Right _ -> do
+                    high <- peekWord8 addr 2
+                    low <- peekWord8 addr 3
+                    return (Right (Port (fromIntegral high * 256 + fromIntegral low)))
+
+peekWord8 :: Ptr Word8 -> Int -> IO Word8
+peekWord8 = peekByteOff
 
 recv :: ClientSocket -> Int -> IO (Either SocketError BS.ByteString)
 recv (ClientSocket fd) byteCount =
@@ -200,39 +261,37 @@ checked label action = do
         else
             return (Right result)
 
+{- | Encodes an IPv4 socket address as the sixteen sockaddr_in bytes.
+The layout is the BSD form with a length byte at offset zero, which is
+correct on macOS; other platforms need their own layout behind this seam.
+-}
+encodeSockAddrIn :: Host -> Port -> [Word8]
+encodeSockAddrIn host (Port port) =
+    [ fromIntegral sockaddrInSize
+    , fromIntegral afInet
+    , fromIntegral (port `quot` 256)
+    , fromIntegral (port `rem` 256)
+    ]
+        ++ hostBytes host
+        ++ replicate 8 0
+
+hostBytes :: Host -> [Word8]
+hostBytes HostAny = [0, 0, 0, 0]
+hostBytes (HostIPv4 a b c d) = [a, b, c, d]
+
 withSockAddrIn :: Host -> Port -> (Ptr () -> Int -> IO a) -> IO a
-withSockAddrIn host (Port port) use =
+withSockAddrIn host port use =
     allocaBytes sockaddrInSize $ \ptr -> do
-        zeroBytes ptr sockaddrInSize
-        pokeByteOff ptr 0 (fromIntegral sockaddrInSize :: Word8)
-        pokeByteOff ptr 1 (fromIntegral afInet :: Word8)
-        pokeByteOff ptr 2 (fromIntegral (port `quot` 256) :: Word8)
-        pokeByteOff ptr 3 (fromIntegral (port `rem` 256) :: Word8)
-        pokeHost ptr host
+        pokeBytes ptr (encodeSockAddrIn host port)
         use (castPtr ptr) sockaddrInSize
 
-pokeHost :: Ptr Word8 -> Host -> IO ()
-pokeHost ptr host =
-    case host of
-        HostAny -> do
-            pokeByteOff ptr 4 (0 :: Word8)
-            pokeByteOff ptr 5 (0 :: Word8)
-            pokeByteOff ptr 6 (0 :: Word8)
-            pokeByteOff ptr 7 (0 :: Word8)
-        HostIPv4 a b c d -> do
-            pokeByteOff ptr 4 a
-            pokeByteOff ptr 5 b
-            pokeByteOff ptr 6 c
-            pokeByteOff ptr 7 d
-
-zeroBytes :: Ptr Word8 -> Int -> IO ()
-zeroBytes ptr len = go 0
+pokeBytes :: Ptr Word8 -> [Word8] -> IO ()
+pokeBytes ptr = go 0
   where
-    go index
-        | index >= len = return ()
-        | otherwise = do
-            pokeByteOff ptr index (0 :: Word8)
-            go (index + 1)
+    go _ [] = return ()
+    go index (byte : rest) = do
+        pokeByteOff ptr index byte
+        go (index + 1) rest
 
 sockaddrInSize :: Int
 sockaddrInSize = 16

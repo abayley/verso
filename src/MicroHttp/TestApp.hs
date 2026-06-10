@@ -215,7 +215,7 @@ editorPage docId mode =
             Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
             Html.rawTrusted "<script src=\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js\"></script>"
             Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\"></script>"
-        Html.body [] $ do
+        Html.body [Html.class_ "markdown-editor-page"] $ do
             Html.main [] $ do
                 Html.form_
                     [ Html.hxPost ("/documents/" ++ docId)

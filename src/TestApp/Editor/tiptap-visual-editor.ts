@@ -1,6 +1,7 @@
 import { Editor, type JSONContent, type SetContentOptions } from "@tiptap/core";
 import Heading from "@tiptap/extension-heading";
 import { Markdown } from "@tiptap/markdown";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
 
@@ -40,6 +41,7 @@ const HeadingWithoutInputRules = Heading.extend({
 /** Markdown-in/Markdown-out adapter around Tiptap's visual editor. */
 export class TiptapVisualEditor {
     private readonly editor: Editor;
+    private normalisingSoftBreaks = false;
     private readonly onLinkShortcut: TiptapLinkShortcutHandler;
     private readonly root: HTMLDivElement;
 
@@ -69,6 +71,10 @@ export class TiptapVisualEditor {
                 handleKeyDown: (_view, event: KeyboardEvent): boolean => this.handleKeyDown(event),
             },
             onUpdate: (): void => {
+                if (this.normalisingSoftBreaks) {
+                    return;
+                }
+
                 if (this.applyListMarkerShortcut()) {
                     return;
                 }
@@ -76,6 +82,7 @@ export class TiptapVisualEditor {
                 onChange();
             },
         });
+        this.collapseSoftBreaks();
     }
 
     /** Returns the root element that hosts the Tiptap editor. */
@@ -98,6 +105,40 @@ export class TiptapVisualEditor {
         };
 
         this.editor.commands.setContent(markdown, options);
+        this.collapseSoftBreaks();
+    }
+
+    /** Replaces soft line breaks in non-code text with spaces, matching CommonMark rendering. */
+    private collapseSoftBreaks(): void {
+        const replacements: Array<{ from: number; to: number; text: string }> = [];
+
+        this.editor.state.doc.descendants(
+            (node: ProseMirrorNode, position: number, parent: ProseMirrorNode | null): boolean => {
+                if (node.isText && node.text?.includes("\n") && parent?.type.name !== "codeBlock") {
+                    replacements.push({
+                        from: position,
+                        text: node.text.replaceAll("\n", " "),
+                        to: position + node.nodeSize,
+                    });
+                }
+
+                return true;
+            },
+        );
+
+        if (replacements.length === 0) {
+            return;
+        }
+
+        const transaction = this.editor.state.tr;
+
+        for (const replacement of replacements.reverse()) {
+            transaction.insertText(replacement.text, replacement.from, replacement.to);
+        }
+
+        this.normalisingSoftBreaks = true;
+        this.editor.view.dispatch(transaction.setMeta("addToHistory", false));
+        this.normalisingSoftBreaks = false;
     }
 
     /** Applies one supported block style at the current visual selection. */
@@ -133,12 +174,13 @@ export class TiptapVisualEditor {
             }
 
             case "code": {
-                const selectedText = selection
-                    ? this.editor.state.doc.textBetween(selection.from, selection.to, "\n\n", "\n")
+                const codeSelection = this.trimSelectionEndingAtBlockStart(selection);
+                const selectedText = codeSelection
+                    ? this.editor.state.doc.textBetween(codeSelection.from, codeSelection.to, "\n\n", "\n")
                     : "";
 
                 if (selectedText.includes("\n")) {
-                    return this.withCurrentSelection(selection, (editor: Editor): boolean =>
+                    return this.withCurrentSelection(codeSelection, (editor: Editor): boolean =>
                         editor
                             .chain()
                             .focus()
@@ -155,7 +197,7 @@ export class TiptapVisualEditor {
                     );
                 }
 
-                return this.withCurrentSelection(selection, (editor: Editor): boolean =>
+                return this.withCurrentSelection(codeSelection, (editor: Editor): boolean =>
                     editor.chain().focus().toggleCode().run(),
                 );
             }
@@ -278,6 +320,25 @@ export class TiptapVisualEditor {
     }
 
     /** Restores the visual selection before running a toolbar command. */
+    /** Shrinks a selection ending at the start of a block back to the end of the previous block. */
+    private trimSelectionEndingAtBlockStart(
+        selection: { from: number; to: number } | null,
+    ): { from: number; to: number } | null {
+        if (!selection || selection.from === selection.to) {
+            return selection;
+        }
+
+        const resolvedTo = this.editor.state.doc.resolve(selection.to);
+
+        if (resolvedTo.parentOffset !== 0 || resolvedTo.depth === 0) {
+            return selection;
+        }
+
+        const to = resolvedTo.before() - 1;
+
+        return to > selection.from ? { from: selection.from, to } : selection;
+    }
+
     private withCurrentSelection(
         selection: { from: number; to: number } | null,
         command: (editor: Editor) => boolean,

@@ -536,6 +536,12 @@ editing with CodeMirror, and Web Awesome controls.
 - [x] Add keyboard shortcuts for the current inline controls across visual and
   source panes. The editor now supports Bold, Italic, Code, Strike, and Link
   shortcuts through the active editor pane.
+- [x] Apply the quiet-paper visual design from the design A mockup in
+  `docs/mockups/`. The editor now uses a warm paper palette with light and
+  dark variants, a centred serif writing column, a quiet top bar with the
+  document name, text mode links, and theme controls, a floating command pill
+  with the formatting controls and the Save control, a save-state dot, and a
+  word count.
 - [ ] Consider Lit for the editor shell once manual DOM state management becomes
   the main source of complexity.
 
@@ -681,6 +687,32 @@ Phase Six findings so far:
   source text until the visual editor reports an actual edit; this prevents
   view-only cycles from collapsing valid but source-sensitive Markdown such as
   multiline inline code spans.
+- The quiet-paper design splits the old single toolbar into a top bar
+  (document name, text mode links, theme controls) and a floating command
+  pill, both keeping the `markdown-editor__toolbar` class so existing test
+  selectors survive. Web Awesome's button-appearance radio styling lives on
+  the shadow host, so page-level CSS can quieten the controls without shadow
+  parts. The editor exposes `data-save-state` on the host element to drive the
+  save-state dot, and the Save control keeps the decided Save, Auto-Saving,
+  and Retry behaviour rather than the mockup's passive saved indicator.
+- Save and parse errors render in an editor-owned notice area anchored just
+  above the command pill, inside a sticky footer that wraps the pill. Notices
+  are out of the pill so error text never resizes the toolbar, and the Save
+  control has a fixed width so its state changes never shift the pill layout.
+  Notices stay visible until the editor state changes; they are not timed
+  toasts, because a failed save pairs with the Retry control.
+- Multi-line selections that end at the start of a line, the shape produced by
+  shift-and-arrow-down selection, are trimmed back to the previous line before
+  the context-sensitive Code command builds a fenced code block. Both the
+  CodeMirror and Tiptap adapters trim, because each captures the DOM selection
+  into its own positions.
+- Soft line breaks are collapsed to spaces in the Tiptap visual document after
+  Markdown parsing, except inside code blocks. Tiptap's Markdown extension
+  keeps marked's literal newline for soft breaks in text nodes, and the
+  ProseMirror surface needs `white-space: pre-wrap`, so without normalisation
+  soft breaks display as line breaks, which is not how CommonMark renders
+  them. The normalisation transaction suppresses the editor update callback so
+  pure view switching still preserves the source Markdown.
 
 ### Markdown Editor Spike Phase Seven: Planned
 

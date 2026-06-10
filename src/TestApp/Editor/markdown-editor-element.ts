@@ -151,9 +151,12 @@ export class MarkdownEditorElement extends HTMLElement {
 
         this.showLinkActions(selection, anchor.getBoundingClientRect());
     };
+    private commandBar: HTMLDivElement | null = null;
+    private documentName: HTMLSpanElement | null = null;
     private toolbar: HTMLDivElement | null = null;
     private visualEditor: TiptapVisualEditor | null = null;
     private visualEditorChanged = false;
+    private wordCount: HTMLSpanElement | null = null;
 
     /** Starts asynchronous element initialisation after connection. */
     connectedCallback(): void {
@@ -193,6 +196,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
         this.toolbarTooltip = this.createToolbarTooltip();
         this.toolbar = this.createToolbar();
+        this.commandBar = this.createCommandBar();
         this.linkEditor = this.createLinkEditor();
         this.linkActions = this.createLinkActions();
         this.body = document.createElement("div");
@@ -201,25 +205,56 @@ export class MarkdownEditorElement extends HTMLElement {
         this.parseError.className = "markdown-editor__error";
         this.parseError.setAttribute("role", "alert");
         this.parseError.hidden = true;
+        this.wordCount = document.createElement("span");
+        this.wordCount.className = "markdown-editor__word-count";
 
-        this.append(this.toolbar, this.linkEditor, this.linkActions, this.toolbarTooltip, this.body, this.parseError);
+        const notices = document.createElement("div");
+        notices.className = "markdown-editor__notices";
+        notices.append(this.parseError, this.createSaveError());
+
+        const footer = document.createElement("div");
+        footer.className = "markdown-editor__footer";
+        footer.append(notices, this.commandBar);
+
+        this.append(
+            this.toolbar,
+            this.linkEditor,
+            this.linkActions,
+            this.toolbarTooltip,
+            this.body,
+            footer,
+            this.wordCount,
+        );
         this.renderMode();
         this.updateToolbarState();
         this.updatePreview();
+        this.updateWordCount();
         this.configureFormSubmission();
         this.systemThemeQuery()?.addEventListener("change", this.handleSystemThemeChange);
     }
 
-    /** Creates the top editor toolbar. */
+    /** Creates the top editor bar with the document name and view controls. */
     private createToolbar(): HTMLDivElement {
         const toolbar = document.createElement("div");
-        toolbar.className = "markdown-editor__toolbar";
-        toolbar.setAttribute("role", "toolbar");
+        toolbar.className = "markdown-editor__toolbar markdown-editor__toolbar--top";
+        this.documentName = this.createDocumentName();
+        toolbar.append(this.documentName);
         this.modeGroup = this.createModeGroup();
         toolbar.append(this.modeGroup);
+        this.themeGroup = this.createThemeGroup();
+        toolbar.append(this.themeGroup);
+
+        return toolbar;
+    }
+
+    /** Creates the floating command bar with formatting and save controls. */
+    private createCommandBar(): HTMLDivElement {
+        const bar = document.createElement("div");
+        bar.className = "markdown-editor__toolbar markdown-editor__toolbar--commands";
+        bar.setAttribute("role", "toolbar");
         this.styleDropdown = this.createStyleDropdown();
-        toolbar.append(this.styleDropdown);
-        toolbar.append(
+        bar.append(this.styleDropdown);
+        bar.append(
             this.createToolbarButtonGroup(
                 this.createInlineStyleButton("strong", "Bold", "bold"),
                 this.createInlineStyleButton("emphasis", "Italic", "italic"),
@@ -235,12 +270,20 @@ export class MarkdownEditorElement extends HTMLElement {
                 this.createStructureButton("thematic-break", "Horizontal rule", "window-minimize"),
             ),
         );
-        toolbar.append(this.createSaveError());
-        toolbar.append(this.createSaveButton());
-        this.themeGroup = this.createThemeGroup();
-        toolbar.append(this.themeGroup);
+        bar.append(this.createSaveButton());
 
-        return toolbar;
+        return bar;
+    }
+
+    /** Creates the document name label shown in the editor top bar. */
+    private createDocumentName(): HTMLSpanElement {
+        const name = document.createElement("span");
+        name.className = "markdown-editor__document-name";
+        const fileName = documentFileName(this.getAttribute("src"));
+        name.textContent = fileName ?? "";
+        name.hidden = fileName === null;
+
+        return name;
     }
 
     /** Creates the editor view mode radio group. */
@@ -251,9 +294,9 @@ export class MarkdownEditorElement extends HTMLElement {
         group.setAttribute("orientation", "horizontal");
         group.setAttribute("size", "small");
         group.append(
-            this.createModeOption("visual", "Visual", "html5", "brands"),
-            this.createModeOption("source", "Markdown", "markdown", "brands"),
-            this.createModeOption("split", "Split", "vr-cardboard"),
+            this.createModeOption("visual", "Visual"),
+            this.createModeOption("source", "Markdown"),
+            this.createModeOption("split", "Split"),
         );
         group.addEventListener("change", (): void => {
             const mode = elementValue(group);
@@ -266,15 +309,14 @@ export class MarkdownEditorElement extends HTMLElement {
         return group;
     }
 
-    /** Creates one editor view mode radio option. */
-    private createModeOption(mode: EditorMode, label: string, iconName: string, iconFamily?: string): HTMLElement {
+    /** Creates one editor view mode radio option with a text label. */
+    private createModeOption(mode: EditorMode, label: string): HTMLElement {
         const option = document.createElement("wa-radio");
         option.className = "markdown-editor__mode-option";
-        option.append(createToolbarIcon(iconName, label, iconFamily));
+        option.textContent = label;
         option.setAttribute("appearance", "button");
         option.setAttribute("aria-label", label);
         option.setAttribute("value", mode);
-        this.addTooltip(option, label);
 
         return option;
     }
@@ -319,7 +361,6 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Creates the explicit form submit button for manual saves. */
     private createSaveButton(): ToolbarButtonElement {
         const button = this.createToolbarButton("markdown-editor__save-button", "Save");
-        button.setAttribute("appearance", "filled");
         button.setAttribute("type", "submit");
         this.saveButton = button;
 
@@ -478,7 +519,7 @@ export class MarkdownEditorElement extends HTMLElement {
         const button = document.createElement("wa-button");
         button.className = `markdown-editor__button ${className}`;
         button.textContent = label;
-        button.setAttribute("appearance", "outlined");
+        button.setAttribute("appearance", "plain");
         button.setAttribute("size", "small");
         button.setAttribute("type", "button");
         button.setAttribute("aria-label", label);
@@ -1086,6 +1127,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private dispatchMarkdownChange(markdown: string): void {
         this.markdown = markdown;
         this.markDirty();
+        this.updateWordCount();
         this.dispatchEvent(
             new CustomEvent("editor:changed", {
                 bubbles: true,
@@ -1363,6 +1405,8 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Reflects the current save state onto the explicit Save button. */
     private updateSaveButton(): void {
+        this.setAttribute("data-save-state", this.saveState);
+
         if (!this.saveButton) {
             return;
         }
@@ -1381,6 +1425,15 @@ export class MarkdownEditorElement extends HTMLElement {
 
         this.saveButton.textContent = "Save";
         setToolbarButtonDisabled(this.saveButton, this.saveState === "clean");
+    }
+
+    /** Updates the word count from the current Markdown document. */
+    private updateWordCount(): void {
+        if (!this.wordCount) {
+            return;
+        }
+
+        this.wordCount.textContent = wordCountLabel(this.markdown);
     }
 
     /** Applies the editor theme selection to Web Awesome's document-level colour scheme classes. */
@@ -1531,6 +1584,34 @@ function setElementValue(element: HTMLElement, value: string): void {
 }
 
 /** Creates an icon for one toolbar command. */
+/** Derives a display file name from the document src path. */
+function documentFileName(src: string | null): string | null {
+    if (!src) {
+        return null;
+    }
+
+    const segments = src.split("/").filter((segment: string): boolean => segment.length > 0);
+    const last = segments.at(-1);
+
+    if (!last) {
+        return null;
+    }
+
+    return last.includes(".") ? last : `${last}.md`;
+}
+
+/** Formats the word count label for the rendered document text. */
+function wordCountLabel(markdown: string): string {
+    const count = countDocumentWords(markdown);
+
+    return count === 1 ? "1 word" : `${count} words`;
+}
+
+/** Counts Markdown source words: whitespace-separated tokens containing a letter or digit. */
+function countDocumentWords(markdown: string): number {
+    return markdown.split(/\s+/u).filter((token: string): boolean => /[\p{L}\p{N}]/u.test(token)).length;
+}
+
 function createToolbarIcon(name: string, label: string, family?: string): HTMLElement {
     const icon = document.createElement("wa-icon");
     icon.className = "markdown-editor__button-icon";

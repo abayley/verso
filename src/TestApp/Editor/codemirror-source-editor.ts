@@ -94,13 +94,17 @@ export class CodeMirrorSourceEditor {
 
     /** Toggles Markdown inline code markers around the current source selection. */
     public toggleCode(): boolean {
-        const selection = this.currentSourceSelection();
+        const selection = this.trimSelectionEndingAtLineStart(this.currentSourceSelection());
 
-        if (selection && selection.from !== selection.to && this.selectedText(selection).includes("\n")) {
-            return this.insertCodeBlock();
+        if (!selection || selection.from === selection.to) {
+            return false;
         }
 
-        return this.wrapSelection("`", "`");
+        if (this.selectedText(selection).includes("\n")) {
+            return this.insertCodeBlockAt(selection);
+        }
+
+        return this.wrapSourceSelection(selection, "`", "`");
     }
 
     /** Toggles Markdown strikethrough markers around the current source selection. */
@@ -140,23 +144,43 @@ export class CodeMirrorSourceEditor {
 
     /** Wraps the source selection, or current line, in a Markdown fenced code block. */
     public insertCodeBlock(): boolean {
-        const selection = this.currentSourceSelection();
+        const selection = this.trimSelectionEndingAtLineStart(this.currentSourceSelection());
 
         if (selection && selection.from !== selection.to) {
-            const selectedText = this.view.state.doc.sliceString(selection.from, selection.to);
-
-            this.view.dispatch({
-                changes: {
-                    from: selection.from,
-                    insert: ["```", selectedText, "```"].join("\n"),
-                    to: selection.to,
-                },
-            });
-
-            return true;
+            return this.insertCodeBlockAt(selection);
         }
 
         return this.replaceCurrentLine(["```", this.currentLineText(), "```"].join("\n"));
+    }
+
+    /** Wraps a known source selection in a Markdown fenced code block. */
+    private insertCodeBlockAt(selection: CodeMirrorSourceSelection): boolean {
+        this.view.dispatch({
+            changes: {
+                from: selection.from,
+                insert: ["```", this.selectedText(selection), "```"].join("\n"),
+                to: selection.to,
+            },
+        });
+
+        return true;
+    }
+
+    /** Shrinks a selection ending at the start of a line back past that line's leading newline. */
+    private trimSelectionEndingAtLineStart(
+        selection: CodeMirrorSourceSelection | null,
+    ): CodeMirrorSourceSelection | null {
+        if (!selection || selection.from === selection.to) {
+            return selection;
+        }
+
+        const endLine = this.view.state.doc.lineAt(selection.to);
+
+        if (selection.to !== endLine.from) {
+            return selection;
+        }
+
+        return { from: selection.from, to: selection.to - 1 };
     }
 
     /** Replaces the current source line with a Markdown thematic break. */

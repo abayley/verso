@@ -291,6 +291,41 @@ describe("MarkdownEditorElement", (): void => {
         );
     });
 
+    it("given a paragraph with a soft line break, when rendered in visual mode, then the lines join with a space", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "line one\nline two";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        expect(editor.querySelector(".markdown-editor__surface p")?.textContent).toBe("line one line two");
+    });
+
+    it("given a code block with newlines, when rendered in visual mode, then the code lines are preserved", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = ["```", "first line", "second line", "```"].join("\n");
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        expect(editor.querySelector(".markdown-editor__surface pre code")?.textContent).toBe("first line\nsecond line");
+    });
+
+    it("given visual mode, when the selection ends at the start of a paragraph and code is pressed, then that paragraph stays outside the fence", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "First paragraph\n\nSecond paragraph\n\nThird paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectTextRangeToBlockStart(editor, "First paragraph", "Third paragraph");
+
+        dispatchVisualKey(editor, "e", { primaryModifier: true });
+
+        expect(editor.toMarkdown()).toBe(
+            ["```", "First paragraph", "", "Second paragraph", "```", "", "Third paragraph"].join("\n"),
+        );
+    });
+
     it("given visual mode, when strike is selected, then the selected text becomes strikethrough", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = "Plain paragraph";
@@ -675,6 +710,20 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__split .markdown-editor__surface pre code")?.textContent).toBe(
             "first line\nsecond line",
         );
+    });
+
+    it("given split mode, when the source selection ends at the start of a line and code is pressed, then that line stays outside the fence", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Visual paragraph\n\nfirst line\nsecond line\nthird line";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectSourceRangeToLineStart(editor, "first line", "third line");
+
+        dispatchSourceKey(editor, "e", { primaryModifier: true });
+
+        expect(editor.toMarkdown()).toContain(["```", "first line", "second line", "```", "third line"].join("\n"));
     });
 
     it("given split mode, when Markdown text is selected, then strike applies to the Markdown source", async (): Promise<void> => {
@@ -1243,6 +1292,16 @@ function selectText(editor: Element, text: string): void {
 
 /** Selects rendered visual text from one fragment to another. */
 function selectTextRange(editor: Element, startText: string, endText: string): void {
+    setVisualRange(editor, startText, endText, "after");
+}
+
+/** Selects rendered visual text from one fragment to the start of another block. */
+function selectTextRangeToBlockStart(editor: Element, startText: string, endText: string): void {
+    setVisualRange(editor, startText, endText, "before");
+}
+
+/** Selects a rendered visual range ending before or after the end text fragment. */
+function setVisualRange(editor: Element, startText: string, endText: string, endEdge: "before" | "after"): void {
     const root = editor.querySelector(".markdown-editor__surface .ProseMirror") ?? editor;
     const startNode = findTextNode(root, startText);
     const endNode = findTextNode(root, endText);
@@ -1253,7 +1312,7 @@ function selectTextRange(editor: Element, startText: string, endText: string): v
 
     const range = document.createRange();
     range.setStart(startNode, startNode.data.indexOf(startText));
-    range.setEnd(endNode, endNode.data.indexOf(endText) + endText.length);
+    range.setEnd(endNode, endNode.data.indexOf(endText) + (endEdge === "after" ? endText.length : 0));
 
     const selection = window.getSelection();
     selection?.removeAllRanges();
@@ -1304,6 +1363,16 @@ function selectSourceText(editor: Element, text: string): void {
 
 /** Selects a source range from the start of one text fragment to the end of another. */
 function selectSourceRange(editor: Element, startText: string, endText: string): void {
+    setSourceRange(editor, startText, endText, "after");
+}
+
+/** Selects a source range from the start of one text fragment to the start of another line. */
+function selectSourceRangeToLineStart(editor: Element, startText: string, endText: string): void {
+    setSourceRange(editor, startText, endText, "before");
+}
+
+/** Selects a source range ending before or after the end text fragment. */
+function setSourceRange(editor: Element, startText: string, endText: string, endEdge: "before" | "after"): void {
     const source = editor.querySelector(".markdown-editor__source .cm-content");
 
     if (!(source instanceof HTMLElement)) {
@@ -1319,7 +1388,7 @@ function selectSourceRange(editor: Element, startText: string, endText: string):
 
     const range = document.createRange();
     range.setStart(startNode, startNode.data.indexOf(startText));
-    range.setEnd(endNode, endNode.data.indexOf(endText) + endText.length);
+    range.setEnd(endNode, endNode.data.indexOf(endText) + (endEdge === "after" ? endText.length : 0));
 
     const selection = window.getSelection();
     selection?.removeAllRanges();

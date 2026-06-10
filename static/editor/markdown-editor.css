@@ -1,34 +1,244 @@
-markdown-editor {
-  --markdown-editor-background: var(--wa-color-surface-default);
-  --markdown-editor-border: var(--wa-color-surface-border);
-  --markdown-editor-code-background: var(--wa-color-surface-lowered);
-  --markdown-editor-code-border: var(--wa-color-surface-border);
-  --markdown-editor-error-accent: var(--wa-color-danger-border-loud);
-  --markdown-editor-error-text: var(--wa-color-danger-on-quiet);
-  --markdown-editor-quote-border: var(--wa-color-neutral-border-loud);
-  --markdown-editor-surface-border: var(--wa-color-surface-border);
-  --markdown-editor-text: var(--wa-color-text-normal);
-  --markdown-editor-toolbar-background: var(--wa-color-surface-lowered);
+:root {
+  --markdown-editor-accent: #b0532f;
+  --markdown-editor-background: #f4f0e6;
+  --markdown-editor-code-background: #ece6d6;
+  --markdown-editor-code-border: #dcd5c2;
+  --markdown-editor-divider: #e4decd;
+  --markdown-editor-error-accent: #a32d2d;
+  --markdown-editor-error-text: #a32d2d;
+  --markdown-editor-muted: #8c8571;
+  --markdown-editor-pill-background: #fffefa;
+  --markdown-editor-pill-border: #dcd5c2;
+  --markdown-editor-quote-border: #c9c0a8;
+  --markdown-editor-save-clean: #1d9e75;
+  --markdown-editor-save-dirty: #ba7517;
+  --markdown-editor-save-retry: #a32d2d;
+  --markdown-editor-text: #2c2a22;
+}
 
+:root.wa-dark {
+  --markdown-editor-accent: #d88a66;
+  --markdown-editor-background: #211e16;
+  --markdown-editor-code-background: #2b2719;
+  --markdown-editor-code-border: #3c3624;
+  --markdown-editor-divider: #3c3624;
+  --markdown-editor-error-accent: #e24b4a;
+  --markdown-editor-error-text: #f09595;
+  --markdown-editor-muted: #9a917b;
+  --markdown-editor-pill-background: #2b2719;
+  --markdown-editor-pill-border: #3c3624;
+  --markdown-editor-quote-border: #57503a;
+  --markdown-editor-save-clean: #5dcaa5;
+  --markdown-editor-save-dirty: #ef9f27;
+  --markdown-editor-save-retry: #f09595;
+  --markdown-editor-text: #e8e3d2;
+}
+
+body.markdown-editor-page {
   background: var(--markdown-editor-background);
   color: var(--markdown-editor-text);
-  display: block;
+  margin: 0;
+  min-height: 100vh;
+}
+
+body.markdown-editor-page main {
+  margin: 0 auto;
+  max-width: 76rem;
+  padding: 0 1.5rem;
+}
+
+markdown-editor {
+  background: transparent;
+  color: var(--markdown-editor-text);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
   position: relative;
 }
 
-.markdown-editor__toolbar {
+.markdown-editor__toolbar--top {
   align-items: center;
-  background: var(--markdown-editor-toolbar-background);
-  border: 1px solid var(--markdown-editor-border);
-  border-bottom: 0;
+  color: var(--markdown-editor-muted);
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
-  padding: 0.5rem;
+  font: 13px system-ui, sans-serif;
+  gap: 1.25rem;
+  letter-spacing: 0.04em;
+  padding: 1rem 0.25rem;
 }
 
-.markdown-editor__button-group {
-  display: inline-flex;
+.markdown-editor__document-name {
+  margin-right: auto;
+}
+
+.markdown-editor__mode-group,
+.markdown-editor__theme-group {
+  inline-size: auto;
+}
+
+.markdown-editor__mode-option,
+.markdown-editor__theme-option {
+  --wa-form-control-background-color: transparent;
+  --wa-form-control-border-color: transparent;
+  --wa-form-control-height: 1.75rem;
+  --wa-form-control-padding-inline: 0.45rem;
+  --wa-form-control-value-color: var(--markdown-editor-muted);
+  background: transparent;
+  border: none;
+  color: var(--markdown-editor-muted);
+  inline-size: auto;
+}
+
+.markdown-editor__mode-option[checked],
+.markdown-editor__theme-option[checked] {
+  --wa-form-control-value-color: var(--markdown-editor-text);
+  color: var(--markdown-editor-text);
+  text-decoration: underline;
+  text-underline-offset: 0.4em;
+}
+
+.markdown-editor__theme-option {
+  text-align: center;
+}
+
+.markdown-editor__button-icon {
+  font-size: 1rem;
+}
+
+.markdown-editor__body {
+  flex: 1;
+  margin: 0 auto;
+  max-width: 46rem;
+  width: 100%;
+}
+
+markdown-editor[mode="split"] .markdown-editor__body {
+  max-width: none;
+}
+
+.markdown-editor__surface,
+.markdown-editor__source,
+.markdown-editor__preview {
+  background: transparent;
+  border: none;
+  color: var(--markdown-editor-text);
+  min-height: 16rem;
+  padding: 1rem 0 3rem;
+  white-space: pre-wrap;
+}
+
+.markdown-editor__surface,
+.markdown-editor__preview {
+  font: 17px/1.8 Georgia, "Times New Roman", serif;
+}
+
+.markdown-editor__source {
+  box-sizing: border-box;
+  font: 15px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+  resize: vertical;
+  width: 100%;
+}
+
+.markdown-editor__surface .ProseMirror {
+  caret-color: var(--markdown-editor-accent);
+  outline: none;
+}
+
+.markdown-editor__surface a,
+.markdown-editor__preview a {
+  color: var(--markdown-editor-accent);
+}
+
+.markdown-editor__source .cm-editor {
+  background: transparent;
+  color: var(--markdown-editor-text);
+}
+
+.markdown-editor__source .cm-editor .cm-cursor {
+  border-left-color: var(--markdown-editor-accent);
+}
+
+.markdown-editor__source .cm-gutters {
+  background: transparent;
+  border: none;
+  color: var(--markdown-editor-muted);
+}
+
+.markdown-editor__source .cm-editor .cm-activeLine {
+  background: rgba(176, 83, 47, 0.06);
+}
+
+.markdown-editor__source .cm-editor .cm-activeLineGutter {
+  background: transparent;
+  color: var(--markdown-editor-text);
+}
+
+.markdown-editor__surface pre,
+.markdown-editor__preview pre {
+  background: var(--markdown-editor-code-background);
+  border: 1px solid var(--markdown-editor-code-border);
+  border-radius: 6px;
+  font-size: 15px;
+  overflow-x: auto;
+  padding: 0.75rem;
+}
+
+.markdown-editor__surface blockquote,
+.markdown-editor__preview blockquote {
+  border-left: 3px solid var(--markdown-editor-quote-border);
+  color: var(--markdown-editor-muted);
+  margin-left: 0;
+  padding-left: 1rem;
+}
+
+.markdown-editor__split {
+  display: grid;
+  gap: 2.5rem;
+}
+
+.markdown-editor__split .markdown-editor__preview {
+  margin-top: 0;
+}
+
+@media (min-width: 48rem) {
+  .markdown-editor__split {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.markdown-editor__footer {
+  align-items: center;
+  bottom: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  z-index: 5;
+}
+
+.markdown-editor__notices {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: 100%;
+}
+
+.markdown-editor__toolbar--commands {
+  align-items: center;
+  background: var(--markdown-editor-pill-background);
+  border: 1px solid var(--markdown-editor-pill-border);
+  border-radius: 999px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  justify-content: center;
+  max-width: 100%;
+  padding: 0.3rem 0.9rem;
+  width: fit-content;
+}
+
+.markdown-editor__toolbar--commands .markdown-editor__button {
+  color: var(--markdown-editor-muted);
 }
 
 .markdown-editor__button {
@@ -36,56 +246,84 @@ markdown-editor {
   font: 14px system-ui, sans-serif;
 }
 
-.markdown-editor__inline-button,
-.markdown-editor__structure-button {
-  inline-size: 2.75rem;
-}
-
-.markdown-editor__button-icon {
-  font-size: 1.4rem;
-}
-
 .markdown-editor__button[disabled] {
   cursor: default;
 }
 
-.markdown-editor__mode-group {
-  inline-size: 9rem;
+.markdown-editor__button-group {
+  display: inline-flex;
 }
 
-.markdown-editor__mode-option,
-.markdown-editor__theme-option {
-  inline-size: 3rem;
-  text-align: center;
+.markdown-editor__button-group + .markdown-editor__button-group {
+  border-left: 1px solid var(--markdown-editor-divider);
+  margin-left: 0.3rem;
+  padding-left: 0.3rem;
 }
 
-.markdown-editor__mode-option::part(label),
-.markdown-editor__theme-option::part(label) {
-  align-items: center;
-  display: flex;
-  inline-size: 100%;
-  justify-content: center;
+.markdown-editor__inline-button,
+.markdown-editor__structure-button {
+  inline-size: 2.25rem;
 }
 
-.markdown-editor__theme-group {
-  inline-size: 9rem;
+.markdown-editor__style-trigger {
+  min-inline-size: 6.5rem;
 }
 
 .markdown-editor__save-button {
-  inline-size: 8.5rem;
-  margin-left: auto;
+  align-items: center;
+  border-left: 1px solid var(--markdown-editor-divider);
+  border-radius: 0;
+  display: inline-flex;
+  inline-size: 8rem;
+  justify-content: center;
+  margin-left: 0.3rem;
+  padding-left: 0.45rem;
 }
 
-.markdown-editor__save-error {
+.markdown-editor__save-button::before {
+  background: var(--markdown-editor-save-dirty);
+  block-size: 0.5rem;
+  border-radius: 50%;
+  content: "";
+  display: inline-block;
+  inline-size: 0.5rem;
+  margin-right: 0.45rem;
+}
+
+markdown-editor[data-save-state="clean"] .markdown-editor__save-button::before {
+  background: var(--markdown-editor-save-clean);
+}
+
+markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
+  background: var(--markdown-editor-save-retry);
+}
+
+.markdown-editor__save-error,
+.markdown-editor__error {
+  background: var(--markdown-editor-pill-background);
+  border: 1px solid var(--markdown-editor-pill-border);
+  border-left: 3px solid var(--markdown-editor-error-accent);
+  border-radius: 8px;
   color: var(--markdown-editor-error-text);
-  font: 14px system-ui, sans-serif;
+  font: 13px system-ui, sans-serif;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.markdown-editor__word-count {
+  color: var(--markdown-editor-muted);
+  display: block;
+  font: 12px system-ui, sans-serif;
+  padding: 0.75rem 0.25rem 1rem;
+  text-align: right;
 }
 
 .markdown-editor__link-editor,
 .markdown-editor__link-actions {
   align-items: center;
-  background: var(--markdown-editor-background);
-  border: 1px solid var(--markdown-editor-border);
+  background: var(--markdown-editor-pill-background);
+  border: 1px solid var(--markdown-editor-pill-border);
+  border-radius: 8px;
   display: inline-flex;
   gap: 0.5rem;
   padding: 0.25rem;
@@ -99,92 +337,16 @@ markdown-editor {
 }
 
 .markdown-editor__link-target {
-  background: var(--markdown-editor-background);
-  border: 1px solid var(--markdown-editor-border);
+  background: transparent;
+  border: 1px solid var(--markdown-editor-pill-border);
+  border-radius: 6px;
   color: var(--markdown-editor-text);
   font: 14px system-ui, sans-serif;
   min-inline-size: 12rem;
   padding: 0.35rem 0.5rem;
 }
 
-.markdown-editor__style-trigger {
-  min-inline-size: 7rem;
-}
-
-.markdown-editor__surface,
-.markdown-editor__source {
-  background: var(--markdown-editor-background);
-  border: 1px solid var(--markdown-editor-surface-border);
-  color: var(--markdown-editor-text);
-  font: 16px system-ui, sans-serif;
-  min-height: 16rem;
-  padding: 1rem;
-  white-space: pre-wrap;
-}
-
-.markdown-editor__source {
-  box-sizing: border-box;
-  width: 100%;
-  resize: vertical;
-}
-
-.markdown-editor__surface .ProseMirror {
-  outline: none;
-}
-
-.markdown-editor__source .cm-editor {
-  background: var(--markdown-editor-background);
-  color: var(--markdown-editor-text);
-}
-
-.markdown-editor__source .cm-gutters {
-  background: var(--markdown-editor-toolbar-background);
-  border-color: var(--markdown-editor-border);
-  color: var(--markdown-editor-text);
-}
-
-.markdown-editor__preview {
-  border: 1px solid var(--markdown-editor-surface-border);
-  margin-top: 1rem;
-  min-height: 8rem;
-  padding: 1rem;
-  font: 16px system-ui, sans-serif;
-}
-
-.markdown-editor__error {
-  border-left: 4px solid var(--markdown-editor-error-accent);
-  color: var(--markdown-editor-error-text);
-  font: 14px system-ui, sans-serif;
-  margin-top: 0.75rem;
-  padding: 0.5rem 0.75rem;
-}
-
-.markdown-editor__surface pre,
-.markdown-editor__preview pre {
-  background: var(--markdown-editor-code-background);
-  border: 1px solid var(--markdown-editor-code-border);
-  overflow-x: auto;
-  padding: 0.75rem;
-}
-
-.markdown-editor__surface blockquote,
-.markdown-editor__preview blockquote {
-  border-left: 4px solid var(--markdown-editor-quote-border);
-  margin-left: 0;
-  padding-left: 1rem;
-}
-
-.markdown-editor__split {
-  display: grid;
-  gap: 1rem;
-}
-
-.markdown-editor__split .markdown-editor__preview {
-  margin-top: 0;
-}
-
-@media (min-width: 48rem) {
-  .markdown-editor__split {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  }
+.markdown-editor__save-error[hidden],
+.markdown-editor__error[hidden] {
+  display: none;
 }

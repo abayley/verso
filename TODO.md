@@ -19,7 +19,6 @@ backend:
 
 frontend:
 
-- improve visual design with fable
 - how is markdown rendered for view (not edit)?
 - review code structure
 - notification area

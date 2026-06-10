@@ -233,11 +233,16 @@ exists.
 
 Useful design documents:
 
-- [Starter Design](docs/starter-design.md)
+- [Starter Design](docs/design/starter-design.md)
 - [Module Design Index](docs/module-index.md)
 - [ADR Registry](docs/decision-register.md)
-- [Build Automation Design](docs/build-automation.md)
-- [Project Organisation](docs/project-organisation.md)
+- [Build Automation Design](docs/design/build-automation.md)
+- [Project Organisation](docs/design/project-organisation.md)
+- [Markdown Editor Spike Design](docs/design/markdown-editor-spike.md)
+- [Network Design](docs/design/network-design.md)
+- [RFC-0001: Editor Progressive Enhancement](docs/rfcs/rfc-0001-editor-progressive-enhancement.md)
+- [RFC-0002: Editor Shell Decomposition](docs/rfcs/rfc-0002-editor-shell-decomposition.md)
+- [RFC-0003: Socket Payload Correctness and Testability](docs/rfcs/rfc-0003-socket-correctness-and-testability.md)
 
 New design decisions should be recorded in
 [ADR Registry](docs/decision-register.md), not only in comments or chat.

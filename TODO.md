@@ -13,12 +13,14 @@ backend:
 - how do we handle static files in the router?
 - streaming requests and responses
 - handle non-utf8 charsets?
+- database libs: postgres, sqlite, odbc?
 - Html.hs:
   - type alias for attr result: type Attr = (String, String)
   - fast html builder
 
 frontend:
 
+- markdown editor colour scheme in dark mode is terrible
 - how is markdown rendered for view (not edit)?
 - review code structure
 - notification area

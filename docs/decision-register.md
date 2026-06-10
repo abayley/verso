@@ -299,6 +299,78 @@ mode, split mode, autosave events, and form submission behaviour. Toolbar,
 CodeMirror, Web Awesome, and Lit integration should remain separate slices so the
 editing-engine migration can be verified independently.
 
+### ADR-021: Progressively Enhance the Editor Page
+
+Status: Proposed.
+
+Context: The editor page is currently an empty shell that requires JavaScript
+to fetch and submit the document, which relegates the server to a minimal API
+role and leaves script-less browsers with an unusable page. The project wants
+MicroHttp to stay a reasonably general-purpose server for server-rendered
+htmx applications, with rich client components as islands of interactivity
+rather than the default architecture.
+
+Decision: Serve `GET /documents/:id/edit` as a complete, working Markdown
+form: a `<textarea name="markdown">` with the document content inside the
+`<markdown-editor>` element. Capable browsers upgrade the page in place: the
+element adopts the textarea content, participates in form submission through
+`ElementInternals`, and provides the rich editing experience. The post
+handler answers both ordinary form posts (post-redirect-get, full-page
+validation re-render) and htmx posts (status fragments). The design is
+RFC-0001.
+
+Consequences: The server renders meaningful HTML for every client and owns
+document delivery again; the separate document fetch and the hidden
+`markdown` input are removed. The raw-Markdown textarea keeps the ADR-019
+contract: the server still does not parse or render Markdown. Handlers must
+branch on the `hx-request` header, and the browser smoke coverage must
+include a JavaScript-disabled pass.
+
+### ADR-022: Keep HTML Authoring in Haskell Combinators
+
+Status: Accepted.
+
+Context: MicroHs does not support Template Haskell, so compile-time-checked
+template systems in the Hamlet/Shakespeare style are unavailable; a template
+engine here would be a runtime string parser with runtime failures and a
+second escaping discipline. The htmx application style composes many small,
+conditional, parameterised fragments, which suits function composition. The
+recognised future case for templates is an external designer producing HTML
+files with content placeholders, in the Heist or Mustache style; that need
+does not exist in the project today.
+
+Decision: Keep the pure monadic HTML combinators (`MicroHttp.Html`,
+ADR-013) as the canonical and only HTML authoring mechanism. Defer any
+template engine until a concrete designer-authored-HTML need appears.
+
+Consequences: All pages and fragments are authored as combinator values, and
+escaping stays centralised in one renderer. If a template engine is added
+later, it should parse template files at application start into the existing
+`Html` value type, so rendering and escaping remain single-sourced and
+templates become a front end to the combinators rather than a parallel
+system.
+
+### ADR-023: Frame Requests With an Incremental Reader
+
+Status: Proposed.
+
+Context: The server reads a request with a single `recv` of at most one
+buffer, so requests split across TCP segments or larger than the buffer are
+truncated, and the configured body limit is unreachable. The HTTP parser is
+pure and should stay free of IO, so completeness must be established before
+parsing.
+
+Decision: Frame requests with an incremental reader that consumes chunks
+from an injected source until the header terminator and the declared
+`Content-Length` are satisfied, enforcing header and body limits as data
+arrives. `recv` returning an empty `ByteString` is the orderly end-of-stream
+signal. The design and test plan are RFC-0003.
+
+Consequences: The reader is unit-testable with scripted chunk sources and
+becomes the chunk seam for future streaming request bodies. The parser
+continues to receive complete request bytes. One request per connection
+(ADR-011) and the chunked-transfer-encoding rejection are unchanged.
+
 ## ADR Registry Open Review Items
 
 - Verify socket layout assumptions on non-macOS platforms before treating

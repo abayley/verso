@@ -582,7 +582,10 @@ Phase Six findings so far:
   event wiring clarity, state-transition clarity, test stability, Web Awesome
   interop, and bundle/runtime cost. Adopt Lit before tables if the spike makes
   mode, theme, save, toolbar, and popover state obviously simpler; otherwise keep
-  the current custom-element shell.
+  the current custom-element shell. Before that spike runs, the shell should be
+  decomposed into plain controller classes per
+  [RFC-0002](../rfcs/rfc-0002-editor-shell-decomposition.md), so the spike measures
+  declarative rendering rather than getting credit for ordinary refactoring.
 - Toolbar inline mark controls must preserve or recover the visual editor
   selection before applying Tiptap commands; otherwise button focus can collapse
   the selected text before the command runs.
@@ -741,6 +744,24 @@ separate package/application boundary.
 - Continue extracting stable editor code into typed editor modules.
 - Decide whether the editor parser and renderer belong in MicroHttp examples, a
   separate package, or a later application repository.
+
+### Markdown Editor Spike Progressive Enhancement Track: Planned
+
+Scope: make the edit page a working server-rendered Markdown form that
+upgrades in place to the rich editor, per ADR-021 and
+[RFC-0001](../rfcs/rfc-0001-editor-progressive-enhancement.md). This track changes
+the editor's page and form contract rather than its content subset, so it can
+be scheduled independently of Phases Seven to Nine and should probably run
+before table work enlarges the editor.
+
+- Render a `<textarea name="markdown">` fallback form with the document
+  content from the TestApp.
+- Branch the document post handler between htmx fragments and
+  post-redirect-get full-page behaviour.
+- Adopt the wrapped textarea and `ElementInternals` form participation in the
+  `<markdown-editor>` element, removing the hidden input and the edit-page
+  `src` fetch.
+- Extend browser smoke coverage with a JavaScript-disabled pass.
 
 ## Markdown Editor Decision Status
 

@@ -70,7 +70,7 @@ Trade-offs and effort: the largest behavioural change. Tiptap supports both
 the bubble toolbar and slash menu patterns well, but the popover and toolbar
 state involved would strengthen the case for the deferred Lit spike recorded
 in the Phase Six notes of
-[markdown-editor-spike.md](../markdown-editor-spike.md).
+[markdown-editor-spike.md](../design/markdown-editor-spike.md).
 
 ## Markdown Editor Redesign D: Bold Press
 

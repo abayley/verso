@@ -1,5 +1,15 @@
 # MicroHttp Module Design Index
 
+## MicroHttp Module Design Document Status
+
+The per-module documents under `docs/initial-module-design/` are the starter
+design, kept as a historical artifact. They record the contracts as designed
+before implementation and are not updated as the code evolves. Current
+decisions live in the [ADR Registry](decision-register.md); current and
+planned cross-module designs live under `docs/design/` and `docs/rfcs/`. Read
+the initial module documents for original intent, not as a description of
+today's code.
+
 ## MicroHttp ADR Registry
 
 Architectural decisions and rationale are recorded in the
@@ -14,17 +24,17 @@ stable concepts:
 
 | Module area | Primary responsibility | Design document |
 | :--- | :--- | :--- |
-| `MicroHttp` | Public facade and re-exports | [Public Facade Module Design](modules/public-facade.md) |
-| `MicroHttp.Network.Socket` | MicroHs socket FFI adapter | [Network Socket Module Design](modules/network-socket.md) |
-| `MicroHttp.Server` | Accept loop and connection lifecycle | [Server Module Design](modules/server.md) |
-| `MicroHttp.Http` | HTTP request, response, status, and header types | [HTTP Types Module Design](modules/http-types.md) |
-| `MicroHttp.Http.Parser` | HTTP/1 request parsing | [HTTP Parser Module Design](modules/http-parser.md) |
-| `MicroHttp.Http.Response` | HTTP response serialisation | [HTTP Response Module Design](modules/http-response.md) |
-| `MicroHttp.Router` | Value-level routing | [Router Module Design](modules/router.md) |
-| `MicroHttp.Router.Typed` | Optional typed route builder | [Typed Router Module Design](modules/typed-router.md) |
-| `MicroHttp.Html` | Pure monadic HTML rendering | [HTML Module Design](modules/html.md) |
-| `MicroHttp.Store.FileSystem` | Filesystem-backed state adapter | [Filesystem Store Module Design](modules/filesystem-store.md) |
-| `MicroHttp.Middleware` | Application transformations | [Middleware Module Design](modules/middleware.md) |
+| `MicroHttp` | Public facade and re-exports | [Public Facade Module Design](initial-module-design/public-facade.md) |
+| `MicroHttp.Network.Socket` | MicroHs socket FFI adapter | [Network Socket Module Design](initial-module-design/network-socket.md) |
+| `MicroHttp.Server` | Accept loop and connection lifecycle | [Server Module Design](initial-module-design/server.md) |
+| `MicroHttp.Http` | HTTP request, response, status, and header types | [HTTP Types Module Design](initial-module-design/http-types.md) |
+| `MicroHttp.Http.Parser` | HTTP/1 request parsing | [HTTP Parser Module Design](initial-module-design/http-parser.md) |
+| `MicroHttp.Http.Response` | HTTP response serialisation | [HTTP Response Module Design](initial-module-design/http-response.md) |
+| `MicroHttp.Router` | Value-level routing | [Router Module Design](initial-module-design/router.md) |
+| `MicroHttp.Router.Typed` | Optional typed route builder | [Typed Router Module Design](initial-module-design/typed-router.md) |
+| `MicroHttp.Html` | Pure monadic HTML rendering | [HTML Module Design](initial-module-design/html.md) |
+| `MicroHttp.Store.FileSystem` | Filesystem-backed state adapter | [Filesystem Store Module Design](initial-module-design/filesystem-store.md) |
+| `MicroHttp.Middleware` | Application transformations | [Middleware Module Design](initial-module-design/middleware.md) |
 
 ## MicroHttp Network Module Decision
 

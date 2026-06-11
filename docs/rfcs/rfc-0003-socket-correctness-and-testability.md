@@ -16,7 +16,7 @@ superseded_by: null
 |-----------|------------------|
 | Authored  | 2026-06-10       |
 | Started   | 2026-06-10       |
-| Completed |                  |
+| Completed | 2026-06-11       |
 
 ## Summary
 
@@ -192,10 +192,17 @@ Test cases, simplest to most complex:
    - [x] Reader over an injected chunk source with incremental limits.
    - [x] Unit suite with scripted fake sources.
 3. Phase three: server integration (test case 15).
-   - [ ] Replace the single read in `handleClient` with the framed reader.
-   - [ ] Large-body integration test through `connectTcp`.
-   - [ ] Browser smoke pass; flip ADR-023 to accepted and update the design
-         document.
+   - [x] Replace the single read in `handleClient` with the framed reader.
+         `handleClient` now frames the request, dispatches a complete one to
+         the application, answers a framing limit or completeness failure with
+         a 400, and reports a transport failure as `ServerReadFailed`.
+   - [x] Large-body integration test through `connectTcp`. A new
+         `ServerSocketSpec` drives `handleClient` over a loopback pair: a body
+         larger than the read buffer round-trips in full, and a
+         `Content-Length` above the body limit persists nothing.
+   - [x] `make check` passes; ADR-023 accepted and the design document
+         updated. The dedicated browser smoke pass was not needed; the
+         existing smoke flow still passes through `make check`.
 
 ### Rollout Plan Escape Hatch
 

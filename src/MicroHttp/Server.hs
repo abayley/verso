@@ -3,6 +3,7 @@ module MicroHttp.Server (
     ServerError (..),
     Settings (..),
     defaultSettings,
+    handleClient,
     respondToRequestBytes,
     serve,
     serveOne,
@@ -12,6 +13,7 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.QSem
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http
+import MicroHttp.Http.Framing
 import MicroHttp.Http.Parser
 import MicroHttp.Http.Response
 import MicroHttp.Network.Socket
@@ -105,18 +107,37 @@ acceptAndHandle settings app socket = do
 
 handleClient :: Settings -> Application -> ClientSocket -> IO (Either ServerError ())
 handleClient settings app client = do
-    received <- recv client (settingsReadBufferBytes settings)
-    case received of
-        Left err -> do
-            _ <- closeClientSocket client
-            return (Left (ServerReadFailed err))
+    framed <- frameRequest (recv client (settingsReadBufferBytes settings)) (parseLimits settings)
+    result <- respondToFramedRequest settings app client framed
+    _ <- closeClientSocket client
+    return result
+
+{- | Responds to a framed request outcome over the client socket.
+A transport failure is reported and no response is written. A framing
+limit or completeness failure is answered with a 400, matching the
+parser's malformed-request handling. A complete request is dispatched to
+the application.
+-}
+respondToFramedRequest ::
+    Settings ->
+    Application ->
+    ClientSocket ->
+    Either (FrameError SocketError) BS.ByteString ->
+    IO (Either ServerError ())
+respondToFramedRequest settings app client framed =
+    case framed of
+        Left (FrameTransportError err) -> return (Left (ServerReadFailed err))
+        Left (FrameParseError _) -> writeClientResponse client badRequestResponse
         Right bytes -> do
             response <- respondToRequestBytes settings app bytes
-            written <- writeResponse (sendChunk client) response
-            _ <- closeClientSocket client
-            case written of
-                Left err -> return (Left (ServerWriteFailed err))
-                Right () -> return (Right ())
+            writeClientResponse client response
+
+writeClientResponse :: ClientSocket -> Response -> IO (Either ServerError ())
+writeClientResponse client response = do
+    written <- writeResponse (sendChunk client) response
+    case written of
+        Left err -> return (Left (ServerWriteFailed err))
+        Right () -> return (Right ())
 
 sendChunk :: ClientSocket -> BS.ByteString -> IO (Either ResponseWriteError ())
 sendChunk client chunk = do

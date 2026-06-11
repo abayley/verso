@@ -74,13 +74,16 @@ flowchart TD
     write --> close[close client socket]
 ```
 
-Known gap: the current implementation performs a single `recv` of at most
-8192 bytes, so segmented or large requests are truncated and
-`settingsMaxBodyBytes` is unreachable. RFC-0003 replaces the single read
-with a framed reader that consumes chunks until the header terminator and
-declared `Content-Length` are satisfied, enforcing limits incrementally.
-The framed reader is also the intended chunk source for future streaming
-request bodies.
+`handleClient` frames the request with `MicroHttp.Http.Framing.frameRequest`
+(RFC-0003, ADR-023): it consumes `recv` chunks until the header terminator
+and declared `Content-Length` are satisfied, enforcing the header and body
+limits incrementally. A complete request is dispatched to the application; a
+framing limit or completeness failure is answered with a 400, matching the
+parser's malformed-request handling; a transport failure is reported as
+`ServerReadFailed`. This replaced an earlier single `recv` that truncated
+segmented or large requests and left `settingsMaxBodyBytes` unreachable. The
+framed reader is also the intended chunk source for future streaming request
+bodies.
 
 ## Concurrency Model
 

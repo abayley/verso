@@ -352,7 +352,7 @@ system.
 
 ### ADR-023: Frame Requests With an Incremental Reader
 
-Status: Proposed.
+Status: Accepted.
 
 Context: The server reads a request with a single `recv` of at most one
 buffer, so requests split across TCP segments or larger than the buffer are

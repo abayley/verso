@@ -5,6 +5,7 @@ GHC = ghc
 HPC = hpc
 BUILD = build
 SPIKE = spike
+BENCH = bench
 SRC = src
 TEST = test
 UNIT_TEST = $(TEST)/unit
@@ -14,7 +15,7 @@ DOCS = docs
 DOC_FILES = README.md INSTALL.md STANDARDS.md TODO.md "$(DOCS)/**/*.md"
 HS_FILES = $(shell find $(SRC) $(TEST) -name '*.hs' | sort)
 
-.PHONY: docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-test-app test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11 all-spikes check clean
+.PHONY: docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-test-app test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-socket spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11 all-spikes check clean
 
 spike1:
 	mkdir -p $(BUILD)
@@ -131,6 +132,11 @@ coverage-integration:
 	$(HPC) markup $(BUILD)/coverage/integration/integration-test.tix --hpcdir $(BUILD)/coverage/integration/mix --destdir $(BUILD)/coverage/integration/report
 
 coverage: coverage-unit coverage-integration
+
+bench-socket:
+	mkdir -p $(BUILD)
+	$(MHS) $(MHSFLAGS) -i$(SRC) -i$(BENCH) $(BENCH)/SocketBench.hs -o $(BUILD)/socket-bench
+	$(BUILD)/socket-bench
 
 spike-remark-ast:
 	bun scripts/remark-ast-spike.mjs

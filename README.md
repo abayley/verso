@@ -184,6 +184,17 @@ Coverage is a secondary signal. The production compatibility gate remains the
 MicroHs-based `make check` target. The coverage target writes unit and
 integration HTML reports under `build/coverage/*/report/`.
 
+Run the socket throughput baseline:
+
+```sh
+make bench-socket
+```
+
+This measures `MicroHttp.Network.Socket` loopback throughput in isolation
+from the iteratee layer, in single-threaded transfer rounds, and reports
+MB/s per recv buffer size. Like coverage, it is a measurement tool and not
+part of the `make check` gate. The bench source is `bench/SocketBench.hs`.
+
 Compile all retained spikes:
 
 ```sh

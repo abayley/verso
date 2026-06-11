@@ -8,7 +8,8 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import Data.Char (isDigit, isSpace, toLower)
 import MicroHttp.Http.Parser (ParseError (..), ParseLimits (..))
-import MicroHttp.Stream (Iter (..), IterError (..), Stream (..))
+import MicroHttp.Iteratee (Iter (..), Stream (..))
+import MicroHttp.Stream (StreamError (..))
 
 {- | A framing failure: either the transport failed, or the bytes received so
 far cannot become a complete request within the configured limits.
@@ -70,7 +71,7 @@ is the header bytes before the terminator; the residue is the body prefix,
 threaded onward by bind. End of stream before the terminator is an
 incomplete request.
 -}
-frameHeadersI :: ParseLimits -> Iter BS.ByteString
+frameHeadersI :: ParseLimits -> Iter StreamError BS.ByteString
 frameHeadersI limits = go BS.empty
   where
     go buffered = NeedInput (consume buffered)
@@ -79,16 +80,16 @@ frameHeadersI limits = go BS.empty
             | BS.null bytes -> go buffered
             | otherwise -> scan (BS.append buffered bytes)
         EndOfStream Nothing ->
-            IterFailed (IterParseError (BadRequest "incomplete request")) (EndOfStream Nothing)
+            IterFailed (StreamParseError (BadRequest "incomplete request")) (EndOfStream Nothing)
         EndOfStream (Just err) ->
-            IterFailed (IterReadError err) (EndOfStream (Just err))
+            IterFailed err (EndOfStream (Just err))
 
     scan buffered =
         case BS.breakSubstring headerTerminator buffered of
             (before, after)
                 | BS.null after ->
                     if BS.length buffered > maxHeaderBytes limits + terminatorLength
-                        then IterFailed (IterParseError HeaderTooLarge) (Chunk buffered)
+                        then IterFailed (StreamParseError HeaderTooLarge) (Chunk buffered)
                         else go buffered
                 | otherwise ->
                     Done before (Chunk (BS.drop terminatorLength after))

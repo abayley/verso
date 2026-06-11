@@ -96,31 +96,50 @@ mark it as complete in the phase checklist.
 
 ### Iteratee Core
 
+The core is a standalone, domain-free module (`MicroHttp.Iteratee`) with no
+HTTP or socket vocabulary. The failure type is a parameter `e`, decided in
+the 2026-06-12 design review (see below); the element stays `ByteString`
+and the monad stays `IO`, per the non-goals.
+
 ```haskell
-data Stream
+data Stream e
     = Chunk BS.ByteString
-    | EndOfStream (Maybe SocketError)    -- orderly end, or transport failure
+    | EndOfStream (Maybe e)              -- orderly end, or failure
 
-data Iter a
-    = Done a Stream                      -- result plus residual input
-    | NeedInput (Stream -> Iter a)       -- pure consumer continuation
-    | IterM (IO (Iter a))                -- effect step, resolved by drivers
-    | IterFailed IterError Stream        -- terminal failure, residue kept
+data Iter e a
+    = Done a (Stream e)                  -- result plus residual input
+    | NeedInput (Stream e -> Iter e a)   -- pure consumer continuation
+    | IterM (IO (Iter e a))              -- effect step, resolved by drivers
+    | IterFailed e (Stream e)            -- terminal failure, residue kept
 
-data IterError
-    = IterReadError SocketError          -- ingress transport failure
-    | IterWriteError SocketError         -- egress transport failure
-    | IterParseError ParseError          -- framing, parsing, or limit failure
+type Enumerator e a = Iter e a -> IO (Iter e a)
 
-type Enumerator a = Iter a -> IO (Iter a)
+run :: Iter e a -> IO (Either e a)       -- feeds EndOfStream, extracts
+```
 
-run :: Iter a -> IO (Either IterError a)  -- feeds EndOfStream, extracts
+The concrete error type lives in the domain layer (`MicroHttp.Stream`), so
+the core depends on neither sockets nor the HTTP parser:
+
+```haskell
+data StreamError
+    = StreamReadError SocketError        -- ingress transport failure
+    | StreamWriteError SocketError       -- egress transport failure
+    | StreamParseError ParseError        -- framing, parsing, or limit failure
+    | StreamSourceError String           -- producer acquire failure (file open)
 ```
 
 Decisions embodied here:
 
+- The failure type is a parameter, not a fixed sum. The earlier draft baked
+  `SocketError` and `ParseError` into the core (in `Stream` and a concrete
+  `IterError`), coupling the "general iteratee" to TCP and HTTP. The tell:
+  the core machinery (`bind`, `run`, `takeN`, `feedStream`,
+  `strictEnumerator`, `resourceEnumerator`) never *constructs* a failure,
+  only propagates `IterFailed`. A type the core is agnostic to, yet whose
+  every value comes from a domain edge, is a parameter. This matches the
+  `enumerator` package and keeps `MicroHttp.Iteratee` reusable.
 - `NeedInput` holds a pure continuation; all effects live in `IterM`. With
-  a continuation in `IO` (`Stream -> IO (Iter a)`), the `Monad` instance
+  a continuation in `IO` (`Stream e -> IO (Iter e a)`), the `Monad` instance
   is unimplementable: `Done a residue >>= f` must feed the residue into
   `f a`, and a pure bind cannot run an `IO` continuation. Deferring the
   feed inside a new `NeedInput` deadlocks when the residue alone completes
@@ -131,16 +150,21 @@ Decisions embodied here:
 - Failure is a constructor, not an `Either` inside the result, so binds
   stay single-layered; `run` converts to `Either` at the public boundary,
   preserving ADR-009's style.
-- `IterError` replaces RFC-0003's `FrameError` as the failure vocabulary,
-  because iteratees fail on both sides of the pipeline: `socketSinkI`
-  fails on send. Read and write transport failures are separate
-  constructors so the server maps them to `ServerReadFailed` and
-  `ServerWriteFailed` without guessing the direction.
+- `StreamError` is the domain instantiation, retiring RFC-0003's
+  `FrameError`. Read and write transport failures are separate constructors
+  so the server maps them to `ServerReadFailed` and `ServerWriteFailed`
+  without guessing the direction; `StreamSourceError` covers a producer
+  whose acquire fails (a file that will not open), which has no socket or
+  parse meaning.
 - `IterFailed` carries residue so a failure handler or a future keep-alive
   loop can resynchronise or respond before closing.
+- Consumers that raise an error take it as an argument
+  (`readBodyStrict :: e -> Int -> Iter e ByteString`), so even the bounded
+  body reader stays in the domain-free core. HTTP-specific consumers
+  (`frameHeadersI`) live in the HTTP layer and choose `StreamError`.
 - Enumerators return the iteratee state rather than unit, per the
   composition argument in the references.
-- The `Monad` instance for `Iter` owns residue threading. This is the
+- The `Monad` instance for `Iter e` owns residue threading. This is the
   classic defect site in iteratee implementations and gets the first tests.
 
 Stream contract rules:
@@ -165,38 +189,64 @@ Stream contract rules:
 
 ### Producers and Sinks
 
+The error-agnostic producers live in the core; the socket and file ones
+live in the domain layer and fix `e` to `StreamError`.
+
 ```haskell
-socketEnumerator :: ClientSocket -> Int -> Enumerator a
+-- core (MicroHttp.Iteratee), error-agnostic
+strictEnumerator :: BS.ByteString -> Enumerator e a
+resourceEnumerator
+    :: IO (Maybe r)             -- acquire
+    -> (r -> IO ())             -- release
+    -> (r -> IO BS.ByteString)  -- read a chunk (empty = end)
+    -> e                        -- error if acquire fails
+    -> Enumerator e a
+-- resourceEnumerator acquires, feeds chunks (empty read = end of stream),
+-- and releases on every exit path -- early completion or mid-stream failure.
+-- A failed acquire ends the stream with the supplied error. This is the
+-- model's cleanup guarantee, expressed once and reused.
+
+-- domain (MicroHttp.Stream), e = StreamError
+socketEnumerator :: ClientSocket -> Int -> Enumerator StreamError a
 -- feeds recv chunks; maps Right "" to EndOfStream Nothing and
--- Left err to EndOfStream (Just err)
+-- Left err to EndOfStream (Just (StreamReadError err))
 
-socketSinkI :: ClientSocket -> Iter ()
--- consumes chunks with sendAll until end of stream
+socketSinkI :: ClientSocket -> Iter StreamError ()
+-- consumes chunks with sendAll until end of stream; a send failure is a
+-- terminal StreamWriteError
 
-strictEnumerator :: BS.ByteString -> Enumerator a
-fileEnumerator   :: FilePath -> Enumerator a
--- fileEnumerator opens, feeds in chunks, and closes the handle itself;
--- producer-owned resource bracketing is the model's cleanup guarantee
+fileEnumerator :: FilePath -> Enumerator StreamError a
+-- a thin wrapper over resourceEnumerator (open / hGet / hClose); an open
+-- failure ends the stream with StreamSourceError
 ```
+
+The bracketing guarantee is tested directly: a recording fake resource
+asserts release runs exactly once on completion, on a consumer that fails
+mid-stream, and on a consumer that stops early, and not at all when acquire
+fails. (A file-descriptor-exhaustion test was rejected: the MicroHs runtime
+closes handles on garbage collection, masking a missing release.)
 
 An idle-read timeout for `socketEnumerator` is deferred to the
 readiness-manager work carried over from RFC-0003. The seam is already
-named: a timeout surfaces as `EndOfStream (Just err)` with no contract
-change.
+named: a timeout surfaces as `EndOfStream (Just (StreamReadError err))`
+with no contract change.
 
 ### Consumers and Enumeratees
 
 ```haskell
-frameHeadersI :: ParseLimits -> Iter HeaderBytes
--- scans to the CRLFCRLF terminator within maxHeaderBytes;
--- Done's residue is the body prefix, threaded onward by bind
-
-takeN :: Int -> Iter a -> Iter a
+-- core (MicroHttp.Iteratee), error-agnostic
+takeN :: Int -> Iter e a -> Iter e a
 -- the Content-Length bound: the inner iteratee sees exactly n bytes then
 -- end of stream; outer residue beyond n is preserved
 
-readBodyStrict :: Int -> Iter BS.ByteString
--- bounded take-all convenience for handlers that want a strict body
+readBodyStrict :: e -> Int -> Iter e BS.ByteString
+-- bounded take-all for handlers that want a strict body; the over-limit
+-- error is an argument, keeping the core free of HTTP vocabulary
+
+-- HTTP layer (MicroHttp.Http.Framing), e = StreamError
+frameHeadersI :: ParseLimits -> Iter StreamError BS.ByteString
+-- scans to the CRLFCRLF terminator within maxHeaderBytes;
+-- Done's residue is the body prefix, threaded onward by bind
 ```
 
 `takeN` is the only enumeratee this RFC builds. Because every stage is
@@ -367,11 +417,15 @@ trap sites before any HTTP behaviour:
    the unread remainder stays in the outer residue undrained. (unit)
 10. Given `readBodyStrict` with a bound below the body size, when
     consuming, then the iteratee fails as body-too-large. (unit)
-11. Given a strict and a file enumerator, when run into a collecting
-    iteratee, then bytes round-trip and the file handle is closed on both
-    success and failure. (integration)
+11. Given a bracketed `resourceEnumerator` over a recording fake, when the
+    consumer completes, fails mid-stream, or stops early, then the resource
+    is released exactly once; and not at all when acquire fails. (unit) A
+    strict enumerator and a real-file `fileEnumerator` round-trip into a
+    collecting iteratee, with a missing file surfacing as a source error.
+    (integration) The fake observes bracketing because the MicroHs runtime
+    closes handles on garbage collection, masking a descriptor-leak test.
 12. Given a socket enumerator and sink over a loopback pair, when a body
-    is streamed through `takeN` to a collecting sink, then bytes
+    is streamed through `takeN` to a collecting consumer, then bytes
     round-trip in single-threaded rounds. (integration)
 13. Given the migrated TestApp save handler, when posting a body larger
     than one read buffer, then the document store holds the full body.
@@ -382,16 +436,19 @@ trap sites before any HTTP behaviour:
 ## Rollout Plan
 
 1. Phase one: iteratee core and combinators (test cases 1 to 10).
-   - [x] `Stream`, `Iter` (pure `NeedInput`, effects in `IterM`),
-         `IterError`, `Enumerator`, `run`, and the `Monad` instance with
-         residue threading. (`MicroHttp.Stream`)
-   - [x] `frameHeadersI`, `takeN`, `readBodyStrict`.
+   - [x] `Stream e`, `Iter e a` (pure `NeedInput`, effects in `IterM`),
+         `Enumerator e a`, `run`, and the `Monad` instance with residue
+         threading, in the domain-free `MicroHttp.Iteratee`. The concrete
+         `StreamError` lives in `MicroHttp.Stream` (2026-06-12 review).
+   - [x] `frameHeadersI`, `takeN`, `readBodyStrict` (error-parameterised).
    - [x] Scripted-enumerator unit suite pinning the trap sites.
-         (`MicroHttp.StreamSpec`, `MicroHttp.Http.FramingSpec`)
+         (`MicroHttp.IterateeSpec`, `MicroHttp.Http.FramingSpec`)
 2. Phase two: producers and sinks (test cases 11 and 12).
-   - [ ] `strictEnumerator`, `fileEnumerator` with bracketing,
-         `socketEnumerator`, `socketSinkI`.
-   - [ ] Loopback integration tests in single-threaded transfer rounds.
+   - [x] `strictEnumerator` and `resourceEnumerator` (core bracketing),
+         `fileEnumerator` (wrapper), `socketEnumerator`, `socketSinkI`.
+   - [x] Bracketing unit suite over a recording fake; loopback and
+         real-file integration tests in single-threaded transfer rounds.
+         (`MicroHttp.IterateeSpec`, `MicroHttp.StreamSpec` integration)
 3. Phase three: application contract and server pipeline (test cases 13
    and 14). Phase three runs after RFC-0001's handler rework if RFC-0001
    is ready by the end of phase two; otherwise the order is re-decided

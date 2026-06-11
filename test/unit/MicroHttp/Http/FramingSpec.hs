@@ -4,7 +4,8 @@ import qualified Data.ByteString.Char8 as BS
 import Data.IORef
 import MicroHttp.Http.Framing
 import MicroHttp.Http.Parser (ParseError (..), ParseLimits (..), defaultParseLimits)
-import MicroHttp.Stream (Iter (..), IterError (..), Stream (..))
+import MicroHttp.Iteratee (Iter (..), Stream (..))
+import MicroHttp.Stream (StreamError (..))
 import Test.Hspec
 
 spec :: Spec
@@ -43,7 +44,7 @@ spec =
             residueOf final `shouldBe` Just (Chunk (BS.pack "hello"))
         it "given headers that never terminate within the limit, when framing headers, then header too large is returned" $ do
             final <- driveHeaders ["GET / HTTP/1.1\r\nX: yyyyyyyyyyyy", "zzzzzzzzzzzzzzzz"] ParseLimits{maxHeaderBytes = 16, maxBodyBytes = 100}
-            errorOf final `shouldBe` Just (IterParseError HeaderTooLarge)
+            errorOf final `shouldBe` Just (StreamParseError HeaderTooLarge)
 
 scriptedSource :: [String] -> IO (IO (Either String BS.ByteString))
 scriptedSource chunks = do
@@ -56,7 +57,7 @@ scriptedSource chunks = do
                 writeIORef remaining rest
                 return (Right chunk)
 
-driveHeaders :: [String] -> ParseLimits -> IO (Iter BS.ByteString)
+driveHeaders :: [String] -> ParseLimits -> IO (Iter StreamError BS.ByteString)
 driveHeaders chunks limits = do
     remaining <- newIORef (map BS.pack chunks)
     let enum it = case it of
@@ -72,18 +73,18 @@ driveHeaders chunks limits = do
                         enum (k (Chunk chunk))
     enum (frameHeadersI limits)
 
-headOf :: Iter BS.ByteString -> Maybe BS.ByteString
+headOf :: Iter StreamError BS.ByteString -> Maybe BS.ByteString
 headOf it = case it of
     Done value _ -> Just value
     _ -> Nothing
 
-residueOf :: Iter a -> Maybe Stream
+residueOf :: Iter StreamError a -> Maybe (Stream StreamError)
 residueOf it = case it of
     Done _ s -> Just s
     IterFailed _ s -> Just s
     _ -> Nothing
 
-errorOf :: Iter a -> Maybe IterError
+errorOf :: Iter StreamError a -> Maybe StreamError
 errorOf it = case it of
     IterFailed err _ -> Just err
     _ -> Nothing

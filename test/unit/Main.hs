@@ -8,6 +8,7 @@ import qualified MicroHttp.HttpSpec as HttpSpec
 import qualified MicroHttp.Network.SocketAddrSpec as SocketAddrSpec
 import qualified MicroHttp.RouterSpec as RouterSpec
 import qualified MicroHttp.ServerSpec as ServerSpec
+import qualified MicroHttp.StreamSpec as StreamSpec
 import qualified MicroHttp.TestAppSpec as TestAppSpec
 import qualified MicroHttpSpec as FacadeSpec
 import Test.Hspec
@@ -22,5 +23,6 @@ main = hspec $ do
     ResponseSpec.spec
     RouterSpec.spec
     ServerSpec.spec
+    StreamSpec.spec
     SocketAddrSpec.spec
     TestAppSpec.spec

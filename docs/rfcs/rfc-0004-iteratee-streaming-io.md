@@ -382,11 +382,12 @@ trap sites before any HTTP behaviour:
 ## Rollout Plan
 
 1. Phase one: iteratee core and combinators (test cases 1 to 10).
-   - [ ] `Stream`, `Iter` (pure `NeedInput`, effects in `IterM`),
+   - [x] `Stream`, `Iter` (pure `NeedInput`, effects in `IterM`),
          `IterError`, `Enumerator`, `run`, and the `Monad` instance with
-         residue threading.
-   - [ ] `frameHeadersI`, `takeN`, `readBodyStrict`.
-   - [ ] Scripted-enumerator unit suite pinning the trap sites.
+         residue threading. (`MicroHttp.Stream`)
+   - [x] `frameHeadersI`, `takeN`, `readBodyStrict`.
+   - [x] Scripted-enumerator unit suite pinning the trap sites.
+         (`MicroHttp.StreamSpec`, `MicroHttp.Http.FramingSpec`)
 2. Phase two: producers and sinks (test cases 11 and 12).
    - [ ] `strictEnumerator`, `fileEnumerator` with bracketing,
          `socketEnumerator`, `socketSinkI`.

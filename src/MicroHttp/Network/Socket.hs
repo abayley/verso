@@ -16,6 +16,9 @@ module MicroHttp.Network.Socket (
 ) where
 
 import Control.Concurrent (threadDelay)
+import Control.Monad (void)
+import Control.Monad.Except (ExceptT (..), catchError, runExceptT, throwError)
+import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString as BS
 import Data.Word (Word8)
 import Foreign.C.Error (Errno, eAGAIN, eALREADY, eINPROGRESS, eISCONN, eWOULDBLOCK, getErrno)
@@ -64,34 +67,25 @@ instance Show SocketError where
     show (SocketError operation _) = "SocketError " ++ show operation
 
 listenTcp :: Host -> Port -> Int -> IO (Either SocketError ListenSocket)
-listenTcp host port backlog = do
-    opened <- checked "socket" (c_socket afInet sockStream 0)
-    case opened of
-        Left err -> return (Left err)
-        Right fd -> do
-            reuse <- setReuseAddr fd
-            case reuse of
-                Left err -> closeAndReturn fd err
-                Right () ->
-                    withSockAddrIn host port $ \addr addrLen -> do
-                        bound <- checked "bind" (c_bind fd addr addrLen)
-                        case bound of
-                            Left err -> closeAndReturn fd err
-                            Right _ -> do
-                                listening <- checked "listen" (c_listen fd backlog)
-                                case listening of
-                                    Left err -> closeAndReturn fd err
-                                    Right _ -> do
-                                        nonBlocking <- setNonBlocking fd
-                                        case nonBlocking of
-                                            Left err -> closeAndReturn fd err
-                                            Right () -> return (Right (ListenSocket fd))
+listenTcp host port backlog =
+    runExceptT $ do
+        fd <- ExceptT (checked "socket" (c_socket afInet sockStream 0))
+        closingOnError fd $ do
+            ExceptT (setReuseAddr fd)
+            ExceptT (withSockAddrIn host port (\addr addrLen -> checked "bind" (c_bind fd addr addrLen)))
+            ExceptT (checked "listen" (c_listen fd backlog))
+            ExceptT (setNonBlocking fd)
+            pure (ListenSocket fd)
 
 accept :: ListenSocket -> IO (Either SocketError ClientSocket)
 accept (ListenSocket fd) =
     allocaBytes sockaddrInSize $ \addr ->
         alloca $ \addrLen ->
-            acceptLoop addr addrLen
+            runExceptT $ do
+                accepted <- ExceptT (acceptLoop addr addrLen)
+                closingOnError accepted $ do
+                    ExceptT (setNonBlocking accepted)
+                    pure (ClientSocket accepted)
   where
     acceptLoop addr addrLen = do
         poke addrLen sockaddrInSize
@@ -104,30 +98,19 @@ accept (ListenSocket fd) =
                         threadDelay pollDelayMicros
                         acceptLoop addr addrLen
                     else return (Left (SocketError "accept" errno))
-            else do
-                nonBlocking <- setNonBlocking accepted
-                case nonBlocking of
-                    Left err -> do
-                        _ <- c_close accepted
-                        return (Left err)
-                    Right () -> return (Right (ClientSocket accepted))
+            else return (Right accepted)
 
 {- | Connects a non-blocking TCP client socket to a host and port.
 The socket is non-blocking before connecting, so connection progress is
 polled: in-progress results retry until the socket reports connected.
 -}
 connectTcp :: Host -> Port -> IO (Either SocketError ClientSocket)
-connectTcp host port = do
-    opened <- checked "socket" (c_socket afInet sockStream 0)
-    case opened of
-        Left err -> return (Left err)
-        Right fd -> do
-            nonBlocking <- setNonBlocking fd
-            case nonBlocking of
-                Left err -> do
-                    _ <- c_close fd
-                    return (Left err)
-                Right () -> withSockAddrIn host port (connectLoop fd)
+connectTcp host port =
+    runExceptT $ do
+        fd <- ExceptT (checked "socket" (c_socket afInet sockStream 0))
+        closingOnError fd $ do
+            ExceptT (setNonBlocking fd)
+            ExceptT (withSockAddrIn host port (connectLoop fd))
 
 connectLoop :: Int -> Ptr () -> Int -> IO (Either SocketError ClientSocket)
 connectLoop fd addr addrLen = do
@@ -143,9 +126,7 @@ connectLoop fd addr addrLen = do
                         then do
                             threadDelay pollDelayMicros
                             connectLoop fd addr addrLen
-                        else do
-                            _ <- c_close fd
-                            return (Left (SocketError "connect" errno))
+                        else return (Left (SocketError "connect" errno))
 
 isConnectPending :: Errno -> Bool
 isConnectPending errno =
@@ -155,15 +136,13 @@ isConnectPending errno =
 boundPort :: ListenSocket -> IO (Either SocketError Port)
 boundPort (ListenSocket fd) =
     allocaBytes sockaddrInSize $ \addr ->
-        alloca $ \addrLen -> do
-            poke addrLen sockaddrInSize
-            queried <- checked "getsockname" (c_getsockname fd (castPtr addr) addrLen)
-            case queried of
-                Left err -> return (Left err)
-                Right _ -> do
-                    high <- peekWord8 addr 2
-                    low <- peekWord8 addr 3
-                    return (Right (Port (fromIntegral high * 256 + fromIntegral low)))
+        alloca $ \addrLen ->
+            runExceptT $ do
+                liftIO (poke addrLen sockaddrInSize)
+                ExceptT (checked "getsockname" (c_getsockname fd (castPtr addr) addrLen))
+                high <- liftIO (peekWord8 addr 2)
+                low <- liftIO (peekWord8 addr 3)
+                pure (Port (fromIntegral high * 256 + fromIntegral low))
 
 peekWord8 :: Ptr Word8 -> Int -> IO Word8
 peekWord8 = peekByteOff
@@ -215,30 +194,16 @@ advanceCString :: CString -> Int -> CString
 advanceCString ptr count = castPtr (castPtr ptr `plusPtr` count)
 
 closeFd :: Int -> IO (Either SocketError ())
-closeFd fd = do
-    closed <- checked "close" (c_close fd)
-    case closed of
-        Left err -> return (Left err)
-        Right _ -> return (Right ())
+closeFd fd = void <$> checked "close" (c_close fd)
 
 setReuseAddr :: Int -> IO (Either SocketError ())
 setReuseAddr fd =
     alloca $ \opt -> do
         poke opt (1 :: Int)
-        result <-
-            checked
-                "setsockopt"
-                (c_setsockopt fd solSocket soReuseAddr opt (sizeOf (1 :: Int)))
-        case result of
-            Left err -> return (Left err)
-            Right _ -> return (Right ())
+        void <$> checked "setsockopt" (c_setsockopt fd solSocket soReuseAddr opt (sizeOf (1 :: Int)))
 
 setNonBlocking :: Int -> IO (Either SocketError ())
-setNonBlocking fd = do
-    result <- checked "fcntl" (c_fcntl fd fSetFl oNonBlock)
-    case result of
-        Left err -> return (Left err)
-        Right _ -> return (Right ())
+setNonBlocking fd = void <$> checked "fcntl" (c_fcntl fd fSetFl oNonBlock)
 
 isWouldBlock :: Errno -> Bool
 isWouldBlock errno =
@@ -247,10 +212,15 @@ isWouldBlock errno =
 pollDelayMicros :: Int
 pollDelayMicros = 1000
 
-closeAndReturn :: Int -> SocketError -> IO (Either SocketError ListenSocket)
-closeAndReturn fd err = do
-    _ <- c_close fd
-    return (Left err)
+{- | Runs an acquire step that already owns @fd@; if it fails, closes @fd@
+before propagating the error, so a mid-acquisition failure never leaks the
+descriptor.
+-}
+closingOnError :: Int -> ExceptT SocketError IO a -> ExceptT SocketError IO a
+closingOnError fd action =
+    action `catchError` \err -> do
+        _ <- liftIO (c_close fd)
+        throwError err
 
 checked :: String -> IO Int -> IO (Either SocketError Int)
 checked label action = do

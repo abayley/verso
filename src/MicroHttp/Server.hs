@@ -12,13 +12,19 @@ module MicroHttp.Server (
 import Control.Concurrent (forkIO)
 import Control.Concurrent.QSem
 import qualified Data.ByteString.Char8 as BS
+import Data.Char (isDigit)
 import MicroHttp.Http
 import MicroHttp.Http.Framing
-import MicroHttp.Http.Parser
+import MicroHttp.Http.Parser (ParseError (..), ParseLimits (..), parseRequestHead)
 import MicroHttp.Http.Response
+import MicroHttp.Iteratee (Iter (..), Stream (..), run, strictEnumerator, takeN)
 import MicroHttp.Network.Socket
+import MicroHttp.Stream (StreamError (..), socketEnumerator)
 
-type Application = Request -> IO Response
+{- | A request handler: it consumes the request body as a stream and yields
+a response.
+-}
+type Application = RequestHead -> Iter StreamError Response
 
 data Settings = Settings
     { settingsHost :: Host
@@ -47,7 +53,7 @@ data ServerError
     = ServerListenFailed SocketError
     | ServerAcceptFailed SocketError
     | ServerReadFailed SocketError
-    | ServerWriteFailed ResponseWriteError
+    | ServerWriteFailed StreamError
     deriving (Eq, Show)
 
 serve :: Settings -> Application -> IO (Either ServerError ())
@@ -77,11 +83,17 @@ serveOne settings app = do
             _ <- closeListenSocket socket
             return result
 
+{- | Drives the request pipeline over an in-memory copy of the request
+bytes, returning the application response (or a 400 on a framing, parse, or
+limit failure). The unit-test seam for the application boundary.
+-}
 respondToRequestBytes :: Settings -> Application -> BS.ByteString -> IO Response
-respondToRequestBytes settings app bytes =
-    case parseRequest (parseLimits settings) bytes of
+respondToRequestBytes settings app bytes = do
+    final <- strictEnumerator bytes (requestPipeline settings app)
+    outcome <- run final
+    case outcome of
         Left _ -> return badRequestResponse
-        Right request -> app request
+        Right response -> return response
 
 acceptLoop :: Settings -> Application -> QSem -> ListenSocket -> IO (Either ServerError ())
 acceptLoop settings app sem socket = do
@@ -107,43 +119,56 @@ acceptAndHandle settings app socket = do
 
 handleClient :: Settings -> Application -> ClientSocket -> IO (Either ServerError ())
 handleClient settings app client = do
-    framed <- frameRequest (recv client (settingsReadBufferBytes settings)) (parseLimits settings)
-    result <- respondToFramedRequest settings app client framed
+    final <- socketEnumerator client (settingsReadBufferBytes settings) (requestPipeline settings app)
+    outcome <- run final
+    result <- respondToOutcome client outcome
     _ <- closeClientSocket client
     return result
 
-{- | Responds to a framed request outcome over the client socket.
-A transport failure is reported and no response is written. A framing
-limit or completeness failure is answered with a 400, matching the
-parser's malformed-request handling. A complete request is dispatched to
-the application.
+{- | The per-connection request pipeline: frame the headers, parse the head,
+then run the application with the body stream framed to the declared
+@Content-Length@. The body bound terminates the application's body read
+without waiting for the peer to close, and rejecting an over-declared or
+malformed length is done before any body byte is read.
 -}
-respondToFramedRequest ::
-    Settings ->
-    Application ->
-    ClientSocket ->
-    Either (FrameError SocketError) BS.ByteString ->
-    IO (Either ServerError ())
-respondToFramedRequest settings app client framed =
-    case framed of
-        Left (FrameTransportError err) -> return (Left (ServerReadFailed err))
-        Left (FrameParseError _) -> writeClientResponse client badRequestResponse
-        Right bytes -> do
-            response <- respondToRequestBytes settings app bytes
-            writeClientResponse client response
+requestPipeline :: Settings -> Application -> Iter StreamError Response
+requestPipeline settings app =
+    frameHeadersI (parseLimits settings) >>= dispatch
+  where
+    dispatch headerBytes =
+        case parseRequestHead headerBytes of
+            Left err -> failWith (StreamParseError err)
+            Right head ->
+                case declaredContentLength (requestHeaders head) of
+                    Left err -> failWith (StreamParseError err)
+                    Right bodyLength
+                        | bodyLength > settingsMaxBodyBytes settings ->
+                            failWith (StreamParseError BodyTooLarge)
+                        | otherwise -> takeN bodyLength (app head)
+
+{- | Writes the response for a completed request, or maps a transport read
+failure to a server error. A framing, parse, or limit failure is answered
+with a 400, matching the previous malformed-request handling.
+-}
+respondToOutcome :: ClientSocket -> Either StreamError Response -> IO (Either ServerError ())
+respondToOutcome client outcome =
+    case outcome of
+        Left (StreamReadError err) -> return (Left (ServerReadFailed err))
+        Left _ -> writeClientResponse client badRequestResponse
+        Right response -> writeClientResponse client response
 
 writeClientResponse :: ClientSocket -> Response -> IO (Either ServerError ())
 writeClientResponse client response = do
-    written <- writeResponse (sendChunk client) response
+    written <- writeResponse (socketResponseWriter client) response
     case written of
         Left err -> return (Left (ServerWriteFailed err))
         Right () -> return (Right ())
 
-sendChunk :: ClientSocket -> BS.ByteString -> IO (Either ResponseWriteError ())
-sendChunk client chunk = do
-    sent <- sendAll client chunk
+socketResponseWriter :: ClientSocket -> ResponseWriter
+socketResponseWriter client bytes = do
+    sent <- sendAll client bytes
     case sent of
-        Left _ -> return (Left WriterFailed)
+        Left err -> return (Left (StreamWriteError err))
         Right () -> return (Right ())
 
 parseLimits :: Settings -> ParseLimits
@@ -152,6 +177,29 @@ parseLimits settings =
         { maxHeaderBytes = settingsMaxHeaderBytes settings
         , maxBodyBytes = settingsMaxBodyBytes settings
         }
+
+{- | A pipeline failure becomes an iteratee failure; the residue is empty
+because the body is not consumed on the failure path.
+-}
+failWith :: StreamError -> Iter StreamError Response
+failWith err = IterFailed err (Chunk BS.empty)
+
+{- | The declared body length: a missing @Content-Length@ means no body,
+a well-formed value is its length, and a non-numeric value is rejected.
+-}
+declaredContentLength :: Headers -> Either ParseError Int
+declaredContentLength headers =
+    case lookupHeaderValue "content-length" headers of
+        Nothing -> Right 0
+        Just value
+            | value /= "" && all isDigit value -> Right (read value)
+            | otherwise -> Left (BadRequest "invalid content-length")
+
+lookupHeaderValue :: String -> Headers -> Maybe String
+lookupHeaderValue _ [] = Nothing
+lookupHeaderValue name ((key, value) : rest)
+    | normaliseHeaderName (BS.pack name) == key = Just (BS.unpack value)
+    | otherwise = lookupHeaderValue name rest
 
 badRequestResponse :: Response
 badRequestResponse =

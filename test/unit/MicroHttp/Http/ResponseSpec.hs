@@ -4,6 +4,8 @@ import qualified Data.ByteString.Char8 as BS
 import Data.IORef
 import MicroHttp.Http
 import MicroHttp.Http.Response
+import MicroHttp.Iteratee (strictEnumerator)
+import MicroHttp.Stream (StreamError)
 import Test.Hspec
 
 spec :: Spec
@@ -20,15 +22,19 @@ spec =
                     (StrictBody (bs "ok"))
                 )
                 `shouldBe` Right (bs "HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok")
-        it "given file body response, when pure serialising, then file body error is returned" $
-            serialiseResponse (Response okStatus [] (FileBody "public/app.css"))
-                `shouldBe` Left CannotSerialiseFileBody
+        it "given streaming body response, when pure serialising, then stream body error is returned" $
+            serialiseResponse (Response okStatus [] (StreamBody (strictEnumerator (bs "x"))))
+                `shouldBe` Left CannotSerialiseStreamBody
         it "given strict body response, when writing, then serialised response is written" $ do
             strictChunks <- recordResponse (Response okStatus [] (StrictBody (bs "ok")))
             strictChunks
                 `shouldBe` Right [bs "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"]
+        it "given streaming body response, when writing, then head and body chunks are written" $ do
+            streamChunks <- recordResponse (Response okStatus [] (StreamBody (strictEnumerator (bs "streamed"))))
+            streamChunks
+                `shouldBe` Right [bs "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n", bs "streamed"]
 
-recordResponse :: Response -> IO (Either ResponseWriteError [BS.ByteString])
+recordResponse :: Response -> IO (Either StreamError [BS.ByteString])
 recordResponse response = do
     chunks <- newIORef []
     written <- writeResponse (recordChunk chunks) response
@@ -38,7 +44,7 @@ recordResponse response = do
             values <- readIORef chunks
             return (Right (reverse values))
 
-recordChunk :: IORef [BS.ByteString] -> BS.ByteString -> IO (Either ResponseWriteError ())
+recordChunk :: IORef [BS.ByteString] -> BS.ByteString -> IO (Either StreamError ())
 recordChunk chunks chunk = do
     modifyIORef chunks (chunk :)
     return (Right ())

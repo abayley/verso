@@ -1,6 +1,7 @@
 module MicroHttp.ServerSocketSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
+import Data.List (isInfixOf)
 import MicroHttp.Network.Socket
 import MicroHttp.Server
 import qualified MicroHttp.TestApp as TestApp
@@ -42,6 +43,21 @@ spec =
                 persisted <- doesFileExist documentFile
                 result `shouldBe` Right ()
                 persisted `shouldBe` False
+        it "given a handler that responds without consuming its body, when handled over a socket, then the connection closes cleanly" $
+            withConnectedPair $ \client served -> do
+                let body = "hello world!"
+                    requestText =
+                        "GET / HTTP/1.1\r\n"
+                            ++ "Content-Length: "
+                            ++ show (length body)
+                            ++ "\r\n\r\n"
+                            ++ body
+                sent <- sendAll client (BS.pack requestText)
+                sent `shouldBe` Right ()
+                result <- handleClient smallBufferSettings (TestApp.appWithDocumentRoot documentRoot) served
+                received <- recv client 4096
+                result `shouldBe` Right ()
+                fmap (isInfixOf "200 OK" . BS.unpack) received `shouldBe` Right True
 
 smallBufferSettings :: Settings
 smallBufferSettings =

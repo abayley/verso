@@ -373,7 +373,7 @@ continues to receive complete request bytes. One request per connection
 
 ### ADR-024: Stream Bodies With Iteratees and Enumerators
 
-Status: Proposed.
+Status: Accepted.
 
 Context: Request handling after RFC-0003 is correct but strict: memory is
 proportional to message size, and response bodies other than files are

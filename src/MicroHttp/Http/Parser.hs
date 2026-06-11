@@ -2,50 +2,24 @@ module MicroHttp.Http.Parser (
     ParseError (..),
     ParseLimits (..),
     defaultParseLimits,
-    parseRequest,
+    parseRequestHead,
 ) where
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import Data.Char (isAsciiUpper, isDigit, isSpace)
 import MicroHttp.Http
+import MicroHttp.Http.Parse (ParseError (..), ParseLimits (..), defaultParseLimits)
 
-data ParseLimits = ParseLimits
-    { maxHeaderBytes :: Int
-    , maxBodyBytes :: Int
-    }
-    deriving (Eq, Show)
-
-defaultParseLimits :: ParseLimits
-defaultParseLimits =
-    ParseLimits
-        { maxHeaderBytes = 8192
-        , maxBodyBytes = 1048576
-        }
-
-data ParseError
-    = BadRequest String
-    | HeaderTooLarge
-    | BodyTooLarge
-    | UnsupportedMethod BS.ByteString
-    | UnsupportedTransferEncoding
-    | UnsupportedHttpVersion
-    deriving (Eq, Show)
-
-parseRequest :: ParseLimits -> BS.ByteString -> Either ParseError Request
-parseRequest limits input =
-    case breakOn "\r\n\r\n" (BSC.unpack input) of
-        Nothing -> Left (BadRequest "missing header terminator")
-        Just (headerBlock, bodyWithSeparator) ->
-            if length headerBlock > maxHeaderBytes limits
-                then
-                    Left HeaderTooLarge
-                else
-                    parseHeaderBlock limits headerBlock (drop 4 bodyWithSeparator)
-
-parseHeaderBlock :: ParseLimits -> String -> String -> Either ParseError Request
-parseHeaderBlock limits headerBlock remainingBody =
-    case splitLines headerBlock of
+{- | Parses a framed header block (the bytes before the CRLFCRLF terminator,
+which the framing iteratee has already located) into a 'RequestHead'. The
+body is no longer the parser's concern: it is consumed downstream as a
+stream. Header and body size limits are enforced by framing and the body
+cap stage, not here.
+-}
+parseRequestHead :: BS.ByteString -> Either ParseError RequestHead
+parseRequestHead input =
+    case splitLines (BSC.unpack input) of
         [] -> Left (BadRequest "empty request")
         requestLine : headerLines ->
             case words requestLine of
@@ -54,14 +28,12 @@ parseHeaderBlock limits headerBlock remainingBody =
                         Nothing -> Left (UnsupportedMethod (BSC.pack methodToken))
                         Just method ->
                             if version /= "HTTP/1.1" && version /= "HTTP/1.0"
-                                then
-                                    Left UnsupportedHttpVersion
-                                else
-                                    parseHeaders limits method target headerLines remainingBody
+                                then Left UnsupportedHttpVersion
+                                else parseHeaders method target headerLines
                 _ -> Left (BadRequest "invalid request line")
 
-parseHeaders :: ParseLimits -> Method -> String -> [String] -> String -> Either ParseError Request
-parseHeaders limits method target headerLines remainingBody =
+parseHeaders :: Method -> String -> [String] -> Either ParseError RequestHead
+parseHeaders method target headerLines =
     case traverse parseHeader headerLines of
         Left err -> Left err
         Right headers ->
@@ -70,23 +42,15 @@ parseHeaders limits method target headerLines remainingBody =
                     | BSC.unpack (lowerBytes value) /= "identity" ->
                         Left UnsupportedTransferEncoding
                 _ ->
-                    case contentLength headers of
-                        Left err -> Left err
-                        Right bodyLength ->
-                            if bodyLength > maxBodyBytes limits
-                                then
-                                    Left BodyTooLarge
-                                else
-                                    let (rawPath, queryText) = splitTarget target
-                                     in Right
-                                            Request
-                                                { requestMethod = method
-                                                , requestPath = pathSegments rawPath
-                                                , requestQuery = parseQuery queryText
-                                                , requestHeaders = headers
-                                                , requestBody = BSC.pack (take bodyLength remainingBody)
-                                                , requestRawPath = BSC.pack rawPath
-                                                }
+                    let (rawPath, queryText) = splitTarget target
+                     in Right
+                            RequestHead
+                                { requestMethod = method
+                                , requestPath = pathSegments rawPath
+                                , requestQuery = parseQuery queryText
+                                , requestHeaders = headers
+                                , requestRawPath = BSC.pack rawPath
+                                }
 
 parseHeader :: String -> Either ParseError Header
 parseHeader line =
@@ -100,15 +64,6 @@ lookupHeader _ [] = Nothing
 lookupHeader name ((key, value) : rest)
     | normaliseHeaderName (BSC.pack name) == key = Just value
     | otherwise = lookupHeader name rest
-
-contentLength :: Headers -> Either ParseError Int
-contentLength headers =
-    case lookupHeader "content-length" headers of
-        Nothing -> Right 0
-        Just value ->
-            case readInt (BSC.unpack value) of
-                Just size -> Right size
-                Nothing -> Left (BadRequest "invalid content-length")
 
 splitTarget :: String -> (String, String)
 splitTarget target =
@@ -149,11 +104,6 @@ hexValue c
     | isDigit c = Just (fromEnum c - fromEnum '0')
     | 'a' <= c && c <= 'f' = Just (10 + fromEnum c - fromEnum 'a')
     | 'A' <= c && c <= 'F' = Just (10 + fromEnum c - fromEnum 'A')
-    | otherwise = Nothing
-
-readInt :: String -> Maybe Int
-readInt text
-    | text /= "" && all isDigit text = Just (read text)
     | otherwise = Nothing
 
 splitLines :: String -> [String]

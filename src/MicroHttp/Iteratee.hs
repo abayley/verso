@@ -9,10 +9,12 @@ module MicroHttp.Iteratee (
     Iter (..),
     Enumerator,
     run,
+    liftIO,
     takeN,
     readBodyStrict,
     strictEnumerator,
     resourceEnumerator,
+    byteSinkI,
 ) where
 
 import Control.Monad ((>=>))
@@ -85,6 +87,13 @@ run it = case it of
     IterFailed err _ -> return (Left err)
     IterM m -> m >>= run
     NeedInput k -> run (k (EndOfStream Nothing))
+
+{- | Lifts an 'IO' action into an iteratee without consuming input, so a
+handler can perform effects between stream reads. Residue is threaded by
+bind, unchanged across the lifted action.
+-}
+liftIO :: IO a -> Iter e a
+liftIO m = IterM (fmap pure m)
 
 {- | Bounds an inner iteratee to at most @n@ bytes of the outer stream: the
 inner sees those bytes then end of stream, and any outer bytes beyond @n@
@@ -193,3 +202,23 @@ resourceEnumerator acquire release readChunk acquireError it0 = do
         _ -> do
             release resource
             return it
+
+{- | A sink that writes each chunk with the supplied effectful writer until
+end of stream, failing with the writer's error on a failed write. A
+transport failure delivered at end of stream is propagated unchanged.
+-}
+byteSinkI :: (BS.ByteString -> IO (Either e ())) -> Iter e ()
+byteSinkI writeBytes = go
+  where
+    go = NeedInput consume
+    consume s = case s of
+        Chunk bytes
+            | BS.null bytes -> go
+            | otherwise -> IterM (sendChunk bytes)
+        EndOfStream Nothing -> Done () (EndOfStream Nothing)
+        EndOfStream (Just err) -> IterFailed err (EndOfStream (Just err))
+    sendChunk bytes = do
+        sent <- writeBytes bytes
+        case sent of
+            Left err -> return (IterFailed err (Chunk BS.empty))
+            Right () -> return go

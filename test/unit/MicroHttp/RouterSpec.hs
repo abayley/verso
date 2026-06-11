@@ -2,27 +2,33 @@ module MicroHttp.RouterSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http
+import MicroHttp.Iteratee (Iter, run, strictEnumerator)
 import MicroHttp.Router
+import MicroHttp.Stream (StreamError)
 import Test.Hspec
 
 spec :: Spec
 spec =
     describe "MicroHttp.Router" $ do
         it "given literal route, when routing, then literal handler response is returned" $ do
-            literal <- route routes (request GET ["todos"])
-            responseBody literal `shouldBe` StrictBody (bs "index")
+            literal <- routed (request GET ["todos"])
+            fmap responseBody literal `shouldBe` Right (StrictBody (bs "index"))
         it "given capture route, when routing, then capture is passed to handler" $ do
-            captured <- route routes (request GET ["todos", "42"])
-            responseBody captured `shouldBe` StrictBody (bs "show 42")
+            captured <- routed (request GET ["todos", "42"])
+            fmap responseBody captured `shouldBe` Right (StrictBody (bs "show 42"))
         it "given POST route, when routing, then POST handler response is returned" $ do
-            created <- route routes (request POST ["todos"])
-            responseBody created `shouldBe` StrictBody (bs "create")
+            created <- routed (request POST ["todos"])
+            fmap responseBody created `shouldBe` Right (StrictBody (bs "create"))
         it "given no matching path, when routing, then not found response is returned" $ do
-            missing <- route routes (request GET ["missing"])
-            statusCode (responseStatus missing) `shouldBe` 404
+            missing <- routed (request GET ["missing"])
+            fmap (statusCode . responseStatus) missing `shouldBe` Right 404
         it "given matching path with wrong method, when routing, then method not allowed is returned" $ do
-            wrongMethod <- route routes (request DELETE ["todos"])
-            statusCode (responseStatus wrongMethod) `shouldBe` 405
+            wrongMethod <- routed (request DELETE ["todos"])
+            fmap (statusCode . responseStatus) wrongMethod `shouldBe` Right 405
+
+-- | Runs the router over an empty body and extracts the response.
+routed :: RequestHead -> IO (Either StreamError Response)
+routed head = strictEnumerator (bs "") (route routes head) >>= run
 
 routes :: [Route]
 routes =
@@ -31,18 +37,17 @@ routes =
     , post "/todos" (\_ _ -> pureText "create")
     ]
 
-pureText :: String -> IO Response
+pureText :: String -> Iter StreamError Response
 pureText body =
-    return (Response okStatus [] (StrictBody (bs body)))
+    pure (Response okStatus [] (StrictBody (bs body)))
 
-request :: Method -> [String] -> Request
+request :: Method -> [String] -> RequestHead
 request method path =
-    Request
+    RequestHead
         { requestMethod = method
         , requestPath = path
         , requestQuery = []
         , requestHeaders = []
-        , requestBody = bs ""
         , requestRawPath = bs "/"
         }
 

@@ -46,11 +46,20 @@ The current public facade is `MicroHttp`, which re-exports:
 - `MicroHttp.Http`
 - `MicroHttp.Http.Parser`
 - `MicroHttp.Http.Response`
+- `MicroHttp.Iteratee`
+- `MicroHttp.Middleware`
 - `MicroHttp.Router`
 - `MicroHttp.Server`
+- `MicroHttp.Stream`
 
 The network adapter is currently exposed as `MicroHttp.Network.Socket`, but it is
 not re-exported through the public facade.
+
+Request and response bodies are streamed with a local iteratee/enumerator core
+(`MicroHttp.Iteratee`), so the server handles bodies of any size in constant
+memory. The application boundary is `RequestHead -> Iter StreamError Response`:
+handlers receive the parsed request head and consume the body as a stream. The
+design is [RFC-0004](docs/rfcs/rfc-0004-iteratee-streaming-io.md).
 
 ## MicroHttp Installation
 

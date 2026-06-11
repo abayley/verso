@@ -11,8 +11,11 @@ import qualified Data.ByteString.Char8 as BS
 import Data.Char (isDigit, isSpace)
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http as Http
+import MicroHttp.Http.Parse (ParseError (..))
+import MicroHttp.Iteratee (liftIO, readBodyStrict)
 import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
+import MicroHttp.Stream (StreamError (..), fileEnumerator)
 import System.Directory (doesFileExist)
 
 data DocumentStore = DocumentStore
@@ -48,34 +51,39 @@ routes store =
 
 index :: Router.Handler
 index _ _ =
-    return (htmlResponse indexHtml)
+    pure (htmlResponse indexHtml)
 
 editDocument :: Router.Handler
-editDocument captures request = do
+editDocument captures request =
     let docId = documentId captures
-    return (htmlResponse (documentHtml (editorPage docId (editorMode request))))
+     in pure (htmlResponse (documentHtml (editorPage docId (editorMode request))))
 
 showDocument :: DocumentStore -> Router.Handler
 showDocument store captures _ = do
-    markdown <- loadDocument store (documentId captures)
-    return (markdownResponse markdown)
+    markdown <- liftIO (loadDocument store (documentId captures))
+    pure (markdownResponse markdown)
 
 saveDocument :: DocumentStore -> Router.Handler
-saveDocument store captures request = do
-    let markdown = markdownValue request
+saveDocument store captures _ = do
+    bodyBytes <- readBodyStrict (StreamParseError BodyTooLarge) formBodyLimit
+    let markdown = markdownFromBody bodyBytes
     case validateMarkdown markdown of
-        Just err -> return (htmlResponse (Html.renderHtml (validationStatusFragment err)))
+        Just err -> pure (htmlResponse (Html.renderHtml (validationStatusFragment err)))
         Nothing -> do
-            saveDocumentContent store (documentId captures) markdown
-            return (htmlResponse (Html.renderHtml (saveStatusFragment markdown)))
+            liftIO (saveDocumentContent store (documentId captures) markdown)
+            pure (htmlResponse (Html.renderHtml (saveStatusFragment markdown)))
 
 staticEditorAsset :: Router.Handler
 staticEditorAsset captures _ =
     case capture "file" captures of
-        "markdown-editor.js" -> return (fileResponse "text/javascript" "static/editor/markdown-editor.js")
-        "markdown-editor.css" -> return (fileResponse "text/css" "static/editor/markdown-editor.css")
-        "webawesome.css" -> return (fileResponse "text/css" "static/editor/webawesome.css")
-        _ -> return notFoundResponse
+        "markdown-editor.js" -> pure (fileResponse "text/javascript" "static/editor/markdown-editor.js")
+        "markdown-editor.css" -> pure (fileResponse "text/css" "static/editor/markdown-editor.css")
+        "webawesome.css" -> pure (fileResponse "text/css" "static/editor/webawesome.css")
+        _ -> pure notFoundResponse
+
+-- | The handler's own body bound; the server pipeline also caps the body.
+formBodyLimit :: Int
+formBodyLimit = 1048576
 
 htmlResponse :: String -> Http.Response
 htmlResponse body =
@@ -96,7 +104,7 @@ fileResponse contentType path =
     Http.Response
         Http.okStatus
         [(Http.normaliseHeaderName (BS.pack "Content-Type"), BS.pack contentType)]
-        (Http.FileBody path)
+        (Http.StreamBody (fileEnumerator path))
 
 notFoundResponse :: Http.Response
 notFoundResponse =
@@ -131,20 +139,20 @@ documentPath :: FilePath -> String -> FilePath
 documentPath root name =
     root ++ "/" ++ name ++ ".md"
 
-queryValue :: String -> Http.Request -> String
+queryValue :: String -> Http.RequestHead -> String
 queryValue name request =
     capture name (Http.requestQuery request)
 
-editorMode :: Http.Request -> String
+editorMode :: Http.RequestHead -> String
 editorMode request =
     case queryValue "mode" request of
         "source" -> "source"
         "split" -> "split"
         _ -> "visual"
 
-markdownValue :: Http.Request -> String
-markdownValue request =
-    capture "markdown" (formFields (BS.unpack (Http.requestBody request)))
+markdownFromBody :: BS.ByteString -> String
+markdownFromBody bytes =
+    capture "markdown" (formFields (BS.unpack bytes))
 
 formFields :: String -> [(String, String)]
 formFields "" = []

@@ -2,6 +2,7 @@ module MicroHttp.HttpSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http
+import MicroHttp.Iteratee (strictEnumerator)
 import Test.Hspec
 
 spec :: Spec
@@ -18,9 +19,9 @@ spec =
         it "given strict body response, when reading response body, then strict body is visible" $
             responseBody (Response okStatus [] (StrictBody (bs "hello")))
                 `shouldBe` StrictBody (bs "hello")
-        it "given file body response, when reading response body, then file path is visible" $
-            responseBody (Response okStatus [] (FileBody "public/app.css"))
-                `shouldBe` FileBody "public/app.css"
+        it "given a streaming body response, when comparing to a strict body, then they are not equal" $
+            (responseBody (Response okStatus [] (StreamBody (strictEnumerator (bs "hello")))) == StrictBody (bs "hello"))
+                `shouldBe` False
 
 bs :: String -> BS.ByteString
 bs = BS.pack

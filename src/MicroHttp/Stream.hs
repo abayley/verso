@@ -13,8 +13,8 @@ module MicroHttp.Stream (
 ) where
 
 import qualified Data.ByteString as BS
-import MicroHttp.Http.Parser (ParseError)
-import MicroHttp.Iteratee (Enumerator, Iter (..), Stream (..), resourceEnumerator, strictEnumerator)
+import MicroHttp.Http.Parse (ParseError)
+import MicroHttp.Iteratee (Enumerator, Iter (..), Stream (..), byteSinkI, resourceEnumerator, strictEnumerator)
 import MicroHttp.Network.Socket (ClientSocket, SocketError, recv, sendAll)
 import System.IO.Base (IOMode (..), hClose)
 import System.IO.Open (openBinaryFileM)
@@ -54,20 +54,15 @@ terminal write failure; an upstream failure delivered at end of stream is
 propagated unchanged.
 -}
 socketSinkI :: ClientSocket -> Iter StreamError ()
-socketSinkI socket = go
-  where
-    go = NeedInput consume
-    consume s = case s of
-        Chunk bytes
-            | BS.null bytes -> go
-            | otherwise -> IterM (sendChunk bytes)
-        EndOfStream Nothing -> Done () (EndOfStream Nothing)
-        EndOfStream (Just err) -> IterFailed err (EndOfStream (Just err))
-    sendChunk bytes = do
-        sent <- sendAll socket bytes
-        case sent of
-            Left err -> return (IterFailed (StreamWriteError err) (Chunk BS.empty))
-            Right () -> return go
+socketSinkI socket = byteSinkI (socketWrite socket)
+
+-- | Sends bytes over a socket, tagging a failure as a write failure.
+socketWrite :: ClientSocket -> BS.ByteString -> IO (Either StreamError ())
+socketWrite socket bytes = do
+    sent <- sendAll socket bytes
+    case sent of
+        Left err -> return (Left (StreamWriteError err))
+        Right () -> return (Right ())
 
 {- | Streams a file in chunks, owning the handle: it opens the file, feeds
 its contents, and closes the handle on every exit path, including a consumer

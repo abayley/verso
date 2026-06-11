@@ -10,10 +10,12 @@ module MicroHttp.Router (
 
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http
+import MicroHttp.Iteratee (Iter)
+import MicroHttp.Stream (StreamError)
 
 type Captures = [(String, String)]
 
-type Handler = Captures -> Request -> IO Response
+type Handler = Captures -> RequestHead -> Iter StreamError Response
 
 data Route = Route Method [PathPart] Handler
 
@@ -31,14 +33,14 @@ post = routeFor POST
 delete :: String -> Handler -> Route
 delete = routeFor DELETE
 
-route :: [Route] -> Request -> IO Response
+route :: [Route] -> RequestHead -> Iter StreamError Response
 route routes request =
     case matchingPath routes (requestPath request) of
-        [] -> return notFound
+        [] -> pure notFound
         pathMatches ->
             case matchingMethod pathMatches (requestMethod request) of
                 Just (captures, handler) -> handler captures request
-                Nothing -> return methodNotAllowed
+                Nothing -> pure methodNotAllowed
 
 routeFor :: Method -> String -> Handler -> Route
 routeFor method patternText =

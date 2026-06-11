@@ -1,7 +1,7 @@
 ---
 id: RFC-0004
 name: Iteratee Streaming IO
-status: In Progress
+status: Implemented
 owners:
     - alistair
 created: 2026-06-10
@@ -16,7 +16,7 @@ superseded_by: null
 |-----------|------------------|
 | Authored  | 2026-06-10       |
 | Started   | 2026-06-11 21:02 |
-| Completed |                  |
+| Completed | 2026-06-12 09:35 |
 
 ## Summary
 
@@ -450,17 +450,25 @@ trap sites before any HTTP behaviour:
          real-file integration tests in single-threaded transfer rounds.
          (`MicroHttp.IterateeSpec`, `MicroHttp.StreamSpec` integration)
 3. Phase three: application contract and server pipeline (test cases 13
-   and 14). Phase three runs after RFC-0001's handler rework if RFC-0001
-   is ready by the end of phase two; otherwise the order is re-decided
-   then.
-   - [ ] `RequestHead`, new `Application`, `ResponseBody` with
-         `StreamBody`; default body-cap stage in the server pipeline.
-   - [ ] Rewire `handleClient`; re-express `FileBody` and RFC-0003 framing
-         on the core; migrate TestApp handlers and the router payload.
-   - [ ] Middleware lifts (`ingress`, `egress`, `catchIter`) with one
-         example each.
-   - [ ] Flip ADR-024 to accepted; update the network design document and
-         module index.
+   and 14). RFC-0001 was unstarted at the end of phase two, so on the
+   2026-06-12 review the order was re-decided to proceed now; RFC-0001
+   will rebuild the migrated TestApp handlers against the new contract.
+   - [x] `RequestHead`, new `Application` (`RequestHead -> Iter
+         StreamError Response`), `ResponseBody` with `StreamBody`. The
+         body cap is the `Content-Length` frame (`takeN`) plus a pre-read
+         declared-length check, not a separate fail-on-exceed stage:
+         `takeN` ends the body without waiting for the peer to close, and
+         an over-declared or malformed length is rejected before any body
+         byte is read.
+   - [x] Rewire `handleClient`; `FileBody` re-expressed as `StreamBody
+         (fileEnumerator path)`; RFC-0003 framing re-expressed as
+         `frameHeadersI`; TestApp handlers and the router payload
+         migrated. `ParseError`/`ParseLimits` extracted to
+         `MicroHttp.Http.Parse` to break the `Http`-to-`Stream` cycle.
+   - [x] Middleware lifts (`mapResponse`, `ingress`, `egress`,
+         `catchIter`) in `MicroHttp.Middleware`, one example test each.
+   - [x] Flip ADR-024 to accepted; update the module index. (No separate
+         network design document change was needed.)
 
 ### Rollout Plan Escape Hatch
 

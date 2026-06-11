@@ -25,7 +25,7 @@ spec =
 
 app :: Application
 app request =
-    return (Response okStatus [] (StrictBody (bs (headOrEmpty (requestPath request)))))
+    pure (Response okStatus [] (StrictBody (bs (headOrEmpty (requestPath request)))))
 
 headOrEmpty :: [String] -> String
 headOrEmpty [] = ""

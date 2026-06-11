@@ -1,11 +1,10 @@
 module MicroHttp.Http (
     Method (..),
     HeaderName (..),
-    BodyBytes,
     Header,
     Headers,
     RawPath,
-    Request (..),
+    RequestHead (..),
     Response (..),
     ResponseBody (..),
     Status (..),
@@ -18,6 +17,8 @@ module MicroHttp.Http (
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import Data.Char (isAsciiUpper)
+import MicroHttp.Iteratee (Enumerator)
+import MicroHttp.Stream (StreamError)
 
 data Method
     = GET
@@ -48,16 +49,16 @@ type Header = (HeaderName, ByteString)
 
 type Headers = [Header]
 
-type BodyBytes = ByteString
-
 type RawPath = ByteString
 
-data Request = Request
+{- | The parsed head of a request: everything before the body. The body is
+consumed downstream as a stream, so it is not a field here.
+-}
+data RequestHead = RequestHead
     { requestMethod :: Method
     , requestPath :: [String]
     , requestQuery :: [(String, String)]
     , requestHeaders :: Headers
-    , requestBody :: BodyBytes
     , requestRawPath :: RawPath
     }
     deriving (Eq, Show)
@@ -67,12 +68,25 @@ data Response = Response
     , responseHeaders :: Headers
     , responseBody :: ResponseBody
     }
-    deriving (Eq, Show)
 
+{- | A response body: a strict in-memory value, or a streaming body produced
+by an enumerator and written close-delimited. File responses are expressed
+as a streaming body over @fileEnumerator@.
+-}
 data ResponseBody
     = StrictBody ByteString
-    | FileBody FilePath
-    deriving (Eq, Show)
+    | StreamBody (Enumerator StreamError ())
+
+{- | Equality compares strict bodies; a streaming body is never equal,
+because it carries an opaque producer.
+-}
+instance Eq ResponseBody where
+    StrictBody a == StrictBody b = a == b
+    _ == _ = False
+
+instance Show ResponseBody where
+    show (StrictBody body) = "StrictBody " ++ show body
+    show (StreamBody _) = "StreamBody <stream>"
 
 data Status = Status
     { statusCode :: Int

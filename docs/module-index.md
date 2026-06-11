@@ -27,9 +27,13 @@ stable concepts:
 | `MicroHttp` | Public facade and re-exports | [Public Facade Module Design](initial-module-design/public-facade.md) |
 | `MicroHttp.Network.Socket` | MicroHs socket FFI adapter | [Network Socket Module Design](initial-module-design/network-socket.md) |
 | `MicroHttp.Server` | Accept loop and connection lifecycle | [Server Module Design](initial-module-design/server.md) |
-| `MicroHttp.Http` | HTTP request, response, status, and header types | [HTTP Types Module Design](initial-module-design/http-types.md) |
-| `MicroHttp.Http.Parser` | HTTP/1 request parsing | [HTTP Parser Module Design](initial-module-design/http-parser.md) |
-| `MicroHttp.Http.Response` | HTTP response serialisation | [HTTP Response Module Design](initial-module-design/http-response.md) |
+| `MicroHttp.Http` | HTTP request head, response, status, and header types | [HTTP Types Module Design](initial-module-design/http-types.md) |
+| `MicroHttp.Http.Parse` | Parser error and limit types (RFC-0004) | [RFC-0004](rfcs/rfc-0004-iteratee-streaming-io.md) |
+| `MicroHttp.Http.Parser` | HTTP/1 request-head parsing | [HTTP Parser Module Design](initial-module-design/http-parser.md) |
+| `MicroHttp.Http.Framing` | Incremental header framing iteratee (RFC-0004) | [RFC-0004](rfcs/rfc-0004-iteratee-streaming-io.md) |
+| `MicroHttp.Http.Response` | HTTP response serialisation and writing | [HTTP Response Module Design](initial-module-design/http-response.md) |
+| `MicroHttp.Iteratee` | General iteratee/enumerator streaming core (RFC-0004) | [RFC-0004](rfcs/rfc-0004-iteratee-streaming-io.md) |
+| `MicroHttp.Stream` | Stream error vocabulary and socket/file producers (RFC-0004) | [RFC-0004](rfcs/rfc-0004-iteratee-streaming-io.md) |
 | `MicroHttp.Router` | Value-level routing | [Router Module Design](initial-module-design/router.md) |
 | `MicroHttp.Router.Typed` | Optional typed route builder | [Typed Router Module Design](initial-module-design/typed-router.md) |
 | `MicroHttp.Html` | Pure monadic HTML rendering | [HTML Module Design](initial-module-design/html.md) |
@@ -57,16 +61,31 @@ Dependencies should flow inward from effects to pure logic:
 MicroHttp
   -> MicroHttp.Server
      -> MicroHttp.Network.Socket
+     -> MicroHttp.Http.Framing
      -> MicroHttp.Http.Parser
      -> MicroHttp.Http.Response
   -> MicroHttp.Router
   -> MicroHttp.Html
   -> MicroHttp.Middleware
   -> MicroHttp.Store.FileSystem
+
+MicroHttp.Http
+  -> MicroHttp.Iteratee            (response body enumerator type)
+  -> MicroHttp.Stream
+       -> MicroHttp.Iteratee
+       -> MicroHttp.Network.Socket
+       -> MicroHttp.Http.Parse
 ```
+
+The iteratee core (`MicroHttp.Iteratee`) is domain-free: it imports neither
+the socket adapter nor any HTTP module. `MicroHttp.Http.Parse` holds the
+parser error and limit types separately so the stream error vocabulary and
+the HTTP types can both depend on it without an import cycle (RFC-0004).
 
 Pure modules must not import socket or filesystem modules. In particular:
 
+- `MicroHttp.Iteratee` must not import `MicroHttp.Network.Socket` or any
+  HTTP module.
 - `MicroHttp.Http.Parser` must not import `MicroHttp.Network.Socket`.
 - `MicroHttp.Router` must not import `MicroHttp.Server`.
 - `MicroHttp.Html` must not import any effectful module.

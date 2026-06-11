@@ -1,7 +1,7 @@
 ---
 id: RFC-0003
 name: Socket Payload Correctness and Testability
-status: Accepted
+status: Implemented
 owners:
     - alistair
 created: 2026-06-10

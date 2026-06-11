@@ -73,7 +73,7 @@ splitTarget target =
 
 pathSegments :: String -> [String]
 pathSegments pathText =
-    map percentDecode (filter (/= "") (splitOn '/' pathText))
+    map decodePathSegment (filter (/= "") (splitOn '/' pathText))
 
 parseQuery :: String -> [(String, String)]
 parseQuery "" = []
@@ -81,17 +81,29 @@ parseQuery queryText = map parsePair (splitOn '&' queryText)
   where
     parsePair text =
         case break (== '=') text of
-            (key, '=' : value) -> (percentDecode key, percentDecode value)
-            (key, _) -> (percentDecode key, "")
+            (key, '=' : value) -> (decodeFormValue key, decodeFormValue value)
+            (key, _) -> (decodeFormValue key, "")
 
-percentDecode :: String -> String
-percentDecode [] = []
-percentDecode ('%' : a : b : rest) =
+{- | Percent-decodes a path segment. A literal @+@ is kept, because
+plus-as-space is a form/query-string convention, not a path one.
+-}
+decodePathSegment :: String -> String
+decodePathSegment = percentDecode False
+
+{- | Percent-decodes an application/x-www-form-urlencoded value, where a
+literal @+@ means a space.
+-}
+decodeFormValue :: String -> String
+decodeFormValue = percentDecode True
+
+percentDecode :: Bool -> String -> String
+percentDecode _ [] = []
+percentDecode plusIsSpace ('%' : a : b : rest) =
     case hexPair a b of
-        Just c -> c : percentDecode rest
-        Nothing -> '%' : a : b : percentDecode rest
-percentDecode ('+' : rest) = ' ' : percentDecode rest
-percentDecode (c : rest) = c : percentDecode rest
+        Just c -> c : percentDecode plusIsSpace rest
+        Nothing -> '%' : a : b : percentDecode plusIsSpace rest
+percentDecode True ('+' : rest) = ' ' : percentDecode True rest
+percentDecode plusIsSpace (c : rest) = c : percentDecode plusIsSpace rest
 
 hexPair :: Char -> Char -> Maybe Char
 hexPair a b =

@@ -45,6 +45,15 @@ spec =
         it "given chunked transfer encoding, when parsing the head, then unsupported transfer encoding is returned" $
             parseRequestHead (bs "POST / HTTP/1.1\r\nTransfer-Encoding: chunked")
                 `shouldBe` Left UnsupportedTransferEncoding
+        it "given a plus in a path segment, when parsing the head, then the plus is kept literally" $
+            fmap requestPath (parseRequestHead (bs "GET /a+b/c HTTP/1.1"))
+                `shouldBe` Right ["a+b", "c"]
+        it "given a percent-encoded plus in a path segment, when parsing the head, then it decodes to a plus" $
+            fmap requestPath (parseRequestHead (bs "GET /a%2Bb HTTP/1.1"))
+                `shouldBe` Right ["a+b"]
+        it "given a plus in a query value, when parsing the head, then the plus decodes to a space" $
+            fmap requestQuery (parseRequestHead (bs "GET /search?q=a+b HTTP/1.1"))
+                `shouldBe` Right [("q", "a b")]
 
 bs :: String -> BS.ByteString
 bs = BS.pack

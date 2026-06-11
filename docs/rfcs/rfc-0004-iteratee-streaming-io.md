@@ -1,11 +1,11 @@
 ---
 id: RFC-0004
 name: Iteratee Streaming IO
-status: Draft
+status: In Progress
 owners:
     - alistair
 created: 2026-06-10
-updated: 2026-06-10
+updated: 2026-06-11
 supersedes: []
 superseded_by: null
 ---
@@ -15,7 +15,7 @@ superseded_by: null
 | Stage     | Timestamp        |
 |-----------|------------------|
 | Authored  | 2026-06-10       |
-| Started   |                  |
+| Started   | 2026-06-11 21:02 |
 | Completed |                  |
 
 ## Summary
@@ -43,7 +43,8 @@ rather than WAI-style readers, for three reasons: residual input lives in
 the consumer's result (`Done a residual`) and flows forward through monadic
 bind, so chunk-boundary misalignment is solved inside the abstraction
 without producer pushback; enumerators own resource acquisition and
-release, making cleanup exception-safe by construction; and enumerators
+release, so cleanup on signalled-failure paths is owned by the producer
+rather than by try-finally at call sites; and enumerators
 return the consumer's final state, which is exactly what a future
 keep-alive loop needs to seed the next request with the previous request's
 residue.
@@ -102,19 +103,39 @@ data Stream
 
 data Iter a
     = Done a Stream                      -- result plus residual input
-    | NeedInput (Stream -> IO (Iter a))  -- consumer continuation
-    | IterFailed FrameError Stream       -- terminal failure, residue kept
+    | NeedInput (Stream -> Iter a)       -- pure consumer continuation
+    | IterM (IO (Iter a))                -- effect step, resolved by drivers
+    | IterFailed IterError Stream        -- terminal failure, residue kept
+
+data IterError
+    = IterReadError SocketError          -- ingress transport failure
+    | IterWriteError SocketError         -- egress transport failure
+    | IterParseError ParseError          -- framing, parsing, or limit failure
 
 type Enumerator a = Iter a -> IO (Iter a)
 
-run :: Iter a -> IO (Either FrameError a)  -- feeds EndOfStream, extracts
+run :: Iter a -> IO (Either IterError a)  -- feeds EndOfStream, extracts
 ```
 
 Decisions embodied here:
 
+- `NeedInput` holds a pure continuation; all effects live in `IterM`. With
+  a continuation in `IO` (`Stream -> IO (Iter a)`), the `Monad` instance
+  is unimplementable: `Done a residue >>= f` must feed the residue into
+  `f a`, and a pure bind cannot run an `IO` continuation. Deferring the
+  feed inside a new `NeedInput` deadlocks when the residue alone completes
+  the next consumer: that consumer reports `NeedInput`, the socket
+  enumerator blocks in `recv`, and the client is waiting for the response.
+  With a pure continuation, bind feeds residue eagerly; enumerators and
+  `run` resolve `IterM` steps as they drive.
 - Failure is a constructor, not an `Either` inside the result, so binds
   stay single-layered; `run` converts to `Either` at the public boundary,
   preserving ADR-009's style.
+- `IterError` replaces RFC-0003's `FrameError` as the failure vocabulary,
+  because iteratees fail on both sides of the pipeline: `socketSinkI`
+  fails on send. Read and write transport failures are separate
+  constructors so the server maps them to `ServerReadFailed` and
+  `ServerWriteFailed` without guessing the direction.
 - `IterFailed` carries residue so a failure handler or a future keep-alive
   loop can resynchronise or respond before closing.
 - Enumerators return the iteratee state rather than unit, per the
@@ -124,10 +145,21 @@ Decisions embodied here:
 
 Stream contract rules:
 
+- `Chunk ""` is legal input meaning "no data"; consumers must not treat it
+  as end of stream. It is the identity residue of `pure`, so it occurs in
+  normal operation.
 - A consumer given `EndOfStream` must resolve to `Done` or `IterFailed`;
   `NeedInput` after end of stream is divergence.
 - End of stream may be delivered more than once (an enumerator and `run`
-  may both deliver it); consumers must treat repeats as stable.
+  may both deliver it); consumers must treat repeats as stable. An
+  enumerator that has reached end of stream keeps delivering `EndOfStream`
+  until the iteratee resolves.
+- When a `Done` or `IterFailed` residue is `EndOfStream`, bind feeds it to
+  the next consumer rather than skipping it; that consumer must resolve.
+- A residue is one `Stream` value, so it cannot express "buffered bytes
+  followed by end of stream". A consumer holding bytes at end of stream
+  keeps the bytes as `Chunk` residue; the end signal is restored by the
+  next `EndOfStream` delivery, which the repeat rule makes safe.
 - An enumerator stops feeding as soon as the iteratee is `Done` or
   `IterFailed` and returns it unchanged.
 
@@ -146,6 +178,11 @@ fileEnumerator   :: FilePath -> Enumerator a
 -- fileEnumerator opens, feeds in chunks, and closes the handle itself;
 -- producer-owned resource bracketing is the model's cleanup guarantee
 ```
+
+An idle-read timeout for `socketEnumerator` is deferred to the
+readiness-manager work carried over from RFC-0003. The seam is already
+named: a timeout surfaces as `EndOfStream (Just err)` with no contract
+change.
 
 ### Consumers and Enumeratees
 
@@ -166,6 +203,12 @@ readBodyStrict :: Int -> Iter BS.ByteString
 `ByteString` to `ByteString`, the general two-state enumeratee shape from
 the references is avoided; future stages (dechunking, decompression) take
 the same simplified form.
+
+When the inner iteratee completes before consuming all n bytes, `takeN`
+does not drain the remainder: the unread bytes stay in the outer residue.
+Draining to a message boundary is the pipeline's explicit job — today the
+close-per-connection policy disposes of it, and a future keep-alive loop
+drains deliberately.
 
 ### Application Contract
 
@@ -202,7 +245,15 @@ Two contract relocations, decided here:
 - The body limit moves from central parsing to the consumer side. The
   server's standard pipeline installs a default size-cap stage (a `takeN`
   variant that fails) so the old guarantee survives; handlers using
-  `readBodyStrict` state their own bound explicitly.
+  `readBodyStrict` state their own bound explicitly. The cap stays
+  settings-driven (`settingsMaxBodyBytes`, default 1 MB): constant memory
+  removes the server's reason to care, but the cap bounds downstream
+  costs such as document-store writes, which is application policy. The
+  server also still checks the declared `Content-Length` against the cap
+  before reading any body bytes, as `frameRequest` does today: the parsed
+  head makes the check free, and it fails fast instead of streaming and
+  discarding up to the cap. Both checks answer 400, matching current
+  behaviour; a move to 413 is a separate, deliberate change.
 - Unconsumed body bytes are the server's to dispose of: when a handler
   responds without draining, the server closes the connection (free under
   ADR-011). A future keep-alive loop must drain to the request boundary
@@ -241,6 +292,10 @@ The kinds:
 - The default body size cap must be installed in the server pipeline, not
   left to handler discipline; its absence would be an unbounded-memory
   regression relative to RFC-0003.
+- The declared `Content-Length` is checked against the cap before any
+  body bytes are read, so an over-declared body is rejected without
+  consuming the stream; the streamed cap stage remains as defence in
+  depth.
 - Header bounding is unchanged (`frameHeadersI` enforces
   `maxHeaderBytes` incrementally).
 - Failure residue must never be echoed into responses.
@@ -248,8 +303,11 @@ The kinds:
 ## Reliability Impact
 
 - Constant-memory operation removes the large-body failure mode.
-- Producer-owned bracketing closes file handles on failure paths without
-  try-finally at call sites.
+- Producer-owned bracketing closes file handles on every signalled
+  failure path without try-finally at call sites. The guarantee covers
+  `Either`-signalled failures, not thrown exceptions: the project's
+  no-exception discipline (ADR-009 style) is a stated assumption, and
+  handler code that throws escapes the bracketing.
 - A handler that never consumes its body cannot wedge the connection: the
   server's close-after-response policy disposes of the stream.
 - The MicroHs concurrent-transfer hang recorded in RFC-0003 is orthogonal
@@ -264,7 +322,13 @@ The kinds:
   `readBodyStrict` with an explicit bound.
 - `MicroHttp.Http.Framing` from RFC-0003 is re-expressed on the iteratee
   core (`frameHeadersI` plus draining); its unit tests migrate to scripted
-  enumerators with behaviour unchanged.
+  enumerators with behaviour unchanged. `FrameError` is retired in favour
+  of `IterError`.
+- `RequestHead` is field-for-field the current `Request` minus
+  `requestBody`: `requestRawPath` and the percent-decoding semantics are
+  unchanged, so the phase-three diff reviews as "body relocated" only.
+  The known `+`-decoding-in-path-segments defect in the parser is a
+  separate fix outside this RFC.
 - The router's matching API is untouched; its handler payload type changes
   with `Application`.
 - Both compilers must build the core; it uses plain data types and
@@ -278,48 +342,59 @@ The kinds:
   sockets); loopback integration tests reuse the RFC-0003 `connectTcp`
   seam.
 
-Test cases, simplest to most complex; the first four pin the documented
+Test cases, simplest to most complex; the first six pin the documented
 trap sites before any HTTP behaviour:
 
 1. Given a bind across a chunk boundary, when the first iteratee finishes
    mid-chunk, then the second iteratee receives the residue. (unit)
-2. Given end of stream delivered twice, when an iteratee has resolved,
+2. Given a bind whose residue alone completes the second iteratee, when
+   the second iteratee runs, then it completes without the enumerator
+   being asked for more input. (unit; the scripted enumerator asserts the
+   script is not pulled again — this pins the lazy-residue deadlock)
+3. Given an empty chunk fed to a waiting consumer, when the consumer
+   continues, then the empty chunk is not treated as end of stream. (unit)
+4. Given end of stream delivered twice, when an iteratee has resolved,
    then the result is stable and no continuation is re-entered. (unit)
-3. Given end of stream, when a consumer needs more input, then it resolves
+5. Given end of stream, when a consumer needs more input, then it resolves
    to a failure rather than `NeedInput`. (unit)
-4. Given a failing iteratee, when it fails mid-chunk, then `IterFailed`
+6. Given a failing iteratee, when it fails mid-chunk, then `IterFailed`
    carries the unconsumed residue. (unit)
-5. Given headers split across chunks, when framing with `frameHeadersI`,
+7. Given headers split across chunks, when framing with `frameHeadersI`,
    then the head is assembled and the residue is the body prefix. (unit)
-6. Given a `takeN` bound, when the inner iteratee consumes, then it sees
+8. Given a `takeN` bound, when the inner iteratee consumes, then it sees
    exactly n bytes and outer residue is preserved. (unit)
-7. Given `readBodyStrict` with a bound below the body size, when
-   consuming, then the iteratee fails as body-too-large. (unit)
-8. Given a strict and a file enumerator, when run into a collecting
-   iteratee, then bytes round-trip and the file handle is closed on both
-   success and failure. (integration)
-9. Given a socket enumerator and sink over a loopback pair, when a body is
-   streamed through `takeN` to a collecting sink, then bytes round-trip in
-   single-threaded rounds. (integration)
-10. Given the migrated TestApp save handler, when posting a body larger
+9. Given a `takeN` bound, when the inner iteratee completes early, then
+   the unread remainder stays in the outer residue undrained. (unit)
+10. Given `readBodyStrict` with a bound below the body size, when
+    consuming, then the iteratee fails as body-too-large. (unit)
+11. Given a strict and a file enumerator, when run into a collecting
+    iteratee, then bytes round-trip and the file handle is closed on both
+    success and failure. (integration)
+12. Given a socket enumerator and sink over a loopback pair, when a body
+    is streamed through `takeN` to a collecting sink, then bytes
+    round-trip in single-threaded rounds. (integration)
+13. Given the migrated TestApp save handler, when posting a body larger
     than one read buffer, then the document store holds the full body.
     (integration, replaces the RFC-0003 test case 15 shape)
-11. Given a handler that responds without consuming its body, when the
+14. Given a handler that responds without consuming its body, when the
     response completes, then the connection closes cleanly. (integration)
 
 ## Rollout Plan
 
-1. Phase one: iteratee core and combinators (test cases 1 to 7).
-   - [ ] `Stream`, `Iter`, `Enumerator`, `run`, and the `Monad` instance
-         with residue threading.
+1. Phase one: iteratee core and combinators (test cases 1 to 10).
+   - [ ] `Stream`, `Iter` (pure `NeedInput`, effects in `IterM`),
+         `IterError`, `Enumerator`, `run`, and the `Monad` instance with
+         residue threading.
    - [ ] `frameHeadersI`, `takeN`, `readBodyStrict`.
    - [ ] Scripted-enumerator unit suite pinning the trap sites.
-2. Phase two: producers and sinks (test cases 8 and 9).
+2. Phase two: producers and sinks (test cases 11 and 12).
    - [ ] `strictEnumerator`, `fileEnumerator` with bracketing,
          `socketEnumerator`, `socketSinkI`.
    - [ ] Loopback integration tests in single-threaded transfer rounds.
-3. Phase three: application contract and server pipeline (test cases 10
-   and 11).
+3. Phase three: application contract and server pipeline (test cases 13
+   and 14). Phase three runs after RFC-0001's handler rework if RFC-0001
+   is ready by the end of phase two; otherwise the order is re-decided
+   then.
    - [ ] `RequestHead`, new `Application`, `ResponseBody` with
          `StreamBody`; default body-cap stage in the server pipeline.
    - [ ] Rewire `handleClient`; re-express `FileBody` and RFC-0003 framing
@@ -342,13 +417,20 @@ trap sites before any HTTP behaviour:
 
 ## Open Questions
 
-- What is the default body-cap size for the standard pipeline: the current
-  `maxBodyBytes` (1 MB), or larger now that memory no longer scales with
-  body size?
-- Should `socketEnumerator` surface an idle-read timeout, or does that
-  wait for the readiness-manager work (carried over from RFC-0003)?
-- Does `RequestHead` keep `requestRawPath` and the existing percent
-  decoding semantics unchanged, or is this the moment to revisit them?
-- Sequencing: this RFC follows RFC-0003 phase three. Does the editor
-  progressive-enhancement work (RFC-0001) jump the queue, since the
-  `Application` change will touch the same TestApp handlers?
+None currently. The four questions raised at drafting were resolved in
+the 2026-06-11 design review; the decisions are recorded in the Proposal,
+Compatibility Impact, and Rollout Plan sections:
+
+- Default body-cap size: stays settings-driven at the current
+  `settingsMaxBodyBytes` default (1 MB); the cap is application policy,
+  not server health (see Application Contract).
+- Idle-read timeout: deferred to the readiness-manager work; the seam is
+  `EndOfStream (Just err)` from `socketEnumerator` (see Producers and
+  Sinks).
+- `RequestHead` semantics: field-for-field the current `Request` minus
+  `requestBody`; raw path and percent decoding unchanged, with the
+  `+`-in-path-segments defect fixed separately (see Compatibility
+  Impact).
+- Sequencing against RFC-0001: phases one and two touch only new modules
+  and start immediately; phase three follows RFC-0001 if it is ready by
+  the end of phase two (see Rollout Plan).

@@ -398,10 +398,15 @@ design and migration plan are RFC-0004.
 Consequences: Bodies of any size are handled in constant memory. The body
 limit relocates from central parsing to a default size-cap stage in the
 server pipeline, and handlers wanting strict bodies state an explicit
-bound. The pure parser shrinks to header bytes only. The `Application` and
-router payload types change, and TestApp handlers migrate. Unconsumed body
-bytes are disposed of by the server's close-per-connection policy until
-keep-alive is revisited.
+bound; the declared `Content-Length` is still checked against the cap
+before any body bytes are read. The iteratee continuation is pure, with
+effects confined to an explicit effect constructor, so the `Monad`
+instance can feed residue eagerly; the failure vocabulary (`IterError`)
+covers both read and write transport failures, retiring RFC-0003's
+`FrameError`. The pure parser shrinks to header bytes only. The
+`Application` and router payload types change, and TestApp handlers
+migrate. Unconsumed body bytes are disposed of by the server's
+close-per-connection policy until keep-alive is revisited.
 
 ## ADR Registry Open Review Items
 

@@ -209,6 +209,18 @@ ceiling, which the single-threaded ping-pong bench cannot show because that
 one is bounded by the non-blocking poll delay. Requires GHC, Cabal, and the
 `network` package.
 
+Run the iteratee receive-path bench:
+
+```sh
+make bench-iteratee
+```
+
+This reuses the same saturated two-process harness, but the MicroHs receiver
+(`bench/IterateeReceiver.hs`) drains the stream both with the raw `recv` loop
+and through `socketEnumerator` into a counting consumer, reporting MB/s for
+each so the iteratee overhead is the delta. It answers whether the iteratee
+layer keeps up with the socket; both paths are constant-memory.
+
 Compile all retained spikes:
 
 ```sh

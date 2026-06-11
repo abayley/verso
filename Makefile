@@ -15,7 +15,7 @@ DOCS = docs
 DOC_FILES = README.md INSTALL.md STANDARDS.md TODO.md "$(DOCS)/**/*.md"
 HS_FILES = $(shell find $(SRC) $(TEST) -name '*.hs' | sort)
 
-.PHONY: docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-test-app test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-socket bench-socket-saturated spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11 all-spikes check clean
+.PHONY: docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-test-app test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-socket bench-socket-saturated bench-iteratee spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11 all-spikes check clean
 
 spike1:
 	mkdir -p $(BUILD)
@@ -140,6 +140,9 @@ bench-socket:
 
 bench-socket-saturated:
 	bash scripts/socket-saturated-bench.sh
+
+bench-iteratee:
+	bash scripts/iteratee-bench.sh
 
 spike-remark-ast:
 	bun scripts/remark-ast-spike.mjs

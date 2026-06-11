@@ -12,6 +12,7 @@ import Data.Char (isDigit, isSpace)
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http as Http
 import MicroHttp.Http.Parse (ParseError (..))
+import MicroHttp.Http.PercentEncoding (decodeFormValue)
 import MicroHttp.Iteratee (liftIO, readBodyStrict)
 import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
@@ -162,36 +163,14 @@ formFields body =
 parseField :: String -> (String, String)
 parseField field =
     case break (== '=') field of
-        (key, '=' : value) -> (percentDecode key, percentDecode value)
-        (key, _) -> (percentDecode key, "")
+        (key, '=' : value) -> (decodeFormValue key, decodeFormValue value)
+        (key, _) -> (decodeFormValue key, "")
 
 splitOn :: Char -> String -> [String]
 splitOn separator text =
     case break (== separator) text of
         (before, _ : after) -> before : splitOn separator after
         (before, []) -> [before]
-
-percentDecode :: String -> String
-percentDecode [] = []
-percentDecode ('%' : a : b : rest) =
-    case hexPair a b of
-        Just c -> c : percentDecode rest
-        Nothing -> '%' : a : b : percentDecode rest
-percentDecode ('+' : rest) = ' ' : percentDecode rest
-percentDecode (c : rest) = c : percentDecode rest
-
-hexPair :: Char -> Char -> Maybe Char
-hexPair a b =
-    case (hexValue a, hexValue b) of
-        (Just high, Just low) -> Just (toEnum (high * 16 + low))
-        _ -> Nothing
-
-hexValue :: Char -> Maybe Int
-hexValue c
-    | isDigit c = Just (fromEnum c - fromEnum '0')
-    | 'a' <= c && c <= 'f' = Just (10 + fromEnum c - fromEnum 'a')
-    | 'A' <= c && c <= 'F' = Just (10 + fromEnum c - fromEnum 'A')
-    | otherwise = Nothing
 
 indexHtml :: String
 indexHtml =

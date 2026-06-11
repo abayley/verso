@@ -7,9 +7,10 @@ module MicroHttp.Http.Parser (
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
-import Data.Char (isAsciiUpper, isDigit, isSpace)
+import Data.Char (isAsciiUpper, isSpace)
 import MicroHttp.Http
 import MicroHttp.Http.Parse (ParseError (..), ParseLimits (..), defaultParseLimits)
+import MicroHttp.Http.PercentEncoding (decodeFormValue, decodePathSegment)
 
 {- | Parses a framed header block (the bytes before the CRLFCRLF terminator,
 which the framing iteratee has already located) into a 'RequestHead'. The
@@ -83,40 +84,6 @@ parseQuery queryText = map parsePair (splitOn '&' queryText)
         case break (== '=') text of
             (key, '=' : value) -> (decodeFormValue key, decodeFormValue value)
             (key, _) -> (decodeFormValue key, "")
-
-{- | Percent-decodes a path segment. A literal @+@ is kept, because
-plus-as-space is a form/query-string convention, not a path one.
--}
-decodePathSegment :: String -> String
-decodePathSegment = percentDecode False
-
-{- | Percent-decodes an application/x-www-form-urlencoded value, where a
-literal @+@ means a space.
--}
-decodeFormValue :: String -> String
-decodeFormValue = percentDecode True
-
-percentDecode :: Bool -> String -> String
-percentDecode _ [] = []
-percentDecode plusIsSpace ('%' : a : b : rest) =
-    case hexPair a b of
-        Just c -> c : percentDecode plusIsSpace rest
-        Nothing -> '%' : a : b : percentDecode plusIsSpace rest
-percentDecode True ('+' : rest) = ' ' : percentDecode True rest
-percentDecode plusIsSpace (c : rest) = c : percentDecode plusIsSpace rest
-
-hexPair :: Char -> Char -> Maybe Char
-hexPair a b =
-    case (hexValue a, hexValue b) of
-        (Just high, Just low) -> Just (toEnum (high * 16 + low))
-        _ -> Nothing
-
-hexValue :: Char -> Maybe Int
-hexValue c
-    | isDigit c = Just (fromEnum c - fromEnum '0')
-    | 'a' <= c && c <= 'f' = Just (10 + fromEnum c - fromEnum 'a')
-    | 'A' <= c && c <= 'F' = Just (10 + fromEnum c - fromEnum 'A')
-    | otherwise = Nothing
 
 splitLines :: String -> [String]
 splitLines = splitOnString "\r\n"

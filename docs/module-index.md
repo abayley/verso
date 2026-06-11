@@ -30,6 +30,7 @@ stable concepts:
 | `MicroHttp.Http` | HTTP request head, response, status, and header types | [HTTP Types Module Design](initial-module-design/http-types.md) |
 | `MicroHttp.Http.Parse` | Parser error and limit types (RFC-0004) | [RFC-0004](rfcs/rfc-0004-iteratee-streaming-io.md) |
 | `MicroHttp.Http.Parser` | HTTP/1 request-head parsing | [HTTP Parser Module Design](initial-module-design/http-parser.md) |
+| `MicroHttp.Http.PercentEncoding` | Shared path/form percent-decoding | [HTTP Parser Module Design](initial-module-design/http-parser.md) |
 | `MicroHttp.Http.Framing` | Incremental header framing iteratee (RFC-0004) | [RFC-0004](rfcs/rfc-0004-iteratee-streaming-io.md) |
 | `MicroHttp.Http.Response` | HTTP response serialisation and writing | [HTTP Response Module Design](initial-module-design/http-response.md) |
 | `MicroHttp.Iteratee` | General iteratee/enumerator streaming core (RFC-0004) | [RFC-0004](rfcs/rfc-0004-iteratee-streaming-io.md) |

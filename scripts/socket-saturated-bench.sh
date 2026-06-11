@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Saturated loopback throughput for MicroHttp.Network.Socket: a GHC blocking
+# sender keeps the pipe full while the MicroHs receiver drains it through the
+# production recv loop, isolating the recv ceiling from the single-threaded
+# poll-bound ping-pong of bench/SocketBench.hs. The receiver prints the result.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUILD="$ROOT/build"
+DB="$HOME/.mcabal/mhs-0.16.0.0"
+PORT=8090
+BYTES="${1:-$((512 * 1024 * 1024))}"
+
+mkdir -p "$BUILD"
+
+# Receiver: MicroHs, the subject under test.
+mhs -a"$DB" -i"$ROOT/src" -i"$ROOT/bench" "$ROOT/bench/SocketReceiver.hs" -o "$BUILD/socket-receiver"
+
+# Sender: GHC + network, blocking sends.
+(cd "$ROOT/bench/sender" && cabal build >/dev/null 2>&1)
+SENDER="$(cd "$ROOT/bench/sender" && cabal list-bin socket-sender)"
+
+# Start the receiver, then the sender (which retries the connect past the
+# startup race). Clean up the receiver if anything fails.
+"$BUILD/socket-receiver" &
+RECV_PID=$!
+trap 'kill "$RECV_PID" 2>/dev/null || true' EXIT
+
+"$SENDER" "$PORT" "$BYTES"
+wait "$RECV_PID"

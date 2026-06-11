@@ -195,6 +195,20 @@ from the iteratee layer, in single-threaded transfer rounds, and reports
 MB/s per recv buffer size. Like coverage, it is a measurement tool and not
 part of the `make check` gate. The bench source is `bench/SocketBench.hs`.
 
+Run the saturated throughput bench:
+
+```sh
+make bench-socket-saturated
+```
+
+This drives a two-process transfer: a GHC blocking sender
+(`bench/sender/`, built with Cabal and the `network` package) keeps the
+pipe full while the MicroHs receiver (`bench/SocketReceiver.hs`) drains it
+through the production `recv` loop. It reports the receiver's true recv
+ceiling, which the single-threaded ping-pong bench cannot show because that
+one is bounded by the non-blocking poll delay. Requires GHC, Cabal, and the
+`network` package.
+
 Compile all retained spikes:
 
 ```sh

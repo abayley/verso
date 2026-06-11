@@ -1,0 +1,49 @@
+diff --git a/src/runtime/eval.c b/src/runtime/eval.c
+index f6bb5754..f6f6fbae 100644
+--- a/src/runtime/eval.c
++++ b/src/runtime/eval.c
+@@ -4729,6 +4729,14 @@ evalstring(NODEPTR n)
+   NODEPTR x;
+   struct bytestring bs;
+ 
++  /* LOCAL PATCH: bspack-corruption workaround. The walking primitives zap
++   * their argument before this loop finishes, so a mid-walk reschedule
++   * re-executes from a zapped graph and returns an empty result. Make the
++   * walk non-preemptible until upstream is fixed. Revert: delete the two
++   * glob_slice lines around this loop. */
++  counter_t saved_slice = glob_slice;
++  glob_slice = 1000000000;
++
+   for (offs = 0;;) {
+     if (offs >= sz - 4) {
+       sz *= 2;
+@@ -4770,6 +4778,7 @@ evalstring(NODEPTR n)
+       ERR("evalstring not Nil/Cons");
+     }
+   }
++  glob_slice = saved_slice;
+   buf[offs] = 0;                /* in case we use it as a C string */
+   bs.size = offs;
+   bs.string = buf;
+@@ -4787,6 +4796,13 @@ evalbytestring(NODEPTR n)
+   NODEPTR x;
+   struct bytestring bs;
+ 
++  /* LOCAL PATCH: bspack-corruption workaround. See evalstring above. The
++   * walk must complete without a reschedule, or the zapped argument makes
++   * the re-execution return an empty result. Revert: delete the two
++   * glob_slice lines around this loop. */
++  counter_t saved_slice = glob_slice;
++  glob_slice = 1000000000;
++
+   for (offs = 0;;) {
+     if (offs >= sz - 1) {
+       sz *= 2;
+@@ -4808,6 +4824,7 @@ evalbytestring(NODEPTR n)
+       ERR("evalbytestring not Nil/Cons");
+     }
+   }
++  glob_slice = saved_slice;
+   buf[offs] = 0;                /* in case we use it as a C string */
+   bs.size = offs;
+   bs.string = buf;

@@ -24,8 +24,10 @@
 -- The trigger appears conjunctive: lazy construction of a large
 -- ByteString after the polling thread exists, plus sending from the
 -- ByteString's interior pointer while both threads poll EAGAIN with
--- threadDelay. Note that mhs appears to block-buffer redirected stdout
--- regardless of hSetBuffering, so a killed hung run shows no output.
+-- threadDelay. Note that mhs stdout is fully buffered and only flushed on
+-- clean exit; hSetBuffering (LineBuffering or NoBuffering) has no observable
+-- effect on a file, pipe, or pty, so a killed hung run loses all stdout.
+-- stderr is write-through, so this spike reports progress on stderr.
 --
 -- Compile and run:
 --   mhs spike/MicroHttp/Spike10.hs -ispike -o build/spike10 && build/spike10
@@ -67,7 +69,7 @@ pollMicros = 1000
 
 main :: IO ()
 main = do
-    hSetBuffering stdout LineBuffering
+    hSetBuffering stdout NoBuffering
     listener <- c_socket afInet sockStream 0
     require "socket" listener
     require "fcntl listener" =<< setNonBlocking listener
@@ -75,23 +77,23 @@ main = do
         require "bind" =<< c_bind listener addr 16
         require "listen" =<< c_listen listener 1
     port <- boundPort listener
-    putStrLn ("listening on port " ++ show port)
+    hPutStrLn stderr ("listening on port " ++ show port)
     client <- connectNonBlocking port
     served <- acceptNonBlocking listener
-    putStrLn "connected"
+    hPutStrLn stderr "connected"
     recvBuffer <- mallocBytes 65536
     runIterations 1 client served recvBuffer
 
 runIterations :: Int -> Int -> Int -> Ptr () -> IO ()
 runIterations iteration client served recvBuffer
-    | iteration > iterations = putStrLn "all iterations completed"
+    | iteration > iterations = hPutStrLn stderr "all iterations completed"
     | otherwise = do
         done <- newEmptyMVar
         _ <- forkIO (drain served recvBuffer 0 done)
         let payload = BS.concat (replicate 8 (BS.pack (replicate 65536 'x')))
         BS.useAsCStringLen payload (\(ptr, len) -> sendLoopBS client (castPtr ptr) len 0)
         total <- takeMVar done
-        putStrLn ("iteration " ++ show iteration ++ " received " ++ show total)
+        hPutStrLn stderr ("iteration " ++ show iteration ++ " received " ++ show total)
         runIterations (iteration + 1) client served recvBuffer
 
 -- The receiver green thread: recv until payloadBytes seen, polling EAGAIN.
@@ -108,7 +110,7 @@ drain fd buffer total done
                         threadDelay pollMicros
                         drain fd buffer total done
                     else do
-                        putStrLn "recv failed"
+                        hPutStrLn stderr "recv failed"
                         putMVar done total
             else drain fd buffer (total + received) done
 
@@ -126,7 +128,7 @@ sendLoopBS fd buffer len sent
                     then do
                         threadDelay pollMicros
                         sendLoopBS fd buffer len sent
-                    else putStrLn "send failed"
+                    else hPutStrLn stderr "send failed"
             else sendLoopBS fd buffer len (sent + wrote)
 
 connectNonBlocking :: Int -> IO Int
@@ -151,7 +153,7 @@ connectLoop fd addr = do
                         then do
                             threadDelay pollMicros
                             connectLoop fd addr
-                        else putStrLn "connect failed"
+                        else hPutStrLn stderr "connect failed"
 
 acceptNonBlocking :: Int -> IO Int
 acceptNonBlocking listener =
@@ -173,7 +175,7 @@ acceptNonBlocking listener =
                         threadDelay pollMicros
                         acceptLoop addr addrLen
                     else do
-                        putStrLn "accept failed"
+                        hPutStrLn stderr "accept failed"
                         return (-1)
 
 boundPort :: Int -> IO Int
@@ -210,5 +212,5 @@ setNonBlocking fd = c_fcntl fd fSetFl oNonBlock
 require :: String -> Int -> IO ()
 require label result =
     if result < 0
-        then putStrLn (label ++ " failed")
+        then hPutStrLn stderr (label ++ " failed")
         else return ()

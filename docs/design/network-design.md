@@ -116,26 +116,45 @@ changing the poller's timeout.
 The performance harness should be built before the readiness manager so the
 polling tax is measured, not assumed.
 
-Known runtime finding: a sender green thread and a receiver green thread
-polling the same connection hang reliably under MicroHs 0.16 when a large
-ByteString payload is forced lazily after the receiver thread is forked and
-sent from its interior pointer under `useAsCStringLen`
-(`spike/MicroHttp/Spike10.hs` is a self-contained reproducer with the full
-bisection matrix, and RFC-0003 records the details). The hung process
-sleeps with empty kernel socket queues. Forcing the payload before
-`forkIO` or copying it out of the ByteString before sending avoids the
-hang. Until this is resolved upstream, integration tests avoid concurrent
-transfers on one connection, and the readiness manager and performance
-harness work must treat this as a known hazard to retest.
+Known runtime finding: under MicroHs 0.16.0.0 (macOS arm64), forcing a
+sufficiently large lazily constructed ByteString yields an empty value
+once any other thread has been forked, even a thread that did nothing and
+has already exited. The corrupt value is memoised, and every forcing
+observer is affected (`BS.length` and `useAsCStringLen` both tested). The
+boundary sits between 1024 bytes (correct) and 4096 bytes (corrupt).
+`spike/MicroHttp/Spike11.hs` is a nine-line deterministic reproducer;
+`spike/MicroHttp/Spike10.hs` preserves the socket-level manifestation it
+was minimised from, where a sender received length zero for its payload,
+sent nothing, and deadlocked with its polling receiver. `packCStringLen`
+from FFI buffers, as used by `recv`, round-trips real bytes in the
+loopback suite and appears unaffected.
 
-Available workaround, not yet applied: the production `sendAll` uses the
-hazardous pattern, holding a `useAsCStringLen` interior pointer over a
-possibly lazily constructed body while other connection threads poll. The
-bisection shows two immunisations: copy the bytes into a transient
-malloc-allocated buffer inside `sendAll` before the send loop (the
-memcpy variant passed every run), or force the ByteString fully before
-the pointer is taken. The copy costs one extra pass over each outgoing
-body and should be removed when the upstream fix lands.
+No validated in-process userland workaround is known. Two earlier
+candidates were withdrawn on closer testing: copying the bytes out under a
+brief `useAsCStringLen` only masked the fault in the experiment that
+appeared to validate it, and a pure pack-then-check-length-then-retry loop
+can livelock, because the corrupting condition is phase-locked to the
+reduction count, so a rebuilt-and-rewalked pack straddles the same slice
+expiry and corrupts identically unless a scheduling perturbation is
+introduced between attempts (which a pure function cannot do). The root
+cause and the full diagnosis are in
+[microhs-bytestring-bug-report.md](../microhs-bytestring-bug-report.md).
+
+Current local mitigation: the MicroHs runtime is patched to make the
+ByteString list-walk primitives non-preemptible. In
+`src/runtime/eval.c`, `evalstring` and `evalbytestring` save `glob_slice`,
+inflate it for the duration of the walk, and restore it afterwards, so the
+walk cannot be rescheduled mid-flight and the zapped-argument re-execution
+never happens. This trades latency (a large pack now runs without yielding)
+for correctness, which is the accepted trade until upstream resolves it.
+The patch lives in the developer's MicroHs checkout and its installed
+mcabal copy, not in this repository; it must be reapplied after any MicroHs
+reinstall. `spike/MicroHttp/Spike11.hs` and `spike/MicroHttp/Spike10.hs`
+both pass under the patch and both fail without it, so they double as the
+patch's regression check. Integration tests keep their single-threaded
+transfer rounds for now; the readiness manager and performance harness work
+should retest concurrency once upstream resolves the bug and the local
+patch is dropped.
 
 ## Streaming Direction
 

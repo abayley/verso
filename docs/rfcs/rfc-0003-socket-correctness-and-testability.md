@@ -209,23 +209,20 @@ Test cases, simplest to most complex:
 
 ## Open Questions
 
-- Concurrency finding: a sender green thread and a receiver green thread
-  polling the same loopback connection hang reliably under the MicroHs
-  0.16 runtime. Bisection (matrix in `spike/MicroHttp/Spike10.hs`, a
-  self-contained reproducer that hangs three of three runs) narrowed the
-  trigger to a conjunction: a large ByteString payload forced lazily after
-  the receiver thread is forked, then sent from its interior pointer under
-  `useAsCStringLen` while both threads poll EAGAIN with `threadDelay`.
-  Forcing the payload before `forkIO`, copying it out of the ByteString
-  before sending, or removing either thread's socket activity all make the
-  program pass; hspec is not a factor, and earlier "tracing fixes it"
-  observations were the trace forcing the payload early. The hung process
-  sleeps at roughly one percent CPU with empty kernel socket queues. Until
-  this is fixed upstream, integration tests transfer in single-threaded
-  rounds sized within the kernel socket buffers, the original test case 6
-  is not in the suite, and test case 15 should keep its body small enough
-  to fit the kernel buffers so the client send completes before the server
-  reads.
+- Runtime finding: what first presented as a concurrency hang is silent
+  data corruption in the MicroHs runtime. Forcing a sufficiently large
+  lazily constructed ByteString yields an empty, memoised value once any
+  other thread has been forked, even one that already exited;
+  `spike/MicroHttp/Spike11.hs` is a nine-line deterministic reproducer and
+  `spike/MicroHttp/Spike10.hs` preserves the socket-level deadlock it was
+  minimised from (a sender given length zero sends nothing and its
+  receiver polls forever). The network design document carries the full
+  finding, including the withdrawal of the two workaround candidates
+  recorded earlier. Until this is fixed upstream, integration tests
+  transfer in single-threaded rounds sized within the kernel socket
+  buffers, the original test case 6 is not in the suite, and test case 15
+  should keep its body small enough to fit the kernel buffers so the
+  client send completes before the server reads.
 - Should a slow or stalled peer be bounded by an idle-read timeout in this
   RFC, or deferred to the readiness-manager work where time-based waiting
   gets a proper home?

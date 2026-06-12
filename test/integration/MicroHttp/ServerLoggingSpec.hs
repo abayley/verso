@@ -1,12 +1,15 @@
 module MicroHttp.ServerLoggingSpec (spec) where
 
+import Control.Monad (when)
 import qualified Data.ByteString.Char8 as BS
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
+import Data.List (isInfixOf)
 import MicroHttp.Http (Method (..), RequestHead (..), Status (..))
-import MicroHttp.Log (AccessEvent (..), Logger)
+import MicroHttp.Log (AccessEvent (..), Logger, fileLogfmtLogger)
 import MicroHttp.Network.Socket
 import MicroHttp.Server
 import qualified MicroHttp.TestApp as TestApp
+import System.Directory (doesFileExist, removeFile)
 import Test.Hspec
 
 spec :: Spec
@@ -44,9 +47,35 @@ spec =
                         statusCode status `shouldBe` 408
                     _ -> expect ("expected a single completed 408 line, got: " ++ describe' recorded) False
 
+        it "given a file logger, when a request is handled, then the access log file holds the request lines" $
+            withConnectedPair $ \client served -> do
+                removeIfExists accessLogPath
+                sent <- sendAll client (BS.pack "GET / HTTP/1.1\r\n\r\n")
+                sent `shouldBe` Right ()
+                result <- handleClient (fileLoggingSettings accessLogPath) (TestApp.appWithDocumentRoot documentRoot) served
+                _ <- recv client 4096
+                result `shouldBe` Right ()
+                contents <- readFile accessLogPath
+                removeIfExists accessLogPath
+                ("event=RQST" `isInfixOf` contents) `shouldBe` True
+                ("event=RESP" `isInfixOf` contents) `shouldBe` True
+                ("status=200" `isInfixOf` contents) `shouldBe` True
+
 loggingSettings :: IORef [AccessEvent] -> Settings
 loggingSettings events =
     defaultSettings{settingsLogger = captureLogger events}
+
+fileLoggingSettings :: FilePath -> Settings
+fileLoggingSettings path =
+    defaultSettings{settingsLogger = fileLogfmtLogger path}
+
+accessLogPath :: FilePath
+accessLogPath = "build/test-access.log"
+
+removeIfExists :: FilePath -> IO ()
+removeIfExists path = do
+    present <- doesFileExist path
+    when present (removeFile path)
 
 shortIdleLoggingSettings :: IORef [AccessEvent] -> Settings
 shortIdleLoggingSettings events =

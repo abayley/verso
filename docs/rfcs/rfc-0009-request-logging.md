@@ -23,9 +23,9 @@ superseded_by: null
 Add an opt-in access log at the server's connection layer -- the outermost
 layer, which wraps every accepted connection from its first bytes through to
 close. Every connection produces exactly one terminal log line: a
-`request.completed` line once a response (including a 400 or 408) is written,
-or a `request.aborted` line if the connection fails without a clean response.
-A `request.received` line is also emitted the moment a request head parses,
+`RESP` line once a response (including a 400 or 408) is written,
+or a `ABRT` line if the connection fails without a clean response.
+A `RQST` line is also emitted the moment a request head parses,
 carrying the method and path. The log sink and the line format are injected
 components, so the destination (stdout, a file, a test buffer) and the format
 are swappable; the default format is logfmt. Logging is off by default, so
@@ -82,11 +82,11 @@ mark it as complete in the phase checklist.
 
 ## Goals
 
-- Every accepted connection is logged: a `request.completed` line when a
+- Every accepted connection is logged: a `RESP` line when a
   response is written (including the 400 and 408 paths), or a
-  `request.aborted` line when the connection fails without a clean response.
+  `ABRT` line when the connection fails without a clean response.
   No connection that the server handles goes unlogged.
-- A `request.received` line is emitted the moment the head parses, carrying
+- A `RQST` line is emitted the moment the head parses, carrying
   method and path -- the earliest point a meaningful request line exists.
 - The completion line carries the response status, the bytes written, and the
   latency in milliseconds from the start of handling to the write.
@@ -106,9 +106,9 @@ mark it as complete in the phase checklist.
 - No request/response tracing, span propagation, or correlation IDs.
 - No per-packet line on the raw first bytes: a connection has no method, path,
   or peer address until the head is framed and parsed (and `getpeername` is
-  not surfaced today), so the earliest informative line is `request.received`
+  not surfaced today), so the earliest informative line is `RQST`
   at parse, and a pre-parse failure is captured by the terminal
-  `request.aborted` line rather than a separate "bytes arrived" event.
+  `ABRT` line rather than a separate "bytes arrived" event.
 - No monotonic-clock guarantee; wall-clock milliseconds are used.
 - No log rotation or sink buffering; those are the injected sink's concern.
 
@@ -160,12 +160,12 @@ mark it as complete in the phase checklist.
     the response status on a written response (success, 400, or 408), or
     `RequestAborted` with the `ServerError` on a read or write failure.
 - logfmt shape:
-  - `event=request.received method=GET path=/documents/home`
-  - `event=request.completed method=GET path=/documents/home status=200
+  - `event=RQST method=GET path=/documents/home`
+  - `event=RESP method=GET path=/documents/home status=200
     bytes=1234 dur_ms=12`
-  - `event=request.completed method=- path=- status=400 bytes=12 dur_ms=0`
+  - `event=RESP method=- path=- status=400 bytes=12 dur_ms=0`
     when the head did not parse.
-  - `event=request.aborted method=GET path=/big error=ServerWriteFailed
+  - `event=ABRT method=GET path=/big error=ServerWriteFailed
     dur_ms=30000` when the connection failed without a clean response.
 
 ## Alternatives Considered
@@ -195,7 +195,7 @@ mark it as complete in the phase checklist.
   log destinations as carrying request metadata. Header values and bodies are
   not logged, so credentials in headers or form bodies do not reach the log by
   default.
-- The `request.aborted` line records failed connections, which aids spotting
+- The `ABRT` line records failed connections, which aids spotting
   a slow-loris or scanning pattern, complementing the RFC-0006 and RFC-0008
   timeouts.
 - No authentication or authorization behaviour changes.

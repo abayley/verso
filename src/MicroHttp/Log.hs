@@ -13,10 +13,12 @@ module MicroHttp.Log (
     nullLogger,
     formatLogfmt,
     logfmtTo,
+    fileLogfmtLogger,
 ) where
 
 import Data.List (intercalate)
 import MicroHttp.Http (RequestHead (..), Status (..))
+import System.IO (appendFile)
 
 -- | An injected access-log sink.
 type Logger = AccessEvent -> IO ()
@@ -41,18 +43,26 @@ nullLogger _ = pure ()
 logfmtTo :: (String -> IO ()) -> Logger
 logfmtTo emit event = emit (formatLogfmt event)
 
+{- | A logfmt logger that appends each line to a file at the given path. It
+opens the file in append mode for each line, so writes go to the end without a
+shared handle; this is adequate for low to moderate request volume. A shared
+handle or buffered sink can replace it if volume warrants.
+-}
+fileLogfmtLogger :: FilePath -> Logger
+fileLogfmtLogger path = logfmtTo (\line -> appendFile path (line ++ "\n"))
+
 -- | Renders an access event as a single logfmt line.
 formatLogfmt :: AccessEvent -> String
 formatLogfmt event =
     case event of
         RequestReceived head ->
-            "event=request.received"
+            "event=RQST"
                 ++ " method="
                 ++ methodField (Just head)
                 ++ " path="
                 ++ pathField (Just head)
         RequestCompleted head status bytes durationMillis ->
-            "event=request.completed"
+            "event=RESP"
                 ++ " method="
                 ++ methodField head
                 ++ " path="
@@ -64,7 +74,7 @@ formatLogfmt event =
                 ++ " dur_ms="
                 ++ show durationMillis
         RequestAborted head reason durationMillis ->
-            "event=request.aborted"
+            "event=ABRT"
                 ++ " method="
                 ++ methodField head
                 ++ " path="

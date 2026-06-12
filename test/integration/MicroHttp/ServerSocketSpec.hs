@@ -104,11 +104,14 @@ shortWriteSettings =
     defaultSettings{settingsIdleWriteTimeoutMicros = 100000}
 
 {- | An application that returns a response far larger than the kernel send
-buffers, so a client that stops reading forces the write to block.
+buffers, so a client that stops reading forces the write to block. The body is
+64 MiB: macOS loopback socket buffers autotune to several MiB, so a smaller
+body can be fully absorbed before the write ever blocks, making the timeout
+test flaky. 64 MiB is comfortably above any such buffer.
 -}
 largeResponseApp :: Application
 largeResponseApp _ =
-    pure (Response okStatus [] (StrictBody (BS.replicate (2 * 1024 * 1024) 'x')))
+    pure (Response okStatus [] (StrictBody (BS.replicate (64 * 1024 * 1024) 'x')))
 
 {- | An outer bound on the stalled-write test: well above the 100 ms write
 timeout, so a hang (a regression) fails the test rather than wedging the suite.

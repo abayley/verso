@@ -10,8 +10,10 @@ Change plans referenced here:
 
 - [RFC-0003](../rfcs/rfc-0003-socket-correctness-and-testability.md) covers
   request framing and socket testability.
-- The readiness manager, performance harness, portability backends, and GHC
-  support described under future direction do not have RFCs yet.
+- [RFC-0005](../rfcs/rfc-0005-socket-readiness-manager.md) covers socket
+  readiness waiting (replacing the 1 ms poll with the runtime poll queue).
+- Portability backends and GHC support described under future direction do
+  not have RFCs yet; the performance harness is the `bench/` suite.
 
 ## Network Design Constraints
 
@@ -19,15 +21,18 @@ The design is shaped by the MicroHs runtime:
 
 - Threads are green threads scheduled by the runtime on effectively one
   operating-system thread. A blocking syscall blocks every thread.
-- There is no IO manager: no `threadWaitRead`, and no integration between
-  file-descriptor readiness and the scheduler.
+- The runtime does, however, have a `poll()`-based I/O wait queue in its
+  scheduler, exposed as `waitForReadFD`/`waitForWriteFD`
+  (`IO.waitrdfd`/`IO.waitwrfd`, under `WANT_IO_POLL`). This is the
+  integration between file-descriptor readiness and the scheduler that
+  earlier drafts of this document assumed was absent; RFC-0005 uses it.
 - STM is available (`TVar`, `TMVar`, `TQueue`, `TBQueue`, `atomically`,
   `retry`), as are `forkIO`, `MVar`, and `QSem`.
 
 Consequences: every socket is set non-blocking, and every potentially
-blocking operation is a retry loop that sleeps one millisecond on
-`EAGAIN`/`EWOULDBLOCK`. Errors are returned as `Either SocketError`
-(ADR-009), never thrown.
+blocking operation is a retry loop. On `EAGAIN`/`EWOULDBLOCK` it parks the
+thread on the runtime poll queue (RFC-0005) rather than sleeping. Errors are
+returned as `Either SocketError` (ADR-009), never thrown.
 
 ## Listening Socket State Machine
 
@@ -64,7 +69,7 @@ by a semaphore. Each connection serves exactly one request (ADR-011).
 ```mermaid
 flowchart TD
     serve[serve: Settings + Application] --> listen[listenTcp]
-    listen --> acceptLoop[accept: polls every 1 ms]
+    listen --> acceptLoop[accept: parks on read readiness]
     acceptLoop --> fork[forkIO handler, QSem cap 32]
     fork --> acceptLoop
     fork --> recv[recv request bytes]
@@ -87,34 +92,37 @@ bodies.
 
 ## Concurrency Model
 
-Current model: one green thread per connection, non-blocking syscalls, and
-per-operation polling. Every waiting operation sleeps one millisecond and
-retries its own syscall, so the syscall and wakeup cost scales with the
-number of waiting sockets, and every wait has a latency floor of up to one
-millisecond.
+One green thread per connection, non-blocking syscalls, and a would-block
+retry loop per operation. The original design slept one millisecond on
+`EAGAIN`/`EWOULDBLOCK` before retrying, which the post-RFC-0004 benches
+showed caps request/response turnaround at ~50 MB/s against a ~2.3 GB/s
+saturated ceiling: each wait paid up to a millisecond of latency floor.
 
-Target model: a single readiness manager replaces per-operation polling.
+RFC-0005 (ADR-026) removed that floor without building a bespoke poller.
+The MicroHs runtime is already the single poller: its scheduler maintains a
+`poll()`-based I/O wait queue, and `waitForReadFD`/`waitForWriteFD`
+(`IO.waitrdfd`/`IO.waitwrfd`, enabled by `WANT_IO_POLL`) park the current
+green thread on it until the descriptor is ready.
 
 ```mermaid
 flowchart TD
-    h1[Handler thread: recv would block] --> reg
-    h2[Handler thread: send would block] --> reg
-    h3[Accept loop: accept would block] --> reg
-    reg[Readiness registry: fd, interest, TVar] --> poller
-    poller[Single poller thread: one poll over all fds] --> kernel
-    kernel[poll / kqueue / epoll / WSAPoll]
-    poller -- flips readiness TVars --> reg
+    h1[Handler thread: recv would block] --> wait
+    h2[Handler thread: send would block] --> wait
+    h3[Accept loop: accept would block] --> wait
+    wait[waitForReadFD / waitForWriteFD: park on the runtime poll queue] --> sched
+    sched[Runtime scheduler: one poll over all parked fds] --> kernel
+    kernel[poll]
+    sched -- wakes the ready thread --> h1
 ```
 
-Waiting operations register their file descriptor and interest, then block
-in `atomically` with `retry` on a readiness `TVar`; the poller performs one
-`poll` over all registered descriptors and flips the `TVar`s of ready ones.
-Because a blocking `poll` FFI call would stall the whole runtime, the first
-poller still sleeps between zero-timeout polls; this preserves the latency
-floor but reduces cost to one syscall and one sleeper per tick regardless of
-socket count. If MicroHs later provides a way to block in an FFI call
-without stalling the runtime, the same architecture becomes event-driven by
-changing the poller's timeout.
+On a would-block result the operation parks via `waitForReadFD` (`recv`,
+`accept`) or `waitForWriteFD` (`sendAll`, `connectTcp`) and retries when the
+scheduler wakes it. No operation blocks in a syscall, so the single-OS-thread
+runtime is preserved; only the scheduler blocks, in one `poll()` over every
+parked descriptor at once. The ping-pong bench rose from ~50 MB/s to
+~1.0-1.5 GB/s after the change. The runtime's `MAX_POLL_FDS` (100) bounds
+simultaneously-waiting descriptors, so it and `settingsMaxActiveHandlers`
+(32) should stay consistent.
 
 The performance harness should be built before the readiness manager so the
 polling tax is measured, not assumed.

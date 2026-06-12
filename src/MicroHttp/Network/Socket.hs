@@ -15,7 +15,6 @@ module MicroHttp.Network.Socket (
     sendAll,
 ) where
 
-import Control.Concurrent (threadDelay)
 import Control.Monad (void)
 import Control.Monad.Except (ExceptT (..), catchError, runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
@@ -26,6 +25,7 @@ import Foreign.C.String (CString)
 import Foreign.Marshal.Alloc (alloca, allocaBytes)
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import Foreign.Storable (peekByteOff, poke, pokeByteOff, sizeOf)
+import System.IO.FD (waitForReadFD, waitForWriteFD)
 
 foreign import ccall "socket" c_socket :: Int -> Int -> Int -> IO Int
 foreign import ccall "setsockopt" c_setsockopt :: Int -> Int -> Int -> Ptr Int -> Int -> IO Int
@@ -95,7 +95,7 @@ accept (ListenSocket fd) =
                 errno <- getErrno
                 if isWouldBlock errno
                     then do
-                        threadDelay pollDelayMicros
+                        waitForReadFD fd
                         acceptLoop addr addrLen
                     else return (Left (SocketError "accept" errno))
             else return (Right accepted)
@@ -124,7 +124,7 @@ connectLoop fd addr addrLen = do
                 else
                     if isConnectPending errno
                         then do
-                            threadDelay pollDelayMicros
+                            waitForWriteFD fd
                             connectLoop fd addr addrLen
                         else return (Left (SocketError "connect" errno))
 
@@ -159,7 +159,7 @@ recv (ClientSocket fd) byteCount =
                 errno <- getErrno
                 if isWouldBlock errno
                     then do
-                        threadDelay pollDelayMicros
+                        waitForReadFD fd
                         recvLoop buf
                     else return (Left (SocketError "recv" errno))
             else do
@@ -185,7 +185,7 @@ sendLoop fd ptr remaining = do
             errno <- getErrno
             if isWouldBlock errno
                 then do
-                    threadDelay pollDelayMicros
+                    waitForWriteFD fd
                     sendLoop fd ptr remaining
                 else return (Left (SocketError "send" errno))
         else sendLoop fd (advanceCString ptr sent) (remaining - sent)
@@ -208,9 +208,6 @@ setNonBlocking fd = void <$> checked "fcntl" (c_fcntl fd fSetFl oNonBlock)
 isWouldBlock :: Errno -> Bool
 isWouldBlock errno =
     errno == eAGAIN || errno == eWOULDBLOCK
-
-pollDelayMicros :: Int
-pollDelayMicros = 1000
 
 {- | Runs an acquire step that already owns @fd@; if it fails, closes @fd@
 before propagating the error, so a mid-acquisition failure never leaks the

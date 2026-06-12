@@ -132,6 +132,17 @@ A reached deadline surfaces as `StreamTimeout` and the server answers
 indefinitely. The timer is armed only on a would-block read, so steady
 transfers keep the throughput above.
 
+RFC-0008 (ADR-028) mirrors this on the write side: when a response `sendAll`
+would block because a slow reader has stopped draining and the kernel send
+buffer is full, the park is given a deadline (`timeout n (waitForWriteFD fd)`)
+of `settingsIdleWriteTimeoutMicros` (30 s by default, non-positive disables).
+`sendAll = sendAllWithin 0`. A reached deadline closes the connection through
+the existing `ServerWriteFailed` path -- there is no status answer, since the
+head may already be on the wire. The server's single `socketResponseWriter`
+carries both strict and streaming bodies, so threading the timeout through it
+bounds every write. As on the read side the timer is armed only on a
+would-block write, so a draining peer keeps the throughput above.
+
 The performance harness should be built before the readiness manager so the
 polling tax is measured, not assumed.
 

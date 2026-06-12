@@ -35,6 +35,7 @@ data Settings = Settings
     , settingsMaxBodyBytes :: Int
     , settingsReadBufferBytes :: Int
     , settingsIdleReadTimeoutMicros :: Int
+    , settingsIdleWriteTimeoutMicros :: Int
     }
     deriving (Eq, Show)
 
@@ -49,6 +50,7 @@ defaultSettings =
         , settingsMaxBodyBytes = 1048576
         , settingsReadBufferBytes = 8192
         , settingsIdleReadTimeoutMicros = 30000000
+        , settingsIdleWriteTimeoutMicros = 30000000
         }
 
 data ServerError
@@ -128,7 +130,7 @@ handleClient settings app client = do
             (settingsIdleReadTimeoutMicros settings)
             (requestPipeline settings app)
     outcome <- run final
-    result <- respondToOutcome client outcome
+    result <- respondToOutcome settings client outcome
     _ <- closeClientSocket client
     return result
 
@@ -158,24 +160,24 @@ failure to a server error. An idle-read timeout is answered with a 408; a
 framing, parse, or limit failure with a 400, matching the previous
 malformed-request handling.
 -}
-respondToOutcome :: ClientSocket -> Either StreamError Response -> IO (Either ServerError ())
-respondToOutcome client outcome =
+respondToOutcome :: Settings -> ClientSocket -> Either StreamError Response -> IO (Either ServerError ())
+respondToOutcome settings client outcome =
     case outcome of
         Left (StreamReadError err) -> return (Left (ServerReadFailed err))
-        Left StreamTimeout -> writeClientResponse client requestTimeoutResponse
-        Left _ -> writeClientResponse client badRequestResponse
-        Right response -> writeClientResponse client response
+        Left StreamTimeout -> writeClientResponse settings client requestTimeoutResponse
+        Left _ -> writeClientResponse settings client badRequestResponse
+        Right response -> writeClientResponse settings client response
 
-writeClientResponse :: ClientSocket -> Response -> IO (Either ServerError ())
-writeClientResponse client response = do
-    written <- writeResponse (socketResponseWriter client) response
+writeClientResponse :: Settings -> ClientSocket -> Response -> IO (Either ServerError ())
+writeClientResponse settings client response = do
+    written <- writeResponse (socketResponseWriter settings client) response
     case written of
         Left err -> return (Left (ServerWriteFailed err))
         Right () -> return (Right ())
 
-socketResponseWriter :: ClientSocket -> ResponseWriter
-socketResponseWriter client bytes = do
-    sent <- sendAll client bytes
+socketResponseWriter :: Settings -> ClientSocket -> ResponseWriter
+socketResponseWriter settings client bytes = do
+    sent <- sendAllWithin (settingsIdleWriteTimeoutMicros settings) client bytes
     case sent of
         Left err -> return (Left (StreamWriteError err))
         Right () -> return (Right ())

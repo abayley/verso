@@ -1,7 +1,7 @@
 ---
 id: RFC-0008
 name: Idle Write Timeout
-status: Draft
+status: Implemented
 owners:
     - alistair
 created: 2026-06-12
@@ -12,11 +12,11 @@ superseded_by: null
 
 # Idle Write Timeout
 
-| Stage     | Timestamp  |
-|-----------|------------|
-| Authored  | 2026-06-12 |
-| Started   |            |
-| Completed |            |
+| Stage     | Timestamp        |
+|-----------|------------------|
+| Authored  | 2026-06-12       |
+| Started   | 2026-06-12 17:58 |
+| Completed | 2026-06-12 17:58 |
 
 ## Summary
 
@@ -146,13 +146,13 @@ is not required for this RFC's goal.
 ## Rollout Plan
 
 1. Phase one: idle write timeout.
-   - [ ] `sendAllWithin` in `MicroHttp.Network.Socket`; `sendAll =
+   - [x] `sendAllWithin` in `MicroHttp.Network.Socket`; `sendAll =
          sendAllWithin 0`.
-   - [ ] `settingsIdleWriteTimeoutMicros` in `Settings`;
+   - [x] `settingsIdleWriteTimeoutMicros` in `Settings`;
          `socketResponseWriter` threads it.
-   - [ ] Stalled-reader integration test (a large response to a non-reading
+   - [x] Stalled-reader integration test (a large response to a non-reading
          client fails within the bound, not a hang); `make check` green.
-   - [ ] Flip ADR-028 to accepted; note it in the network design document.
+   - [x] Flip ADR-028 to accepted; note it in the network design document.
 
 ### Rollout Plan Escape Hatch
 
@@ -167,7 +167,13 @@ is not required for this RFC's goal.
 - Should `socketSinkI` also gain a timeout variant for symmetry and the
   general egress path, or is bounding `socketResponseWriter` enough until a
   non-server `socketSinkI` user appears?
+  - Resolved: deferred. `socketSinkI` is not on the server response path, so
+    bounding `socketResponseWriter` meets this RFC's goal. A timeout variant
+    is added when a non-server `socketSinkI` user appears.
 - Should the read and write idle timeouts share one
   `settingsIdleTimeoutMicros`, or stay separate so they can be tuned
   independently (a server may tolerate slow readers differently from slow
   senders)?
+  - Resolved: separate. `settingsIdleReadTimeoutMicros` and
+    `settingsIdleWriteTimeoutMicros` stay distinct so a server can tolerate
+    slow readers and slow senders differently; both default to 30 s.

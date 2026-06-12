@@ -2,10 +2,13 @@ module MicroHttp.ServerSocketSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import Data.List (isInfixOf)
+import MicroHttp.Http (Response (..), ResponseBody (..), okStatus)
 import MicroHttp.Network.Socket
 import MicroHttp.Server
+import MicroHttp.Stream (StreamError (..))
 import qualified MicroHttp.TestApp as TestApp
 import System.Directory (doesFileExist, removeFile)
+import System.Timeout (timeout)
 import Test.Hspec
 
 spec :: Spec
@@ -66,6 +69,21 @@ spec =
                 received <- recv client 4096
                 result `shouldBe` Right ()
                 fmap (isInfixOf "408 Request Timeout" . BS.unpack) received `shouldBe` Right True
+        it "given a reader that stops draining a large response, when handled with a short idle write timeout, then the write fails within the bound instead of hanging" $
+            withConnectedPair $ \client served -> do
+                sent <- sendAll client (BS.pack "GET / HTTP/1.1\r\n\r\n")
+                sent `shouldBe` Right ()
+                -- The client never reads, so the kernel send buffers fill and
+                -- the response write blocks; the short write timeout must
+                -- bound it. The outer guard turns a regression into a failure
+                -- rather than a hung suite.
+                result <- timeout testGuardMicros (handleClient shortWriteSettings largeResponseApp served)
+                _ <- recv client 4096
+                case result of
+                    Nothing -> expect "handleClient hung past the write timeout" False
+                    Just (Left (ServerWriteFailed (StreamWriteError err)))
+                        | isTimeoutError err -> return ()
+                    Just other -> expect ("expected a write timeout, got " ++ show other) False
 
 smallBufferSettings :: Settings
 smallBufferSettings =
@@ -79,6 +97,24 @@ shortIdleSettings =
 smallBodySettings :: Settings
 smallBodySettings =
     defaultSettings{settingsReadBufferBytes = 1024, settingsMaxBodyBytes = 1024}
+
+-- | A short idle-write timeout so a stalled reader is bounded quickly in tests.
+shortWriteSettings :: Settings
+shortWriteSettings =
+    defaultSettings{settingsIdleWriteTimeoutMicros = 100000}
+
+{- | An application that returns a response far larger than the kernel send
+buffers, so a client that stops reading forces the write to block.
+-}
+largeResponseApp :: Application
+largeResponseApp _ =
+    pure (Response okStatus [] (StrictBody (BS.replicate (2 * 1024 * 1024) 'x')))
+
+{- | An outer bound on the stalled-write test: well above the 100 ms write
+timeout, so a hang (a regression) fails the test rather than wedging the suite.
+-}
+testGuardMicros :: Int
+testGuardMicros = 5000000
 
 documentRoot :: FilePath
 documentRoot = "build"

@@ -15,6 +15,7 @@ module MicroHttp.Network.Socket (
     recv,
     recvWithin,
     sendAll,
+    sendAllWithin,
 ) where
 
 import Control.Monad (void)
@@ -194,13 +195,23 @@ waitReadable idleMicros fd
             Just () -> return (Right ())
             Nothing -> return (Left (SocketError "recv" eTIMEDOUT))
 
--- | Whether a socket error is the idle-read-timeout failure.
+-- | Whether a socket error is an idle-timeout failure (read or write).
 isTimeoutError :: SocketError -> Bool
 isTimeoutError (SocketError _ errno) = errno == eTIMEDOUT
 
 sendAll :: ClientSocket -> BS.ByteString -> IO (Either SocketError ())
-sendAll (ClientSocket fd) bytes =
-    BS.useAsCStringLen bytes (uncurry (sendLoop fd))
+sendAll = sendAllWithin 0
+
+{- | Like 'sendAll', but the wait for write readiness on a would-block send is
+bounded by the idle timeout in microseconds: a non-positive timeout waits
+indefinitely (the RFC-0005 behaviour), and a positive one fails with a timeout
+'SocketError' ('isTimeoutError') if the peer does not drain the send buffer in
+that window. The timer is armed only when a send would block, so a send with
+buffer space returns immediately with no timer.
+-}
+sendAllWithin :: Int -> ClientSocket -> BS.ByteString -> IO (Either SocketError ())
+sendAllWithin idleMicros (ClientSocket fd) bytes =
+    BS.useAsCStringLen bytes (uncurry (sendLoop idleMicros fd))
 
 closeListenSocket :: ListenSocket -> IO (Either SocketError ())
 closeListenSocket (ListenSocket fd) = closeFd fd
@@ -208,19 +219,35 @@ closeListenSocket (ListenSocket fd) = closeFd fd
 closeClientSocket :: ClientSocket -> IO (Either SocketError ())
 closeClientSocket (ClientSocket fd) = closeFd fd
 
-sendLoop :: Int -> CString -> Int -> IO (Either SocketError ())
-sendLoop _ _ remaining | remaining <= 0 = return (Right ())
-sendLoop fd ptr remaining = do
+sendLoop :: Int -> Int -> CString -> Int -> IO (Either SocketError ())
+sendLoop _ _ _ remaining | remaining <= 0 = return (Right ())
+sendLoop idleMicros fd ptr remaining = do
     sent <- c_send fd ptr remaining 0
     if sent < 0
         then do
             errno <- getErrno
             if isWouldBlock errno
                 then do
-                    waitForWriteFD fd
-                    sendLoop fd ptr remaining
+                    ready <- waitWritable idleMicros fd
+                    case ready of
+                        Left err -> return (Left err)
+                        Right () -> sendLoop idleMicros fd ptr remaining
                 else return (Left (SocketError "send" errno))
-        else sendLoop fd (advanceCString ptr sent) (remaining - sent)
+        else sendLoop idleMicros fd (advanceCString ptr sent) (remaining - sent)
+
+{- | Waits for a descriptor to become writable, bounded by the idle timeout
+if it is positive. A reached deadline is reported as a timeout 'SocketError'.
+-}
+waitWritable :: Int -> Int -> IO (Either SocketError ())
+waitWritable idleMicros fd
+    | idleMicros <= 0 = do
+        waitForWriteFD fd
+        return (Right ())
+    | otherwise = do
+        woken <- timeout idleMicros (waitForWriteFD fd)
+        case woken of
+            Just () -> return (Right ())
+            Nothing -> return (Left (SocketError "send" eTIMEDOUT))
 
 advanceCString :: CString -> Int -> CString
 advanceCString ptr count = castPtr (castPtr ptr `plusPtr` count)

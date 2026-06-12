@@ -23,11 +23,13 @@ superseded_by: null
 Scope what it would take to run the socket adapter on Linux and on Windows,
 which currently only works on macOS. Linux is a small, in-project change: one
 platform-divergent piece (the `sockaddr_in` layout) plus an FFI integer-type
-migration that is worth doing anyway. Windows is a much larger effort that is
-partly upstream: the MicroHs runtime as configured does not compile in
-file-descriptor IO or the poll queue on its Windows targets, and the socket
-API is Winsock, not POSIX. This RFC records the analysis and a phased plan;
-it does not implement anything.
+migration that is worth doing anyway. Windows is larger but viable in
+userland: a Winsock adapter behind the existing interface, plus a delay-poll
+readiness fallback (the runtime's poll queue is not configured on Windows,
+but the scheduler is, so the pre-ADR-026 strategy still works). That ships
+with a known cost -- the request/response latency floor returns on Windows --
+which a contained runtime patch (`WSAPoll`) can later remove. This RFC
+records the analysis and a phased plan; it does not implement anything.
 
 ## Context
 
@@ -58,11 +60,18 @@ What is not portable, and why:
   to work for small values, but it is a latent width mismatch. RFC-0003
   explicitly deferred the `CInt`/`CSize`/`CSsize` migration to this RFC.
 - The MicroHs runtime configuration. The unix runtime config defines
-  `WANT_FD 1` and `WANT_IO_POLL 1` (Linux and macOS share it), so descriptor
-  IO and the readiness poll queue exist there. The `windows` and `mingw`
-  runtime configs define neither: on Windows the runtime does not currently
-  compile in file-descriptor IO or the poll queue, so `waitForReadFD` /
-  `waitForWriteFD` take the no-poll fallback (return `-1`/`EINVAL`).
+  `WANT_FD 1` and `WANT_IO_POLL 1` (Linux and macOS share it), so the
+  readiness poll queue exists there. The `windows` and `mingw` runtime
+  configs define neither, so on Windows `waitForReadFD` / `waitForWriteFD`
+  take the no-poll fallback (return `-1`/`EINVAL`). The scope of this gap is
+  narrower than it first appears, and the Windows section below works
+  through it: the green-thread scheduler (`forkIO`, `threadDelay`, `yield`,
+  MVars, `throwTo`) is in the runtime's unconditional token table, not
+  behind any `WANT_` flag, so it runs on Windows; and the socket calls are
+  this module's own `foreign import ccall`s, not the runtime's fd
+  machinery, so they do not depend on `WANT_FD`/`WANT_IO_POLL` either. The
+  one thing actually missing on Windows is the efficient readiness wait
+  (`WANT_IO_POLL`), for which there is a userland fallback.
 - The Windows socket API is Winsock: `WSAStartup` is required, sockets are
   `SOCKET` (a `UINT_PTR`, not `int`, so 64-bit on Win64), `close` is
   `closesocket`, non-blocking is `ioctlsocket(FIONBIO)` not
@@ -82,8 +91,9 @@ What is not portable, and why:
 ## Non-Goals
 
 - No implementation in this RFC; it is a scoping document.
-- No commitment to ship Windows support; it may prove gated on upstream
-  MicroHs runtime work.
+- No commitment to ship Windows support now; the analysis shows it is
+  feasible in userland, but with a performance cost until the runtime
+  `WSAPoll` patch lands.
 - No change to the public socket interface or the `Either` contract.
 - No new concurrency model; ADR-011 and ADR-026 stand.
 
@@ -123,44 +133,93 @@ Linux otherwise carries over unchanged: the unix runtime already provides
 timeout all work. After this slice plus the type migration, Linux should run
 the full integration suite.
 
-### Windows (large, partly upstream)
+### Windows (large, but viable in userland)
 
-Windows needs a Winsock adapter behind the existing interface and, first,
-runtime support that is not currently configured:
+Windows needs a Winsock adapter behind the existing interface. Behind
+`MicroHttp.Network.Socket`: call `WSAStartup` once at startup; link `ws2_32`;
+use `closesocket`; set non-blocking with `ioctlsocket(FIONBIO)`; read errors
+via `WSAGetLastError` and map `WSAEWOULDBLOCK`/`WSAEINPROGRESS`; widen the
+descriptor newtype to a `SOCKET`-sized type (the FFI type migration above is
+where this lands); and supply the Windows `sockaddr_in` (same no-`sin_len`
+layout as Linux, so the Linux helper is reusable). The toolchain question --
+does `mhs` build and run a socket server on Windows at all -- should be
+answered before committing to the adapter.
 
-- Upstream MicroHs: the `windows`/`mingw` runtime targets would need
-  descriptor IO and a readiness mechanism. The poll queue uses POSIX
-  `poll()`; Windows has `WSAPoll`, so either the runtime grows a Windows
-  readiness path or the adapter falls back to the pre-ADR-026 delay-poll on
-  Windows only. This is the gating decision and is outside MicroHttp.
-- In MicroHttp, behind `MicroHttp.Network.Socket`: call `WSAStartup` once at
-  startup; link `ws2_32`; use `closesocket`; set non-blocking with
-  `ioctlsocket(FIONBIO)`; read errors via `WSAGetLastError` and map
-  `WSAEWOULDBLOCK`/`WSAEINPROGRESS`; widen the descriptor newtype to a
-  `SOCKET`-sized type; and supply the Windows `sockaddr_in` (same
-  no-`sin_len` layout as Linux, so the Linux helper is reusable).
-- Toolchain: confirm `mhs` builds and runs a socket server on Windows at all
-  before committing to the adapter.
+The readiness gap looks like it blocks Windows but does not, because the
+scheduler is intact. `forkIO`, `threadDelay`, `yield`, MVars, and `throwTo`
+are in the runtime's unconditional token table, so the cooperative
+concurrency model runs on Windows; only the `WANT_IO_POLL` readiness
+primitive is missing. That gives a userland fallback that needs no runtime
+recompile.
 
-Because so much of Windows is upstream or unknown, the recommendation is to
-do the type migration and Linux first, prove the seam on a second platform,
-and treat Windows as a separate decision once MicroHs runtime support is
-clearer.
+#### Userland readiness fallback
+
+Make the readiness wait a seam with a per-platform implementation:
+
+- POSIX: `waitForReadFD` / `waitForWriteFD` (the ADR-026 runtime poll queue).
+- Windows: the pre-ADR-026 strategy -- a non-blocking socket
+  (`ioctlsocket(FIONBIO)`) plus `threadDelay` between retries. This works
+  because `threadDelay` is core/ungated.
+
+Consequences of the Windows fallback:
+
+- Correctness is identical on both platforms.
+- Bulk throughput is unaffected: under saturation reads rarely block, so the
+  fallback rarely sleeps. The saturated and egress bench figures should hold
+  on Windows.
+- The request/response latency floor returns, on Windows only: each idle wait
+  pays a `threadDelay` tick, so the ping-pong figure drops back toward the
+  pre-ADR-026 ~50 MB/s ceiling.
+- The idle read timeout (RFC-0006) still works, and more simply: the
+  delay-poll loop already wakes every tick, so it checks elapsed-against-
+  deadline per tick rather than relying on `System.Timeout` interrupting a
+  parked wait.
+
+A `yield`-then-`threadDelay` hybrid softens the floor: `yield` a few times
+(cooperative, no sleep, lets other handlers run at near-zero latency) before
+falling back to `threadDelay` when genuinely idle, so the sleep penalty is
+paid only when there is no other work and CPU stays bounded.
+
+The floor cannot be removed in pure userland on this single-OS-thread
+runtime: any blocking wait (`recv`, `WSAPoll` with a non-zero timeout)
+freezes every green thread, and the only thing allowed to block on many
+descriptors at once is the runtime's own poll queue, which is what is
+missing. A userland poller thread would have to call `WSAPoll` with a zero
+timeout in a loop and `yield`/`threadDelay` between passes -- one syscall per
+tick instead of one per waiter, but the same latency floor. So the delay-poll
+is the best userland option.
+
+#### The performant fix (not userland)
+
+Patch the runtime's `check_pollq` to use `WSAPoll` instead of `poll()` and
+enable `WANT_IO_POLL` on the Windows target. The two APIs are nearly
+identical, so this is a contained runtime change, and it restores ADR-026
+performance on Windows. It is a MicroHs recompile, not userland, and is the
+right long-term answer.
+
+Recommendation: do the type migration and Linux first to prove the seam on a
+second platform. Windows is then a userland adapter (Winsock plus the
+delay-poll fallback) shippable with a known, bounded cost -- the
+request/response latency floor -- which the `WSAPoll` runtime patch can later
+remove.
 
 ## Alternatives Considered
 
 - Keep hand-encoding `sockaddr_in` with per-platform byte tables in Haskell:
   brittle, re-derives what the headers already define, and still needs the
   layout branch. The C helper is simpler and authoritative.
-- A pure-Haskell Winsock binding with no runtime changes: cannot provide
-  non-busy readiness on Windows without the runtime's poll queue, so it would
-  reintroduce the delay-poll the benches showed is the bottleneck.
+- Expecting userland Windows to match POSIX readiness performance: not
+  possible on the single-OS-thread runtime without the poll queue, so the
+  delay-poll latency floor is accepted as the Windows cost until the runtime
+  `WSAPoll` patch removes it. Shipping the fallback is the chosen path, not a
+  rejected one; what is rejected is pretending userland can avoid the floor.
 
 ## Security Impact
 
 - None directly; portability does not change parsing, limits, or timeouts.
-- A Windows delay-poll fallback (if chosen) would reintroduce the latency
-  floor ADR-026 removed, but only on Windows.
+- The Windows delay-poll fallback reintroduces the latency floor ADR-026
+  removed, but only on Windows and only for request/response turnaround; the
+  idle read timeout (RFC-0006) still bounds slow peers there.
 
 ## Reliability Impact
 
@@ -177,22 +236,56 @@ clearer.
 - Running the suite per platform needs CI on that platform; today everything
   is exercised on macOS only.
 
+### Verifying performance on a new platform
+
+The `bench/` suite (also in the README) is how to check whether a port keeps
+up, and in particular how the Windows delay-poll fallback compares. The
+targets, what each measures, and what to expect on Windows:
+
+- `make bench-socket` -- single-threaded ping-pong over loopback, MB/s per
+  recv buffer size. This is the figure the readiness wait drives: ~1-1.5 GB/s
+  on POSIX (ADR-026), but expected to drop toward the pre-ADR-026 ~50 MB/s on
+  the Windows delay-poll fallback. The `yield`-then-`threadDelay` hybrid
+  should be measured here to see how much of the floor it recovers.
+- `make bench-socket-saturated` -- a GHC blocking sender keeps the pipe full
+  while the MicroHs receiver drains it; reports the raw `recv` ceiling.
+  Expected to be roughly platform-independent (reads rarely block, so the
+  fallback rarely sleeps).
+- `make bench-iteratee` -- plain `recv` versus `socketEnumerator` into a
+  counting consumer, same harness; the delta is the iteratee overhead, which
+  should stay small on any platform.
+- `make bench-egress` -- plain `sendAll` versus `socketSinkI`, with a GHC
+  drainer keeping the pipe empty; the send-path counterpart.
+
+The saturated, iteratee, and egress benches use a GHC sender/drainer built
+with Cabal and the `network` package (Winsock-backed on Windows), so the
+two-process harness itself is portable. The expected Windows signature is:
+bulk benches comparable to POSIX, `bench-socket` ping-pong floored by the
+delay-poll until the `WSAPoll` runtime patch lands. Recording before/after
+numbers for the hybrid and the patch is how the floor's cost and recovery
+get quantified.
+
 ## Rollout Plan
 
 1. FFI integer-type migration (in-project, all platforms).
 2. Linux: platform-correct `sockaddr_in`; run the integration suite on
    Linux.
-3. Windows: gated on a MicroHs runtime decision for descriptor IO and
-   readiness; then the Winsock adapter behind the existing interface.
+3. Windows: the Winsock adapter behind the existing interface, with the
+   delay-poll readiness fallback (and optionally the `yield`-then-sleep
+   hybrid); run the integration suite and the benches to record the cost.
+4. Windows performance: the runtime `WSAPoll`/`WANT_IO_POLL` patch to remove
+   the delay-poll floor; re-run the benches to confirm.
 
 Each slice is a candidate for its own RFC when picked up; this document is
 the umbrella analysis.
 
 ## Open Questions
 
-- Does `mhs` build and run a socket server on Windows today, and is enabling
-  `WANT_FD`/`WANT_IO_POLL` (or a `WSAPoll` equivalent) on the Windows runtime
-  on the upstream roadmap?
+- Does `mhs` build and run a socket server on Windows today? (The userland
+  path needs only the scheduler and the FFI, not `WANT_IO_POLL`.)
+- Is enabling a `WSAPoll`-backed poll queue on the Windows runtime on the
+  upstream roadmap, or should this project carry the patch for the
+  performant variant?
 - Does MicroHs support CPP, in case conditional Haskell is preferred over a C
   shim for the layout?
 - Should the descriptor newtype move to a `CIntPtr`/`SOCKET`-sized type as

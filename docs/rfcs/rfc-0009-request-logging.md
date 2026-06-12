@@ -1,7 +1,7 @@
 ---
 id: RFC-0009
 name: Request Logging
-status: Draft
+status: Implemented
 owners:
     - alistair
 created: 2026-06-12
@@ -12,11 +12,11 @@ superseded_by: null
 
 # Request Logging
 
-| Stage     | Timestamp  |
-|-----------|------------|
-| Authored  | 2026-06-12 |
-| Started   |            |
-| Completed |            |
+| Stage     | Timestamp        |
+|-----------|------------------|
+| Authored  | 2026-06-12       |
+| Started   | 2026-06-12 20:51 |
+| Completed | 2026-06-12 20:51 |
 
 ## Summary
 
@@ -123,10 +123,15 @@ mark it as complete in the phase checklist.
       head is `Maybe` because a malformed request answered with 400, or an
       idle timeout answered with 408 during the header read, has no parsed
       head (its path logs as `-`).
-    - `RequestAborted (Maybe RequestHead) ServerError Int` -- the connection
+    - `RequestAborted (Maybe RequestHead) String Int` -- the connection
       failed without a clean response (a read failure, or a write failure
-      mid-response); the `Int` is the duration in milliseconds. The head is
-      present if the failure came after the head parsed.
+      mid-response); the `String` is a short error label and the `Int` is the
+      duration in milliseconds. The head is present if the failure came after
+      the head parsed. The label is a plain `String` rather than the server's
+      `ServerError` so that `MicroHttp.Log` depends only on `MicroHttp.Http`;
+      the server imports `MicroHttp.Log` for the `Settings` field, so carrying
+      `ServerError` here would be an import cycle. The server maps its
+      `ServerError` to the label (for example `ServerWriteFailed`).
   - `nullLogger :: Logger`, the no-op default (`const (pure ())`).
   - `formatLogfmt :: AccessEvent -> String`, the default formatter, and
     `logfmtTo :: (String -> IO ()) -> Logger` building a logger from a sink
@@ -235,17 +240,17 @@ mark it as complete in the phase checklist.
 ## Rollout Plan
 
 1. Phase one: access log at the connection seam.
-   - [ ] `MicroHttp.Log` with `Logger`, `AccessEvent`, `nullLogger`,
+   - [x] `MicroHttp.Log` with `Logger`, `AccessEvent`, `nullLogger`,
          `formatLogfmt`, and `logfmtTo`.
-   - [ ] `settingsLogger` in `Settings` (default `nullLogger`); drop the
+   - [x] `settingsLogger` in `Settings` (default `nullLogger`); drop the
          `Settings` `deriving (Eq, Show)`.
-   - [ ] `requestPipeline` `onHead` callback; `handleClient` times the
+   - [x] `requestPipeline` `onHead` callback; `handleClient` times the
          request, captures the head, counts written bytes, and emits the
          received and terminal events; `respondToRequestBytes` passes a no-op
          `onHead`.
-   - [ ] Unit formatter tests and integration capturing-logger tests
+   - [x] Unit formatter tests and integration capturing-logger tests
          (normal request and stalled-peer terminal line); `make check` green.
-   - [ ] Flip ADR-029 to accepted; note it in the relevant design document.
+   - [x] Flip ADR-029 to accepted; note it in the relevant design document.
 
 ### Rollout Plan Escape Hatch
 

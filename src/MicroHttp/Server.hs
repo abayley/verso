@@ -13,13 +13,16 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.QSem
 import qualified Data.ByteString.Char8 as BS
 import Data.Char (isDigit)
+import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
 import MicroHttp.Http
 import MicroHttp.Http.Framing
 import MicroHttp.Http.Parser (ParseError (..), ParseLimits (..), parseRequestHead)
 import MicroHttp.Http.Response
 import MicroHttp.Iteratee (Iter (..), Stream (..), run, strictEnumerator, takeN)
+import MicroHttp.Log (AccessEvent (..), Logger, nullLogger)
 import MicroHttp.Network.Socket
 import MicroHttp.Stream (StreamError (..), socketEnumerator)
+import System.IO.TimeMilli (getTimeMilli)
 
 {- | A request handler: it consumes the request body as a stream and yields
 a response.
@@ -36,8 +39,8 @@ data Settings = Settings
     , settingsReadBufferBytes :: Int
     , settingsIdleReadTimeoutMicros :: Int
     , settingsIdleWriteTimeoutMicros :: Int
+    , settingsLogger :: Logger
     }
-    deriving (Eq, Show)
 
 defaultSettings :: Settings
 defaultSettings =
@@ -51,6 +54,7 @@ defaultSettings =
         , settingsReadBufferBytes = 8192
         , settingsIdleReadTimeoutMicros = 30000000
         , settingsIdleWriteTimeoutMicros = 30000000
+        , settingsLogger = nullLogger
         }
 
 data ServerError
@@ -93,7 +97,7 @@ limit failure). The unit-test seam for the application boundary.
 -}
 respondToRequestBytes :: Settings -> Application -> BS.ByteString -> IO Response
 respondToRequestBytes settings app bytes = do
-    final <- strictEnumerator bytes (requestPipeline settings app)
+    final <- strictEnumerator bytes (requestPipeline settings (const (pure ())) app)
     outcome <- run final
     case outcome of
         Left _ -> return badRequestResponse
@@ -123,16 +127,61 @@ acceptAndHandle settings app socket = do
 
 handleClient :: Settings -> Application -> ClientSocket -> IO (Either ServerError ())
 handleClient settings app client = do
+    let logger = settingsLogger settings
+    startMillis <- getTimeMilli
+    headRef <- newIORef Nothing
+    bytesRef <- newIORef 0
     final <-
         socketEnumerator
             client
             (settingsReadBufferBytes settings)
             (settingsIdleReadTimeoutMicros settings)
-            (requestPipeline settings app)
+            (requestPipeline settings (onHead logger headRef) app)
     outcome <- run final
-    result <- respondToOutcome settings client outcome
+    result <- respondToOutcome settings bytesRef client outcome
+    endMillis <- getTimeMilli
+    capturedHead <- readIORef headRef
+    bytesWritten <- readIORef bytesRef
+    logCompletion logger capturedHead outcome result bytesWritten (endMillis - startMillis)
     _ <- closeClientSocket client
     return result
+
+{- | The @onHead@ callback for the request pipeline: it records the parsed
+head for the completion line and emits the 'RequestReceived' event the moment
+the head is available.
+-}
+onHead :: Logger -> IORef (Maybe RequestHead) -> RequestHead -> IO ()
+onHead logger headRef head = do
+    writeIORef headRef (Just head)
+    logger (RequestReceived head)
+
+{- | Emits the terminal access-log event: a 'RequestCompleted' carrying the
+written response's status when a response was sent (including the 400 and 408
+paths), or a 'RequestAborted' with an error label when the connection failed
+without a clean response.
+-}
+logCompletion :: Logger -> Maybe RequestHead -> Either StreamError Response -> Either ServerError () -> Int -> Int -> IO ()
+logCompletion logger capturedHead outcome result bytesWritten durationMillis =
+    case result of
+        Left err -> logger (RequestAborted capturedHead (abortLabel err) durationMillis)
+        Right () -> logger (RequestCompleted capturedHead (writtenStatus outcome) bytesWritten durationMillis)
+
+-- | The status written for a successful response outcome.
+writtenStatus :: Either StreamError Response -> Status
+writtenStatus outcome =
+    case outcome of
+        Right response -> responseStatus response
+        Left StreamTimeout -> responseStatus requestTimeoutResponse
+        Left _ -> responseStatus badRequestResponse
+
+-- | A short, space-free label naming the failure for the aborted log line.
+abortLabel :: ServerError -> String
+abortLabel err =
+    case err of
+        ServerListenFailed _ -> "ServerListenFailed"
+        ServerAcceptFailed _ -> "ServerAcceptFailed"
+        ServerReadFailed _ -> "ServerReadFailed"
+        ServerWriteFailed _ -> "ServerWriteFailed"
 
 {- | The per-connection request pipeline: frame the headers, parse the head,
 then run the application with the body stream framed to the declared
@@ -140,47 +189,54 @@ then run the application with the body stream framed to the declared
 without waiting for the peer to close, and rejecting an over-declared or
 malformed length is done before any body byte is read.
 -}
-requestPipeline :: Settings -> Application -> Iter StreamError Response
-requestPipeline settings app =
+requestPipeline :: Settings -> (RequestHead -> IO ()) -> Application -> Iter StreamError Response
+requestPipeline settings notifyHead app =
     frameHeadersI (parseLimits settings) >>= dispatch
   where
     dispatch headerBytes =
         case parseRequestHead headerBytes of
             Left err -> failWith (StreamParseError err)
-            Right head ->
-                case declaredContentLength (requestHeaders head) of
-                    Left err -> failWith (StreamParseError err)
-                    Right bodyLength
-                        | bodyLength > settingsMaxBodyBytes settings ->
-                            failWith (StreamParseError BodyTooLarge)
-                        | otherwise -> takeN bodyLength (app head)
+            Right head -> IterM (notifyHead head >> pure (withBody head))
+    withBody head =
+        case declaredContentLength (requestHeaders head) of
+            Left err -> failWith (StreamParseError err)
+            Right bodyLength
+                | bodyLength > settingsMaxBodyBytes settings ->
+                    failWith (StreamParseError BodyTooLarge)
+                | otherwise -> takeN bodyLength (app head)
 
 {- | Writes the response for a completed request, or maps a transport read
 failure to a server error. An idle-read timeout is answered with a 408; a
 framing, parse, or limit failure with a 400, matching the previous
 malformed-request handling.
 -}
-respondToOutcome :: Settings -> ClientSocket -> Either StreamError Response -> IO (Either ServerError ())
-respondToOutcome settings client outcome =
+respondToOutcome :: Settings -> IORef Int -> ClientSocket -> Either StreamError Response -> IO (Either ServerError ())
+respondToOutcome settings bytesRef client outcome =
     case outcome of
         Left (StreamReadError err) -> return (Left (ServerReadFailed err))
-        Left StreamTimeout -> writeClientResponse settings client requestTimeoutResponse
-        Left _ -> writeClientResponse settings client badRequestResponse
-        Right response -> writeClientResponse settings client response
+        Left StreamTimeout -> writeClientResponse settings bytesRef client requestTimeoutResponse
+        Left _ -> writeClientResponse settings bytesRef client badRequestResponse
+        Right response -> writeClientResponse settings bytesRef client response
 
-writeClientResponse :: Settings -> ClientSocket -> Response -> IO (Either ServerError ())
-writeClientResponse settings client response = do
-    written <- writeResponse (socketResponseWriter settings client) response
+writeClientResponse :: Settings -> IORef Int -> ClientSocket -> Response -> IO (Either ServerError ())
+writeClientResponse settings bytesRef client response = do
+    written <- writeResponse (socketResponseWriter settings bytesRef client) response
     case written of
         Left err -> return (Left (ServerWriteFailed err))
         Right () -> return (Right ())
 
-socketResponseWriter :: Settings -> ClientSocket -> ResponseWriter
-socketResponseWriter settings client bytes = do
+{- | The socket response writer, counting the bytes it sends into @bytesRef@
+for the access log. A chunk is counted only once its send succeeds, so the
+count reflects bytes actually put on the wire.
+-}
+socketResponseWriter :: Settings -> IORef Int -> ClientSocket -> ResponseWriter
+socketResponseWriter settings bytesRef client bytes = do
     sent <- sendAllWithin (settingsIdleWriteTimeoutMicros settings) client bytes
     case sent of
         Left err -> return (Left (StreamWriteError err))
-        Right () -> return (Right ())
+        Right () -> do
+            modifyIORef' bytesRef (+ BS.length bytes)
+            return (Right ())
 
 parseLimits :: Settings -> ParseLimits
 parseLimits settings =

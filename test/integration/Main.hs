@@ -2,6 +2,7 @@ module Main (main) where
 
 import qualified MicroHttp.Http.ResponseFileSpec as ResponseFileSpec
 import qualified MicroHttp.Network.SocketSpec as SocketSpec
+import qualified MicroHttp.ServerConcurrencySpec as ServerConcurrencySpec
 import qualified MicroHttp.ServerSocketSpec as ServerSocketSpec
 import qualified MicroHttp.StreamSpec as StreamSpec
 import qualified MicroHttp.TestAppSpec as TestAppSpec
@@ -14,6 +15,7 @@ main = do
     hspec $ do
         ResponseFileSpec.spec
         SocketSpec.spec
+        ServerConcurrencySpec.spec
         ServerSocketSpec.spec
         StreamSpec.spec
         TestAppSpec.spec

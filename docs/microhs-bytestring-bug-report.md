@@ -4,6 +4,13 @@ This document is a bug report prepared for the MicroHs project. It is not a
 MicroHttp design document; it records a runtime fault found while building the
 network layer. The reproducers referenced here are retained under `spike/`.
 
+> **Status (2026-06-12): no longer reproduces on the installed toolchain.**
+> The MicroHs runtime now guards the `evalbytestring` walk against time-slice
+> preemption (it saves `glob_slice`, raises it for the walk, and restores it),
+> so `spike/MicroHttp/Spike11.hs` prints the correct lengths and concurrent
+> serving is safe. The fix path matches the analysis below. This report is
+> kept as the historical record and the upstream-facing write-up.
+
 ## Title
 
 Silent ByteString corruption: `Data.ByteString.Char8.pack` of a large lazy

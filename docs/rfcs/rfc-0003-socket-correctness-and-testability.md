@@ -230,6 +230,20 @@ Test cases, simplest to most complex:
   buffers, the original test case 6 is not in the suite, and test case 15
   should keep its body small enough to fit the kernel buffers so the
   client send completes before the server reads.
+
+  Update (2026-06-12): resolved on the installed toolchain. The
+  `evalbytestring` slice-save workaround is present in the MicroHs runtime
+  this project builds against, so `spike/MicroHttp/Spike11.hs` now prints
+  the correct lengths rather than the corrupt zero. Concurrent
+  multi-connection serving is now exercised directly:
+  `test/integration/MicroHttp/ServerConcurrencySpec.hs` hands several
+  connections to forked `handleClient` threads at once, each returning a
+  large lazily-built body, and asserts every response is intact. This is
+  the production-relevant pattern (one half-duplex request/response per
+  connection, ADR-011) and it passes. The single-threaded-rounds
+  convention for the throughput benches stays as a measurement choice, not
+  a correctness constraint; same-connection simultaneous bidirectional
+  transfer in one process remains unexercised and unclaimed.
 - Should a slow or stalled peer be bounded by an idle-read timeout in this
   RFC, or deferred to the readiness-manager work where time-based waiting
   gets a proper home?

@@ -25,6 +25,12 @@ spec =
         it "given matching path with wrong method, when routing, then method not allowed is returned" $ do
             wrongMethod <- routed (request DELETE ["todos"])
             fmap (statusCode . responseStatus) wrongMethod `shouldBe` Right 405
+        it "given a wildcard route, when routing a deeper path, then the remainder is captured joined" $ do
+            wild <- routed (request GET ["static", "css", "app.css"])
+            fmap responseBody wild `shouldBe` Right (StrictBody (bs "css/app.css"))
+        it "given a wildcard route, when routing the bare prefix, then the remainder is empty" $ do
+            wild <- routed (request GET ["static"])
+            fmap responseBody wild `shouldBe` Right (StrictBody (bs ""))
 
 -- | Runs the router over an empty body and extracts the response.
 routed :: RequestHead -> IO (Either StreamError Response)
@@ -35,6 +41,7 @@ routes =
     [ get "/todos" (\_ _ -> pureText "index")
     , get "/todos/:id" (\captures _ -> pureText ("show " ++ capture "id" captures))
     , post "/todos" (\_ _ -> pureText "create")
+    , get "/static/*path" (\captures _ -> pureText (capture "path" captures))
     ]
 
 pureText :: String -> Iter StreamError Response

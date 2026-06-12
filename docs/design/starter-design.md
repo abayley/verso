@@ -423,6 +423,14 @@ The MicroHs server should own:
 - Filesystem state.
 - Application-level logging.
 
+Static asset serving and access logging now exist in-process (RFC-0010,
+RFC-0009), so the server stands alone without a proxy for local development
+and proxy-less deployments. These complement rather than replace the boundary:
+a reverse proxy can still shadow the static route and take over access logging,
+TLS, and compression in production. Static serving streams close-delimited
+(no `Content-Length` or keep-alive yet), so a caching proxy in front is the
+production answer until the file-size FFI lands.
+
 ## MicroHs Implementation Plan
 
 ### MicroHs Spike Results

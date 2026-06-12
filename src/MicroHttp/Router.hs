@@ -9,6 +9,7 @@ module MicroHttp.Router (
 ) where
 
 import qualified Data.ByteString.Char8 as BS
+import Data.List (intercalate)
 import MicroHttp.Http
 import MicroHttp.Iteratee (Iter)
 import MicroHttp.Stream (StreamError)
@@ -22,6 +23,7 @@ data Route = Route Method [PathPart] Handler
 data PathPart
     = Lit String
     | Capture String
+    | Rest String
     deriving (Eq, Show)
 
 get :: String -> Handler -> Route
@@ -63,6 +65,8 @@ matchPath :: Route -> [String] -> Maybe Captures
 matchPath (Route _ parts _) path = go parts path []
   where
     go [] [] captures = Just (reverse captures)
+    go (Rest name : _) restPath captures =
+        Just (reverse ((name, intercalate "/" restPath) : captures))
     go (Lit expected : restParts) (actual : restPath) captures
         | expected == actual = go restParts restPath captures
         | otherwise = Nothing
@@ -74,6 +78,7 @@ parsePattern :: String -> [PathPart]
 parsePattern patternText = map parsePart (filter (/= "") (splitOn '/' patternText))
   where
     parsePart (':' : name) = Capture name
+    parsePart ('*' : name) = Rest name
     parsePart text = Lit text
 
 splitOn :: Char -> String -> [String]

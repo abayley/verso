@@ -70,15 +70,6 @@ spec =
         it "given markdown preview post, when routing preview, then preview endpoint is not found" $ do
             response <- runApp (request POST ["documents", "home", "preview"]) "markdown=%23+Preview+heading%0A%0APreview+paragraph."
             statusCode (responseStatus response) `shouldBe` 404
-        it "given editor script request, when routing, then a streaming static file response is returned" $ do
-            response <- runApp (request GET ["static", "editor", "markdown-editor.js"]) ""
-            statusCode (responseStatus response) `shouldBe` 200
-            responseHeaders response `shouldBe` [(normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/javascript")]
-            isStreamBody response `shouldBe` True
-        it "given Web Awesome stylesheet request, when routing, then a streaming static file response is returned" $ do
-            response <- runApp (request GET ["static", "editor", "webawesome.css"]) ""
-            statusCode (responseStatus response) `shouldBe` 200
-            isStreamBody response `shouldBe` True
 
 request :: Method -> [String] -> RequestHead
 request method path =
@@ -118,12 +109,6 @@ bodyText response =
     case responseBody response of
         StrictBody body -> BS.unpack body
         StreamBody _ -> "<stream>"
-
-isStreamBody :: Response -> Bool
-isStreamBody response =
-    case responseBody response of
-        StreamBody _ -> True
-        StrictBody _ -> False
 
 shouldInclude :: String -> String -> Expectation
 shouldInclude actual expected =

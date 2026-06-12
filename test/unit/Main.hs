@@ -11,6 +11,7 @@ import qualified MicroHttp.MiddlewareSpec as MiddlewareSpec
 import qualified MicroHttp.Network.SocketAddrSpec as SocketAddrSpec
 import qualified MicroHttp.RouterSpec as RouterSpec
 import qualified MicroHttp.ServerSpec as ServerSpec
+import qualified MicroHttp.StaticSpec as StaticSpec
 import qualified MicroHttp.TestAppSpec as TestAppSpec
 import qualified MicroHttpSpec as FacadeSpec
 import Test.Hspec
@@ -25,6 +26,7 @@ main = hspec $ do
     ResponseSpec.spec
     RouterSpec.spec
     ServerSpec.spec
+    StaticSpec.spec
     IterateeSpec.spec
     LogSpec.spec
     MiddlewareSpec.spec

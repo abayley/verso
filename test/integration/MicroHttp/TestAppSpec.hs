@@ -8,7 +8,7 @@ import System.Directory (removeFile)
 import Test.Hspec
 
 spec :: Spec
-spec =
+spec = do
     describe "MicroHttp.TestApp persistence" $
         it "given valid markdown form post, when saving, then markdown is written to the document store" $ do
             outcome <-
@@ -20,6 +20,26 @@ spec =
             removeFile documentFile
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
             saved `shouldBe` "# Saved heading"
+    describe "MicroHttp.TestApp static serving" $
+        it "given an editor stylesheet request, when routing, then it is served as a streaming text/css response" $ do
+            outcome <-
+                strictEnumerator
+                    (BS.pack "")
+                    (TestApp.appWithDocumentRoot documentRoot (request GET ["static", "editor", "markdown-editor.css"]))
+                    >>= run
+            fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
+            fmap contentTypeOf outcome `shouldBe` Right (Just (BS.pack "text/css"))
+            fmap isStreamBody outcome `shouldBe` Right True
+
+contentTypeOf :: Response -> Maybe BS.ByteString
+contentTypeOf response =
+    lookup (normaliseHeaderName (BS.pack "Content-Type")) (responseHeaders response)
+
+isStreamBody :: Response -> Bool
+isStreamBody response =
+    case responseBody response of
+        StreamBody _ -> True
+        StrictBody _ -> False
 
 documentRoot :: FilePath
 documentRoot =

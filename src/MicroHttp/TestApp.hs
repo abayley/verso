@@ -16,7 +16,8 @@ import MicroHttp.Http.PercentEncoding (decodeFormValue)
 import MicroHttp.Iteratee (liftIO, readBodyStrict)
 import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
-import MicroHttp.Stream (StreamError (..), fileEnumerator)
+import qualified MicroHttp.Static as Static
+import MicroHttp.Stream (StreamError (..))
 import System.Directory (doesFileExist)
 
 data DocumentStore = DocumentStore
@@ -47,7 +48,7 @@ routes store =
     , Router.get "/documents/:id/edit" editDocument
     , Router.get "/documents/:id" (showDocument store)
     , Router.post "/documents/:id" (saveDocument store)
-    , Router.get "/static/editor/:file" staticEditorAsset
+    , Static.static "/static/editor" "static/editor"
     ]
 
 index :: Router.Handler
@@ -74,14 +75,6 @@ saveDocument store captures _ = do
             liftIO (saveDocumentContent store (documentId captures) markdown)
             pure (htmlResponse (Html.renderHtml (saveStatusFragment markdown)))
 
-staticEditorAsset :: Router.Handler
-staticEditorAsset captures _ =
-    case capture "file" captures of
-        "markdown-editor.js" -> pure (fileResponse "text/javascript" "static/editor/markdown-editor.js")
-        "markdown-editor.css" -> pure (fileResponse "text/css" "static/editor/markdown-editor.css")
-        "webawesome.css" -> pure (fileResponse "text/css" "static/editor/webawesome.css")
-        _ -> pure notFoundResponse
-
 -- | The handler's own body bound; the server pipeline also caps the body.
 formBodyLimit :: Int
 formBodyLimit = 1048576
@@ -99,20 +92,6 @@ markdownResponse body =
         Http.okStatus
         [(Http.normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/markdown")]
         (Http.StrictBody (BS.pack body))
-
-fileResponse :: String -> FilePath -> Http.Response
-fileResponse contentType path =
-    Http.Response
-        Http.okStatus
-        [(Http.normaliseHeaderName (BS.pack "Content-Type"), BS.pack contentType)]
-        (Http.StreamBody (fileEnumerator path))
-
-notFoundResponse :: Http.Response
-notFoundResponse =
-    Http.Response
-        (Http.Status 404 "Not Found")
-        [(Http.normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/plain")]
-        (Http.StrictBody (BS.pack "not found\n"))
 
 capture :: String -> Router.Captures -> String
 capture _ [] = ""

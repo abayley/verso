@@ -5,6 +5,7 @@ import qualified MicroHttp.Network.SocketSpec as SocketSpec
 import qualified MicroHttp.ServerConcurrencySpec as ServerConcurrencySpec
 import qualified MicroHttp.ServerLoggingSpec as ServerLoggingSpec
 import qualified MicroHttp.ServerSocketSpec as ServerSocketSpec
+import qualified MicroHttp.StaticSpec as StaticSpec
 import qualified MicroHttp.StreamSpec as StreamSpec
 import qualified MicroHttp.TestAppSpec as TestAppSpec
 import System.IO
@@ -19,5 +20,6 @@ main = do
         ServerConcurrencySpec.spec
         ServerLoggingSpec.spec
         ServerSocketSpec.spec
+        StaticSpec.spec
         StreamSpec.spec
         TestAppSpec.spec

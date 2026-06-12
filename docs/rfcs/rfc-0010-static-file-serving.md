@@ -1,7 +1,7 @@
 ---
 id: RFC-0010
 name: Static File Serving
-status: Draft
+status: Implemented
 owners:
     - alistair
 created: 2026-06-12
@@ -12,11 +12,11 @@ superseded_by: null
 
 # Static File Serving
 
-| Stage     | Timestamp  |
-|-----------|------------|
-| Authored  | 2026-06-12 |
-| Started   |            |
-| Completed |            |
+| Stage     | Timestamp        |
+|-----------|------------------|
+| Authored  | 2026-06-12       |
+| Started   | 2026-06-12 23:39 |
+| Completed | 2026-06-12 23:39 |
 
 ## Summary
 
@@ -177,8 +177,13 @@ mark it as complete in the phase checklist.
   is additive and existing `:name`/literal patterns are unchanged.
   `PathPart` is internal (not exported), so there is no external break.
 - `MicroHttp.Static` is a new module; nothing existing changes shape.
-- `TestApp`'s `/static/editor/*` behaviour is preserved (same files, same
-  content types, same streaming response), so its tests do not change.
+- `TestApp`'s `/static/editor/*` behaviour is preserved at runtime (same
+  files, same content types, same streaming response). Its tests did change,
+  though: the 404-before-head check stats the filesystem, so routing a static
+  request is now an IO action, and the editor-asset serving tests moved from
+  the unit suite (which forbids filesystem effects) to integration, using the
+  committed `markdown-editor.css` (the `.js` and `webawesome.css` assets are
+  build artifacts and may be absent).
 
 ## Testing and Quality Gates
 
@@ -198,13 +203,13 @@ mark it as complete in the phase checklist.
 ## Rollout Plan
 
 1. Phase one: routing and the static handler.
-   - [ ] `Rest` wildcard `PathPart` and `*name` syntax in `MicroHttp.Router`
+   - [x] `Rest` wildcard `PathPart` and `*name` syntax in `MicroHttp.Router`
          with matching tests.
-   - [ ] `MicroHttp.Static` with `static`, `serveStatic`, per-segment
+   - [x] `MicroHttp.Static` with `static`, `serveStatic`, per-segment
          sanitisation, the extension map, and the 404-before-head check.
-   - [ ] Migrate `TestApp` off `staticEditorAsset` onto `static`.
-   - [ ] Unit and integration tests above; `make check` green.
-   - [ ] Flip ADR-030 to accepted; note it in the relevant design document.
+   - [x] Migrate `TestApp` off `staticEditorAsset` onto `static`.
+   - [x] Unit and integration tests above; `make check` green.
+   - [x] Flip ADR-030 to accepted; note it in the relevant design document.
 
 ### Rollout Plan Escape Hatch
 

@@ -221,6 +221,18 @@ and through `socketEnumerator` into a counting consumer, reporting MB/s for
 each so the iteratee overhead is the delta. It answers whether the iteratee
 layer keeps up with the socket; both paths are constant-memory.
 
+Run the egress (send-path) bench:
+
+```sh
+make bench-egress
+```
+
+The same harness with roles swapped: the MicroHs sender
+(`bench/EgressSender.hs`) is the subject and sends each method's stream
+(plain `sendAll` versus a chunked body enumerator driven into `socketSinkI`),
+while the GHC drainer keeps the pipe empty. It reports the iteratee egress
+overhead against the plain-`sendAll` baseline.
+
 Compile all retained spikes:
 
 ```sh

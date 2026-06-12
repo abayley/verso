@@ -305,6 +305,7 @@ Useful design documents:
 - [RFC-0005: Socket Readiness Waiting](docs/rfcs/rfc-0005-socket-readiness-manager.md)
 - [RFC-0006: Idle Read Timeout](docs/rfcs/rfc-0006-idle-read-timeout.md)
 - [RFC-0007: Socket Portability (Linux and Windows)](docs/rfcs/rfc-0007-socket-portability.md)
+- [RFC-0008: Idle Write Timeout](docs/rfcs/rfc-0008-idle-write-timeout.md)
 
 New design decisions should be recorded in
 [ADR Registry](docs/decision-register.md), not only in comments or chat.

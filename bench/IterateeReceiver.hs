@@ -82,7 +82,7 @@ no body retained.
 -}
 streamingConsumer :: ClientSocket -> IO Int
 streamingConsumer client = do
-    final <- socketEnumerator client recvBufferSize countingSink
+    final <- socketEnumerator client recvBufferSize 0 countingSink
     result <- run final
     case result of
         Left err -> error ("stream failed: " ++ show err)

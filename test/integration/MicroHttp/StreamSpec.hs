@@ -16,7 +16,7 @@ spec =
                 let payload = replicate 5000 'x' ++ replicate 100 'y'
                 sent <- sendAll client (BS.pack payload)
                 sent `shouldBe` Right ()
-                final <- socketEnumerator served 1024 (takeN 5000 (readBodyStrict bodyTooLarge 100000))
+                final <- socketEnumerator served 1024 0 (takeN 5000 (readBodyStrict bodyTooLarge 100000))
                 result <- run final
                 fmap BS.length result `shouldBe` Right 5000
         it "given a socket sink, when a strict body is streamed into it, then the peer receives the bytes" $

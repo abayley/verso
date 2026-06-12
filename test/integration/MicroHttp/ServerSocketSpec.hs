@@ -58,10 +58,23 @@ spec =
                 received <- recv client 4096
                 result `shouldBe` Right ()
                 fmap (isInfixOf "200 OK" . BS.unpack) received `shouldBe` Right True
+        it "given a peer that sends a partial request and stalls, when handled with a short idle timeout, then a 408 is returned" $
+            withConnectedPair $ \client served -> do
+                sent <- sendAll client (BS.pack "GET / HTTP/1.1\r\n")
+                sent `shouldBe` Right ()
+                result <- handleClient shortIdleSettings (TestApp.appWithDocumentRoot documentRoot) served
+                received <- recv client 4096
+                result `shouldBe` Right ()
+                fmap (isInfixOf "408 Request Timeout" . BS.unpack) received `shouldBe` Right True
 
 smallBufferSettings :: Settings
 smallBufferSettings =
     defaultSettings{settingsReadBufferBytes = 1024}
+
+-- | A short idle-read timeout so a stalled peer is bounded quickly in tests.
+shortIdleSettings :: Settings
+shortIdleSettings =
+    defaultSettings{settingsReadBufferBytes = 1024, settingsIdleReadTimeoutMicros = 100000}
 
 smallBodySettings :: Settings
 smallBodySettings =

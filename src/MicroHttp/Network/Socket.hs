@@ -10,8 +10,10 @@ module MicroHttp.Network.Socket (
     closeListenSocket,
     connectTcp,
     encodeSockAddrIn,
+    isTimeoutError,
     listenTcp,
     recv,
+    recvWithin,
     sendAll,
 ) where
 
@@ -20,12 +22,13 @@ import Control.Monad.Except (ExceptT (..), catchError, runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString as BS
 import Data.Word (Word8)
-import Foreign.C.Error (Errno, eAGAIN, eALREADY, eINPROGRESS, eISCONN, eWOULDBLOCK, getErrno)
+import Foreign.C.Error (Errno, eAGAIN, eALREADY, eINPROGRESS, eISCONN, eTIMEDOUT, eWOULDBLOCK, getErrno)
 import Foreign.C.String (CString)
 import Foreign.Marshal.Alloc (alloca, allocaBytes)
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import Foreign.Storable (peekByteOff, poke, pokeByteOff, sizeOf)
 import System.IO.FD (waitForReadFD, waitForWriteFD)
+import System.Timeout (timeout)
 
 foreign import ccall "socket" c_socket :: Int -> Int -> Int -> IO Int
 foreign import ccall "setsockopt" c_setsockopt :: Int -> Int -> Int -> Ptr Int -> Int -> IO Int
@@ -148,9 +151,18 @@ peekWord8 :: Ptr Word8 -> Int -> IO Word8
 peekWord8 = peekByteOff
 
 recv :: ClientSocket -> Int -> IO (Either SocketError BS.ByteString)
-recv (ClientSocket fd) byteCount =
-    allocaBytes byteCount $ \buf ->
-        recvLoop buf
+recv = recvWithin 0
+
+{- | Like 'recv', but the wait for read readiness is bounded by the idle
+timeout in microseconds: a non-positive timeout waits indefinitely (the
+RFC-0005 behaviour), and a positive one fails with a timeout 'SocketError'
+('isTimeoutError') if no data arrives in that window. The timer is armed only
+when a read would block, so a read with data ready returns immediately with
+no timer.
+-}
+recvWithin :: Int -> ClientSocket -> Int -> IO (Either SocketError BS.ByteString)
+recvWithin idleMicros (ClientSocket fd) byteCount =
+    allocaBytes byteCount recvLoop
   where
     recvLoop buf = do
         received <- c_recv fd (castPtr buf) byteCount 0
@@ -159,12 +171,32 @@ recv (ClientSocket fd) byteCount =
                 errno <- getErrno
                 if isWouldBlock errno
                     then do
-                        waitForReadFD fd
-                        recvLoop buf
+                        ready <- waitReadable idleMicros fd
+                        case ready of
+                            Left err -> return (Left err)
+                            Right () -> recvLoop buf
                     else return (Left (SocketError "recv" errno))
             else do
                 bytes <- BS.packCStringLen (castPtr buf, received)
                 return (Right bytes)
+
+{- | Waits for a descriptor to become readable, bounded by the idle timeout
+if it is positive. A reached deadline is reported as a timeout 'SocketError'.
+-}
+waitReadable :: Int -> Int -> IO (Either SocketError ())
+waitReadable idleMicros fd
+    | idleMicros <= 0 = do
+        waitForReadFD fd
+        return (Right ())
+    | otherwise = do
+        woken <- timeout idleMicros (waitForReadFD fd)
+        case woken of
+            Just () -> return (Right ())
+            Nothing -> return (Left (SocketError "recv" eTIMEDOUT))
+
+-- | Whether a socket error is the idle-read-timeout failure.
+isTimeoutError :: SocketError -> Bool
+isTimeoutError (SocketError _ errno) = errno == eTIMEDOUT
 
 sendAll :: ClientSocket -> BS.ByteString -> IO (Either SocketError ())
 sendAll (ClientSocket fd) bytes =

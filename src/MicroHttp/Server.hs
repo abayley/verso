@@ -34,6 +34,7 @@ data Settings = Settings
     , settingsMaxHeaderBytes :: Int
     , settingsMaxBodyBytes :: Int
     , settingsReadBufferBytes :: Int
+    , settingsIdleReadTimeoutMicros :: Int
     }
     deriving (Eq, Show)
 
@@ -47,6 +48,7 @@ defaultSettings =
         , settingsMaxHeaderBytes = 8192
         , settingsMaxBodyBytes = 1048576
         , settingsReadBufferBytes = 8192
+        , settingsIdleReadTimeoutMicros = 30000000
         }
 
 data ServerError
@@ -119,7 +121,12 @@ acceptAndHandle settings app socket = do
 
 handleClient :: Settings -> Application -> ClientSocket -> IO (Either ServerError ())
 handleClient settings app client = do
-    final <- socketEnumerator client (settingsReadBufferBytes settings) (requestPipeline settings app)
+    final <-
+        socketEnumerator
+            client
+            (settingsReadBufferBytes settings)
+            (settingsIdleReadTimeoutMicros settings)
+            (requestPipeline settings app)
     outcome <- run final
     result <- respondToOutcome client outcome
     _ <- closeClientSocket client
@@ -147,13 +154,15 @@ requestPipeline settings app =
                         | otherwise -> takeN bodyLength (app head)
 
 {- | Writes the response for a completed request, or maps a transport read
-failure to a server error. A framing, parse, or limit failure is answered
-with a 400, matching the previous malformed-request handling.
+failure to a server error. An idle-read timeout is answered with a 408; a
+framing, parse, or limit failure with a 400, matching the previous
+malformed-request handling.
 -}
 respondToOutcome :: ClientSocket -> Either StreamError Response -> IO (Either ServerError ())
 respondToOutcome client outcome =
     case outcome of
         Left (StreamReadError err) -> return (Left (ServerReadFailed err))
+        Left StreamTimeout -> writeClientResponse client requestTimeoutResponse
         Left _ -> writeClientResponse client badRequestResponse
         Right response -> writeClientResponse client response
 
@@ -207,3 +216,10 @@ badRequestResponse =
         (Status 400 "Bad Request")
         [(normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/plain")]
         (StrictBody (BS.pack "bad request\n"))
+
+requestTimeoutResponse :: Response
+requestTimeoutResponse =
+    Response
+        (Status 408 "Request Timeout")
+        [(normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/plain")]
+        (StrictBody (BS.pack "request timeout\n"))

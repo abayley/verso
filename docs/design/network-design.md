@@ -124,6 +124,14 @@ parked descriptor at once. The ping-pong bench rose from ~50 MB/s to
 simultaneously-waiting descriptors, so it and `settingsMaxActiveHandlers`
 (32) should stay consistent.
 
+RFC-0006 (ADR-027) bounds the read-side wait: when a request `recv` would
+block, the park is given a deadline (`timeout n (waitForReadFD fd)`) of
+`settingsIdleReadTimeoutMicros` (30 s by default, non-positive disables).
+A reached deadline surfaces as `StreamTimeout` and the server answers
+`408 Request Timeout`, so a stalled peer cannot hold a handler slot
+indefinitely. The timer is armed only on a would-block read, so steady
+transfers keep the throughput above.
+
 The performance harness should be built before the readiness manager so the
 polling tax is measured, not assumed.
 

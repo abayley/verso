@@ -15,7 +15,7 @@ module MicroHttp.Stream (
 import qualified Data.ByteString as BS
 import MicroHttp.Http.Parse (ParseError)
 import MicroHttp.Iteratee (Enumerator, Iter (..), Stream (..), byteSinkI, resourceEnumerator, strictEnumerator)
-import MicroHttp.Network.Socket (ClientSocket, SocketError, recv, sendAll)
+import MicroHttp.Network.Socket (ClientSocket, SocketError, isTimeoutError, recvWithin, sendAll)
 import System.IO.Base (IOMode (..), hClose)
 import System.IO.Open (openBinaryFileM)
 
@@ -29,25 +29,31 @@ data StreamError
     | StreamWriteError SocketError
     | StreamParseError ParseError
     | StreamSourceError String
+    | StreamTimeout
     deriving (Eq, Show)
 
 {- | Feeds @recv@ chunks from a socket until orderly close or transport
-failure. An empty read is orderly end of stream; a read error ends the
-stream carrying the failure. Stops as soon as the consumer resolves.
+failure, with each read's idle wait bounded by @idleMicros@ (non-positive
+disables the bound). An empty read is orderly end of stream; a read error
+ends the stream carrying the failure, and an idle-read timeout ends it with
+'StreamTimeout'. Stops as soon as the consumer resolves.
 -}
-socketEnumerator :: ClientSocket -> Int -> Enumerator StreamError a
-socketEnumerator socket bufferSize = loop
+socketEnumerator :: ClientSocket -> Int -> Int -> Enumerator StreamError a
+socketEnumerator socket bufferSize idleMicros = loop
   where
     loop it = case it of
         NeedInput k -> do
-            received <- recv socket bufferSize
+            received <- recvWithin idleMicros socket bufferSize
             case received of
-                Left err -> return (k (EndOfStream (Just (StreamReadError err))))
+                Left err -> return (k (EndOfStream (Just (toStreamError err))))
                 Right bytes
                     | BS.null bytes -> return (k (EndOfStream Nothing))
                     | otherwise -> loop (k (Chunk bytes))
         IterM m -> m >>= loop
         _ -> return it
+    toStreamError err
+        | isTimeoutError err = StreamTimeout
+        | otherwise = StreamReadError err
 
 {- | Sends each chunk with @sendAll@ until end of stream. A send failure is a
 terminal write failure; an upstream failure delivered at end of stream is

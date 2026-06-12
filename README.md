@@ -302,6 +302,9 @@ Useful design documents:
 - [RFC-0002: Editor Shell Decomposition](docs/rfcs/rfc-0002-editor-shell-decomposition.md)
 - [RFC-0003: Socket Payload Correctness and Testability](docs/rfcs/rfc-0003-socket-correctness-and-testability.md)
 - [RFC-0004: Iteratee Streaming IO](docs/rfcs/rfc-0004-iteratee-streaming-io.md)
+- [RFC-0005: Socket Readiness Waiting](docs/rfcs/rfc-0005-socket-readiness-manager.md)
+- [RFC-0006: Idle Read Timeout](docs/rfcs/rfc-0006-idle-read-timeout.md)
+- [RFC-0007: Socket Portability (Linux and Windows)](docs/rfcs/rfc-0007-socket-portability.md)
 
 New design decisions should be recorded in
 [ADR Registry](docs/decision-register.md), not only in comments or chat.

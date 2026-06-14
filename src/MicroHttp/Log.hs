@@ -1,14 +1,17 @@
-{- | The server's access-log vocabulary. The log lives at the connection
-layer (RFC-0009): every accepted connection yields a terminal event, and a
-'RequestReceived' is emitted once the head parses. The 'Logger' sink and the
-line format are injected, so the destination and the format are swappable;
-'formatLogfmt' is the default logfmt format and 'logfmtTo' builds a logger
-from a line sink. This module depends only on 'MicroHttp.Http', so the abort
-reason is a plain label rather than the server's 'ServerError', which keeps
-the server free to depend on this module without a cycle.
+{- | The server's access-log vocabulary. Logging is a middleware
+(RFC-0012): 'MicroHttp.Middleware.logRequests' taps the request stream for the
+first line and observes the response, emitting these events. The 'Logger' sink
+and the line format are injected, so the destination and format are swappable;
+'formatLogfmt' is the default logfmt format and 'logfmtTo' / 'fileLogfmtLogger'
+build loggers from a line sink.
+
+An event carries the peer ('ConnectionInfo') and the request line as method and
+target strings (what the logging middleware can cheaply tap from the first
+line), not a fully parsed 'RequestHead'.
 -}
 module MicroHttp.Log (
     AccessEvent (..),
+    RequestLine (..),
     Logger,
     nullLogger,
     formatLogfmt,
@@ -16,24 +19,28 @@ module MicroHttp.Log (
     fileLogfmtLogger,
 ) where
 
-import Data.List (intercalate)
-import MicroHttp.Http (RequestHead (..), Status (..))
+import MicroHttp.Http (Status (..))
+import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), Port (..))
 import System.IO (appendFile)
 
 -- | An injected access-log sink.
 type Logger = AccessEvent -> IO ()
 
-{- | A logged moment in a connection's life. 'RequestReceived' carries the
-parsed head; 'RequestCompleted' carries the written response's status, the
-bytes written, and the duration in milliseconds (the head is 'Nothing' when
-the request did not parse, as for a 400 or a 408 during the header read);
-'RequestAborted' carries a short error label and the duration when the
-connection failed without a clean response.
+-- | The request's first line, as tapped: the method token and the target.
+data RequestLine = RequestLine
+    { requestLineMethod :: String
+    , requestLineTarget :: String
+    }
+
+{- | A logged moment in a connection's life, carrying the peer. The request
+line is 'Nothing' on the terminal event when no first line was seen (a peer
+that connected and stalled). The two trailing 'Int's on the terminal events are
+the request bytes read and the duration in milliseconds.
 -}
 data AccessEvent
-    = RequestReceived RequestHead
-    | RequestCompleted (Maybe RequestHead) Status Int Int
-    | RequestAborted (Maybe RequestHead) String Int
+    = RequestReceived ConnectionInfo RequestLine
+    | RequestCompleted ConnectionInfo (Maybe RequestLine) Status Int Int
+    | RequestAborted ConnectionInfo (Maybe RequestLine) String Int Int
 
 -- | The no-op logger: logging disabled.
 nullLogger :: Logger
@@ -45,8 +52,7 @@ logfmtTo emit event = emit (formatLogfmt event)
 
 {- | A logfmt logger that appends each line to a file at the given path. It
 opens the file in append mode for each line, so writes go to the end without a
-shared handle; this is adequate for low to moderate request volume. A shared
-handle or buffered sink can replace it if volume warrants.
+shared handle; adequate for low to moderate request volume.
 -}
 fileLogfmtLogger :: FilePath -> Logger
 fileLogfmtLogger path = logfmtTo (\line -> appendFile path (line ++ "\n"))
@@ -55,42 +61,38 @@ fileLogfmtLogger path = logfmtTo (\line -> appendFile path (line ++ "\n"))
 formatLogfmt :: AccessEvent -> String
 formatLogfmt event =
     case event of
-        RequestReceived head ->
-            "event=RQST"
-                ++ " method="
-                ++ methodField (Just head)
-                ++ " path="
-                ++ pathField (Just head)
-        RequestCompleted head status bytes durationMillis ->
+        RequestReceived conn line ->
+            "event=RQST" ++ peerField conn ++ lineFields (Just line)
+        RequestCompleted conn line status reqBytes durationMillis ->
             "event=RESP"
-                ++ " method="
-                ++ methodField head
-                ++ " path="
-                ++ pathField head
+                ++ peerField conn
+                ++ lineFields line
                 ++ " status="
                 ++ show (statusCode status)
-                ++ " bytes="
-                ++ show bytes
+                ++ " req_bytes="
+                ++ show reqBytes
                 ++ " dur_ms="
                 ++ show durationMillis
-        RequestAborted head reason durationMillis ->
+        RequestAborted conn line reason reqBytes durationMillis ->
             "event=ABRT"
-                ++ " method="
-                ++ methodField head
-                ++ " path="
-                ++ pathField head
+                ++ peerField conn
+                ++ lineFields line
                 ++ " error="
                 ++ reason
+                ++ " req_bytes="
+                ++ show reqBytes
                 ++ " dur_ms="
                 ++ show durationMillis
 
-methodField :: Maybe RequestHead -> String
-methodField Nothing = "-"
-methodField (Just head) = show (requestMethod head)
+peerField :: ConnectionInfo -> String
+peerField conn = " peer=" ++ renderHost (connPeerHost conn)
 
-pathField :: Maybe RequestHead -> String
-pathField Nothing = "-"
-pathField (Just head) = renderPath (requestPath head)
+renderHost :: Host -> String
+renderHost HostAny = "0.0.0.0"
+renderHost (HostIPv4 a b c d) =
+    show a ++ "." ++ show b ++ "." ++ show c ++ "." ++ show d
 
-renderPath :: [String] -> String
-renderPath segments = "/" ++ intercalate "/" segments
+lineFields :: Maybe RequestLine -> String
+lineFields Nothing = " method=- path=-"
+lineFields (Just line) =
+    " method=" ++ requestLineMethod line ++ " path=" ++ requestLineTarget line

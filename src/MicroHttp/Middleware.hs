@@ -1,51 +1,66 @@
-{- | Middleware as 'Application' transformations (ADR-015). The taxonomy
-mirrors where each kind touches the pipeline:
+{- | The application contract and middleware (RFC-0012, ADR-015). An
+'Application' consumes the raw request stream for one connection and yields a
+'Response'; it receives the connection's non-payload metadata
+('ConnectionInfo') as its argument. A 'Middleware' wraps an application; because
+the application sits in the byte stream, a middleware can tap the request as it
+flows down and observe the response as it flows back up.
 
-  * head-level middleware composes plain functions over the response and
-    never touches a stream ('mapResponse');
-  * ingress middleware lifts an enumeratee around the application's body
-    consumption ('ingress');
-  * egress middleware fuses an enumeratee onto the response body enumerator
-    before the sink ('egress');
-  * failure-handling middleware intercepts a terminal failure and yields a
-    replacement response ('catchIter').
+The taxonomy:
+
+  * 'mapResponse' transforms the response value;
+  * 'ingress' lifts an enumeratee around the request consumption;
+  * 'egress' fuses an enumeratee onto a streaming response body;
+  * 'catchIter' replaces a terminal failure with a response;
+  * 'withErrorResponses' maps a parse failure to 400 and an idle-read timeout
+    to 408 (a read failure stays an abort);
+  * 'logRequests' is the outermost middleware: it taps the first line, holds
+    the connection peer, and emits the access-log events.
 -}
 module MicroHttp.Middleware (
+    Application,
     Middleware,
     mapResponse,
     ingress,
     egress,
     catchIter,
+    withErrorResponses,
+    logRequests,
 ) where
 
-import MicroHttp.Http (RequestHead, Response (..), ResponseBody (..))
-import MicroHttp.Iteratee (Enumerator, Iter (..))
-import MicroHttp.Stream (StreamError)
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as BS
+import MicroHttp.Http (Response (..), ResponseBody (..), Status (..), normaliseHeaderName)
+import MicroHttp.Iteratee (Enumerator, Iter (..), Stream (..))
+import MicroHttp.Log (AccessEvent (..), Logger, RequestLine (..))
+import MicroHttp.Network.Socket (ConnectionInfo)
+import MicroHttp.Stream (StreamError (..))
+import System.IO.TimeMilli (getTimeMilli)
 
-{- | A middleware wraps an application (ADR-015). This is the same shape as
-the server's @Application@, stated structurally to avoid a module cycle.
+{- | An application consumes the raw request stream for a connection and yields
+a response. The 'ConnectionInfo' carries non-payload metadata (the peer).
 -}
-type Middleware = (RequestHead -> Iter StreamError Response) -> RequestHead -> Iter StreamError Response
+type Application = ConnectionInfo -> Iter StreamError Response
+
+-- | A middleware wraps an application.
+type Middleware = Application -> Application
 
 {- | Head-level middleware: transform the response value, no streams. For
 example, adding a header or rewriting the status.
 -}
 mapResponse :: (Response -> Response) -> Middleware
-mapResponse f app request = fmap f (app request)
+mapResponse f app conn = fmap f (app conn)
 
-{- | Ingress middleware: lift an enumeratee around the application's body
-consumption. For example, @ingress (takeN n)@ bounds the body the handler
-may read.
+{- | Ingress middleware: lift an enumeratee around the request consumption,
+for example bounding the bytes the application reads.
 -}
 ingress :: (Iter StreamError Response -> Iter StreamError Response) -> Middleware
-ingress stage app request = stage (app request)
+ingress stage app conn = stage (app conn)
 
-{- | Egress middleware: fuse an enumeratee onto a streaming response body so
-it runs before the sink. A strict body is left unchanged. For example, a
-future compression stage.
+{- | Egress middleware: fuse an enumeratee onto a streaming response body so it
+runs before the sink. A strict body is left unchanged.
 -}
 egress :: (Iter StreamError () -> Iter StreamError ()) -> Middleware
-egress stage app request = fmap (fuseBody stage) (app request)
+egress stage app conn = fmap (fuseBody stage) (app conn)
 
 fuseBody :: (Iter StreamError () -> Iter StreamError ()) -> Response -> Response
 fuseBody stage response =
@@ -56,14 +71,135 @@ fuseBody stage response =
     fuse :: Enumerator StreamError () -> Enumerator StreamError ()
     fuse enumerator sink = enumerator (stage sink)
 
-{- | Failure-handling middleware: intercept a terminal failure and answer
-with a replacement response instead. Successful results pass through.
+{- | Failure-handling middleware: intercept a terminal failure and answer with
+a replacement response instead. Successful results pass through.
 -}
 catchIter :: (StreamError -> Response) -> Middleware
-catchIter handler app request = recover (app request)
+catchIter handler app conn = recover (app conn)
   where
     recover it = case it of
         Done a residue -> Done a residue
         NeedInput k -> NeedInput (recover . k)
         IterM m -> IterM (fmap recover m)
         IterFailed err _ -> pure (handler err)
+
+{- | Maps the framing/parse failures to default error responses: a parse or
+limit failure to 400, an idle-read timeout to 408. A transport read failure is
+left as a terminal failure, so the connection closes with no response.
+-}
+withErrorResponses :: Middleware
+withErrorResponses app conn = recover (app conn)
+  where
+    recover it = case it of
+        Done a residue -> Done a residue
+        NeedInput k -> NeedInput (recover . k)
+        IterM m -> IterM (fmap recover m)
+        IterFailed err residue ->
+            case errorResponseFor err of
+                Just response -> Done response residue
+                Nothing -> IterFailed err residue
+
+errorResponseFor :: StreamError -> Maybe Response
+errorResponseFor err =
+    case err of
+        StreamParseError _ -> Just badRequestResponse
+        StreamTimeout -> Just requestTimeoutResponse
+        _ -> Nothing
+
+{- | The outermost middleware: it taps the request's first line (method and
+target) to log a received event with the peer the moment it arrives, counts the
+request bytes, and on the terminal step logs a completed event (with the
+response status) or an aborted event, each with the duration. Response-body
+byte counting is left to a follow-up.
+-}
+logRequests :: Logger -> Middleware
+logRequests logger inner conn = IterM start
+  where
+    start = do
+        startMillis <- getTimeMilli
+        return (tap startMillis (Buffering B.empty) 0 (inner conn))
+
+    tap startMillis lineState reqBytes it =
+        case it of
+            NeedInput k -> NeedInput (consume startMillis lineState reqBytes k)
+            IterM m -> IterM (fmap (tap startMillis lineState reqBytes) m)
+            Done response residue ->
+                IterM (logCompleted startMillis lineState reqBytes response >> return (Done response residue))
+            IterFailed err residue ->
+                IterM (logAborted startMillis lineState reqBytes err >> return (IterFailed err residue))
+
+    consume startMillis lineState reqBytes k stream =
+        case stream of
+            Chunk bytes ->
+                let reqBytes' = reqBytes + B.length bytes
+                    (lineState', received) = advanceLine lineState bytes
+                    next = tap startMillis lineState' reqBytes' (k (Chunk bytes))
+                 in case received of
+                        Just line -> IterM (logger (RequestReceived conn line) >> return next)
+                        Nothing -> next
+            EndOfStream merr -> tap startMillis lineState reqBytes (k (EndOfStream merr))
+
+    logCompleted startMillis lineState reqBytes response = do
+        endMillis <- getTimeMilli
+        logger (RequestCompleted conn (lineOf lineState) (responseStatus response) reqBytes (endMillis - startMillis))
+
+    logAborted startMillis lineState reqBytes err = do
+        endMillis <- getTimeMilli
+        logger (RequestAborted conn (lineOf lineState) (streamErrorLabel err) reqBytes (endMillis - startMillis))
+
+{- | The first-line tap state: still buffering bytes until the first CRLF, or
+the parsed request line.
+-}
+data LineState
+    = Buffering B.ByteString
+    | Seen RequestLine
+
+advanceLine :: LineState -> B.ByteString -> (LineState, Maybe RequestLine)
+advanceLine (Seen line) _ = (Seen line, Nothing)
+advanceLine (Buffering buffered) bytes =
+    case breakCrlf (B.append buffered bytes) of
+        Nothing -> (Buffering (B.append buffered bytes), Nothing)
+        Just lineBytes ->
+            let line = parseRequestLine lineBytes
+             in (Seen line, Just line)
+
+lineOf :: LineState -> Maybe RequestLine
+lineOf (Buffering _) = Nothing
+lineOf (Seen line) = Just line
+
+breakCrlf :: B.ByteString -> Maybe B.ByteString
+breakCrlf bytes =
+    case B.breakSubstring (BS.pack "\r\n") bytes of
+        (before, after)
+            | B.null after -> Nothing
+            | otherwise -> Just before
+
+parseRequestLine :: B.ByteString -> RequestLine
+parseRequestLine lineBytes =
+    case BS.words lineBytes of
+        (method : target : _) -> RequestLine (BS.unpack method) (BS.unpack target)
+        [method] -> RequestLine (BS.unpack method) ""
+        [] -> RequestLine "" ""
+
+streamErrorLabel :: StreamError -> String
+streamErrorLabel err =
+    case err of
+        StreamReadError _ -> "StreamReadError"
+        StreamWriteError _ -> "StreamWriteError"
+        StreamParseError _ -> "StreamParseError"
+        StreamSourceError _ -> "StreamSourceError"
+        StreamTimeout -> "StreamTimeout"
+
+badRequestResponse :: Response
+badRequestResponse =
+    Response
+        (Status 400 "Bad Request")
+        [(normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/plain")]
+        (StrictBody (BS.pack "bad request\n"))
+
+requestTimeoutResponse :: Response
+requestTimeoutResponse =
+    Response
+        (Status 408 "Request Timeout")
+        [(normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/plain")]
+        (StrictBody (BS.pack "request timeout\n"))

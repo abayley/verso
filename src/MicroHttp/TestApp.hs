@@ -3,8 +3,12 @@
 module MicroHttp.TestApp (
     DocumentStore (..),
     app,
+    appWith,
     appWithDocumentRoot,
     appWithStore,
+    documentRoutes,
+    fileStore,
+    routes,
 ) where
 
 import qualified Data.ByteString.Char8 as BS
@@ -14,6 +18,8 @@ import qualified MicroHttp.Http as Http
 import MicroHttp.Http.Parse (ParseError (..))
 import MicroHttp.Http.PercentEncoding (decodeFormValue)
 import MicroHttp.Iteratee (liftIO, readBodyStrict)
+import MicroHttp.Log (Logger)
+import MicroHttp.Middleware (logRequests, withErrorResponses)
 import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
@@ -25,21 +31,40 @@ data DocumentStore = DocumentStore
     , saveDocumentContent :: String -> String -> IO ()
     }
 
+{- | The bare routed application (no middleware). 'appWith' wraps it with the
+logging and error-response middleware for the running server.
+-}
 app :: Server.Application
 app =
     appWithDocumentRoot "data/documents"
 
+{- | The application the executable serves: the bare app wrapped with the
+error-response middleware and, outermost, request logging to the given sink.
+-}
+appWith :: Logger -> Server.Application
+appWith logger =
+    logRequests logger (withErrorResponses app)
+
 appWithDocumentRoot :: FilePath -> Server.Application
 appWithDocumentRoot root =
-    appWithStore
-        DocumentStore
-            { loadDocument = loadFileDocument root
-            , saveDocumentContent = saveFileDocument root
-            }
+    appWithStore (fileStore root)
+
+-- | A filesystem-backed document store rooted at @root@.
+fileStore :: FilePath -> DocumentStore
+fileStore root =
+    DocumentStore
+        { loadDocument = loadFileDocument root
+        , saveDocumentContent = saveFileDocument root
+        }
+
+-- | The routes for a filesystem document root (the bottom of the app stack).
+documentRoutes :: FilePath -> [Router.Route]
+documentRoutes root =
+    routes (fileStore root)
 
 appWithStore :: DocumentStore -> Server.Application
 appWithStore store =
-    Router.route (routes store)
+    Router.serveRoutes (Server.parseLimits Server.defaultSettings) (routes store)
 
 routes :: DocumentStore -> [Router.Route]
 routes store =

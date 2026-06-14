@@ -2,7 +2,7 @@ module MicroHttp.TestAppSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http
-import MicroHttp.Iteratee (run, strictEnumerator)
+import MicroHttp.Server (respondToRequestBytes)
 import qualified MicroHttp.TestApp as TestApp
 import System.Directory (removeFile)
 import Test.Hspec
@@ -11,11 +11,11 @@ spec :: Spec
 spec = do
     describe "MicroHttp.TestApp persistence" $
         it "given valid markdown form post, when saving, then markdown is written to the document store" $ do
+            let body = "markdown=%23+Saved+heading"
             outcome <-
-                strictEnumerator
-                    (BS.pack "markdown=%23+Saved+heading")
-                    (TestApp.appWithDocumentRoot documentRoot (request POST ["documents", "home"]))
-                    >>= run
+                respondToRequestBytes
+                    (TestApp.appWithDocumentRoot documentRoot)
+                    (BS.pack (postRequest "/documents/home" body))
             saved <- readFile documentFile
             removeFile documentFile
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
@@ -23,13 +23,25 @@ spec = do
     describe "MicroHttp.TestApp static serving" $
         it "given an editor stylesheet request, when routing, then it is served as a streaming text/css response" $ do
             outcome <-
-                strictEnumerator
-                    (BS.pack "")
-                    (TestApp.appWithDocumentRoot documentRoot (request GET ["static", "editor", "markdown-editor.css"]))
-                    >>= run
+                respondToRequestBytes
+                    (TestApp.appWithDocumentRoot documentRoot)
+                    (BS.pack (getRequest "/static/editor/markdown-editor.css"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
             fmap contentTypeOf outcome `shouldBe` Right (Just (BS.pack "text/css"))
             fmap isStreamBody outcome `shouldBe` Right True
+
+getRequest :: String -> String
+getRequest target =
+    "GET " ++ target ++ " HTTP/1.1\r\n\r\n"
+
+postRequest :: String -> String -> String
+postRequest target body =
+    "POST "
+        ++ target
+        ++ " HTTP/1.1\r\nContent-Length: "
+        ++ show (length body)
+        ++ "\r\n\r\n"
+        ++ body
 
 contentTypeOf :: Response -> Maybe BS.ByteString
 contentTypeOf response =
@@ -48,13 +60,3 @@ documentRoot =
 documentFile :: FilePath
 documentFile =
     documentRoot ++ "/home.md"
-
-request :: Method -> [String] -> RequestHead
-request method path =
-    RequestHead
-        { requestMethod = method
-        , requestPath = path
-        , requestQuery = []
-        , requestHeaders = []
-        , requestRawPath = BS.pack "/"
-        }

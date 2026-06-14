@@ -6,7 +6,8 @@ import Control.Monad (void)
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http
 import MicroHttp.Network.Socket
-import MicroHttp.Server (Application, defaultSettings, handleClient)
+import MicroHttp.Router (get, serveRoutes)
+import MicroHttp.Server (Application, defaultSettings, handleClient, parseLimits)
 import Test.Hspec
 
 -- | Enough connections to interleave, kept small so the example stays fast.
@@ -53,17 +54,22 @@ startPair lsock port index = do
     connected <- connectTcp loopback port
     accepted <- accept lsock
     case (connected, accepted) of
-        (Right client, Right (served, _conn)) -> do
+        (Right client, Right (served, conn)) -> do
             slot <- newEmptyMVar
-            _ <- forkIO (void (handleClient defaultSettings (taggedApp tag) served))
+            _ <- forkIO (void (handleClient defaultSettings (taggedApp tag) served conn))
             _ <- forkIO (runClient client tag slot)
             return slot
         _ -> fail' "connect/accept failed"
 
--- | Responds with a large body filled with @tag@.
+{- | A routed application that responds with a large body filled with @tag@.
+It frames the request first (like a real application), so the large lazily
+built body is forced after the read, matching the production path.
+-}
 taggedApp :: Char -> Application
-taggedApp tag _ =
-    pure (Response okStatus [] (StrictBody (BS.pack (replicate bodySize tag))))
+taggedApp tag =
+    serveRoutes
+        (parseLimits defaultSettings)
+        [get "/" (\_ _ -> pure (Response okStatus [] (StrictBody (BS.pack (replicate bodySize tag)))))]
 
 {- | Sends a minimal request, reads the whole response, and reports whether
 the body is exactly @bodySize@ bytes of @tag@.

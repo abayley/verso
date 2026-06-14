@@ -143,19 +143,18 @@ carries both strict and streaming bodies, so threading the timeout through it
 bounds every write. As on the read side the timer is armed only on a
 would-block write, so a draining peer keeps the throughput above.
 
-RFC-0009 (ADR-029) adds an opt-in access log at this connection layer.
-`handleClient` is the outermost layer that sees every accepted connection, so
-it owns the log: it times the request with `getTimeMilli`, captures the
-parsed head through an `onHead` callback the pipeline runs on a successful
-parse, counts the bytes `socketResponseWriter` sends, and emits a
-`RequestReceived` line when the head parses and a terminal line after the
-write -- `RequestCompleted` (status, bytes, duration) for a written response,
-including the 400 and 408 paths, or `RequestAborted` for a transport failure.
-A connection that stalls before a parseable head still gets a terminal line,
-so none is unlogged; this is why the log sits here and not in the
-`Application`-level middleware, which the server only invokes after a head
-parses. The `settingsLogger` (`nullLogger` by default) is an injected
-sink-and-formatter component, so logging is off until an operator sets it.
+RFC-0009 introduced an opt-in access log; RFC-0012 (ADR-032, superseding
+ADR-029) then reshaped the contracts so it is an ordinary middleware. The
+`Application` now consumes the raw request stream and receives the connection's
+peer (`ConnectionInfo`), so `logRequests` -- the outermost middleware -- taps
+the first line for the method and target, holds the peer, times the request,
+counts the request bytes, and emits a `RQST` line on the first line and a
+terminal `RESP`/`ABRT` line. Framing moved out of the server into
+`Router.serveRoutes` (the bottom of the application stack), the 400/408
+responses into the `withErrorResponses` middleware, and `handleClient`
+collapsed to driving the stack, writing the response, and closing. The logger
+is the injected sink-and-formatter component from `MicroHttp.Log`; the
+application composes it, so logging is off unless composed in.
 
 The performance harness should be built before the readiness manager so the
 polling tax is measured, not assumed.

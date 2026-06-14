@@ -1,7 +1,7 @@
 ---
 id: RFC-0012
 name: Application As A Stream Consumer, Logging As Middleware
-status: Draft
+status: Implemented
 owners:
     - alistair
 created: 2026-06-13
@@ -12,11 +12,11 @@ superseded_by: null
 
 # Application As A Stream Consumer, Logging As Middleware
 
-| Stage     | Timestamp  |
-|-----------|------------|
-| Authored  | 2026-06-13 |
-| Started   |            |
-| Completed |            |
+| Stage     | Timestamp        |
+|-----------|------------------|
+| Authored  | 2026-06-13       |
+| Started   | 2026-06-14 17:00 |
+| Completed | 2026-06-14 18:05 |
 
 ## Summary
 
@@ -352,20 +352,33 @@ middleware, not here. `respondToRequestBytes` (the in-memory test seam) becomes
 ## Rollout Plan
 
 1. Phase one: contracts and combinators.
-   - [ ] `ConnectionInfo`; `accept` decodes the peer from its `sockaddr` and
+   - [x] `ConnectionInfo`; `accept` decodes the peer from its `sockaddr` and
          returns `(ClientSocket, ConnectionInfo)`.
-   - [ ] New `Application`/`Middleware` types; re-express the existing
+   - [x] New `Application`/`Middleware` types; re-express the existing
          combinators; add `frameAndParse` and `serveRoutes`.
-   - [ ] `withErrorResponses` middleware carrying the `400`/`408` defaults.
+   - [x] `withErrorResponses` middleware carrying the `400`/`408` defaults.
 2. Phase two: logging as middleware.
-   - [ ] `logRequests` middleware (input tap, response observation, per-request
+   - [x] `logRequests` middleware (input tap, response observation, per-request
          state); remove `settingsLogger`.
 3. Phase three: thin the server and migrate.
-   - [ ] `handleClient` drives the stack and writes; `respondToRequestBytes`
+   - [x] `handleClient` drives the stack and writes; `respondToRequestBytes`
          simplified; `TestApp` composes its stack with logging outermost.
-   - [ ] Unit and integration tests above; `make check` green.
-   - [ ] The new ADR accepted (supersedes ADR-029); update the network design
+   - [x] Unit and integration tests above; `make check` green.
+   - [x] ADR-032 accepted (supersedes ADR-029); update the network design
          and the request-lifecycle walkthrough.
+
+Deviations taken during implementation (recorded in ADR-032): the `requestPeer`
+field on `RequestHead` was deferred -- the logger reads the peer from
+`ConnectionInfo`, and no handler needs it yet, so adding it (and the
+`Http`->`Socket` coupling it implies) waits for a real consumer. `logRequests`
+records the peer, method, target, status, request bytes, and duration;
+response-body byte counting is a follow-up. `AccessEvent` carries the peer and
+a `RequestLine` (method and target strings tapped from the first line) rather
+than a parsed `RequestHead`. `ServerError` gained `ServerStreamFailed` for a
+stream failure that produced no response. The body bound and 400/408 responses
+are now application-composed (`serveRoutes`/`withErrorResponses`), so
+`settingsMaxBodyBytes` is the value an application threads into its limits
+(via `parseLimits`) rather than a server-enforced cap.
 
 ### Rollout Plan Escape Hatch
 

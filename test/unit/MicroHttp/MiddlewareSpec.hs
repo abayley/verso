@@ -4,8 +4,9 @@ import qualified Data.ByteString.Char8 as BS
 import Data.IORef
 import MicroHttp.Http
 import MicroHttp.Http.Parser (ParseError (..))
-import MicroHttp.Iteratee (Iter, byteSinkI, readBodyStrict, run, strictEnumerator, takeN)
+import MicroHttp.Iteratee (byteSinkI, readBodyStrict, run, strictEnumerator, takeN)
 import MicroHttp.Middleware
+import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), Port (..))
 import MicroHttp.Stream (StreamError (..))
 import Test.Hspec
 
@@ -29,20 +30,20 @@ spec =
             response <- runApp "x" (catchIter (const errorResponse) alwaysFails)
             fmap (statusCode . responseStatus) response `shouldBe` Right 500
 
--- Applications under test.
+-- Applications under test. Each ignores the connection and reads the stream.
 
-echoStatus :: RequestHead -> Iter StreamError Response
+echoStatus :: Application
 echoStatus _ = pure (Response okStatus [] (StrictBody (bs "ok")))
 
-echoBody :: RequestHead -> Iter StreamError Response
+echoBody :: Application
 echoBody _ = do
     body <- readBodyStrict (StreamParseError (BadRequest "too large")) 100
     pure (Response okStatus [] (StrictBody body))
 
-streamHello :: RequestHead -> Iter StreamError Response
+streamHello :: Application
 streamHello _ = pure (Response okStatus [] (StreamBody (strictEnumerator (bs "hello"))))
 
-alwaysFails :: RequestHead -> Iter StreamError Response
+alwaysFails :: Application
 alwaysFails _ = readBodyStrict (StreamParseError (BadRequest "boom")) 0 >> pure (Response okStatus [] (StrictBody (bs "unreached")))
 
 withMarker :: Response -> Response
@@ -55,18 +56,11 @@ errorResponse =
 
 -- Harness.
 
-runApp :: String -> (RequestHead -> Iter StreamError Response) -> IO (Either StreamError Response)
-runApp body app = strictEnumerator (bs body) (app reqHead) >>= run
+runApp :: String -> Application -> IO (Either StreamError Response)
+runApp body app = strictEnumerator (bs body) (app conn) >>= run
 
-reqHead :: RequestHead
-reqHead =
-    RequestHead
-        { requestMethod = GET
-        , requestPath = []
-        , requestQuery = []
-        , requestHeaders = []
-        , requestRawPath = bs "/"
-        }
+conn :: ConnectionInfo
+conn = ConnectionInfo (HostIPv4 127 0 0 1) (Port 0)
 
 recordBody :: Response -> IO (Either StreamError [BS.ByteString])
 recordBody response =

@@ -4,8 +4,9 @@ import Control.Monad (when)
 import qualified Data.ByteString.Char8 as BS
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef)
 import Data.List (isInfixOf)
-import MicroHttp.Http (Method (..), RequestHead (..), Status (..))
-import MicroHttp.Log (AccessEvent (..), Logger, fileLogfmtLogger)
+import MicroHttp.Http (Status (..))
+import MicroHttp.Log (AccessEvent (..), Logger, RequestLine (..), fileLogfmtLogger)
+import MicroHttp.Middleware (Application, logRequests, withErrorResponses)
 import MicroHttp.Network.Socket
 import MicroHttp.Server
 import qualified MicroHttp.TestApp as TestApp
@@ -15,44 +16,43 @@ import Test.Hspec
 spec :: Spec
 spec =
     describe "MicroHttp.Server access logging" $ do
-        it "given a normal request, when handled with a logger, then a received line and a completed line are recorded" $
-            withConnectedPair $ \client served -> do
+        it "given a normal request, when handled through the logging middleware, then a received line and a completed line are recorded" $
+            withConnectedPair $ \client served conn -> do
                 events <- newIORef []
                 sent <- sendAll client (BS.pack "GET / HTTP/1.1\r\n\r\n")
                 sent `shouldBe` Right ()
-                result <- handleClient (loggingSettings events) (TestApp.appWithDocumentRoot documentRoot) served
+                result <- handleClient defaultSettings (logged events documentApp) served conn
                 _ <- recv client 4096
                 result `shouldBe` Right ()
                 recorded <- captured events
                 case recorded of
-                    [RequestReceived received, RequestCompleted (Just completed) status bytesWritten durationMillis] -> do
-                        requestMethod received `shouldBe` GET
-                        requestPath received `shouldBe` []
-                        requestMethod completed `shouldBe` GET
+                    [RequestReceived _ received, RequestCompleted _ (Just completed) status reqBytes durationMillis] -> do
+                        requestLineMethod received `shouldBe` "GET"
+                        requestLineTarget received `shouldBe` "/"
+                        requestLineMethod completed `shouldBe` "GET"
                         statusCode status `shouldBe` 200
-                        (bytesWritten > 0) `shouldBe` True
+                        (reqBytes > 0) `shouldBe` True
                         (durationMillis >= 0) `shouldBe` True
                     _ -> expect ("unexpected log events: " ++ describe' recorded) False
-        it "given a peer that stalls before completing the head, when handled with a short idle timeout, then a completed 408 line is still recorded" $
-            withConnectedPair $ \client served -> do
+        it "given a peer that stalls after the first line, when handled with a short idle timeout, then a completed 408 line is recorded" $
+            withConnectedPair $ \client served conn -> do
                 sent <- sendAll client (BS.pack "GET / HTTP/1.1\r\n")
                 sent `shouldBe` Right ()
                 events <- newIORef []
-                result <- handleClient (shortIdleLoggingSettings events) (TestApp.appWithDocumentRoot documentRoot) served
+                result <- handleClient shortIdleSettings (logged events (withErrorResponses documentApp)) served conn
                 _ <- recv client 4096
                 result `shouldBe` Right ()
                 recorded <- captured events
                 case recorded of
-                    [RequestCompleted Nothing status _ _] ->
+                    [RequestReceived _ _, RequestCompleted _ _ status _ _] ->
                         statusCode status `shouldBe` 408
-                    _ -> expect ("expected a single completed 408 line, got: " ++ describe' recorded) False
-
+                    _ -> expect ("expected received then completed 408, got: " ++ describe' recorded) False
         it "given a file logger, when a request is handled, then the access log file holds the request lines" $
-            withConnectedPair $ \client served -> do
+            withConnectedPair $ \client served conn -> do
                 removeIfExists accessLogPath
                 sent <- sendAll client (BS.pack "GET / HTTP/1.1\r\n\r\n")
                 sent `shouldBe` Right ()
-                result <- handleClient (fileLoggingSettings accessLogPath) (TestApp.appWithDocumentRoot documentRoot) served
+                result <- handleClient defaultSettings (logRequests (fileLogfmtLogger accessLogPath) documentApp) served conn
                 _ <- recv client 4096
                 result `shouldBe` Right ()
                 contents <- readFile accessLogPath
@@ -61,13 +61,16 @@ spec =
                 ("event=RESP" `isInfixOf` contents) `shouldBe` True
                 ("status=200" `isInfixOf` contents) `shouldBe` True
 
-loggingSettings :: IORef [AccessEvent] -> Settings
-loggingSettings events =
-    defaultSettings{settingsLogger = captureLogger events}
+-- | The document application (frames and routes; no middleware).
+documentApp :: Application
+documentApp = TestApp.appWithDocumentRoot documentRoot
 
-fileLoggingSettings :: FilePath -> Settings
-fileLoggingSettings path =
-    defaultSettings{settingsLogger = fileLogfmtLogger path}
+-- | Wraps an application with a capturing logging middleware (outermost).
+logged :: IORef [AccessEvent] -> Application -> Application
+logged events = logRequests (captureLogger events)
+
+shortIdleSettings :: Settings
+shortIdleSettings = defaultSettings{settingsIdleReadTimeoutMicros = 100000}
 
 accessLogPath :: FilePath
 accessLogPath = "build/test-access.log"
@@ -76,10 +79,6 @@ removeIfExists :: FilePath -> IO ()
 removeIfExists path = do
     present <- doesFileExist path
     when present (removeFile path)
-
-shortIdleLoggingSettings :: IORef [AccessEvent] -> Settings
-shortIdleLoggingSettings events =
-    defaultSettings{settingsLogger = captureLogger events, settingsIdleReadTimeoutMicros = 100000}
 
 captureLogger :: IORef [AccessEvent] -> Logger
 captureLogger events event = modifyIORef' events (event :)
@@ -94,9 +93,9 @@ describe' = show . map tagOf
 tagOf :: AccessEvent -> String
 tagOf event =
     case event of
-        RequestReceived _ -> "received"
-        RequestCompleted _ status _ _ -> "completed:" ++ show (statusCode status)
-        RequestAborted _ reason _ -> "aborted:" ++ reason
+        RequestReceived _ _ -> "received"
+        RequestCompleted _ _ status _ _ -> "completed:" ++ show (statusCode status)
+        RequestAborted _ _ reason _ _ -> "aborted:" ++ reason
 
 documentRoot :: FilePath
 documentRoot = "build"
@@ -104,7 +103,7 @@ documentRoot = "build"
 loopback :: Host
 loopback = HostIPv4 127 0 0 1
 
-withConnectedPair :: (ClientSocket -> ClientSocket -> IO ()) -> IO ()
+withConnectedPair :: (ClientSocket -> ClientSocket -> ConnectionInfo -> IO ()) -> IO ()
 withConnectedPair use = do
     opened <- listenTcp HostAny (Port 0) 1
     case opened of
@@ -123,8 +122,8 @@ withConnectedPair use = do
                                 Left err -> do
                                     _ <- closeClientSocket client
                                     expect ("accept failed: " ++ show err) False
-                                Right (served, _conn) -> do
-                                    use client served
+                                Right (served, conn) -> do
+                                    use client served conn
                                     _ <- closeClientSocket client
                                     return ()
             closed <- closeListenSocket socket

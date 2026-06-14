@@ -657,6 +657,43 @@ the framework needing a compression path. Should a proxy-less production target
 ever become first-class, keep-alive and the heavier protections would need
 their own RFCs.
 
+### ADR-032: Application As A Stream Consumer, Logging As Middleware
+
+Status: Accepted. Supersedes ADR-029.
+
+Context: Framing ran in a server-owned pipeline above the application and
+outside the middleware stack, and request logging was special-cased inside
+`handleClient` because the old `Application = RequestHead -> Iter` only ran
+after a head parsed -- so a middleware there could not see a connection that
+failed before parsing, nor the request bytes.
+
+Decision: `Application` becomes `ConnectionInfo -> Iter StreamError Response` --
+it consumes the raw request stream and receives the connection's non-payload
+metadata (the peer). Framing, parsing, and the body bound move into the
+application stack as `Router.serveRoutes`/`frameAndParse`, with routing the
+innermost layer; `route` stays handler-facing (`Captures -> RequestHead ->
+...`). `Middleware = Application -> Application` is a stream-level transformer;
+`withErrorResponses` maps a parse failure to 400 and an idle-read timeout to
+408 (a read failure stays an abort), and `logRequests` is the outermost
+middleware -- it taps the first line for the peer/method/target, times the
+request, counts request bytes, and emits the access-log events. `handleClient`
+collapses to: drive the stack, write the response, close. `ConnectionInfo`
+lives in `MicroHttp.Network.Socket` and is decoded by `accept` from the
+`sockaddr` it already fills (no `getpeername`).
+
+Consequences: logging is an ordinary middleware that sees the request bytes
+and the response, so the connection-layer special case (ADR-029) is gone and
+`settingsLogger` is removed; the application composes `logRequests`. The body
+bound and the 400/408 responses are now application-composed
+(`serveRoutes`/`withErrorResponses`), so `Settings.maxBodyBytes` is the value
+an application threads into its limits rather than something the server
+enforces directly. `ServerError` gains `ServerStreamFailed` for a stream
+failure that produced no response. Deviations from RFC-0012 as drafted, taken
+to bound the change: the `requestPeer` field on `RequestHead` is deferred (no
+handler needs the peer yet, and the logger reads it from `ConnectionInfo`), and
+`logRequests` does not yet count response-body bytes (it records request bytes,
+status, and duration). The design is RFC-0012.
+
 ## ADR Registry Open Review Items
 
 - Verify socket layout assumptions on non-macOS platforms before treating

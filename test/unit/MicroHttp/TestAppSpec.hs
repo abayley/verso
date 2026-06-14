@@ -4,6 +4,7 @@ import qualified Data.ByteString.Char8 as BS
 import Data.List (isInfixOf)
 import MicroHttp.Http
 import MicroHttp.Iteratee (Iter, run, strictEnumerator)
+import qualified MicroHttp.Router as Router
 import MicroHttp.Stream (StreamError)
 import qualified MicroHttp.TestApp as TestApp
 import Test.Hspec
@@ -91,13 +92,19 @@ runApp head body = do
         Right response -> return response
         Left err -> expectFailure err
 
+{- | Drives the routes at the handler level (a parsed head in), bypassing
+framing, so the tests can pass a 'RequestHead' directly. The store is in
+memory, so this stays a unit test with no filesystem effects.
+-}
 testApp :: RequestHead -> Iter StreamError Response
 testApp =
-    TestApp.appWithStore
-        TestApp.DocumentStore
-            { TestApp.loadDocument = \_ -> return "# Hello from MicroHttp\n\nEdit this Markdown document."
-            , TestApp.saveDocumentContent = \_ _ -> return ()
-            }
+    Router.route
+        ( TestApp.routes
+            TestApp.DocumentStore
+                { TestApp.loadDocument = \_ -> return "# Hello from MicroHttp\n\nEdit this Markdown document."
+                , TestApp.saveDocumentContent = \_ _ -> return ()
+                }
+        )
 
 expectFailure :: StreamError -> IO Response
 expectFailure err = do

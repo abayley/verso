@@ -3,16 +3,22 @@ module MicroHttp.Router (
     Handler,
     Route,
     delete,
+    frameAndParse,
     get,
     post,
     route,
+    serveRoutes,
 ) where
 
 import qualified Data.ByteString.Char8 as BS
+import Data.Char (isDigit)
 import Data.List (intercalate)
 import MicroHttp.Http
-import MicroHttp.Iteratee (Iter)
-import MicroHttp.Stream (StreamError)
+import MicroHttp.Http.Framing (frameHeadersI)
+import MicroHttp.Http.Parser (ParseError (..), ParseLimits (..), parseRequestHead)
+import MicroHttp.Iteratee (Iter (..), Stream (..), takeN)
+import MicroHttp.Middleware (Application)
+import MicroHttp.Stream (StreamError (..))
 
 type Captures = [(String, String)]
 
@@ -43,6 +49,54 @@ route routes request =
             case matchingMethod pathMatches (requestMethod request) of
                 Just (captures, handler) -> handler captures request
                 Nothing -> pure methodNotAllowed
+
+{- | An application built from routes: frame and parse the head, bound the body
+to the declared @Content-Length@ (rejecting an over-limit or malformed length),
+then dispatch. Framing lives here, at the bottom of the application stack, not
+in the server. The connection metadata is unused for now.
+-}
+serveRoutes :: ParseLimits -> [Route] -> Application
+serveRoutes limits routes _conn =
+    frameAndParse limits >>= withBody
+  where
+    withBody head =
+        case declaredContentLength (requestHeaders head) of
+            Left err -> failWith (StreamParseError err)
+            Right bodyLength
+                | bodyLength > maxBodyBytes limits ->
+                    failWith (StreamParseError BodyTooLarge)
+                | otherwise -> takeN bodyLength (route routes head)
+
+-- | Frames the header block and parses it, failing the stream on a bad head.
+frameAndParse :: ParseLimits -> Iter StreamError RequestHead
+frameAndParse limits =
+    frameHeadersI limits >>= parsed
+  where
+    parsed headerBytes =
+        case parseRequestHead headerBytes of
+            Left err -> failWith (StreamParseError err)
+            Right head -> pure head
+
+-- | A pipeline failure becomes an iteratee failure with empty residue.
+failWith :: StreamError -> Iter StreamError a
+failWith err = IterFailed err (Chunk BS.empty)
+
+{- | The declared body length: a missing @Content-Length@ means no body, a
+well-formed value is its length, and a non-numeric value is rejected.
+-}
+declaredContentLength :: Headers -> Either ParseError Int
+declaredContentLength headers =
+    case lookupHeaderValue "content-length" headers of
+        Nothing -> Right 0
+        Just value
+            | value /= "" && all isDigit value -> Right (read value)
+            | otherwise -> Left (BadRequest "invalid content-length")
+
+lookupHeaderValue :: String -> Headers -> Maybe String
+lookupHeaderValue _ [] = Nothing
+lookupHeaderValue name ((key, value) : rest)
+    | normaliseHeaderName (BS.pack name) == key = Just (BS.unpack value)
+    | otherwise = lookupHeaderValue name rest
 
 routeFor :: Method -> String -> Handler -> Route
 routeFor method patternText =

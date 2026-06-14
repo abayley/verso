@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MicroHttp — A Request's Journey</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose", flowchart: { curve: "basis" } });
+    </script>
+    <style>
+      body { font-feature-settings: "liga" 1, "calt" 1; }
+      .prose-tour p { line-height: 1.7; }
+      code, pre, .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      pre.code { background: linear-gradient(180deg,#0f172a,#111c33); color: #e2e8f0; border-radius: 0.6rem; padding: 1rem 1.15rem; overflow-x: auto; font-size: 0.78rem; line-height: 1.6; }
+      pre.code .c { color: #7c8aa5; font-style: italic; }
+      pre.code .k { color: #c4b5fd; }
+      pre.code .t { color: #7dd3fc; }
+      pre.code .f { color: #86efac; }
+      pre.code .s { color: #fca5a5; }
+      .filetab { font-size: 0.72rem; letter-spacing: 0.02em; }
+      .chapnum { font-variant-numeric: tabular-nums; }
+      .pill { font-size: 0.64rem; letter-spacing: 0.06em; text-transform: uppercase; }
+      .diagcard { border: 1px solid #e2e8f0; background: #fff; border-radius: 0.7rem; }
+      .mermaid { display: flex; justify-content: center; }
+      .layer { border-radius: 0.6rem; }
+      table.states { border-collapse: collapse; width: 100%; font-size: 0.78rem; }
+      table.states th, table.states td { border: 1px solid #e2e8f0; padding: 0.4rem 0.6rem; text-align: left; vertical-align: top; }
+      table.states th { background: #f1f5f9; font-weight: 600; }
+      table.states code { font-size: 0.74rem; }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans antialiased">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-14">
+
+      <!-- HEADER -->
+      <header class="space-y-5">
+        <div class="flex items-baseline justify-between flex-wrap gap-3">
+          <h1 class="text-4xl font-semibold tracking-tight">MicroHttp — A Request's Journey</h1>
+          <span class="mono text-xs text-slate-500">micro-http · branch main · 2026-06-13</span>
+        </div>
+        <p class="text-lg text-slate-700 max-w-3xl prose-tour">
+          A tour of the server, organised module by module as we follow one HTTP request from
+          <code class="mono text-base">main</code> down to the bytes on the wire. Read the chapters in
+          order; each is a module, and each goes one layer deeper into handling the request.
+        </p>
+        <div class="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 max-w-3xl">
+          <strong>This reflects the target design after RFC-0012</strong> (the <code class="mono">Application</code>
+          becomes a stream consumer and logging becomes middleware). The engine and transport chapters
+          (Iteratee, Socket, Stream) show today's code, which RFC-0012 keeps; the Main, Server, and
+          Middleware chapters show the RFC-0012 shape, which differs from the current source.
+        </div>
+        <div class="flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-600 border-t border-b border-slate-200 py-3">
+          <span><span class="inline-block w-3 h-3 align-middle rounded-sm bg-slate-800 mr-1"></span>module</span>
+          <span><span class="inline-block w-4 h-0 align-middle border-t-2 border-dashed border-slate-400 mr-1"></span>seam — an <span class="mono">Either</span> error boundary</span>
+          <span><span class="inline-block w-3 h-3 align-middle rounded-sm bg-indigo-500 mr-1"></span>the iteratee engine</span>
+          <span><span class="inline-block w-3 h-3 align-middle rounded-sm bg-emerald-500 mr-1"></span>middleware layer</span>
+        </div>
+      </header>
+
+      <!-- THE MAP -->
+      <section class="space-y-5">
+        <h2 class="text-2xl font-semibold tracking-tight">The shape of it</h2>
+        <p class="text-slate-700 max-w-3xl prose-tour">
+          <code class="mono text-sm">main</code> hands <code class="mono text-sm">Server.serve</code> a
+          <code class="mono text-sm">Settings</code> and one <code class="mono text-sm">Application</code> —
+          a stack of middleware wrapped around a router. <code class="mono text-sm">serve</code> opens the
+          listening socket and forks a capped handler per connection. Each handler drives the application
+          stack with bytes read from the socket, through the <strong>iteratee engine</strong>, and writes
+          the response back out. The request flows <em>down</em> the middleware stack to the router at the
+          bottom; the response flows back <em>up</em> through the same layers — which is how the outermost
+          layer, logging, sees both.
+        </p>
+
+        <div class="diagcard p-5 space-y-3">
+          <div class="layer border border-slate-300 bg-white p-3">
+            <span class="pill text-slate-500">Main (<span class="mono">src/TestApp.hs</span>) — composes the stack, calls <span class="mono">serve</span></span>
+          </div>
+          <div class="layer border border-slate-300 bg-slate-50 p-3">
+            <span class="pill text-slate-500">Server — listen · accept (+peer) · cap · <span class="mono">handleClient</span> drives + writes + closes</span>
+          </div>
+          <div class="layer border-2 border-emerald-300 bg-emerald-50 p-3 space-y-2">
+            <span class="pill text-emerald-700">the Application stack — request flows down ▼, response flows up ▲</span>
+            <div class="layer border border-emerald-300 bg-white p-2 text-xs text-slate-600">middleware: <strong>logRequests</strong> (outermost — first line, peer, sizes, time)</div>
+            <div class="layer border border-emerald-300 bg-white p-2 text-xs text-slate-600">middleware: slow-client policy</div>
+            <div class="layer border border-emerald-300 bg-white p-2 text-xs text-slate-600">middleware: <strong>withErrorResponses</strong> (400 / 408)</div>
+            <div class="layer border border-slate-300 bg-slate-50 p-2 text-xs text-slate-600"><strong>routing</strong> (bottom): <span class="mono">serveRoutes</span> = frame · parse · bound body · dispatch → Handler</div>
+          </div>
+          <div class="layer bg-indigo-500 text-white p-3">
+            <span class="pill text-indigo-100">engine — <span class="mono">MicroHttp.Iteratee</span> (Iter / Stream / Enumerator / run)</span>
+          </div>
+          <div class="layer p-3" style="border:2px dashed #94a3b8; background:#fff;">
+            <span class="pill text-slate-500">transport — <span class="mono">MicroHttp.Network.Socket</span> (recv/send, readiness, peer address)</span>
+          </div>
+        </div>
+
+        <div class="diagcard p-4">
+          <div class="mermaid">
+flowchart TD
+    M["main: serve settings app"] --> L["listenTcp + QSem"]
+    L --> A["accept -> (ClientSocket, ConnectionInfo)"]
+    A --> F["forkIO (capped)"]
+    F --> H["handleClient: socketEnumerator client (app conn)"]
+    H --> ST{{"middleware stack<br/>down: request · up: response"}}
+    ST --> R["serveRoutes: frame · parse · bound · route -> Handler"]
+    R --> RESP["Response"]
+    RESP --> ST
+    ST --> W["run -> write response (egress) -> close"]
+    classDef engine fill:#6366f1,stroke:#4338ca,color:#fff;
+    class ST engine;
+          </div>
+        </div>
+      </section>
+
+      <!-- MODULES & TYPES -->
+      <section class="space-y-5">
+        <h2 class="text-2xl font-semibold tracking-tight">Modules and types</h2>
+        <p class="text-slate-700 max-w-3xl prose-tour">
+          Before the walkthrough, a map of where things live: each box is a module with its headline
+          functions and types, and an arrow <span class="mono">A → B</span> means <em>A uses B</em>. Every
+          function the chapters mention — <code class="mono">acceptLoop</code>,
+          <code class="mono">handleClient</code>, <code class="mono">socketEnumerator</code>,
+          <code class="mono">serveRoutes</code>, and the rest — is shown in its module. The engine
+          (<span class="text-indigo-600 font-medium">Iteratee</span>) and the transport
+          (<span class="text-slate-500 font-medium">Socket</span>) sit at the bottom; everything flows down
+          toward them.
+        </p>
+        <div class="diagcard p-4">
+          <div class="mermaid">
+flowchart TD
+    Main["Main · src/TestApp.hs<br/>main · app · routes · handlers"]
+    Server["Server<br/>serve · acceptLoop · runCappedHandler<br/>handleClient · Settings · ServerError"]
+    MW["Middleware<br/>Application · Middleware · logRequests<br/>withErrorResponses · ingress · egress · catchIter"]
+    Router["Router<br/>serveRoutes · route · frameAndParse<br/>Route · Handler · Captures · PathPart"]
+    Static["Static<br/>static · serveStatic<br/>resolveStaticPath · contentTypeFor"]
+    Http["Http (+ Parser · Framing · Response)<br/>RequestHead · Response · ResponseBody · Status<br/>parseRequestHead · frameHeadersI · writeResponse"]
+    Stream["Stream<br/>socketEnumerator · fileEnumerator · StreamError"]
+    Socket["Network.Socket<br/>accept · recvWithin · sendAllWithin<br/>ClientSocket · ConnectionInfo · SocketError"]
+    Iter["Iteratee — the engine<br/>Iter · Stream · Enumerator<br/>run · takeN · readBodyStrict · byteSinkI"]
+    Log["Log<br/>Logger · AccessEvent<br/>formatLogfmt · fileLogfmtLogger"]
+    Html["Html<br/>Html · el · text · renderHtml"]
+
+    Main --> Server
+    Main --> MW
+    Main --> Router
+    Main --> Static
+    Main --> Log
+    Main --> Html
+    Server --> Socket
+    Server --> Stream
+    Server --> Iter
+    Server --> Http
+    MW --> Http
+    MW --> Iter
+    MW --> Stream
+    MW --> Log
+    Router --> Http
+    Router --> Iter
+    Router --> Stream
+    Static --> Router
+    Static --> Http
+    Static --> Stream
+    Stream --> Socket
+    Stream --> Iter
+    Http --> Iter
+    Log --> Http
+
+    classDef engine fill:#6366f1,stroke:#4338ca,color:#fff;
+    classDef transport fill:#ffffff,stroke:#94a3b8,stroke-dasharray:5 5;
+    class Iter engine;
+    class Socket transport;
+          </div>
+        </div>
+        <p class="text-slate-500 text-xs max-w-3xl">
+          The <span class="mono">Http</span> box aggregates the parser, framing, and response sub-modules.
+          The error types thread between layers — <span class="mono">StreamError</span> (in
+          <span class="mono">Stream</span>) wraps the parser's <span class="mono">ParseError</span>, and
+          <span class="mono">writeResponse</span> reports failures as <span class="mono">StreamError</span> —
+          which is why <span class="mono">Application</span> and <span class="mono">Middleware</span> are
+          typed over <span class="mono">Iter StreamError Response</span>. Reflects the RFC-0012 design.
+        </p>
+      </section>
+
+      <!-- CH 1: MAIN -->
+      <section class="space-y-4">
+        <div class="flex items-center gap-3">
+          <span class="chapnum text-3xl font-bold text-indigo-500">01</span>
+          <h2 class="text-2xl font-semibold tracking-tight">Main — composing the stack</h2>
+          <span class="mono text-xs text-slate-400">src/TestApp.hs</span>
+        </div>
+        <p class="text-slate-700 max-w-3xl prose-tour">
+          The entry point builds the configuration and the application, then calls
+          <code class="mono text-sm">serve</code>. The application is assembled here, outermost-first: logging
+          wraps the slow-client policy, which wraps the error-response mapping, which wraps the router. This
+          one expression <em>is</em> the layering — there is no hidden pipeline. Logging is just the
+          outermost middleware (RFC-0012 removed the old <code class="mono text-sm">settingsLogger</code>).
+        </p>
+        <pre class="code"><span class="filetab text-slate-500">src/TestApp.hs — design (RFC-0012)</span>
+
+<span class="f">main</span> :: <span class="t">IO</span> ()
+<span class="f">main</span> = <span class="k">do</span>
+    <span class="k">let</span> settings = <span class="f">defaultSettings</span>
+        limits   = <span class="f">parseLimits</span> settings
+        app      = <span class="f">logRequests</span> (<span class="f">fileLogfmtLogger</span> <span class="s">"build/access.log"</span>)
+                       (<span class="f">withErrorResponses</span>
+                           (<span class="f">serveRoutes</span> limits (<span class="f">routes</span> store)))
+    result &lt;- <span class="f">Server.serve</span> settings app
+    ...</pre>
+        <p class="text-slate-600 text-sm max-w-3xl">
+          <code class="mono">serve :: Settings -> Application -> IO (Either ServerError ())</code>. The
+          <code class="mono">Application</code> is a value (a stream consumer), so <code class="mono">serve</code>
+          drives the same composed stack for every connection.
+        </p>
+      </section>
+
+      <!-- CH 2: SERVER -->
+      <section class="space-y-4">
+        <div class="flex items-center gap-3">
+          <span class="chapnum text-3xl font-bold text-indigo-500">02</span>
+          <h2 class="text-2xl font-semibold tracking-tight">Server — the glue that ties it together</h2>
+          <span class="mono text-xs text-slate-400">src/MicroHttp/Server.hs</span>
+        </div>
+        <p class="text-slate-700 max-w-3xl prose-tour">
+          Server owns the <em>connection lifecycle</em> and nothing HTTP-specific. <code class="mono text-sm">serve</code>
+          opens the listening socket, sizes a counting semaphore to
+          <code class="mono text-sm">settingsMaxActiveHandlers</code>, and loops accepting. Each accept yields
+          the client socket <em>and</em> the peer address (decoded from the <code class="mono">sockaddr</code>
+          accept already fills — no extra syscall). A handler is forked per connection, takes a semaphore
+          slot, runs, and releases it — so in-flight handlers are bounded.
+        </p>
+        <pre class="code"><span class="filetab text-slate-500">src/MicroHttp/Server.hs — design (RFC-0012)</span>
+
+<span class="f">acceptLoop</span> settings app sem socket = <span class="k">do</span>
+    accepted &lt;- <span class="f">accept</span> socket                <span class="c">-- (ClientSocket, ConnectionInfo)</span>
+    <span class="k">case</span> accepted <span class="k">of</span>
+        <span class="f">Right</span> (client, conn) -&gt; <span class="k">do</span>
+            _ &lt;- <span class="f">forkIO</span> (<span class="f">runCappedHandler</span> settings app sem client conn)
+            <span class="f">acceptLoop</span> settings app sem socket
+        ...
+
+<span class="c">-- the connection layer: drive the stack, write, close. No framing,</span>
+<span class="c">-- no parsing, no logging here -- those moved into the stack.</span>
+<span class="f">handleClient</span> settings app client conn = <span class="k">do</span>
+    final   &lt;- <span class="f">socketEnumerator</span> client (<span class="f">readBuffer</span> settings)
+                   (<span class="f">idleRead</span> settings) (app conn)   <span class="c">-- app :: ConnectionInfo -> Iter</span>
+    outcome &lt;- <span class="f">run</span> final
+    _ &lt;- <span class="k">case</span> outcome <span class="k">of</span>
+        <span class="f">Right</span> response -&gt; <span class="f">writeResponse</span> (<span class="f">socketSink</span> settings client) response
+        <span class="f">Left</span> _         -&gt; <span class="f">pure</span> (<span class="f">Right</span> ())   <span class="c">-- aborted: nothing to write</span>
+    <span class="f">closeClientSocket</span> client</pre>
+        <p class="text-slate-700 text-sm max-w-3xl prose-tour">
+          That is the whole of how Server ties it together: it produces bytes from the socket
+          (<code class="mono">socketEnumerator</code>), feeds them into the application stack
+          (<code class="mono">app conn</code>), drives it to a result with <code class="mono">run</code>, writes any
+          response, and closes. <code class="mono">Settings</code> carries host, port, the handler cap, the
+          byte limits, and the idle read/write timeouts — pure configuration, no logger.
+        </p>
+      </section>
+
+      <!-- CH 3: SOCKET -->
+      <section class="space-y-4">
+        <div class="flex items-center gap-3">
+          <span class="chapnum text-3xl font-bold text-indigo-500">03</span>
+          <h2 class="text-2xl font-semibold tracking-tight">Socket — bytes, readiness, and the peer</h2>
+          <span class="mono text-xs text-slate-400">src/MicroHttp/Network/Socket.hs</span>
+        </div>
+        <p class="text-slate-700 max-w-3xl prose-tour">
+          Every socket is non-blocking. <code class="mono text-sm">recv</code> returns whatever is in the kernel
+          buffer <em>right now</em> — one byte up to the read buffer (8 KiB) — and only parks when the buffer
+          is empty. It never waits to fill the buffer, so the first chunk is the first packet's worth,
+          delivered immediately. A would-block read parks on the runtime poll queue via
+          <code class="mono text-sm">waitForReadFD</code> (RFC-0005 readiness), bounded by an idle deadline
+          (RFC-0006); writes mirror it with <code class="mono text-sm">sendAllWithin</code> (RFC-0008). Every
+          operation returns <code class="mono">Either SocketError</code> — the dashed seam.
+        </p>
+        <pre class="code"><span class="filetab text-slate-500">src/MicroHttp/Network/Socket.hs</span>
+
+<span class="c">-- one recv per chunk; returns available bytes, parks (bounded) if empty</span>
+<span class="f">recvWithin</span> :: <span class="t">Int</span> -&gt; <span class="t">ClientSocket</span> -&gt; <span class="t">Int</span> -&gt; <span class="t">IO</span> (<span class="t">Either</span> <span class="t">SocketError</span> <span class="t">ByteString</span>)
+
+<span class="c">-- accept now decodes the peer from the sockaddr it already fills (RFC-0012)</span>
+<span class="f">accept</span> :: <span class="t">ListenSocket</span> -&gt; <span class="t">IO</span> (<span class="t">Either</span> <span class="t">SocketError</span> (<span class="t">ClientSocket</span>, <span class="t">ConnectionInfo</span>))
+
+<span class="k">data</span> <span class="t">ConnectionInfo</span> = <span class="t">ConnectionInfo</span> { <span class="f">connPeerHost</span> :: <span class="t">Host</span>, <span class="f">connPeerPort</span> :: <span class="t">Port</span> }</pre>
+      </section>
+
+      <!-- CH 4: ITERATEE -->
+      <section class="space-y-4">
+        <div class="flex items-center gap-3">
+          <span class="chapnum text-3xl font-bold text-indigo-500">04</span>
+          <h2 class="text-2xl font-semibold tracking-tight">Iteratee — the engine</h2>
+          <span class="mono text-xs text-slate-400">src/MicroHttp/Iteratee.hs</span>
+        </div>
+        <p class="text-slate-700 max-w-3xl prose-tour">
+          An <strong>iteratee</strong> (<code class="mono text-sm">Iter e a</code>) is a stream consumer paused in
+          one of four states; an <strong>enumerator</strong> is a producer that feeds it. They play a
+          turn-based game: the consumer says <em>NeedInput</em>, the producer hands it a chunk, it steps
+          forward, until <em>Done</em> or <em>IterFailed</em>. The core is HTTP-free — the failure type
+          <code class="mono">e</code> is a parameter — and effects live only in <em>IterM</em>, so the pure
+          <em>NeedInput</em> continuation can hand leftover bytes (<em>residue</em>) straight on without a read.
+        </p>
+        <pre class="code"><span class="filetab text-slate-500">src/MicroHttp/Iteratee.hs</span>
+
+<span class="k">data</span> <span class="t">Stream</span> e = <span class="f">Chunk</span> <span class="t">ByteString</span> | <span class="f">EndOfStream</span> (<span class="t">Maybe</span> e)
+
+<span class="k">data</span> <span class="t">Iter</span> e a = <span class="f">Done</span> a (<span class="t">Stream</span> e)            <span class="c">-- result + residue</span>
+              | <span class="f">NeedInput</span> (<span class="t">Stream</span> e -&gt; <span class="t">Iter</span> e a)  <span class="c">-- pure continuation</span>
+              | <span class="f">IterM</span> (<span class="t">IO</span> (<span class="t">Iter</span> e a))          <span class="c">-- an effect step</span>
+              | <span class="f">IterFailed</span> e (<span class="t">Stream</span> e)        <span class="c">-- terminal failure + residue</span>
+
+<span class="k">type</span> <span class="t">Enumerator</span> e a = <span class="t">Iter</span> e a -&gt; <span class="t">IO</span> (<span class="t">Iter</span> e a)
+<span class="f">run</span> :: <span class="t">Iter</span> e a -&gt; <span class="t">IO</span> (<span class="t">Either</span> e a)</pre>
+
+        <h3 class="text-lg font-semibold tracking-tight pt-2">A request in three chunks</h3>
+        <p class="text-slate-700 max-w-3xl prose-tour">
+          The chunk size is whatever <code class="mono text-sm">recv</code> returns (up to
+          <code class="mono text-sm">settingsReadBufferBytes</code>, 8 KiB; file response bodies stream in
+          <code class="mono text-sm">fileChunkBytes</code>, 4 KiB — the two are independent constants). Suppose
+          a slow network delivers <code class="mono text-sm">POST /save … Content-Length: 11 … hello world</code>
+          in three reads. Here is how the constructors and residue thread through:
+        </p>
+        <div class="diagcard p-4 overflow-x-auto">
+          <table class="states">
+            <thead>
+              <tr><th>recv</th><th>bytes delivered</th><th>frame / parse / body</th><th>iteratee state</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1</td>
+                <td><code>"POST /save HTTP/1.1\r\nContent-Len"</code></td>
+                <td>logger taps first line → logs <code>RQST</code> (peer, POST, /save); framing buffers, no <code>\r\n\r\n</code></td>
+                <td><code>NeedInput</code> (wants more)</td>
+              </tr>
+              <tr>
+                <td>2</td>
+                <td><code>"gth: 11\r\n\r\nhel"</code></td>
+                <td>framing finds <code>\r\n\r\n</code> → <code>Done</code> head; residue <code>"hel"</code> is the body start, threaded by bind into <code>parse</code> → <code>takeN 11 (app head)</code></td>
+                <td><code>Done</code> head, then body consumer <code>NeedInput</code> (has 3 of 11)</td>
+              </tr>
+              <tr>
+                <td>3</td>
+                <td><code>"lo world"</code></td>
+                <td><code>takeN</code> feeds the last 8 bytes (11 total), then <code>EndOfStream</code> to the handler; handler builds the <code>Response</code></td>
+                <td><code>Done</code> Response</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-slate-600 text-sm max-w-3xl">
+          Note how nothing waits for an 8 KiB buffer: each <code class="mono">recv</code> delivers what arrived,
+          framing accumulates across chunks, and the body bytes that arrived <em>with</em> the header
+          terminator are not re-read — they ride along as residue.
+        </p>
+      </section>
+
+      <!-- CH 5: STREAM -->
+      <section class="space-y-4">
+        <div class="flex items-center gap-3">
+          <span class="chapnum text-3xl font-bold text-indigo-500">05</span>
+          <h2 class="text-2xl font-semibold tracking-tight">Stream — sockets and files as producers</h2>
+          <span class="mono text-xs text-slate-400">src/MicroHttp/Stream.hs</span>
+        </div>
+        <p class="text-slate-700 max-w-3xl prose-tour">
+          <code class="mono text-sm">socketEnumerator</code> is the producer that drives the application: on each
+          <code class="mono text-sm">NeedInput</code> it does one <code class="mono text-sm">recvWithin</code> and
+          feeds the chunk; an empty read is an orderly <code class="mono text-sm">EndOfStream</code>, a read
+          error or idle timeout ends the stream carrying a <code class="mono text-sm">StreamError</code>
+          (a timeout becomes <code class="mono text-sm">StreamTimeout</code>). This layer fixes the engine's
+          generic <code class="mono">e</code> to the server's <code class="mono">StreamError</code> vocabulary.
+          The mirror producer, <code class="mono text-sm">fileEnumerator</code>, streams a file in 4 KiB chunks
+          and owns the handle (released on every exit) — it is how a static-file response body is produced.
+        </p>
+        <pre class="code"><span class="filetab text-slate-500">src/MicroHttp/Stream.hs</span>
+
+<span class="f">socketEnumerator</span> socket bufferSize idleMicros = loop
+  <span class="k">where</span>
+    loop it = <span class="k">case</span> it <span class="k">of</span>
+        <span class="f">NeedInput</span> k -&gt; <span class="k">do</span>
+            received &lt;- <span class="f">recvWithin</span> idleMicros socket bufferSize
+            <span class="k">case</span> received <span class="k">of</span>
+                <span class="f">Left</span> err -&gt; <span class="f">return</span> (k (<span class="f">EndOfStream</span> (<span class="f">Just</span> (toStreamError err))))
+                <span class="f">Right</span> bytes
+                    | <span class="f">BS.null</span> bytes -&gt; <span class="f">return</span> (k (<span class="f">EndOfStream</span> <span class="f">Nothing</span>))
+                    | <span class="k">otherwise</span>    -&gt; loop (k (<span class="f">Chunk</span> bytes))
+        <span class="f">IterM</span> m -&gt; m &gt;&gt;= loop
+        _ -&gt; <span class="f">return</span> it</pre>
+      </section>
+
+      <!-- CH 6: MIDDLEWARE -->
+      <section class="space-y-4">
+        <div class="flex items-center gap-3">
+          <span class="chapnum text-3xl font-bold text-indigo-500">06</span>
+          <h2 class="text-2xl font-semibold tracking-tight">Middleware — the bidirectional stack</h2>
+          <span class="mono text-xs text-slate-400">src/MicroHttp/Middleware.hs</span>
+        </div>
+        <p class="text-slate-700 max-w-3xl prose-tour">
+          An <code class="mono text-sm">Application</code> takes the connection metadata and consumes the raw
+          request stream; a <code class="mono text-sm">Middleware</code> wraps one. Because the application now
+          sits in the byte stream, a middleware can tap the request as it flows down and observe the response
+          as it flows back up — the two directions the access log needs.
+        </p>
+        <pre class="code"><span class="filetab text-slate-500">src/MicroHttp/Middleware.hs — design (RFC-0012)</span>
+
+<span class="k">type</span> <span class="t">Application</span> = <span class="t">ConnectionInfo</span> -&gt; <span class="t">Iter</span> <span class="t">StreamError</span> <span class="t">Response</span>
+<span class="k">type</span> <span class="t">Middleware</span>  = <span class="t">Application</span> -&gt; <span class="t">Application</span>
+
+<span class="f">logRequests</span>        :: <span class="t">Logger</span> -&gt; <span class="t">Middleware</span>   <span class="c">-- outermost: first line, peer, sizes, time</span>
+<span class="f">withErrorResponses</span> :: <span class="t">Middleware</span>             <span class="c">-- StreamParseError -> 400, StreamTimeout -> 408</span></pre>
+        <div class="grid md:grid-cols-2 gap-4 items-start">
+          <div class="diagcard p-4">
+            <div class="mermaid">
+flowchart TD
+    subgraph stack [Application stack]
+      direction TB
+      LG["logRequests"] --> SC["slow-client policy"]
+      SC --> ER["withErrorResponses"]
+      ER --> RT["routing (bottom)"]
+    end
+    REQ["request bytes ▼"] --> LG
+    RT --> RSP["Response ▲"]
+    RSP -. "flows back up" .-> LG
+            </div>
+          </div>
+          <div class="text-slate-700 text-sm space-y-3 prose-tour">
+            <p>
+              <strong>logRequests</strong> is outermost. It has the peer from <code class="mono">ConnectionInfo</code>
+              immediately, taps the first line off the stream to log <code class="mono">RQST</code>, tallies request
+              bytes as it forwards them, and — when the response flows back up — reads the status and counts the
+              response bytes (via <code class="mono">egress</code>), logging <code class="mono">RESP</code> with sizes
+              and round-trip time. A connection that dies mid-headers still gets a terminal
+              <code class="mono">ABRT</code>.
+            </p>
+            <p>
+              <strong>The slow-client guard splits.</strong> The hard deadline for a <em>silent</em> socket
+              stays at <code class="mono">recvWithin</code> (a stalled thread is parked below the stack, where no
+              middleware runs). A slow-client middleware above it enforces rate/deadline policy when chunks
+              arrive, and logging — being outermost — records the outcome for every client.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- CH 7: TESTAPP / ROUTING -->
+      <section class="space-y-4">
+        <div class="flex items-center gap-3">
+          <span class="chapnum text-3xl font-bold text-indigo-500">07</span>
+          <h2 class="text-2xl font-semibold tracking-tight">TestApp — routing at the bottom</h2>
+          <span class="mono text-xs text-slate-400">src/MicroHttp/Router.hs · Static.hs · TestApp.hs</span>
+        </div>
+        <p class="text-slate-700 max-w-3xl prose-tour">
+          Routing is the innermost layer and the one that actually frames and parses. <code class="mono text-sm">serveRoutes</code>
+          is the bottom <code class="mono text-sm">Application</code>: it frames the head, parses it, bounds the
+          body to the declared <code class="mono text-sm">Content-Length</code>, and dispatches to a
+          <code class="mono text-sm">Handler</code> — which still receives a parsed
+          <code class="mono text-sm">RequestHead</code> (now carrying <code class="mono text-sm">requestPeer</code>,
+          filled from the connection). This answers "why was framing so far up?": it no longer is — it is the
+          bottom of the application stack, not a server pipeline.
+        </p>
+        <pre class="code"><span class="filetab text-slate-500">src/MicroHttp/Router.hs · Static.hs — design (RFC-0012)</span>
+
+<span class="f">serveRoutes</span> :: <span class="t">ParseLimits</span> -&gt; [<span class="t">Route</span>] -&gt; <span class="t">Application</span>
+<span class="f">serveRoutes</span> limits routes _conn =
+    <span class="f">frameAndParse</span> limits &gt;&gt;= \head -&gt;
+        <span class="f">takeN</span> (<span class="f">declaredBodyLength</span> head) (<span class="f">route</span> routes head)
+
+<span class="k">type</span> <span class="t">Handler</span> = <span class="t">Captures</span> -&gt; <span class="t">RequestHead</span> -&gt; <span class="t">Iter</span> <span class="t">StreamError</span> <span class="t">Response</span>
+<span class="k">data</span> <span class="t">PathPart</span> = <span class="f">Lit</span> <span class="t">String</span> | <span class="f">Capture</span> <span class="t">String</span> | <span class="f">Rest</span> <span class="t">String</span>   <span class="c">-- * wildcard = static</span></pre>
+        <p class="text-slate-600 text-sm max-w-3xl">
+          A handler reads the bounded body (e.g. <code class="mono">readBodyStrict</code> for a form post) and
+          returns a <code class="mono">Response</code> whose body is a <code class="mono">StrictBody</code> (in memory)
+          or a <code class="mono">StreamBody</code> (a file via <code class="mono">fileEnumerator</code>, used by
+          <code class="mono">Static.serveStatic</code>).
+        </p>
+      </section>
+
+      <!-- CH 8: WRITING BACK -->
+      <section class="space-y-4">
+        <div class="flex items-center gap-3">
+          <span class="chapnum text-3xl font-bold text-indigo-500">08</span>
+          <h2 class="text-2xl font-semibold tracking-tight">Writing back — and completion</h2>
+          <span class="mono text-xs text-slate-400">src/MicroHttp/Http/Response.hs · Server.hs</span>
+        </div>
+        <p class="text-slate-700 max-w-3xl prose-tour">
+          The <code class="mono text-sm">Response</code> flows back up the stack (logging reads its status). The
+          server writes it: a <code class="mono text-sm">StrictBody</code> goes out as one serialised buffer with
+          <code class="mono text-sm">Content-Length</code>; a <code class="mono text-sm">StreamBody</code> writes a
+          close-delimited head then drives its enumerator into the sink. The bytes pass through the logging
+          middleware's <code class="mono text-sm">egress</code> tap, so it counts the response and stamps the
+          last-byte time. Each write is bounded by the idle write timeout
+          (<code class="mono text-sm">sendAllWithin</code>, RFC-0008). Then the logger emits the terminal line and
+          the socket closes.
+        </p>
+        <pre class="code"><span class="filetab text-slate-500">build/access.log — logfmt</span>
+
+event=RQST peer=127.0.0.1 method=POST path=/save
+event=RESP peer=127.0.0.1 method=POST path=/save status=200 bytes=42 dur_ms=3</pre>
+        <p class="text-slate-700 text-sm max-w-3xl prose-tour">
+          The connection then closes — MicroHttp sends <code class="mono">Connection: close</code> per response.
+          Keep-alive is deliberately a non-goal: a reverse proxy owns client keep-alive, and its default
+          upstream mode is one connection per request, matching this. The per-request
+          <code class="mono">Application</code> would compose under a future keep-alive loop without changing shape.
+        </p>
+      </section>
+
+      <!-- FOOTER -->
+      <section class="space-y-3 border-t border-slate-200 pt-8">
+        <h2 class="text-xl font-semibold tracking-tight">Where the decisions live</h2>
+        <p class="text-slate-700 max-w-3xl prose-tour text-sm">
+          RFC-0003/0004 (framing &amp; the iteratee model), RFC-0005 (readiness), RFC-0006/0008 (idle
+          timeouts), RFC-0009 (access logging), RFC-0010 (static files), and <strong>RFC-0012</strong> (this
+          design: <code class="mono">Application</code> as a stream consumer, middleware-hosted logging,
+          <code class="mono">ConnectionInfo</code>) live in <code class="mono">docs/rfcs/</code>, with accepted
+          decisions in <code class="mono">docs/decision-register.md</code> and the connection-layer narrative in
+          <code class="mono">docs/design/network-design.md</code>. RFC-0013 (the HTML response builder) is a
+          placeholder still under discussion.
+        </p>
+      </section>
+
+    </main>
+  </body>
+</html>

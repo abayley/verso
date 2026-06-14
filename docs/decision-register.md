@@ -731,15 +731,79 @@ snapshotted, so the override logic is unit-tested through the pure
 `applyEnvironment` rather than a live `setEnv`. No secrets live in the config;
 TLS remains the reverse proxy's concern (ADR-031).
 
+### ADR-034: Zero-Copy File Responses Via sendfile, With The Size Carried
+
+Status: Accepted.
+
+Context: Static files streamed through `StreamBody (fileEnumerator path)`,
+copying every byte kernel -> userspace -> kernel and (ADR-030) carrying no
+`Content-Length` because `mhs` exposes no `getFileSize`. `sendfile(2)` copies a
+file descriptor to a socket in-kernel and, with the file size, gives an exact
+length.
+
+Decision: Add `FileBody FilePath Int` to `ResponseBody` -- the path and its size
+in bytes. The size is resolved once, where the body is built: `serveStatic`
+already stats for the 404 decision, so it also sizes the file (via `lseek` to
+`SEEK_END`, the single new size FFI, exposed as `fileSizeBytes`) and carries the
+result on the constructor. Both the response head's `Content-Length` and the
+access-log byte count read that one carried number, with no second syscall. The
+response writer grows from a bare `ResponseWriter` into a `ResponseSink` with a
+`sinkChunk` (head/strict/stream) and a `sinkFile`; the socket `sinkFile` opens
+the file, writes the head with the carried size, `sendfile`s the body bounded by
+the idle write timeout (`sendFileWithin`, mirroring `sendAllWithin`), and closes
+the fd. The in-memory test sink reads the file and replays it through
+`sinkChunk`. Because the bytes go kernel-to-kernel, an `egress` stage cannot
+rewrite a `FileBody` in place; `fuseBody` passes it through, and a middleware
+that wants the content replaces the body with a `StreamBody`/`StrictBody`. The
+portable, transformable fallback `StreamBody (fileEnumerator …)` stays public.
+macOS only initially (the `sendfile` signature differs on Linux -- the RFC-0007
+seam). The design is RFC-0014.
+
+Consequences: Static responses are zero-copy and length-delimited, closing the
+deferred `Content-Length` gap and making file responses keep-alive-eligible (when
+keep-alive lands; `Connection: close` still sent). The RFC's original plan had
+the sink `lseek` for the size; carrying it on the body instead gives a single
+source of truth shared by the head and the log without the log re-opening the
+file. `Range`/partial content and Linux `sendfile` are later work. The
+symlink-escape limitation (ADR-030) is unchanged.
+
+### ADR-035: Graceful Close Drains The Receive Buffer To Avoid An RST Truncation
+
+Status: Accepted.
+
+Context: An application may answer without consuming the whole request (RFC-0012
+lets the response resolve from the head alone). On macOS/BSD, `close()` on a
+socket that still has unread receive data sends a `RST` instead of a `FIN`, and
+that `RST` can race the peer's read and discard data the peer has buffered but
+not yet read -- truncating the response. The bug is timing-dependent (it bit
+under load) and was invisible until RFC-0014's end-to-end test asserted the
+exact response bytes; earlier tests only checked that the status line was
+present, which survives truncation.
+
+Decision: Before closing a client connection, `handleClient` calls
+`closeClientSocketGraceful`, which drains whatever is currently in the receive
+buffer with a non-blocking sweep (read until a read would block, end of stream,
+or error) and then closes. With no unread receive data, the close is an orderly
+`FIN` that delivers the queued response. The sweep never waits for the peer, so
+it cannot stall the handler, and it is the same for every response, not just a
+`FileBody`.
+
+Consequences: Responses are no longer truncated by an `RST` when the handler
+left request bytes unread -- a latent correctness bug fixed for all bodies, and
+the precondition for `sendfile` file responses (RFC-0014) to arrive intact. The
+drain only clears bytes already buffered; a client still trickling a body the
+application ignored could in principle leave data unread, but that is the same
+best-effort lingering-close behaviour common to connection-close servers, and
+the bounded sweep keeps the handler responsive.
+
 ## ADR Registry Open Review Items
 
 - Verify socket layout assumptions on non-macOS platforms before treating
   Haskell-side sockaddr construction as portable.
 - Confirm whether MicroHs `ByteString` performance and allocation behaviour are
   acceptable for socket reads and writes under load.
-- Decide whether file responses need a local file-size FFI before static asset
-  support is considered production-ready. Static serving exists (ADR-030,
-  RFC-0010) but streams close-delimited; `Content-Length`, keep-alive, and
-  conditional requests await this FFI.
+- Port `sendfile` to Linux (different signature) and add `Range`/partial-content
+  and conditional requests (`ETag`/`If-Modified-Since`) for file responses; the
+  exact `Content-Length` from the file size is now in place (ADR-034, RFC-0014).
 - Decide how much of the TestApp Markdown renderer should be removed once editor
   preview/rendering is fully browser-owned.

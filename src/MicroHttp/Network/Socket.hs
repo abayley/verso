@@ -1,6 +1,7 @@
 module MicroHttp.Network.Socket (
     ClientSocket,
     ConnectionInfo (..),
+    FileFd,
     Host (..),
     ListenSocket,
     Port (..),
@@ -8,27 +9,33 @@ module MicroHttp.Network.Socket (
     accept,
     boundPort,
     closeClientSocket,
+    closeClientSocketGraceful,
+    closeFileFd,
     closeListenSocket,
     connectTcp,
     encodeSockAddrIn,
+    fileSize,
+    fileSizeBytes,
     isTimeoutError,
     listenTcp,
+    openFileRead,
     recv,
     recvWithin,
     sendAll,
     sendAllWithin,
+    sendFileWithin,
 ) where
 
-import Control.Monad (void)
+import Control.Monad (void, when)
 import Control.Monad.Except (ExceptT (..), catchError, runExceptT, throwError)
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString as BS
 import Data.Word (Word8)
 import Foreign.C.Error (Errno, eAGAIN, eALREADY, eINPROGRESS, eISCONN, eTIMEDOUT, eWOULDBLOCK, getErrno)
-import Foreign.C.String (CString)
+import Foreign.C.String (CString, withCString)
 import Foreign.Marshal.Alloc (alloca, allocaBytes)
-import Foreign.Ptr (Ptr, castPtr, plusPtr)
-import Foreign.Storable (peekByteOff, poke, pokeByteOff, sizeOf)
+import Foreign.Ptr (Ptr, castPtr, nullPtr, plusPtr)
+import Foreign.Storable (peek, peekByteOff, poke, pokeByteOff, sizeOf)
 import System.IO.FD (waitForReadFD, waitForWriteFD)
 import System.Timeout (timeout)
 
@@ -43,6 +50,14 @@ foreign import ccall "getsockname" c_getsockname :: Int -> Ptr () -> Ptr Int -> 
 foreign import ccall "recv" c_recv :: Int -> CString -> Int -> Int -> IO Int
 foreign import ccall "send" c_send :: Int -> CString -> Int -> Int -> IO Int
 foreign import ccall "close" c_close :: Int -> IO Int
+foreign import ccall "fcntl.h open" c_open :: CString -> Int -> Int -> IO Int
+foreign import ccall "unistd.h lseek" c_lseek :: Int -> Int -> Int -> IO Int
+
+-- macOS sendfile: sendfile(int fd, int s, off_t offset, off_t *len,
+-- struct sf_hdtr *hdtr, int flags). The in/out len holds bytes sent on both
+-- success and EAGAIN; hdtr is passed NULL (the head goes via the chunk path).
+foreign import ccall "sys/socket.h sendfile"
+    c_sendfile :: Int -> Int -> Int -> Ptr Int -> Ptr () -> Int -> IO Int
 
 foreign import capi "sys/socket.h value AF_INET" afInet :: Int
 foreign import capi "sys/socket.h value SOCK_STREAM" sockStream :: Int
@@ -50,11 +65,17 @@ foreign import capi "sys/socket.h value SOL_SOCKET" solSocket :: Int
 foreign import capi "sys/socket.h value SO_REUSEADDR" soReuseAddr :: Int
 foreign import capi "fcntl.h value F_SETFL" fSetFl :: Int
 foreign import capi "fcntl.h value O_NONBLOCK" oNonBlock :: Int
+foreign import capi "fcntl.h value O_RDONLY" oRdOnly :: Int
+foreign import capi "unistd.h value SEEK_END" seekEnd :: Int
 
 newtype ListenSocket = ListenSocket Int
     deriving (Eq, Show)
 
 newtype ClientSocket = ClientSocket Int
+    deriving (Eq, Show)
+
+-- | An open, read-only file descriptor for zero-copy sending (RFC-0014).
+newtype FileFd = FileFd Int
     deriving (Eq, Show)
 
 data Host
@@ -243,11 +264,110 @@ sendAllWithin :: Int -> ClientSocket -> BS.ByteString -> IO (Either SocketError 
 sendAllWithin idleMicros (ClientSocket fd) bytes =
     BS.useAsCStringLen bytes (uncurry (sendLoop idleMicros fd))
 
+-- | Opens a file read-only for zero-copy sending; 'Nothing' if it cannot open.
+openFileRead :: FilePath -> IO (Maybe FileFd)
+openFileRead path = do
+    fd <- withCString path (\p -> c_open p oRdOnly 0)
+    if fd < 0
+        then return Nothing
+        else return (Just (FileFd fd))
+
+-- | The file's size in bytes, via @lseek@ to the end (no @struct stat@ needed).
+fileSize :: FileFd -> IO Int
+fileSize (FileFd fd) = c_lseek fd 0 seekEnd
+
+-- | Closes a file descriptor (a read-only fd close); the result is ignored.
+closeFileFd :: FileFd -> IO ()
+closeFileFd (FileFd fd) = void (c_close fd)
+
+{- | The size of a file by path, opening read-only and closing again, or
+'Nothing' if it cannot be opened. The single size source for a 'FileBody':
+'MicroHttp.Static.serveStatic' resolves it once and carries it on the body, so
+the response head's @Content-Length@ and the access log read the same number
+with no further syscall.
+-}
+fileSizeBytes :: FilePath -> IO (Maybe Int)
+fileSizeBytes path = do
+    opened <- openFileRead path
+    case opened of
+        Nothing -> return Nothing
+        Just fd -> do
+            size <- fileSize fd
+            closeFileFd fd
+            return (Just size)
+
+{- | Sends @len@ bytes of a file from @offset@ to the socket via @sendfile(2)@,
+with no userspace copy. Mirrors 'sendAllWithin': a would-block parks on write
+readiness bounded by the idle write timeout (a non-positive timeout waits
+indefinitely), advancing past the bytes the kernel already sent. The macOS
+@sendfile@ reports bytes sent through its in/out length argument on both success
+and @EAGAIN@; a short success (kernel sent fewer than requested with no error)
+stops, covering a file truncated under us.
+-}
+sendFileWithin :: Int -> ClientSocket -> FileFd -> Int -> Int -> IO (Either SocketError ())
+sendFileWithin idleMicros (ClientSocket s) (FileFd fd) offset0 len0 =
+    alloca (sendFileLoop idleMicros s fd offset0 len0)
+
+sendFileLoop :: Int -> Int -> Int -> Int -> Int -> Ptr Int -> IO (Either SocketError ())
+sendFileLoop idleMicros s fd offset remaining lenPtr
+    | remaining <= 0 = return (Right ())
+    | otherwise = do
+        poke lenPtr remaining
+        rc <- c_sendfile fd s offset lenPtr nullPtr 0
+        sent <- peek lenPtr
+        let offset' = offset + sent
+            remaining' = remaining - sent
+        if remaining' <= 0
+            then return (Right ())
+            else
+                if rc == 0
+                    then
+                        if sent <= 0
+                            then return (Right ())
+                            else sendFileLoop idleMicros s fd offset' remaining' lenPtr
+                    else do
+                        errno <- getErrno
+                        if isWouldBlock errno
+                            then do
+                                ready <- waitWritable idleMicros s
+                                case ready of
+                                    Left err -> return (Left err)
+                                    Right () -> sendFileLoop idleMicros s fd offset' remaining' lenPtr
+                            else return (Left (SocketError "sendfile" errno))
+
 closeListenSocket :: ListenSocket -> IO (Either SocketError ())
 closeListenSocket (ListenSocket fd) = closeFd fd
 
 closeClientSocket :: ClientSocket -> IO (Either SocketError ())
 closeClientSocket (ClientSocket fd) = closeFd fd
+
+{- | Closes a client socket gracefully: it first drains any unread bytes still
+in the receive buffer, then closes. The drain matters because on macOS/BSD a
+@close@ with unread receive data sends a @RST@ rather than a @FIN@, and that
+@RST@ can race the peer's read and discard data the peer has buffered but not yet
+read -- truncating the response. Since an application may answer without
+consuming the whole request (RFC-0012), the connection layer clears the receive
+buffer here so the close is an orderly @FIN@ that delivers the queued response.
+-}
+closeClientSocketGraceful :: ClientSocket -> IO (Either SocketError ())
+closeClientSocketGraceful sock@(ClientSocket fd) = do
+    drainReceiveBuffer sock
+    closeFd fd
+
+{- | Reads and discards everything currently in the receive buffer without
+waiting: it stops as soon as a read would block (no data ready), at end of
+stream, or on error. This is a non-blocking sweep, not a wait for the peer, so
+it never stalls the handler.
+-}
+drainReceiveBuffer :: ClientSocket -> IO ()
+drainReceiveBuffer (ClientSocket fd) = allocaBytes drainBufferBytes loop
+  where
+    loop buf = do
+        received <- c_recv fd (castPtr buf) drainBufferBytes 0
+        when (received > 0) (loop buf)
+
+drainBufferBytes :: Int
+drainBufferBytes = 4096
 
 sendLoop :: Int -> Int -> CString -> Int -> IO (Either SocketError ())
 sendLoop _ _ _ remaining | remaining <= 0 = return (Right ())

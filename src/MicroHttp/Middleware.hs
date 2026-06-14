@@ -30,7 +30,7 @@ module MicroHttp.Middleware (
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http (Response (..), ResponseBody (..), Status (..), normaliseHeaderName)
-import MicroHttp.Http.Response (serialiseHead, serialiseResponse)
+import MicroHttp.Http.Response (serialiseFileHead, serialiseHead, serialiseResponse)
 import MicroHttp.Iteratee (Enumerator, Iter (..), Stream (..))
 import MicroHttp.Log (AccessEvent (..), Logger, RequestLine (..))
 import MicroHttp.Network.Socket (ConnectionInfo)
@@ -67,6 +67,7 @@ fuseBody :: (Iter StreamError () -> Iter StreamError ()) -> Response -> Response
 fuseBody stage response =
     case responseBody response of
         StrictBody _ -> response
+        FileBody _ _ -> response
         StreamBody enumerator -> response{responseBody = StreamBody (fuse enumerator)}
   where
     fuse :: Enumerator StreamError () -> Enumerator StreamError ()
@@ -111,8 +112,10 @@ errorResponseFor err =
 target) to log a received event with the peer the moment it arrives, counts the
 request bytes, and on the terminal step logs a completed or aborted event. The
 response size is exact: a strict body's serialised length is known at the Done
-step, and a streaming body is counted through an egress stage that logs the
-completed event when the body finishes (its head length plus the body bytes).
+step, a file body carries its size (so head length plus that size is the wire
+count, with no extra syscall), and a streaming body is counted through an egress
+stage that logs the completed event when the body finishes (head length plus the
+body bytes).
 -}
 logRequests :: Logger -> Middleware
 logRequests logger inner conn = IterM start
@@ -140,13 +143,19 @@ logRequests logger inner conn = IterM start
                         Nothing -> next
             EndOfStream merr -> tap startMillis lineState reqBytes (k (EndOfStream merr))
 
-    -- A strict body's size is known now; a streaming body is counted as the
-    -- server writes it, logging the completed event at the body's end.
+    -- A strict body's size is known now; a file body carries its size, so the
+    -- head plus that size is the exact response byte count; a streaming body is
+    -- counted as the server writes it, logging the completed event at its end.
     completed startMillis lineState reqBytes response residue =
         case responseBody response of
             StrictBody _ ->
                 IterM
                     ( logCompleted startMillis lineState reqBytes (responseStatus response) (strictResponseSize response)
+                        >> return (Done response residue)
+                    )
+            FileBody _ size ->
+                IterM
+                    ( logCompleted startMillis lineState reqBytes (responseStatus response) (B.length (serialiseFileHead response size) + size)
                         >> return (Done response residue)
                     )
             StreamBody enumerator ->

@@ -1,10 +1,11 @@
-{- | Static file serving (RFC-0010). 'static' mounts a filesystem root under a
-URL prefix as a wildcard route; 'serveStatic' is the handler. The served path
-is built from the request's already-decoded path segments, not from a rejoined
-capture, and every component is checked, so neither @..@ nor an encoded
-separator can escape the root. A missing target or a directory is a 404
-decided before any response head is written, and the body streams
-close-delimited (no @Content-Length@ yet; see RFC-0010).
+{- | Static file serving (RFC-0010, RFC-0014). 'static' mounts a filesystem root
+under a URL prefix as a wildcard route; 'serveStatic' is the handler. The served
+path is built from the request's already-decoded path segments, not from a
+rejoined capture, and every component is checked, so neither @..@ nor an encoded
+separator can escape the root. A missing target or a directory is a 404 decided
+before any response head is written. An existing file is served as a 'FileBody':
+its size is resolved once here and carried on the body, giving an exact
+@Content-Length@ and a zero-copy @sendfile@ send (RFC-0014).
 -}
 module MicroHttp.Static (
     static,
@@ -18,8 +19,8 @@ import Data.Char (toLower)
 import Data.List (intercalate)
 import MicroHttp.Http (RequestHead (..), Response (..), ResponseBody (..), Status (..), normaliseHeaderName, okStatus)
 import MicroHttp.Iteratee (Iter (..))
+import MicroHttp.Network.Socket (fileSizeBytes)
 import MicroHttp.Router (Handler, Route, get)
-import MicroHttp.Stream (StreamError, fileEnumerator)
 import System.Directory (doesDirectoryExist, doesFileExist)
 
 {- | Mounts the filesystem @root@ under the URL @prefix@ as a GET wildcard
@@ -48,8 +49,18 @@ serveResolved path = do
     isFile <- doesFileExist path
     isDirectory <- doesDirectoryExist path
     if isFile && not isDirectory
-        then pure (fileResponse (contentTypeFor path) path)
+        then sizedFileResponse path
         else pure notFoundResponse
+
+{- | Resolves the file size once and builds a zero-copy 'FileBody' carrying it;
+if the file cannot be sized (a race after the existence check), answers 404.
+-}
+sizedFileResponse :: FilePath -> IO Response
+sizedFileResponse path = do
+    sized <- fileSizeBytes path
+    case sized of
+        Just size -> pure (fileResponse (contentTypeFor path) path size)
+        Nothing -> pure notFoundResponse
 
 {- | Resolves the served filesystem path from the root and the request path
 components, or 'Nothing' if any component is unsafe. A component is unsafe if
@@ -105,12 +116,12 @@ extensionOf path =
 lastComponent :: FilePath -> String
 lastComponent = reverse . takeWhile (/= '/') . reverse
 
-fileResponse :: String -> FilePath -> Response
-fileResponse contentType path =
+fileResponse :: String -> FilePath -> Int -> Response
+fileResponse contentType path size =
     Response
         okStatus
         [(normaliseHeaderName (BS.pack "Content-Type"), BS.pack contentType)]
-        (StreamBody (fileEnumerator path))
+        (FileBody path size)
 
 notFoundResponse :: Response
 notFoundResponse =

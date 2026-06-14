@@ -2,6 +2,7 @@ module MicroHttp.Network.SocketSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Network.Socket
+import System.Directory (removeFile)
 import Test.Hspec
 
 -- Concurrent sender and receiver threads polling the same connection hang
@@ -87,6 +88,28 @@ spec =
                 case sent of
                     Left (SocketError operation _) -> operation `shouldBe` "send"
                     Right () -> expect "expected send failure" False
+        it "given an existing file, when its size is queried, then the byte count is returned" $ do
+            BS.writeFile sendFileTestFile (BS.pack "0123456789")
+            size <- fileSizeBytes sendFileTestFile
+            removeFile sendFileTestFile
+            size `shouldBe` Just 10
+        it "given a missing file, when its size is queried, then Nothing is returned" $ do
+            size <- fileSizeBytes "no-such-sendfile-test-file.tmp"
+            size `shouldBe` Nothing
+        it "given a file, when sent over a connected pair via sendfile, then the receiver reads the file bytes" $
+            withConnectedPair $ \client served -> do
+                let payload = BS.pack "zero-copy file send"
+                BS.writeFile sendFileTestFile payload
+                opened <- openFileRead sendFileTestFile
+                case opened of
+                    Nothing -> expect "openFileRead failed" False
+                    Just fd -> do
+                        sent <- sendFileWithin 0 served fd 0 (BS.length payload)
+                        closeFileFd fd
+                        removeFile sendFileTestFile
+                        sent `shouldBe` Right ()
+                        received <- recv client 64
+                        received `shouldBe` Right payload
         it "given a free port with no listener, when connecting, then a socket error is returned" $ do
             opened <- listenTcp HostAny (Port 0) 1
             case opened of
@@ -107,6 +130,9 @@ spec =
 
 loopback :: Host
 loopback = HostIPv4 127 0 0 1
+
+sendFileTestFile :: FilePath
+sendFileTestFile = "sendfile-socket-test.tmp"
 
 transferRounds :: ClientSocket -> ClientSocket -> [BS.ByteString] -> IO Int
 transferRounds _ _ [] = return 0

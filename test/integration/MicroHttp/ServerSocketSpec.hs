@@ -86,6 +86,60 @@ spec =
                     Just (Left (ServerWriteFailed (StreamWriteError err)))
                         | isTimeoutError err -> return ()
                     Just other -> expect ("expected a write timeout, got " ++ show other) False
+        it "given a file body response, when handled over a socket, then the client receives a head with an exact Content-Length and the file bytes" $
+            withConnectedPair $ \client served conn -> do
+                BS.writeFile fileBodyFile (BS.pack "zero-copy!")
+                sent <- sendAll client (BS.pack "GET / HTTP/1.1\r\n\r\n")
+                sent `shouldBe` Right ()
+                result <- handleClient defaultSettings (fileBodyApp fileBodyFile 10) served conn
+                received <- recvAll client
+                removeFile fileBodyFile
+                result `shouldBe` Right ()
+                BS.unpack received
+                    `shouldBe` "HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\nzero-copy!"
+        it "given a reader that stops draining a large file body, when handled with a short idle write timeout, then the sendfile write fails within the bound instead of hanging" $
+            withConnectedPair $ \client served conn -> do
+                BS.writeFile largeFileBodyFile (BS.replicate largeFileBodyBytes 'x')
+                sent <- sendAll client (BS.pack "GET / HTTP/1.1\r\n\r\n")
+                sent `shouldBe` Right ()
+                -- The client never reads, so the kernel send buffers fill and
+                -- the sendfile body write parks on write readiness; the short
+                -- write timeout must bound it (RFC-0014, via sendFileWithin).
+                result <- timeout testGuardMicros (handleClient shortWriteSettings (fileBodyApp largeFileBodyFile largeFileBodyBytes) served conn)
+                _ <- recv client 4096
+                removeFile largeFileBodyFile
+                case result of
+                    Nothing -> expect "handleClient hung past the write timeout" False
+                    Just (Left (ServerWriteFailed (StreamWriteError err)))
+                        | isTimeoutError err -> return ()
+                    Just other -> expect ("expected a write timeout, got " ++ show other) False
+
+-- | An application that serves a file body for a fixed path and size.
+fileBodyApp :: FilePath -> Int -> Application
+fileBodyApp path size _ = pure (Response okStatus [] (FileBody path size))
+
+fileBodyFile :: FilePath
+fileBodyFile = "server-filebody-test.tmp"
+
+largeFileBodyFile :: FilePath
+largeFileBodyFile = "server-filebody-large-test.tmp"
+
+{- | A file body larger than the kernel send buffers, so a client that stops
+reading forces the sendfile body write to block. 64 MiB, matching
+'largeResponseApp', is comfortably above macOS loopback buffer autotuning.
+-}
+largeFileBodyBytes :: Int
+largeFileBodyBytes = 64 * 1024 * 1024
+
+-- | Reads from a socket until the peer closes (an empty read), concatenating.
+recvAll :: ClientSocket -> IO BS.ByteString
+recvAll socket = go []
+  where
+    go acc = do
+        received <- recv socket 4096
+        case received of
+            Right bytes | not (BS.null bytes) -> go (bytes : acc)
+            _ -> return (BS.concat (reverse acc))
 
 smallBufferSettings :: Settings
 smallBufferSettings =

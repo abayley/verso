@@ -257,9 +257,9 @@ flowchart TD
                    (<span class="f">idleRead</span> settings) (app conn)   <span class="c">-- app :: ConnectionInfo -> Iter</span>
     outcome &lt;- <span class="f">run</span> final
     _ &lt;- <span class="k">case</span> outcome <span class="k">of</span>
-        <span class="f">Right</span> response -&gt; <span class="f">writeResponse</span> (<span class="f">socketSink</span> settings client) response
+        <span class="f">Right</span> response -&gt; <span class="f">writeResponse</span> (<span class="f">socketResponseSink</span> settings client) response
         <span class="f">Left</span> _         -&gt; <span class="f">pure</span> (<span class="f">Right</span> ())   <span class="c">-- aborted: nothing to write</span>
-    <span class="f">closeClientSocket</span> client</pre>
+    <span class="f">closeClientSocketGraceful</span> client   <span class="c">-- drain receive buffer, then FIN (not RST)</span></pre>
         <p class="text-slate-700 text-sm max-w-3xl prose-tour">
           That is the whole of how Server ties it together: it produces bytes from the socket
           (<code class="mono">socketEnumerator</code>), feeds them into the application stack
@@ -479,9 +479,11 @@ flowchart TD
 <span class="k">data</span> <span class="t">PathPart</span> = <span class="f">Lit</span> <span class="t">String</span> | <span class="f">Capture</span> <span class="t">String</span> | <span class="f">Rest</span> <span class="t">String</span>   <span class="c">-- * wildcard = static</span></pre>
         <p class="text-slate-600 text-sm max-w-3xl">
           A handler reads the bounded body (e.g. <code class="mono">readBodyStrict</code> for a form post) and
-          returns a <code class="mono">Response</code> whose body is a <code class="mono">StrictBody</code> (in memory)
-          or a <code class="mono">StreamBody</code> (a file via <code class="mono">fileEnumerator</code>, used by
-          <code class="mono">Static.serveStatic</code>).
+          returns a <code class="mono">Response</code> whose body is a <code class="mono">StrictBody</code> (in memory),
+          a <code class="mono">StreamBody</code> (an enumerator, e.g. a file via <code class="mono">fileEnumerator</code>),
+          or a <code class="mono">FileBody path size</code> — a file sent zero-copy via <code class="mono">sendfile(2)</code>
+          with an exact <code class="mono">Content-Length</code> (RFC-0014), used by
+          <code class="mono">Static.serveStatic</code>, which resolves the size once and carries it on the body.
         </p>
       </section>
 
@@ -494,13 +496,20 @@ flowchart TD
         </div>
         <p class="text-slate-700 max-w-3xl prose-tour">
           The <code class="mono text-sm">Response</code> flows back up the stack (logging reads its status). The
-          server writes it: a <code class="mono text-sm">StrictBody</code> goes out as one serialised buffer with
+          server writes it through a <code class="mono text-sm">ResponseSink</code>: a
+          <code class="mono text-sm">StrictBody</code> goes out as one serialised buffer with
           <code class="mono text-sm">Content-Length</code>; a <code class="mono text-sm">StreamBody</code> writes a
-          close-delimited head then drives its enumerator into the sink. The bytes pass through the logging
-          middleware's <code class="mono text-sm">egress</code> tap, so it counts the response and stamps the
-          last-byte time. Each write is bounded by the idle write timeout
-          (<code class="mono text-sm">sendAllWithin</code>, RFC-0008). Then the logger emits the terminal line and
-          the socket closes.
+          close-delimited head then drives its enumerator into <code class="mono text-sm">sinkChunk</code>; a
+          <code class="mono text-sm">FileBody</code> goes to <code class="mono text-sm">sinkFile</code>, which writes the head
+          with the carried size as <code class="mono text-sm">Content-Length</code> and sends the body zero-copy with
+          <code class="mono text-sm">sendfile</code> (<code class="mono text-sm">sendFileWithin</code>). The
+          chunked bytes pass through the logging middleware's <code class="mono text-sm">egress</code> tap;
+          a <code class="mono text-sm">FileBody</code>, being kernel-to-kernel, is logged from its carried size
+          instead. Each write is bounded by the idle write timeout
+          (<code class="mono text-sm">sendAllWithin</code> / <code class="mono text-sm">sendFileWithin</code>, RFC-0008). Then the
+          logger emits the terminal line and the socket closes gracefully — the receive buffer is drained first
+          so the close is a <code class="mono text-sm">FIN</code>, not an <code class="mono text-sm">RST</code> that could
+          truncate the response (ADR-035).
         </p>
         <pre class="code"><span class="filetab text-slate-500">build/access.log — logfmt</span>
 

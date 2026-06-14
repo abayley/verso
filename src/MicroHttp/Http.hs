@@ -88,24 +88,32 @@ data Response = Response
     , responseBody :: ResponseBody
     }
 
-{- | A response body: a strict in-memory value, or a streaming body produced
-by an enumerator and written close-delimited. File responses are expressed
-as a streaming body over @fileEnumerator@.
+{- | A response body: a strict in-memory value, a streaming body produced by
+an enumerator and written close-delimited, or a file sent zero-copy via
+@sendfile(2)@ (RFC-0014). A 'FileBody' carries the file path and its size in
+bytes, resolved once where the body is built; the size gives an exact
+@Content-Length@ and is read by both the writer and the access log. The bytes
+go kernel-to-kernel and bypass userspace, so an @egress@ stage cannot rewrite
+them in place (it may replace the body to opt out of zero-copy); the portable
+fallback remains @StreamBody (fileEnumerator path)@.
 -}
 data ResponseBody
     = StrictBody ByteString
     | StreamBody (Enumerator StreamError ())
+    | FileBody FilePath Int
 
-{- | Equality compares strict bodies; a streaming body is never equal,
-because it carries an opaque producer.
+{- | Equality compares strict bodies, and file paths with sizes; a streaming
+body is never equal, because it carries an opaque producer.
 -}
 instance Eq ResponseBody where
     StrictBody a == StrictBody b = a == b
+    FileBody pathA sizeA == FileBody pathB sizeB = pathA == pathB && sizeA == sizeB
     _ == _ = False
 
 instance Show ResponseBody where
     show (StrictBody body) = "StrictBody " ++ show body
     show (StreamBody _) = "StreamBody <stream>"
+    show (FileBody path size) = "FileBody " ++ show path ++ " " ++ show size
 
 data Status = Status
     { statusCode :: Int

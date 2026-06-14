@@ -21,14 +21,14 @@ spec = do
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
             saved `shouldBe` "# Saved heading"
     describe "MicroHttp.TestApp static serving" $
-        it "given an editor stylesheet request, when routing, then it is served as a streaming text/css response" $ do
+        it "given an editor stylesheet request, when routing, then it is served as a sized text/css file body" $ do
             outcome <-
                 respondToRequestBytes
                     (TestApp.appWithDocumentRoot documentRoot)
                     (BS.pack (getRequest "/static/editor/markdown-editor.css"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
             fmap contentTypeOf outcome `shouldBe` Right (Just (BS.pack "text/css"))
-            fmap isStreamBody outcome `shouldBe` Right True
+            fmap isSizedFileBody outcome `shouldBe` Right True
 
 getRequest :: String -> String
 getRequest target =
@@ -47,11 +47,11 @@ contentTypeOf :: Response -> Maybe BS.ByteString
 contentTypeOf response =
     lookup (normaliseHeaderName (BS.pack "Content-Type")) (responseHeaders response)
 
-isStreamBody :: Response -> Bool
-isStreamBody response =
+isSizedFileBody :: Response -> Bool
+isSizedFileBody response =
     case responseBody response of
-        StreamBody _ -> True
-        StrictBody _ -> False
+        FileBody _ size -> size > 0
+        _ -> False
 
 documentRoot :: FilePath
 documentRoot =

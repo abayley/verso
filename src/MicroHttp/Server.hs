@@ -15,7 +15,7 @@ import Control.Concurrent.QSem
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http (Response)
 import MicroHttp.Http.Parser (ParseLimits (..))
-import MicroHttp.Http.Response (ResponseWriter, writeResponse)
+import MicroHttp.Http.Response (ResponseSink (..), ResponseWriter, serialiseFileHead, writeResponse)
 import MicroHttp.Iteratee (run, strictEnumerator)
 import MicroHttp.Middleware (Application)
 import MicroHttp.Network.Socket
@@ -147,22 +147,60 @@ handleClient settings app client conn = do
     result <- case outcome of
         Right response -> writeClientResponse settings client response
         Left err -> return (Left (streamFailure err))
-    _ <- closeClientSocket client
+    _ <- closeClientSocketGraceful client
     return result
 
 writeClientResponse :: Settings -> ClientSocket -> Response -> IO (Either ServerError ())
 writeClientResponse settings client response = do
-    written <- writeResponse (socketResponseWriter settings client) response
+    written <- writeResponse (socketResponseSink settings client) response
     case written of
         Left err -> return (Left (ServerWriteFailed err))
         Right () -> return (Right ())
 
-socketResponseWriter :: Settings -> ClientSocket -> ResponseWriter
-socketResponseWriter settings client bytes = do
+{- | The socket-backed response sink: chunks go out with 'sendAllWithin'; a file
+body is sent zero-copy with 'sendfile' through 'socketSinkFile'.
+-}
+socketResponseSink :: Settings -> ClientSocket -> ResponseSink
+socketResponseSink settings client =
+    ResponseSink
+        { sinkChunk = socketChunkWriter settings client
+        , sinkFile = socketSinkFile settings client
+        }
+
+socketChunkWriter :: Settings -> ClientSocket -> ResponseWriter
+socketChunkWriter settings client bytes = do
     sent <- sendAllWithin (settingsIdleWriteTimeoutMicros settings) client bytes
     case sent of
         Left err -> return (Left (StreamWriteError err))
         Right () -> return (Right ())
+
+{- | Sends a file response zero-copy: open the file read-only, write the head
+with the carried size as @Content-Length@, @sendfile@ the body, then close. The
+size is the one resolved when the 'FileBody' was built, so no @lseek@ happens
+here. An open failure -- a rare time-of-check/time-of-use race after
+'MicroHttp.Static.serveStatic' already found the file -- aborts the connection,
+like a streamed body that fails mid-flight.
+-}
+socketSinkFile :: Settings -> ClientSocket -> Response -> FilePath -> Int -> IO (Either StreamError ())
+socketSinkFile settings client response path size = do
+    opened <- openFileRead path
+    case opened of
+        Nothing -> return (Left (StreamSourceError ("cannot open file: " ++ path)))
+        Just fd -> do
+            result <- sendHeadThenFile settings client response fd size
+            closeFileFd fd
+            return result
+
+sendHeadThenFile :: Settings -> ClientSocket -> Response -> FileFd -> Int -> IO (Either StreamError ())
+sendHeadThenFile settings client response fd size = do
+    sentHead <- socketChunkWriter settings client (serialiseFileHead response size)
+    case sentHead of
+        Left err -> return (Left err)
+        Right () -> do
+            sentBody <- sendFileWithin (settingsIdleWriteTimeoutMicros settings) client fd 0 size
+            case sentBody of
+                Left err -> return (Left (StreamWriteError err))
+                Right () -> return (Right ())
 
 streamFailure :: StreamError -> ServerError
 streamFailure err =

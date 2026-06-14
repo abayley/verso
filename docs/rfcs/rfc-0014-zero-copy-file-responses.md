@@ -15,8 +15,8 @@ superseded_by: null
 | Stage     | Timestamp  |
 |-----------|------------|
 | Authored  | 2026-06-14 |
-| Started   |            |
-| Completed |            |
+| Started   | 2026-06-14 |
+| Completed | 2026-06-14 |
 
 ## Summary
 
@@ -89,26 +89,32 @@ mark it as complete in the phase checklist.
 data ResponseBody
     = StrictBody ByteString
     | StreamBody (Enumerator StreamError ())
-    | FileBody FilePath                       -- sent via sendfile(2)
+    | FileBody FilePath Int                   -- path + size, sent via sendfile(2)
 
 -- the writer's sink grows a file-send op beside the chunk writer
 data ResponseSink = ResponseSink
     { sinkChunk :: ByteString -> IO (Either StreamError ())  -- head, strict, stream
-    , sinkFile  :: Response -> FilePath -> IO (Either StreamError ())
+    , sinkFile  :: Response -> FilePath -> Int -> IO (Either StreamError ())
     }
 ```
 
 `writeResponse` dispatches: `StrictBody`/`StreamBody` go through `sinkChunk` as
-now; `FileBody path` delegates the whole response to `sinkFile response path`.
-`sinkFile` owns the file case end to end because the head needs the size:
+now; `FileBody path size` delegates the whole response to
+`sinkFile response path size`. The size is **resolved once where the body is
+built** (`serveStatic`, below) and carried on the constructor, so the sink does
+not need to size the file -- it just needs an fd:
 
-1. open the file read-only (bracketed -- closed on every exit path);
-2. `lseek` to `SEEK_END` for the size (no `fstat`/`struct stat` layout needed);
-3. serialise the head with `Content-Length: <size>` (a new
-   `serialiseFileHead :: Response -> Int -> ByteString`) and send it with the
-   chunk path;
-4. `sendFileWithin` the body from the file fd to the socket;
-5. close the file fd.
+1. open the file read-only (closed on every exit path);
+2. serialise the head with `Content-Length: <size>` (a new
+   `serialiseFileHead :: Response -> Int -> ByteString`) from the carried size,
+   and send it with the chunk path;
+3. `sendFileWithin` the body from the file fd to the socket;
+4. close the file fd.
+
+(The RFC was originally drafted with the sink `lseek`-ing for the size; carrying
+the size on the body gives a single source of truth that the response head and
+the access log both read, with no second size syscall. The `lseek` still exists,
+in `serveStatic`, as the one place the size is learned -- see below.)
 
 The socket sink implements `sinkFile` with `sendfile`; the in-memory/test sink
 implements it by reading the file and using `sinkChunk` (a non-zero-copy
@@ -133,11 +139,12 @@ connection, exactly as a chunk write failure does.
 
 The existence and directory checks stay in `serveStatic` (RFC-0010,
 `doesFileExist` / `doesDirectoryExist`), which decides 404 before returning a
-`200` `Response` with a `FileBody`. The `sinkFile` open is then a fast path; on
-the rare time-of-check/time-of-use failure (the file vanished between the check
-and the write) it aborts the connection, like a mid-stream `StreamSourceError`
-today. (An alternative -- the sink opening before the head and emitting its own
-404 -- is in Open Questions.)
+`200` `Response` with a `FileBody`. `serveStatic` then also resolves the size
+(`fileSizeBytes`, an `lseek` to `SEEK_END`) and carries it on
+`FileBody path size`; if the file cannot be sized (a race after the existence
+check) it answers 404. The `sinkFile` open is then a fast path; on the rare
+time-of-check/time-of-use failure (the file vanished between the check and the
+write) it aborts the connection, like a mid-stream `StreamSourceError` today.
 
 ### Content-Length, keep-alive, and egress
 
@@ -153,8 +160,10 @@ the file -- explicitly opting that one response out of zero-copy -- and a
 middleware that does not care passes the `FileBody` through untouched. So a
 hypothetical compression middleware would swap a `FileBody` for a compressing
 `StreamBody`; the logging middleware, which only observes, leaves it a
-`FileBody` and records the response size from the `Content-Length` instead of
-counting chunks. The body type the writer finally sees decides the send path:
+`FileBody` and records the response size as the head length plus the carried
+size -- the same number that becomes the `Content-Length` -- with no chunk
+counting and no extra syscall. The body type the writer finally sees decides the
+send path:
 still a `FileBody` -> `sendfile`; swapped -> the normal copy/stream path. (In
 practice MicroHttp compresses nothing in process -- that is the proxy's job,
 ADR-031 -- so this is a capability, not a planned use.)
@@ -234,17 +243,20 @@ the body an `egress` stage swaps a `FileBody` for when it wants the content).
 ## Rollout Plan
 
 1. Phase one: the primitive and the body.
-   - [ ] `sendFileWithin` (and the `sendfile`/`lseek` FFI) in
-         `MicroHttp.Network.Socket`.
-   - [ ] `FileBody` constructor; `serialiseFileHead`; `ResponseSink` with
-         `sinkChunk` + `sinkFile`; `writeResponse` dispatch.
-   - [ ] Socket `sinkFile` (open, size, head, sendfile, close); in-memory
-         fallback `sinkFile`.
+   - [x] `sendFileWithin` (and the `sendfile`/`lseek`/`open` FFI, plus
+         `fileSizeBytes`) in `MicroHttp.Network.Socket`.
+   - [x] `FileBody FilePath Int` constructor; `serialiseFileHead`; `ResponseSink`
+         with `sinkChunk` + `sinkFile`; `writeResponse` dispatch.
+   - [x] Socket `sinkFile` (open, head from carried size, sendfile, close);
+         in-memory fallback `sinkFile`.
 2. Phase two: adopt and verify.
-   - [ ] `Static.serveStatic` returns `FileBody`; tests above; `make check`
-         green.
-   - [ ] ADR for the zero-copy file body and the `egress` opacity rule; note in
-         the network design and the request-lifecycle walkthrough.
+   - [x] `Static.serveStatic` resolves the size and returns
+         `FileBody path size`; tests above; `make check` green.
+   - [x] Graceful close (`closeClientSocketGraceful`) drains the receive buffer
+         before close, so an unread request does not turn the close into an
+         `RST` that truncates the response (ADR-035).
+   - [x] ADR-034 (zero-copy file body, size carried, `egress` opacity) and
+         ADR-035 (graceful close); note in the request-lifecycle walkthrough.
 
 ### Rollout Plan Escape Hatch
 
@@ -264,3 +276,35 @@ the body an `egress` stage swaps a `FileBody` for when it wants the content).
 - Does `lseek` for the size interact badly with anything that later wants to
   re-read the fd? The body send uses `sendfile`'s own offset argument, so the
   `lseek` is only to learn the size; no re-read is needed.
+
+## Implementation Notes (decisions taken during build)
+
+- The FFI was de-risked first by compiling a spike under `mhs`: `open` (a
+  runtime builtin), `close`, `lseek`, and the macOS `sendfile` all link, and the
+  macOS signature `sendfile(int fd, int s, off_t offset, off_t *len, struct
+  sf_hdtr *hdtr, int flags)` marshals with `Ptr Int` for the in/out `len` and a
+  `nullPtr :: Ptr ()` for `hdtr`. `off_t` is 64-bit, matching `mhs`'s `Int`
+  (`intptr_t`) on a 64-bit host. `O_RDONLY`/`SEEK_END` come in via `capi value`.
+- The size is carried on `FileBody FilePath Int`, resolved once in
+  `serveStatic` via `fileSizeBytes :: FilePath -> IO (Maybe Int)` (open
+  read-only, `lseek` `SEEK_END`, close). The response head's `Content-Length`
+  and the access log both read the carried size, so there is no second size
+  syscall and the two numbers cannot drift. (Decided with the reviewer, in
+  preference to the sink `lseek`-ing and the log re-sizing the file.)
+- Access-log response size for a `FileBody`: `logRequests` emits its completed
+  event when the application *produces* the response (the same point a strict
+  body is sized). It reads the carried size off the `FileBody` and logs the head
+  length plus that size -- no syscall, no chunk counting.
+- **Connection close had a latent truncation bug, found here.** Because an
+  application may answer without consuming the request (RFC-0012), the receive
+  buffer can hold unread request bytes at close time; on macOS/BSD a `close`
+  with unread receive data sends an `RST`, which races the peer's read and
+  discards the peer's buffered-but-unread bytes -- truncating the response. It
+  is timing-dependent (it surfaced under load, ~10-40% of suite runs) and was
+  invisible to earlier tests, which only asserted the status line. The fix is a
+  graceful close (`closeClientSocketGraceful`): a non-blocking sweep that drains
+  whatever is in the receive buffer, then `close`, so the close is an orderly
+  `FIN`. Applied to every response, not just `FileBody`; recorded as ADR-035.
+  This was diagnosed by instrumenting `sendfile` (which reliably reported the
+  full byte count and showed the bytes in the send buffer via `SO_NWRITE`),
+  ruling out the syscall and the file-fd close, and isolating the `RST`.

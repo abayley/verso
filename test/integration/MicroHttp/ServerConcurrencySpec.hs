@@ -53,7 +53,7 @@ startPair lsock port index = do
     connected <- connectTcp loopback port
     accepted <- accept lsock
     case (connected, accepted) of
-        (Right client, Right served) -> do
+        (Right client, Right (served, _conn)) -> do
             slot <- newEmptyMVar
             _ <- forkIO (void (handleClient defaultSettings (taggedApp tag) served))
             _ <- forkIO (runClient client tag slot)

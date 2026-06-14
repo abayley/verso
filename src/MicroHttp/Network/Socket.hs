@@ -1,5 +1,6 @@
 module MicroHttp.Network.Socket (
     ClientSocket,
+    ConnectionInfo (..),
     Host (..),
     ListenSocket,
     Port (..),
@@ -64,6 +65,16 @@ data Host
 newtype Port = Port Int
     deriving (Eq, Show)
 
+{- | Non-payload metadata about an accepted connection: the peer's address.
+Captured at accept from the @sockaddr@ that @accept@ fills, so it needs no
+@getpeername@ call. Extensible (local address, accept time, TLS) later.
+-}
+data ConnectionInfo = ConnectionInfo
+    { connPeerHost :: Host
+    , connPeerPort :: Port
+    }
+    deriving (Eq, Show)
+
 data SocketError = SocketError String Errno
     deriving (Eq)
 
@@ -81,7 +92,7 @@ listenTcp host port backlog =
             ExceptT (setNonBlocking fd)
             pure (ListenSocket fd)
 
-accept :: ListenSocket -> IO (Either SocketError ClientSocket)
+accept :: ListenSocket -> IO (Either SocketError (ClientSocket, ConnectionInfo))
 accept (ListenSocket fd) =
     allocaBytes sockaddrInSize $ \addr ->
         alloca $ \addrLen ->
@@ -89,7 +100,8 @@ accept (ListenSocket fd) =
                 accepted <- ExceptT (acceptLoop addr addrLen)
                 closingOnError accepted $ do
                     ExceptT (setNonBlocking accepted)
-                    pure (ClientSocket accepted)
+                    peer <- liftIO (peekConnectionInfo (castPtr addr))
+                    pure (ClientSocket accepted, peer)
   where
     acceptLoop addr addrLen = do
         poke addrLen sockaddrInSize
@@ -150,6 +162,24 @@ boundPort (ListenSocket fd) =
 
 peekWord8 :: Ptr Word8 -> Int -> IO Word8
 peekWord8 = peekByteOff
+
+{- | Decodes the peer address from a filled @sockaddr_in@ buffer, using the
+same BSD byte layout as 'encodeSockAddrIn': the port at offsets 2-3 and the
+IPv4 address at offsets 4-7.
+-}
+peekConnectionInfo :: Ptr Word8 -> IO ConnectionInfo
+peekConnectionInfo addr = do
+    portHigh <- peekWord8 addr 2
+    portLow <- peekWord8 addr 3
+    a <- peekWord8 addr 4
+    b <- peekWord8 addr 5
+    c <- peekWord8 addr 6
+    d <- peekWord8 addr 7
+    return
+        ConnectionInfo
+            { connPeerHost = HostIPv4 a b c d
+            , connPeerPort = Port (fromIntegral portHigh * 256 + fromIntegral portLow)
+            }
 
 recv :: ClientSocket -> Int -> IO (Either SocketError BS.ByteString)
 recv = recvWithin 0

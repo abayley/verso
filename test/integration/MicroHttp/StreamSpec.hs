@@ -72,7 +72,7 @@ withConnectedPair use = do
                                 Left err -> do
                                     _ <- closeClientSocket client
                                     expect ("accept failed: " ++ show err) False
-                                Right served -> do
+                                Right (served, _conn) -> do
                                     use client served
                                     _ <- closeClientSocket served
                                     _ <- closeClientSocket client

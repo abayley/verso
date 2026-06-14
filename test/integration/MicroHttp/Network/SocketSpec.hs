@@ -49,7 +49,7 @@ spec =
                                     Left err -> do
                                         _ <- closeClientSocket client
                                         expect ("accept failed: " ++ show err) False
-                                    Right served -> do
+                                    Right (served, _conn) -> do
                                         closedServed <- closeClientSocket served
                                         closedClient <- closeClientSocket client
                                         closedServed `shouldBe` Right ()
@@ -148,7 +148,7 @@ withConnectedPair use =
                             Left err -> do
                                 _ <- closeClientSocket client
                                 expect ("accept failed: " ++ show err) False
-                            Right served -> do
+                            Right (served, _conn) -> do
                                 use client served
                                 _ <- closeClientSocket served
                                 _ <- closeClientSocket client

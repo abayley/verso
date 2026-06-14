@@ -108,7 +108,7 @@ acceptLoop settings app sem socket = do
     accepted <- accept socket
     case accepted of
         Left err -> return (Left (ServerAcceptFailed err))
-        Right client -> do
+        Right (client, _conn) -> do
             _ <- forkIO (runCappedHandler settings app sem client)
             acceptLoop settings app sem socket
 
@@ -123,7 +123,7 @@ acceptAndHandle settings app socket = do
     accepted <- accept socket
     case accepted of
         Left err -> return (Left (ServerAcceptFailed err))
-        Right client -> handleClient settings app client
+        Right (client, _conn) -> handleClient settings app client
 
 handleClient :: Settings -> Application -> ClientSocket -> IO (Either ServerError ())
 handleClient settings app client = do

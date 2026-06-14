@@ -1,0 +1,24 @@
+# MicroHttp configuration (RFC-0011).
+#
+# Copy to micro-http.conf (or point MICROHTTP_CONFIG at it) and edit. A missing
+# file means built-in defaults; a malformed file refuses to start. Any key can
+# be overridden by an environment variable named MICROHTTP_<KEY> (uppercased),
+# which wins over the file.
+
+# --- server (mapped to Settings) ---
+host = 0.0.0.0
+port = 8080
+backlog = 16
+max_active_handlers = 32
+max_header_bytes = 8192
+max_body_bytes = 1048576
+read_buffer_bytes = 8192
+idle_read_timeout_micros = 30000000
+idle_write_timeout_micros = 30000000
+
+# --- application ---
+access_log = build/access.log
+document_root = data/documents
+
+# A comma-separated list of "<url-prefix> <filesystem-root>" mounts.
+static_mounts = /static/editor static/editor

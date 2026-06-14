@@ -1,7 +1,7 @@
 ---
 id: RFC-0011
 name: Configuration File
-status: Draft
+status: Implemented
 owners:
     - alistair
 created: 2026-06-12
@@ -12,11 +12,11 @@ superseded_by: null
 
 # Configuration File
 
-| Stage     | Timestamp  |
-|-----------|------------|
-| Authored  | 2026-06-12 |
-| Started   |            |
-| Completed |            |
+| Stage     | Timestamp        |
+|-----------|------------------|
+| Authored  | 2026-06-12       |
+| Started   | 2026-06-14 18:30 |
+| Completed | 2026-06-14 19:36 |
 
 ## Summary
 
@@ -212,14 +212,23 @@ are out of scope here.
 ## Rollout Plan
 
 1. Phase one: the config module and wiring.
-   - [ ] `MicroHttp.Config`: `Config`, `ConfigError`, `parseConfig`,
-         `loadConfig` (file plus environment), `toSettings`, and the typed
-         lookups.
-   - [ ] `main` loads the config, builds `Settings`, and composes the
+   - [x] `MicroHttp.Config`: `Config`, `ConfigError`, `parseConfig`,
+         `loadConfig` (file plus environment), `applyEnvironment`, `toSettings`,
+         and the typed lookups (`configString`/`configInt`/`configBool`/
+         `configMounts`).
+   - [x] `main` loads the config, builds `Settings`, and composes the
          application from it; fail fast on `ConfigError`.
-   - [ ] Unit and integration tests above; `make check` green.
-   - [ ] An ADR for the configuration approach; a note (and an example config
-         file) in the docs / README.
+   - [x] Unit and integration tests above; `make check` green.
+   - [x] ADR-033 for the configuration approach; an example
+         (`micro-http.conf.example`).
+
+Notes from implementation (recorded in ADR-033): the config store is open (no
+fixed schema), so the "warn on unknown keys" decision was dropped -- with
+app-defined keys there is no closed key set to warn against. The env-override
+logic was factored into the pure `applyEnvironment` and unit-tested there,
+because `loadConfig` reads `getEnvironment`, and under MicroHs that reflects
+variables present at launch but not a mid-process `setEnv` (the `environ`
+snapshot), so a live-`setEnv` integration test is unreliable.
 
 ### Rollout Plan Escape Hatch
 

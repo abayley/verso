@@ -1,5 +1,6 @@
 module Main (main) where
 
+import qualified MicroHttp.ConfigSpec as ConfigSpec
 import qualified MicroHttp.Http.ResponseFileSpec as ResponseFileSpec
 import qualified MicroHttp.Network.SocketSpec as SocketSpec
 import qualified MicroHttp.ServerConcurrencySpec as ServerConcurrencySpec
@@ -15,6 +16,7 @@ main :: IO ()
 main = do
     hSetBuffering stdout LineBuffering
     hspec $ do
+        ConfigSpec.spec
         ResponseFileSpec.spec
         SocketSpec.spec
         ServerConcurrencySpec.spec

@@ -1,5 +1,6 @@
 module Main (main) where
 
+import qualified MicroHttp.ConfigSpec as ConfigSpec
 import qualified MicroHttp.HtmlSpec as HtmlSpec
 import qualified MicroHttp.Http.FramingSpec as FramingSpec
 import qualified MicroHttp.Http.ParserSpec as ParserSpec
@@ -19,6 +20,7 @@ import Test.Hspec
 main :: IO ()
 main = hspec $ do
     FacadeSpec.spec
+    ConfigSpec.spec
     FramingSpec.spec
     HtmlSpec.spec
     HttpSpec.spec

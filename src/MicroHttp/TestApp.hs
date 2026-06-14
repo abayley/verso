@@ -3,6 +3,7 @@
 module MicroHttp.TestApp (
     DocumentStore (..),
     app,
+    appFromConfig,
     appWith,
     appWithDocumentRoot,
     appWithStore,
@@ -13,12 +14,13 @@ module MicroHttp.TestApp (
 
 import qualified Data.ByteString.Char8 as BS
 import Data.Char (isDigit, isSpace)
+import MicroHttp.Config (Config, configMounts, configString)
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http as Http
 import MicroHttp.Http.Parse (ParseError (..))
 import MicroHttp.Http.PercentEncoding (decodeFormValue)
 import MicroHttp.Iteratee (liftIO, readBodyStrict)
-import MicroHttp.Log (Logger)
+import MicroHttp.Log (Logger, fileLogfmtLogger)
 import MicroHttp.Middleware (logRequests, withErrorResponses)
 import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
@@ -44,6 +46,23 @@ error-response middleware and, outermost, request logging to the given sink.
 appWith :: Logger -> Server.Application
 appWith logger =
     logRequests logger (withErrorResponses app)
+
+{- | The application composed from configuration (RFC-0011): the access-log
+path, document root, and static mounts come from the config, and the parse
+limits from the (config-derived) settings. Logging is the outermost middleware.
+-}
+appFromConfig :: Server.Settings -> Config -> Server.Application
+appFromConfig settings cfg =
+    logRequests
+        (fileLogfmtLogger (configString "access_log" "build/access.log" cfg))
+        ( withErrorResponses
+            ( Router.serveRoutes
+                (Server.parseLimits settings)
+                ( documentRoutes (configString "document_root" "data/documents" cfg)
+                    ++ [Static.static prefix root | (prefix, root) <- configMounts "static_mounts" cfg]
+                )
+            )
+        )
 
 appWithDocumentRoot :: FilePath -> Server.Application
 appWithDocumentRoot root =

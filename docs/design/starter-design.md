@@ -404,25 +404,41 @@ _method=DELETE
 
 ## MicroHs Reverse Proxy Boundary
 
-Production deployments should put a reverse proxy in front of the MicroHs
-server. The reverse proxy owns:
+Production deployments should put a reverse proxy (nginx or similar) in front
+of the MicroHs server. The following edge concerns are the proxy's
+responsibility and are **deliberately not built into MicroHttp** -- the server
+assumes a proxy fronts it in production:
 
-- TLS.
-- HTTP/2 and HTTP/3.
-- Client keep-alive (persistent connections).
-- Compression.
-- Static asset caching.
-- Request size limits.
-- Slow-client protection.
-- Access logs if desired.
+- **TLS** -- termination and certificates.
+- **HTTP/2 and HTTP/3** -- the upstream link stays HTTP/1.1.
+- **Client keep-alive** (persistent connections) -- nginx keeps client
+  connections alive by default, and its default upstream mode is a new
+  connection per request, which matches our `Connection: close` per response
+  (RFC-0012 non-goal).
+- **Body compression** (gzip, brotli) -- MicroHttp never compresses a response
+  body in process. This is also why a `sendfile` `FileBody` being opaque to
+  `egress` transforms (RFC-0014) costs nothing: we would not compress it here
+  anyway.
+- **Static asset caching** and CDN edge.
+- **Request rate limiting** and per-IP connection caps.
+- **Slow-client / connection-flood protection** (slow-loris) -- see below.
+- **Access logs** at the edge, if the operator prefers them there.
 
-Keep-alive is worth calling out: nginx maintains persistent connections with
-the client by default, while its default upstream mode is a new connection per
-request -- which matches the MicroHs server sending `Connection: close` on
-every response. So the proxied path gives clients keep-alive with no
-persistent-connection code in the MicroHs server. Our own keep-alive would
-matter only for proxy-less deployments or to pool proxy-to-upstream connections
-under high load (RFC-0012 non-goal).
+A proxy is the right answer for **slow-loris** and similar slow-client attacks:
+nginx bounds how long it waits for headers and bodies
+(`client_header_timeout`, `client_body_timeout`), caps connections per client
+(`limit_conn`), and absorbs many idle connections cheaply on its event loop, so
+only complete requests reach the upstream. MicroHttp keeps a lightweight
+backstop for proxy-less deployments -- the idle read and write timeouts
+(RFC-0006, RFC-0008) bound a single stalled connection and
+`settingsMaxActiveHandlers` caps concurrency -- but it deliberately does not
+build the fuller edge protection (per-IP limits, connection-rate caps), which
+is the proxy's job.
+
+Keep-alive is worth calling out specifically: the proxied path gives clients
+persistent connections with no persistent-connection code in the MicroHs
+server. Our own keep-alive would matter only for proxy-less deployments or to
+pool proxy-to-upstream connections under high load.
 
 The MicroHs server should own:
 

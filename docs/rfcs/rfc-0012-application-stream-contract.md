@@ -121,7 +121,8 @@ mark it as complete in the phase checklist.
 ```haskell
 type Application = ConnectionInfo -> Iter StreamError Response  -- conn + stream
 type Middleware  = Application -> Application  -- a stream-level transformer
--- Handler unchanged: Captures -> RequestHead -> Iter StreamError Response
+-- Handler signature unchanged: Captures -> RequestHead -> Iter StreamError ...
+-- (RequestHead gains a requestPeer field the router fills)
 
 -- non-payload connection metadata, captured at accept
 data ConnectionInfo = ConnectionInfo
@@ -149,10 +150,14 @@ host and port can be read there with no `getpeername` call. (This supersedes
 the RFC-0009 open question that deferred the peer address behind a new FFI.)
 `MicroHttp.Network.Socket.accept` is extended to return the decoded
 `ConnectionInfo` alongside the `ClientSocket`, and `handleClient` passes it to
-the application. The logging middleware reads `connPeerHost` for its lines.
-Whether handlers also see it (a field on `RequestHead`, a `Request` wrapper, or
-left to logging only) is an open question below; this RFC requires only that
-the application receives it.
+the application. The logging middleware reads the peer from the
+`ConnectionInfo` it is handed, before any parse -- it must, since it logs on
+the first chunk, before a `RequestHead` exists. For handlers, the router copies
+the peer into a new `requestPeer :: ConnectionInfo` field on `RequestHead`
+after parsing, so a handler reads `requestPeer head`. The peer thus lives in
+two places by design: `ConnectionInfo` for the pre-parse layers (logging), and
+`requestPeer` for handlers. It is a small non-parsed addition to `RequestHead`
+that the router fills; `parseRequestHead` itself stays payload-only.
 
 ### Framing moves into the application stack
 
@@ -318,12 +323,14 @@ middleware, not here. `respondToRequestBytes` (the in-memory test seam) becomes
   `respondToRequestBytes`, and `TestApp` all change shape. `settingsLogger` is
   removed from `Settings`. `Network.Socket.accept` returns
   `(ClientSocket, ConnectionInfo)` instead of just the socket.
-- Handlers (`Handler`, `Captures`, `RequestHead`) are unchanged unless we
-  choose to expose the peer to them (open question), so handler code and the
-  router's route-definition surface are otherwise stable.
+- `RequestHead` gains a `requestPeer :: ConnectionInfo` field (filled by the
+  router from the connection). The `Handler` signature (`Captures ->
+  RequestHead -> ...`) is unchanged, so handler code and the route-definition
+  surface stay stable; existing handlers simply ignore the new field.
 - Supersedes ADR-029 (connection-layer logging); amends ADR-015 (middleware)
-  and the `Application` contract from RFC-0004. A new ADR-031 records the
-  stream-consumer `Application` and middleware-hosted logging.
+  and the `Application` contract from RFC-0004. A new ADR (numbered when this
+  RFC is implemented) records the stream-consumer `Application` and
+  middleware-hosted logging.
 
 ## Testing and Quality Gates
 
@@ -357,8 +364,8 @@ middleware, not here. `respondToRequestBytes` (the in-memory test seam) becomes
    - [ ] `handleClient` drives the stack and writes; `respondToRequestBytes`
          simplified; `TestApp` composes its stack with logging outermost.
    - [ ] Unit and integration tests above; `make check` green.
-   - [ ] ADR-031 accepted (supersedes ADR-029); update the network design and
-         the request-lifecycle walkthrough.
+   - [ ] The new ADR accepted (supersedes ADR-029); update the network design
+         and the request-lifecycle walkthrough.
 
 ### Rollout Plan Escape Hatch
 
@@ -383,14 +390,6 @@ middleware, not here. `respondToRequestBytes` (the in-memory test seam) becomes
 - Should the body bound and `withErrorResponses` be bundled into a single
   `defaultApp`-style assembly so applications cannot forget either, at the cost
   of less composability?
-- How do handlers see `ConnectionInfo`? Options: a `requestPeer` field on
-  `RequestHead` (literally "part of the request", keeps the `Handler`
-  signature, but stretches "parsed head" to include a non-parsed value); a
-  `Request` wrapper (`Request { requestConnection, requestHead }`) handed to
-  handlers (clean separation, but changes the `Handler` signature and touches
-  every handler); or leave it to logging only for now and add handler access
-  later. This RFC needs only that the application receives it; the handler-
-  facing shape can be decided when a handler first needs the peer.
 - Should `ConnectionInfo` also carry the local address, an accept timestamp, or
   (later) TLS details? Kept to peer host and port here; the record is
   extensible.

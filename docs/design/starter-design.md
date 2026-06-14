@@ -409,11 +409,20 @@ server. The reverse proxy owns:
 
 - TLS.
 - HTTP/2 and HTTP/3.
+- Client keep-alive (persistent connections).
 - Compression.
 - Static asset caching.
 - Request size limits.
 - Slow-client protection.
 - Access logs if desired.
+
+Keep-alive is worth calling out: nginx maintains persistent connections with
+the client by default, while its default upstream mode is a new connection per
+request -- which matches the MicroHs server sending `Connection: close` on
+every response. So the proxied path gives clients keep-alive with no
+persistent-connection code in the MicroHs server. Our own keep-alive would
+matter only for proxy-less deployments or to pool proxy-to-upstream connections
+under high load (RFC-0012 non-goal).
 
 The MicroHs server should own:
 

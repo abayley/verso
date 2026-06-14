@@ -2,9 +2,10 @@
 
 backend:
 
-- http server logging
+- config file
+- high-level design doc, with exampel usage
+- timestamps in logs
 - hot reload
-- improve socket testing
 - fully qualified imports with module aliases
 - all haskell code has haddock docs
 - how do we handle static files in the router?

@@ -2,6 +2,7 @@ module Main (main) where
 
 import Data.Maybe (fromMaybe)
 import MicroHttp.Config (Config, ConfigError (..), loadConfig, toSettings)
+import MicroHttp.Network.Socket (Host (..), Port (..))
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.TestApp as TestApp
 import System.Environment (lookupEnv)
@@ -20,7 +21,7 @@ main = do
     case loaded >>= withSettings of
         Left err -> failWith err
         Right (settings, cfg) -> do
-            putStrLn "MicroHttp server starting"
+            putStrLn ("listening on " ++ listenAddress settings)
             result <- Server.serve settings (TestApp.appFromConfig settings cfg)
             case result of
                 Left err -> putStrLn ("server failed: " ++ show err)
@@ -37,3 +38,12 @@ failWith :: ConfigError -> IO ()
 failWith (ConfigError message) = do
     putStrLn ("configuration error: " ++ message)
     exitFailure
+
+-- | The configured listen address as @<ip>:<port>@; the any-host binds 0.0.0.0.
+listenAddress :: Server.Settings -> String
+listenAddress settings =
+    renderHost (Server.settingsHost settings) ++ ":" ++ renderPort (Server.settingsPort settings)
+  where
+    renderHost HostAny = "0.0.0.0"
+    renderHost (HostIPv4 a b c d) = show a ++ "." ++ show b ++ "." ++ show c ++ "." ++ show d
+    renderPort (Port p) = show p

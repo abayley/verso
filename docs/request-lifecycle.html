@@ -117,36 +117,41 @@ flowchart TD
       <section class="space-y-5">
         <h2 class="text-2xl font-semibold tracking-tight">Modules and types</h2>
         <p class="text-slate-700 max-w-3xl prose-tour">
-          Before the walkthrough, a map of where things live: each box is a module with its headline
-          functions and types, and an arrow <span class="mono">A → B</span> means <em>A uses B</em>. Every
-          function the chapters mention — <code class="mono">acceptLoop</code>,
+          Before the walkthrough, a map of where things live: each box is a module with its key functions
+          (with type signatures) and types, and an arrow <span class="mono">A → B</span> means <em>A imports
+          B</em>. Every function the chapters mention — <code class="mono">acceptLoop</code>,
           <code class="mono">handleClient</code>, <code class="mono">socketEnumerator</code>,
-          <code class="mono">serveRoutes</code>, and the rest — is shown in its module. The engine
-          (<span class="text-indigo-600 font-medium">Iteratee</span>) and the transport
-          (<span class="text-slate-500 font-medium">Socket</span>) sit at the bottom; everything flows down
-          toward them.
+          <code class="mono">serveRoutes</code> — is here. Note the two <span class="mono">TestApp</span> files:
+          <span class="mono">src/TestApp.hs</span> is the thin executable (just <code class="mono">main</code>);
+          the application itself — routes, handlers, and the middleware stack — lives in the
+          <span class="mono">MicroHttp.TestApp</span> module. The engine
+          (<span class="text-indigo-600 font-medium">Iteratee</span>) and transport
+          (<span class="text-slate-500 font-medium">Socket</span>) sit at the bottom.
         </p>
         <div class="diagcard p-4">
           <div class="mermaid">
 flowchart TD
-    Main["Main · src/TestApp.hs<br/>main · app · routes · handlers"]
-    Server["Server<br/>serve · acceptLoop · runCappedHandler<br/>handleClient · Settings · ServerError"]
-    MW["Middleware<br/>Application · Middleware · logRequests<br/>withErrorResponses · ingress · egress · catchIter"]
-    Router["Router<br/>serveRoutes · route · frameAndParse<br/>Route · Handler · Captures · PathPart"]
-    Static["Static<br/>static · serveStatic<br/>resolveStaticPath · contentTypeFor"]
-    Http["Http (+ Parser · Framing · Response)<br/>RequestHead · Response · ResponseBody · Status<br/>parseRequestHead · frameHeadersI · writeResponse"]
-    Stream["Stream<br/>socketEnumerator · fileEnumerator · StreamError"]
-    Socket["Network.Socket<br/>accept · recvWithin · sendAllWithin<br/>ClientSocket · ConnectionInfo · SocketError"]
-    Iter["Iteratee — the engine<br/>Iter · Stream · Enumerator<br/>run · takeN · readBodyStrict · byteSinkI"]
-    Log["Log<br/>Logger · AccessEvent<br/>formatLogfmt · fileLogfmtLogger"]
-    Html["Html<br/>Html · el · text · renderHtml"]
+    Main["Main · src/TestApp.hs<br/>main :: IO ()"]
+    TestApp["TestApp · src/MicroHttp/TestApp.hs<br/>appWith :: Logger -> Application<br/>routes · handlers"]
+    Server["Server<br/>serve :: Settings -> Application -> IO (Either ServerError ())<br/>handleClient :: Settings -> Application -> ClientSocket<br/>　　　　-> ConnectionInfo -> IO (Either ServerError ())<br/>acceptLoop · runCappedHandler · data Settings"]
+    MW["Middleware<br/>type Application = ConnectionInfo -> Iter StreamError Response<br/>type Middleware = Application -> Application<br/>logRequests :: Logger -> Middleware<br/>withErrorResponses :: Middleware"]
+    Router["Router<br/>serveRoutes :: ParseLimits -> [Route] -> Application<br/>route :: [Route] -> RequestHead -> Iter StreamError Response<br/>frameAndParse :: ParseLimits -> Iter StreamError RequestHead<br/>data Route · type Handler · data PathPart"]
+    Static["Static<br/>static :: String -> FilePath -> Route<br/>serveStatic :: Int -> FilePath -> Handler<br/>contentTypeFor :: FilePath -> String"]
+    Http["Http (+ Parser · Framing · Response)<br/>data RequestHead · Response · ResponseBody · Status<br/>parseRequestHead :: ByteString -> Either ParseError RequestHead<br/>frameHeadersI :: ParseLimits -> Iter StreamError ByteString<br/>writeResponse :: ResponseSink -> Response -> IO (Either StreamError ())"]
+    Stream["Stream<br/>socketEnumerator :: ClientSocket -> Int -> Int -> Enumerator StreamError a<br/>fileEnumerator :: FilePath -> Enumerator StreamError a<br/>data StreamError"]
+    Socket["Network.Socket<br/>accept :: ListenSocket -> IO (Either SocketError (ClientSocket, ConnectionInfo))<br/>recvWithin :: Int -> ClientSocket -> Int -> IO (Either SocketError ByteString)<br/>sendAllWithin :: Int -> ClientSocket -> ByteString -> IO (Either SocketError ())<br/>data ClientSocket · ConnectionInfo · SocketError"]
+    Iter["Iteratee — the engine<br/>data Iter e a · data Stream e<br/>type Enumerator e a = Iter e a -> IO (Iter e a)<br/>run :: Iter e a -> IO (Either e a)<br/>takeN · readBodyStrict · byteSinkI"]
+    Log["Log<br/>type Logger = AccessEvent -> IO ()<br/>data AccessEvent<br/>formatLogfmt :: AccessEvent -> String<br/>fileLogfmtLogger :: FilePath -> Logger"]
+    Html["Html<br/>data Html a<br/>el :: String -> [(String, String)] -> Html () -> Html ()<br/>renderHtml :: Html a -> String"]
 
     Main --> Server
-    Main --> MW
-    Main --> Router
-    Main --> Static
+    Main --> TestApp
     Main --> Log
-    Main --> Html
+    TestApp --> MW
+    TestApp --> Router
+    TestApp --> Static
+    TestApp --> Html
+    TestApp --> Http
     Server --> Socket
     Server --> Stream
     Server --> Iter
@@ -173,12 +178,14 @@ flowchart TD
           </div>
         </div>
         <p class="text-slate-500 text-xs max-w-3xl">
-          The <span class="mono">Http</span> box aggregates the parser, framing, and response sub-modules.
-          The error types thread between layers — <span class="mono">StreamError</span> (in
-          <span class="mono">Stream</span>) wraps the parser's <span class="mono">ParseError</span>, and
-          <span class="mono">writeResponse</span> reports failures as <span class="mono">StreamError</span> —
-          which is why <span class="mono">Application</span> and <span class="mono">Middleware</span> are
-          typed over <span class="mono">Iter StreamError Response</span>. Reflects the RFC-0012 design.
+          <span class="mono">Main</span> imports only <span class="mono">Server</span>,
+          <span class="mono">TestApp</span>, and <span class="mono">Log</span>; the application module pulls in
+          <span class="mono">Middleware</span>, <span class="mono">Router</span>,
+          <span class="mono">Static</span>, <span class="mono">Html</span>, and
+          <span class="mono">Http</span>. The <span class="mono">Http</span> box aggregates the parser,
+          framing, and response sub-modules. A few minor handler-level edges
+          (<span class="mono">TestApp</span> using <span class="mono">Iteratee</span>/<span class="mono">Stream</span>)
+          are elided. Reflects the RFC-0012 design.
         </p>
       </section>
 
@@ -186,27 +193,34 @@ flowchart TD
       <section class="space-y-4">
         <div class="flex items-center gap-3">
           <span class="chapnum text-3xl font-bold text-indigo-500">01</span>
-          <h2 class="text-2xl font-semibold tracking-tight">Main — composing the stack</h2>
-          <span class="mono text-xs text-slate-400">src/TestApp.hs</span>
+          <h2 class="text-2xl font-semibold tracking-tight">Main — wiring and serve</h2>
+          <span class="mono text-xs text-slate-400">src/TestApp.hs · src/MicroHttp/TestApp.hs</span>
         </div>
         <p class="text-slate-700 max-w-3xl prose-tour">
-          The entry point builds the configuration and the application, then calls
-          <code class="mono text-sm">serve</code>. The application is assembled here, outermost-first: logging
-          wraps the slow-client policy, which wraps the error-response mapping, which wraps the router. This
-          one expression <em>is</em> the layering — there is no hidden pipeline. Logging is just the
-          outermost middleware (RFC-0012 removed the old <code class="mono text-sm">settingsLogger</code>).
+          The executable is thin: it picks the settings and the access-log destination and calls
+          <code class="mono text-sm">serve</code>. The application itself — the middleware stack wrapped
+          around the router — is composed in the <code class="mono text-sm">MicroHttp.TestApp</code> module's
+          <code class="mono text-sm">appWith</code>, outermost-first: logging wraps the slow-client policy,
+          which wraps the error-response mapping, which wraps the router. That one expression <em>is</em> the
+          layering — no hidden pipeline. Logging is just the outermost middleware (RFC-0012 removed the old
+          <code class="mono text-sm">settingsLogger</code>); the executable only injects which logger to use.
         </p>
         <pre class="code"><span class="filetab text-slate-500">src/TestApp.hs — design (RFC-0012)</span>
 
 <span class="f">main</span> :: <span class="t">IO</span> ()
 <span class="f">main</span> = <span class="k">do</span>
     <span class="k">let</span> settings = <span class="f">defaultSettings</span>
-        limits   = <span class="f">parseLimits</span> settings
-        app      = <span class="f">logRequests</span> (<span class="f">fileLogfmtLogger</span> <span class="s">"build/access.log"</span>)
-                       (<span class="f">withErrorResponses</span>
-                           (<span class="f">serveRoutes</span> limits (<span class="f">routes</span> store)))
-    result &lt;- <span class="f">Server.serve</span> settings app
-    ...</pre>
+    result &lt;- <span class="f">Server.serve</span> settings
+                  (<span class="f">TestApp.appWith</span> (<span class="f">fileLogfmtLogger</span> <span class="s">"build/access.log"</span>))
+    ...
+
+<span class="filetab text-slate-500">src/MicroHttp/TestApp.hs — the stack lives here</span>
+
+<span class="f">appWith</span> :: <span class="t">Logger</span> -&gt; <span class="t">Application</span>
+<span class="f">appWith</span> logger =
+    <span class="f">logRequests</span> logger
+        (<span class="f">withErrorResponses</span>
+            (<span class="f">serveRoutes</span> defaultLimits (<span class="f">routes</span> store)))</pre>
         <p class="text-slate-600 text-sm max-w-3xl">
           <code class="mono">serve :: Settings -> Application -> IO (Either ServerError ())</code>. The
           <code class="mono">Application</code> is a value (a stream consumer), so <code class="mono">serve</code>

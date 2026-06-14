@@ -56,8 +56,8 @@ then dispatch. Framing lives here, at the bottom of the application stack, not
 in the server. The connection metadata is unused for now.
 -}
 serveRoutes :: ParseLimits -> [Route] -> Application
-serveRoutes limits routes _conn =
-    frameAndParse limits >>= withBody
+serveRoutes limits routes conn =
+    frameAndParse limits >>= \head -> withBody head{requestPeer = conn}
   where
     withBody head =
         case declaredContentLength (requestHeaders head) of

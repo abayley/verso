@@ -50,12 +50,9 @@ pureText body =
 
 request :: Method -> [String] -> RequestHead
 request method path =
-    RequestHead
+    emptyRequestHead
         { requestMethod = method
         , requestPath = path
-        , requestQuery = []
-        , requestHeaders = []
-        , requestRawPath = bs "/"
         }
 
 capture :: String -> Captures -> String

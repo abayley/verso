@@ -30,6 +30,7 @@ module MicroHttp.Middleware (
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http (Response (..), ResponseBody (..), Status (..), normaliseHeaderName)
+import MicroHttp.Http.Response (serialiseHead, serialiseResponse)
 import MicroHttp.Iteratee (Enumerator, Iter (..), Stream (..))
 import MicroHttp.Log (AccessEvent (..), Logger, RequestLine (..))
 import MicroHttp.Network.Socket (ConnectionInfo)
@@ -108,9 +109,10 @@ errorResponseFor err =
 
 {- | The outermost middleware: it taps the request's first line (method and
 target) to log a received event with the peer the moment it arrives, counts the
-request bytes, and on the terminal step logs a completed event (with the
-response status) or an aborted event, each with the duration. Response-body
-byte counting is left to a follow-up.
+request bytes, and on the terminal step logs a completed or aborted event. The
+response size is exact: a strict body's serialised length is known at the Done
+step, and a streaming body is counted through an egress stage that logs the
+completed event when the body finishes (its head length plus the body bytes).
 -}
 logRequests :: Logger -> Middleware
 logRequests logger inner conn = IterM start
@@ -123,8 +125,7 @@ logRequests logger inner conn = IterM start
         case it of
             NeedInput k -> NeedInput (consume startMillis lineState reqBytes k)
             IterM m -> IterM (fmap (tap startMillis lineState reqBytes) m)
-            Done response residue ->
-                IterM (logCompleted startMillis lineState reqBytes response >> return (Done response residue))
+            Done response residue -> completed startMillis lineState reqBytes response residue
             IterFailed err residue ->
                 IterM (logAborted startMillis lineState reqBytes err >> return (IterFailed err residue))
 
@@ -139,13 +140,54 @@ logRequests logger inner conn = IterM start
                         Nothing -> next
             EndOfStream merr -> tap startMillis lineState reqBytes (k (EndOfStream merr))
 
-    logCompleted startMillis lineState reqBytes response = do
+    -- A strict body's size is known now; a streaming body is counted as the
+    -- server writes it, logging the completed event at the body's end.
+    completed startMillis lineState reqBytes response residue =
+        case responseBody response of
+            StrictBody _ ->
+                IterM
+                    ( logCompleted startMillis lineState reqBytes (responseStatus response) (strictResponseSize response)
+                        >> return (Done response residue)
+                    )
+            StreamBody enumerator ->
+                let headLength = B.length (serialiseHead response)
+                    counted = countingBody startMillis lineState reqBytes (responseStatus response) headLength enumerator
+                 in Done response{responseBody = StreamBody counted} residue
+
+    logCompleted startMillis lineState reqBytes status respBytes = do
         endMillis <- getTimeMilli
-        logger (RequestCompleted conn (lineOf lineState) (responseStatus response) reqBytes (endMillis - startMillis))
+        logger (RequestCompleted conn (lineOf lineState) status reqBytes respBytes (endMillis - startMillis))
 
     logAborted startMillis lineState reqBytes err = do
         endMillis <- getTimeMilli
         logger (RequestAborted conn (lineOf lineState) (streamErrorLabel err) reqBytes (endMillis - startMillis))
+
+    -- \| Wraps a streaming response body so the bytes are tallied as they reach
+    --    the sink and the completed event is logged (head length plus body bytes)
+    --    when the stream ends.
+    --
+    countingBody startMillis lineState reqBytes status headLength enumerator sink =
+        enumerator (countStage 0 sink)
+      where
+        countStage tally inner' =
+            case inner' of
+                NeedInput k -> NeedInput (countConsume tally k)
+                IterM m -> IterM (fmap (countStage tally) m)
+                other -> other
+        countConsume tally k stream =
+            case stream of
+                Chunk bytes -> countStage (tally + B.length bytes) (k (Chunk bytes))
+                EndOfStream merr ->
+                    IterM
+                        ( logCompleted startMillis lineState reqBytes status (headLength + tally)
+                            >> return (k (EndOfStream merr))
+                        )
+
+strictResponseSize :: Response -> Int
+strictResponseSize response =
+    case serialiseResponse response of
+        Right bytes -> B.length bytes
+        Left _ -> 0
 
 {- | The first-line tap state: still buffering bytes until the first CRLF, or
 the parsed request line.

@@ -688,11 +688,14 @@ bound and the 400/408 responses are now application-composed
 (`serveRoutes`/`withErrorResponses`), so `Settings.maxBodyBytes` is the value
 an application threads into its limits rather than something the server
 enforces directly. `ServerError` gains `ServerStreamFailed` for a stream
-failure that produced no response. Deviations from RFC-0012 as drafted, taken
-to bound the change: the `requestPeer` field on `RequestHead` is deferred (no
-handler needs the peer yet, and the logger reads it from `ConnectionInfo`), and
-`logRequests` does not yet count response-body bytes (it records request bytes,
-status, and duration). The design is RFC-0012.
+failure that produced no response. The initial landing deferred two pieces that
+a follow-up then added: `RequestHead` now carries `requestPeer`, filled by the
+router from the connection and built via an `emptyRequestHead` default so the
+field addition was a one-line change rather than touching every construction
+site; and `logRequests` now logs response bytes -- exact for a strict body
+(from its serialised length) and counted through an egress stage for a
+streaming body (the head length plus the body bytes, logged when the body
+finishes). The design is RFC-0012.
 
 ## ADR Registry Open Review Items
 

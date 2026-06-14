@@ -48,10 +48,10 @@
         <div class="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 max-w-3xl">
           <strong>This reflects the implemented design (RFC-0012).</strong> The <code class="mono">Application</code>
           is a stream consumer (<code class="mono">ConnectionInfo -&gt; Iter StreamError Response</code>), framing
-          lives in the router, and logging is the outermost middleware — and the source now matches. One
-          deviation: the peer rides in <code class="mono">ConnectionInfo</code> (read by the logger), not a
-          <code class="mono">requestPeer</code> field on <code class="mono">RequestHead</code> (deferred until a
-          handler needs it).
+          lives in the router, and logging is the outermost middleware — and the source now matches. The peer
+          rides in <code class="mono">ConnectionInfo</code> (read by the logger) and is also copied onto
+          <code class="mono">RequestHead.requestPeer</code> by the router for handlers; <code class="mono">logRequests</code>
+          logs the request and response byte counts.
         </div>
         <div class="flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-600 border-t border-b border-slate-200 py-3">
           <span><span class="inline-block w-3 h-3 align-middle rounded-sm bg-slate-800 mr-1"></span>module</span>
@@ -133,18 +133,17 @@ flowchart TD
         <div class="diagcard p-4">
           <div class="mermaid">
 flowchart TD
-    Main["Main · src/TestApp.hs<br/>main :: IO ()"]
-    TestApp["TestApp · src/MicroHttp/TestApp.hs<br/>appWith :: Logger -> Application<br/>routes · handlers"]
-    Server["Server<br/>serve :: Settings -> Application -> IO (Either ServerError ())<br/>handleClient :: Settings -> Application -> ClientSocket<br/>　　　　-> ConnectionInfo -> IO (Either ServerError ())<br/>acceptLoop · runCappedHandler · data Settings"]
-    MW["Middleware<br/>type Application = ConnectionInfo -> Iter StreamError Response<br/>type Middleware = Application -> Application<br/>logRequests :: Logger -> Middleware<br/>withErrorResponses :: Middleware"]
-    Router["Router<br/>serveRoutes :: ParseLimits -> [Route] -> Application<br/>route :: [Route] -> RequestHead -> Iter StreamError Response<br/>frameAndParse :: ParseLimits -> Iter StreamError RequestHead<br/>data Route · type Handler · data PathPart"]
-    Static["Static<br/>static :: String -> FilePath -> Route<br/>serveStatic :: Int -> FilePath -> Handler<br/>contentTypeFor :: FilePath -> String"]
-    Http["Http (+ Parser · Framing · Response)<br/>data RequestHead · Response · ResponseBody · Status<br/>parseRequestHead :: ByteString -> Either ParseError RequestHead<br/>frameHeadersI :: ParseLimits -> Iter StreamError ByteString<br/>writeResponse :: ResponseSink -> Response -> IO (Either StreamError ())"]
-    Stream["Stream<br/>socketEnumerator :: ClientSocket -> Int -> Int -> Enumerator StreamError a<br/>fileEnumerator :: FilePath -> Enumerator StreamError a<br/>data StreamError"]
-    Socket["Network.Socket<br/>accept :: ListenSocket -> IO (Either SocketError (ClientSocket, ConnectionInfo))<br/>recvWithin :: Int -> ClientSocket -> Int -> IO (Either SocketError ByteString)<br/>sendAllWithin :: Int -> ClientSocket -> ByteString -> IO (Either SocketError ())<br/>data ClientSocket · ConnectionInfo · SocketError"]
-    Iter["Iteratee — the engine<br/>data Iter e a · data Stream e<br/>type Enumerator e a = Iter e a -> IO (Iter e a)<br/>run :: Iter e a -> IO (Either e a)<br/>takeN · readBodyStrict · byteSinkI"]
-    Log["Log<br/>type Logger = AccessEvent -> IO ()<br/>data AccessEvent<br/>formatLogfmt :: AccessEvent -> String<br/>fileLogfmtLogger :: FilePath -> Logger"]
-    Html["Html<br/>data Html a<br/>el :: String -> [(String, String)] -> Html () -> Html ()<br/>renderHtml :: Html a -> String"]
+    Main["Main [src/TestApp.hs]<hr/><code>main :: IO ()</code>"]
+    TestApp["TestApp [src/MicroHttp/TestApp.hs]<hr/><code>app :: Server.Application</code>"]
+    Server["Server<hr/><code>serve<br/>handleClient</code>"]
+    MW["Middleware<hr/>"]
+    Router["Router<hr/><code>serveRoutes</code>"]
+    Static["Static<hr/><code>static<br/>serveStatic</code>"]
+    Http["Http<hr/><code>RequestHead<br/>Response<br/>ResponseBody<br/>Status</code>"]
+    Stream["Stream<hr/><code>socketEnumerator</code>"]
+    Socket["Network.Socket<hr/><code>accept<br/>recvWithin</code>"]
+    Log["Log<hr/><code>type Logger = AccessEvent -> IO ()</code>"]
+    Html["Html<hr/><code>renderHtml</code>"]
 
     Main --> Server
     Main --> TestApp
@@ -152,25 +151,21 @@ flowchart TD
     TestApp --> MW
     TestApp --> Router
     TestApp --> Static
+    TestApp --> Server
     TestApp --> Html
     TestApp --> Http
     Server --> Socket
     Server --> Stream
-    Server --> Iter
     Server --> Http
     MW --> Http
-    MW --> Iter
     MW --> Stream
     MW --> Log
     Router --> Http
-    Router --> Iter
     Router --> Stream
     Static --> Router
     Static --> Http
     Static --> Stream
     Stream --> Socket
-    Stream --> Iter
-    Http --> Iter
     Log --> Http
 
     classDef engine fill:#6366f1,stroke:#4338ca,color:#fff;

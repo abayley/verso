@@ -56,12 +56,9 @@ collectResponseBody (Right response) =
 
 request :: Method -> [String] -> RequestHead
 request method path =
-    RequestHead
+    emptyRequestHead
         { requestMethod = method
         , requestPath = path
-        , requestQuery = []
-        , requestHeaders = []
-        , requestRawPath = BS.pack "/"
         }
 
 assetFile :: FilePath

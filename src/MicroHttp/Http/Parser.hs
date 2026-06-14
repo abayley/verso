@@ -45,7 +45,7 @@ parseHeaders method target headerLines =
                 _ ->
                     let (rawPath, queryText) = splitTarget target
                      in Right
-                            RequestHead
+                            emptyRequestHead
                                 { requestMethod = method
                                 , requestPath = pathSegments rawPath
                                 , requestQuery = parseQuery queryText

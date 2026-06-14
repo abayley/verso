@@ -34,12 +34,13 @@ data RequestLine = RequestLine
 
 {- | A logged moment in a connection's life, carrying the peer. The request
 line is 'Nothing' on the terminal event when no first line was seen (a peer
-that connected and stalled). The two trailing 'Int's on the terminal events are
-the request bytes read and the duration in milliseconds.
+that connected and stalled). 'RequestCompleted' carries request bytes, response
+bytes, and the duration in milliseconds; 'RequestAborted' carries request bytes
+and the duration.
 -}
 data AccessEvent
     = RequestReceived ConnectionInfo RequestLine
-    | RequestCompleted ConnectionInfo (Maybe RequestLine) Status Int Int
+    | RequestCompleted ConnectionInfo (Maybe RequestLine) Status Int Int Int
     | RequestAborted ConnectionInfo (Maybe RequestLine) String Int Int
 
 -- | The no-op logger: logging disabled.
@@ -63,7 +64,7 @@ formatLogfmt event =
     case event of
         RequestReceived conn line ->
             "event=RQST" ++ peerField conn ++ lineFields (Just line)
-        RequestCompleted conn line status reqBytes durationMillis ->
+        RequestCompleted conn line status reqBytes respBytes durationMillis ->
             "event=RESP"
                 ++ peerField conn
                 ++ lineFields line
@@ -71,6 +72,8 @@ formatLogfmt event =
                 ++ show (statusCode status)
                 ++ " req_bytes="
                 ++ show reqBytes
+                ++ " resp_bytes="
+                ++ show respBytes
                 ++ " dur_ms="
                 ++ show durationMillis
         RequestAborted conn line reason reqBytes durationMillis ->

@@ -12,7 +12,7 @@ spec =
             parseRequestHead
                 (bs "GET /todos/open%20items?filter=open%20now HTTP/1.1\r\nHost: localhost")
                 `shouldBe` Right
-                    RequestHead
+                    emptyRequestHead
                         { requestMethod = GET
                         , requestPath = ["todos", "open items"]
                         , requestQuery = [("filter", "open now")]
@@ -23,7 +23,7 @@ spec =
             parseRequestHead
                 (bs "POST /todos HTTP/1.1\r\nContent-Length: 11\r\nContent-Type: application/x-www-form-urlencoded")
                 `shouldBe` Right
-                    RequestHead
+                    emptyRequestHead
                         { requestMethod = POST
                         , requestPath = ["todos"]
                         , requestQuery = []

@@ -8,6 +8,7 @@ module MicroHttp.Http (
     Response (..),
     ResponseBody (..),
     Status (..),
+    emptyRequestHead,
     okStatus,
     parseMethod,
     renderHeaderName,
@@ -18,6 +19,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import Data.Char (isAsciiUpper)
 import MicroHttp.Iteratee (Enumerator)
+import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), Port (..))
 import MicroHttp.Stream (StreamError)
 
 data Method
@@ -60,8 +62,25 @@ data RequestHead = RequestHead
     , requestQuery :: [(String, String)]
     , requestHeaders :: Headers
     , requestRawPath :: RawPath
+    , requestPeer :: ConnectionInfo
     }
     deriving (Eq, Show)
+
+{- | A 'RequestHead' with empty payload and an unknown peer, for building heads
+by record update. The parser fills the payload fields; the router fills
+'requestPeer' from the connection. Routing construction through this default
+keeps adding a field a one-line change here, not at every construction site.
+-}
+emptyRequestHead :: RequestHead
+emptyRequestHead =
+    RequestHead
+        { requestMethod = GET
+        , requestPath = []
+        , requestQuery = []
+        , requestHeaders = []
+        , requestRawPath = BS.empty
+        , requestPeer = ConnectionInfo HostAny (Port 0)
+        }
 
 data Response = Response
     { responseStatus :: Status

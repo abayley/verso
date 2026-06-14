@@ -26,12 +26,13 @@ spec =
                 result `shouldBe` Right ()
                 recorded <- captured events
                 case recorded of
-                    [RequestReceived _ received, RequestCompleted _ (Just completed) status reqBytes durationMillis] -> do
+                    [RequestReceived _ received, RequestCompleted _ (Just completed) status reqBytes respBytes durationMillis] -> do
                         requestLineMethod received `shouldBe` "GET"
                         requestLineTarget received `shouldBe` "/"
                         requestLineMethod completed `shouldBe` "GET"
                         statusCode status `shouldBe` 200
                         (reqBytes > 0) `shouldBe` True
+                        (respBytes > 0) `shouldBe` True
                         (durationMillis >= 0) `shouldBe` True
                     _ -> expect ("unexpected log events: " ++ describe' recorded) False
         it "given a peer that stalls after the first line, when handled with a short idle timeout, then a completed 408 line is recorded" $
@@ -44,7 +45,7 @@ spec =
                 result `shouldBe` Right ()
                 recorded <- captured events
                 case recorded of
-                    [RequestReceived _ _, RequestCompleted _ _ status _ _] ->
+                    [RequestReceived _ _, RequestCompleted _ _ status _ _ _] ->
                         statusCode status `shouldBe` 408
                     _ -> expect ("expected received then completed 408, got: " ++ describe' recorded) False
         it "given a file logger, when a request is handled, then the access log file holds the request lines" $
@@ -94,7 +95,7 @@ tagOf :: AccessEvent -> String
 tagOf event =
     case event of
         RequestReceived _ _ -> "received"
-        RequestCompleted _ _ status _ _ -> "completed:" ++ show (statusCode status)
+        RequestCompleted _ _ status _ _ _ -> "completed:" ++ show (statusCode status)
         RequestAborted _ _ reason _ _ -> "aborted:" ++ reason
 
 documentRoot :: FilePath

@@ -367,18 +367,19 @@ middleware, not here. `respondToRequestBytes` (the in-memory test seam) becomes
    - [x] ADR-032 accepted (supersedes ADR-029); update the network design
          and the request-lifecycle walkthrough.
 
-Deviations taken during implementation (recorded in ADR-032): the `requestPeer`
-field on `RequestHead` was deferred -- the logger reads the peer from
-`ConnectionInfo`, and no handler needs it yet, so adding it (and the
-`Http`->`Socket` coupling it implies) waits for a real consumer. `logRequests`
-records the peer, method, target, status, request bytes, and duration;
-response-body byte counting is a follow-up. `AccessEvent` carries the peer and
-a `RequestLine` (method and target strings tapped from the first line) rather
-than a parsed `RequestHead`. `ServerError` gained `ServerStreamFailed` for a
-stream failure that produced no response. The body bound and 400/408 responses
-are now application-composed (`serveRoutes`/`withErrorResponses`), so
-`settingsMaxBodyBytes` is the value an application threads into its limits
-(via `parseLimits`) rather than a server-enforced cap.
+Notes from implementation (recorded in ADR-032): `AccessEvent` carries the peer
+and a `RequestLine` (method and target strings tapped from the first line)
+rather than a parsed `RequestHead`. `ServerError` gained `ServerStreamFailed`
+for a stream failure that produced no response. The body bound and 400/408
+responses are now application-composed (`serveRoutes`/`withErrorResponses`), so
+`settingsMaxBodyBytes` is the value an application threads into its limits (via
+`parseLimits`) rather than a server-enforced cap. The first landing deferred
+`requestPeer` and response-byte counting; a follow-up added both -- `RequestHead`
+now carries `requestPeer` (filled by the router, built via an `emptyRequestHead`
+default so the field cost one line, not every construction site, the
+record-update pattern from the Open Questions), the `Http` -> `Socket` import it
+implies being acyclic; and `logRequests` logs response bytes exactly for strict
+bodies and via an egress counter for streaming bodies.
 
 ### Rollout Plan Escape Hatch
 

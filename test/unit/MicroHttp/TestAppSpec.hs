@@ -74,12 +74,9 @@ spec =
 
 request :: Method -> [String] -> RequestHead
 request method path =
-    RequestHead
+    emptyRequestHead
         { requestMethod = method
         , requestPath = path
-        , requestQuery = []
-        , requestHeaders = []
-        , requestRawPath = BS.pack "/"
         }
 
 {- | Runs the test application over a request head and body, returning the

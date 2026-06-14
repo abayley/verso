@@ -513,8 +513,8 @@ flowchart TD
         </p>
         <pre class="code"><span class="filetab text-slate-500">build/access.log — logfmt</span>
 
-event=RQST peer=127.0.0.1 method=POST path=/save
-event=RESP peer=127.0.0.1 method=POST path=/save status=200 bytes=42 dur_ms=3</pre>
+ts=2026-06-15T14:30:00.123+1200 event=RQST peer=127.0.0.1 method=POST path=/save
+ts=2026-06-15T14:30:00.126+1200 event=RESP peer=127.0.0.1 method=POST path=/save status=200 req_bytes=42 resp_bytes=256 dur_ms=3</pre>
         <p class="text-slate-700 text-sm max-w-3xl prose-tour">
           The connection then closes — MicroHttp sends <code class="mono">Connection: close</code> per response.
           Keep-alive is deliberately a non-goal: a reverse proxy owns client keep-alive, and its default

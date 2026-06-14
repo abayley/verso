@@ -583,6 +583,14 @@ disabled path; the logger is off by default so the prior behaviour and the
 benches are unchanged. The peer address (a `getpeername` FFI) and a
 timestamp field are deferred to the injected sink or a follow-up.
 
+Follow-up: every logfmt line now leads with a local-time timestamp,
+`ts=YYYY-MM-DDThh:mm:ss.mmm±zzzz`, captured by `logfmtTo` at emit and rendered
+by `localTimestamp`. It uses a `localtime`/`strftime` FFI rather than `Data.Time`
+on purpose: the bundled `time` package compiles under `mhs` but its local-time
+conversion is wrong on this toolchain (it negates the zone offset, e.g. NZST
+renders as `-1200` with the wrong calendar day), whereas `localtime` delegates
+to libc and is correct.
+
 ### ADR-030: Static File Serving As A Safe Wildcard Route
 
 Status: Accepted.

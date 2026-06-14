@@ -1,0 +1,9 @@
+{
+  // Markdown lint configuration for micro-http docs.
+  // Line length raised to 120 for prose-heavy RFC and design documents;
+  // all other markdownlint rules stay at their defaults.
+  "config": {
+    "default": true,
+    "MD013": { "line_length": 120 }
+  }
+}

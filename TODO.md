@@ -11,6 +11,7 @@ backend:
 - how do we handle static files in the router?
 - handle non-utf8 charsets?
 - database libs: postgres, sqlite, odbc?
+- middleware functions: auth, security, error reporting, rate lmiting, cors handling, session management
 - Html.hs:
   - type alias for attr result: type Attr = (String, String)
   - fast html builder

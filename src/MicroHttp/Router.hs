@@ -17,7 +17,6 @@ import MicroHttp.Http
 import MicroHttp.Http.Framing (frameHeadersI)
 import MicroHttp.Http.Parser (ParseError (..), ParseLimits (..), parseRequestHead)
 import MicroHttp.Iteratee (Iter (..), Stream (..), takeN)
-import MicroHttp.Middleware (Application)
 import MicroHttp.Stream (StreamError (..))
 
 type Captures = [(String, String)]

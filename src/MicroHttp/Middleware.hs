@@ -29,20 +29,16 @@ module MicroHttp.Middleware (
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BS
-import MicroHttp.Http (Response (..), ResponseBody (..), Status (..), normaliseHeaderName)
+import MicroHttp.Http (Application, Response (..), ResponseBody (..), Status (..), normaliseHeaderName)
 import MicroHttp.Http.Response (serialiseFileHead, serialiseHead, serialiseResponse)
 import MicroHttp.Iteratee (Enumerator, Iter (..), Stream (..))
 import MicroHttp.Log (AccessEvent (..), Logger, RequestLine (..))
-import MicroHttp.Network.Socket (ConnectionInfo)
 import MicroHttp.Stream (StreamError (..))
 import System.IO.TimeMilli (getTimeMilli)
 
-{- | An application consumes the raw request stream for a connection and yields
-a response. The 'ConnectionInfo' carries non-payload metadata (the peer).
+{- | A middleware wraps an application. The 'Application' contract itself lives
+in 'MicroHttp.Http' (re-exported here), so naming it needs no middleware deps.
 -}
-type Application = ConnectionInfo -> Iter StreamError Response
-
--- | A middleware wraps an application.
 type Middleware = Application -> Application
 
 {- | Head-level middleware: transform the response value, no streams. For

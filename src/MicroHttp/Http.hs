@@ -4,6 +4,7 @@ module MicroHttp.Http (
     Header,
     Headers,
     RawPath,
+    Application,
     RequestHead (..),
     Response (..),
     ResponseBody (..),
@@ -18,9 +19,17 @@ module MicroHttp.Http (
 import Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import Data.Char (isAsciiUpper)
-import MicroHttp.Iteratee (Enumerator)
+import MicroHttp.Iteratee (Enumerator, Iter)
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), Port (..))
 import MicroHttp.Stream (StreamError)
+
+{- | An application consumes the raw request stream for a connection and yields
+a response (RFC-0012). The 'ConnectionInfo' carries the connection's non-payload
+metadata (the peer). The contract lives here, in the core types module, so that
+naming it does not drag in the middleware machinery; the middleware combinators
+and the 'MicroHttp.Middleware.Middleware' alias build on it.
+-}
+type Application = ConnectionInfo -> Iter StreamError Response
 
 data Method
     = GET

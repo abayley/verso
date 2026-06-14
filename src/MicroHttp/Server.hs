@@ -13,44 +13,12 @@ module MicroHttp.Server (
 import Control.Concurrent (forkIO)
 import Control.Concurrent.QSem
 import qualified Data.ByteString.Char8 as BS
-import MicroHttp.Http (Response)
-import MicroHttp.Http.Parser (ParseLimits (..))
+import MicroHttp.Http (Application, Response)
 import MicroHttp.Http.Response (ResponseSink (..), ResponseWriter, serialiseFileHead, writeResponse)
 import MicroHttp.Iteratee (run, strictEnumerator)
-import MicroHttp.Middleware (Application)
 import MicroHttp.Network.Socket
+import MicroHttp.Settings (Settings (..), defaultSettings, parseLimits)
 import MicroHttp.Stream (StreamError (..), socketEnumerator)
-
-{- | Server configuration. Pure, inert data: framing limits, the handler cap,
-the read buffer, and the idle read/write timeouts. The access logger is no
-longer here -- logging is a middleware (RFC-0012) the application composes.
--}
-data Settings = Settings
-    { settingsHost :: Host
-    , settingsPort :: Port
-    , settingsBacklog :: Int
-    , settingsMaxActiveHandlers :: Int
-    , settingsMaxHeaderBytes :: Int
-    , settingsMaxBodyBytes :: Int
-    , settingsReadBufferBytes :: Int
-    , settingsIdleReadTimeoutMicros :: Int
-    , settingsIdleWriteTimeoutMicros :: Int
-    }
-    deriving (Eq, Show)
-
-defaultSettings :: Settings
-defaultSettings =
-    Settings
-        { settingsHost = HostAny
-        , settingsPort = Port 8080
-        , settingsBacklog = 16
-        , settingsMaxActiveHandlers = 32
-        , settingsMaxHeaderBytes = 8192
-        , settingsMaxBodyBytes = 1048576
-        , settingsReadBufferBytes = 8192
-        , settingsIdleReadTimeoutMicros = 30000000
-        , settingsIdleWriteTimeoutMicros = 30000000
-        }
 
 data ServerError
     = ServerListenFailed SocketError
@@ -59,14 +27,6 @@ data ServerError
     | ServerWriteFailed StreamError
     | ServerStreamFailed StreamError
     deriving (Eq, Show)
-
--- | The 'ParseLimits' derived from settings, for an application's framing.
-parseLimits :: Settings -> ParseLimits
-parseLimits settings =
-    ParseLimits
-        { maxHeaderBytes = settingsMaxHeaderBytes settings
-        , maxBodyBytes = settingsMaxBodyBytes settings
-        }
 
 serve :: Settings -> Application -> IO (Either ServerError ())
 serve settings app = do

@@ -23,7 +23,7 @@ import Data.List (isPrefixOf)
 import Data.Maybe (fromMaybe)
 import Data.Word (Word8)
 import MicroHttp.Network.Socket (Host (..), Port (..))
-import MicroHttp.Server (Settings (..), defaultSettings)
+import MicroHttp.Settings (Settings (..), defaultSettings)
 import System.Directory (doesFileExist)
 import System.Environment (getEnvironment)
 

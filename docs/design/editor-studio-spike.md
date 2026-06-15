@@ -67,8 +67,12 @@ it is picked up:
 
 ## Status
 
-Spike complete; Studio remains deferred as a feature. This document is the
-record that informs its eventual RFC. The spike build artifact
+Spike complete and acted on. Studio shipped as an editor theme in RFC-0016
+(ADR-037): the bubble toolbar and slash menu were added to
+`markdown-editor-element.ts`, reusing the existing `positionOverlay` helper and
+the proven `toggleInlineStyle`/`applyBlockStyle`/`toggleStructure` commands, with
+no Tiptap menu package and no Lit -- as this spike recommended. This document
+remains the record of why that approach was chosen. The spike build artifact
 (`spike/editor-studio/bundle.js`) is gitignored; rebuild with
 `bun build spike/editor-studio/main.ts --outfile spike/editor-studio/bundle.js`
 and open `index.html` (or serve it) to try it.

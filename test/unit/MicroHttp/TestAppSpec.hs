@@ -30,6 +30,9 @@ spec =
         it "given a configured editor theme default, when routing the editor, then it is emitted on the page" $ do
             response <- runThemedApp "aurora" (request GET ["documents", "home", "edit"])
             bodyText response `shouldInclude` "data-editor-theme=\"aurora\""
+        it "given the studio editor theme default, when routing the editor, then it is emitted on the page" $ do
+            response <- runThemedApp "studio" (request GET ["documents", "home", "edit"])
+            bodyText response `shouldInclude` "data-editor-theme=\"studio\""
         it "given an unknown configured editor theme default, when routing the editor, then it falls back to paper" $ do
             response <- runThemedApp "bogus-theme" (request GET ["documents", "home", "edit"])
             bodyText response `shouldInclude` "data-editor-theme=\"paper\""

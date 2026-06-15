@@ -10,7 +10,7 @@ import {
 
 type EditorMode = "visual" | "source" | "split";
 type EditorTheme = "light" | "dark" | "match-system";
-type VisualTheme = "paper" | "aurora" | "blueprint" | "herbarium" | "workbench";
+type VisualTheme = "paper" | "aurora" | "blueprint" | "herbarium" | "workbench" | "studio";
 type ActivePane = "source" | "visual";
 type SaveState = "clean" | "dirty" | "saving" | "retry";
 type ToolbarButtonElement = HTMLElement;
@@ -29,6 +29,7 @@ const visualThemes: { value: VisualTheme; label: string }[] = [
     { value: "blueprint", label: "Blueprint" },
     { value: "herbarium", label: "Herbarium" },
     { value: "workbench", label: "Workbench" },
+    { value: "studio", label: "Studio" },
 ];
 
 let tooltipTargetSequence = 0;
@@ -46,6 +47,11 @@ function themeLabel(theme: VisualTheme): string {
 /** A theme's default view mode (a preset applied when no mode is requested), or null. */
 function themeDefaultMode(theme: VisualTheme): EditorMode | null {
     return theme === "workbench" ? "split" : null;
+}
+
+/** Whether a theme replaces the persistent command bar with the bubble toolbar and slash menu. */
+function themeUsesStudioSurfaces(theme: VisualTheme): boolean {
+    return theme === "studio";
 }
 
 /** Reads a stored preference, tolerating an unavailable or throwing localStorage. */
@@ -200,6 +206,37 @@ export class MarkdownEditorElement extends HTMLElement {
 
         this.showLinkActions(selection, anchor.getBoundingClientRect());
     };
+    private readonly handleSelectionChange = (): void => {
+        this.updateBubbleToolbar();
+        this.updateSlashMenu();
+    };
+    private readonly handleSlashKeydown = (event: KeyboardEvent): void => {
+        if (!this.slashMenu || this.slashMenu.hidden) {
+            return;
+        }
+
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            event.stopPropagation();
+            const delta = event.key === "ArrowDown" ? 1 : -1;
+            this.slashIndex = (this.slashIndex + delta + this.slashItems.length) % this.slashItems.length;
+            this.highlightSlashItem();
+        } else if (event.key === "Enter") {
+            event.preventDefault();
+            event.stopPropagation();
+            this.slashItems[this.slashIndex]?.run();
+        } else if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            this.closeSlashMenu();
+        }
+    };
+    private bubbleToolbar: HTMLDivElement | null = null;
+    private bubbleStyleTrigger: ToolbarButtonElement | null = null;
+    private readonly bubbleStyleButtons: { style: VisualInlineStyle; button: ToolbarButtonElement }[] = [];
+    private slashMenu: HTMLDivElement | null = null;
+    private readonly slashItems: { button: ToolbarButtonElement; run: () => void }[] = [];
+    private slashIndex = 0;
     private commandBar: HTMLDivElement | null = null;
     private documentName: HTMLSpanElement | null = null;
     private toolbar: HTMLDivElement | null = null;
@@ -225,6 +262,8 @@ export class MarkdownEditorElement extends HTMLElement {
         this.systemThemeQuery()?.removeEventListener("change", this.handleSystemThemeChange);
         document.removeEventListener("pointerdown", this.handleDocumentPointerDown);
         document.removeEventListener("pointerover", this.handleDocumentPointerOver);
+        document.removeEventListener("selectionchange", this.handleSelectionChange);
+        this.closeSlashMenu();
         this.cancelLinkActionsHide();
         this.hideToolbarTooltip();
         this.visualEditor?.destroy();
@@ -249,6 +288,8 @@ export class MarkdownEditorElement extends HTMLElement {
         this.commandBar = this.createCommandBar();
         this.linkEditor = this.createLinkEditor();
         this.linkActions = this.createLinkActions();
+        this.bubbleToolbar = this.createBubbleToolbar();
+        this.slashMenu = this.createSlashMenu();
         this.body = document.createElement("div");
         this.body.className = "markdown-editor__body";
         this.parseError = document.createElement("div");
@@ -270,6 +311,8 @@ export class MarkdownEditorElement extends HTMLElement {
             this.toolbar,
             this.linkEditor,
             this.linkActions,
+            this.bubbleToolbar,
+            this.slashMenu,
             this.toolbarTooltip,
             this.body,
             footer,
@@ -281,6 +324,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.updateWordCount();
         this.configureFormSubmission();
         this.systemThemeQuery()?.addEventListener("change", this.handleSystemThemeChange);
+        document.addEventListener("selectionchange", this.handleSelectionChange);
     }
 
     /** Creates the top editor bar with the document name and view controls. */
@@ -458,9 +502,14 @@ export class MarkdownEditorElement extends HTMLElement {
         this.syncThemeDropdown();
     }
 
-    /** Sets the document's visual-theme attribute from the current selection. */
+    /** Sets the document's visual-theme attribute and reflects Studio's chrome. */
     private applyVisualTheme(): void {
         document.documentElement.setAttribute("data-editor-theme", this.visualTheme);
+        // The bubble toolbar and slash menu are visual-pane only, so the command
+        // bar is suppressed only in visual mode; source and split keep it usable.
+        const surfacesActive = themeUsesStudioSurfaces(this.visualTheme) && this.mode === "visual";
+        this.classList.toggle("markdown-editor--studio-surfaces", surfacesActive);
+        this.updateBubbleToolbar();
     }
 
     /** Resolves the initial visual theme: stored preference, then page attribute, else paper. */
@@ -645,6 +694,192 @@ export class MarkdownEditorElement extends HTMLElement {
         button.addEventListener("click", (): void => this.toggleStructure(style));
 
         return button;
+    }
+
+    /** Creates the Studio selection bubble toolbar with the inline command buttons. */
+    private createBubbleToolbar(): HTMLDivElement {
+        const bubble = document.createElement("div");
+        bubble.className = "markdown-editor__bubble";
+        bubble.setAttribute("role", "toolbar");
+        bubble.hidden = true;
+        bubble.append(
+            this.createBubbleStyleDropdown(),
+            this.createBubbleButton("strong", "Bold", "bold"),
+            this.createBubbleButton("emphasis", "Italic", "italic"),
+            this.createBubbleButton("strikethrough", "Strike", "strikethrough"),
+            this.createBubbleButton("code", "Code", "code"),
+            this.createBubbleButton("link", "Link", "link"),
+        );
+
+        return bubble;
+    }
+
+    /** Creates the bubble's block-style selector, reusing the command bar's block command path. */
+    private createBubbleStyleDropdown(): HTMLElement {
+        const dropdown = document.createElement("wa-dropdown");
+        dropdown.className = "markdown-editor__bubble-style";
+        dropdown.setAttribute("aria-label", "Block style");
+        dropdown.setAttribute("size", "small");
+
+        this.bubbleStyleTrigger = this.createToolbarButton("markdown-editor__bubble-style-trigger", "Paragraph");
+        this.bubbleStyleTrigger.setAttribute("slot", "trigger");
+        this.bubbleStyleTrigger.setAttribute("with-caret", "");
+        dropdown.append(
+            this.bubbleStyleTrigger,
+            this.createStyleDropdownItem("paragraph", "Paragraph"),
+            this.createStyleDropdownItem("heading-1", "Heading 1"),
+            this.createStyleDropdownItem("heading-2", "Heading 2"),
+            this.createStyleDropdownItem("heading-3", "Heading 3"),
+        );
+        dropdown.addEventListener("wa-select", (event: Event): void => {
+            const style = elementValue((event as WaDropdownSelectEvent).detail.item as HTMLElement);
+
+            if (isVisualBlockStyle(style)) {
+                this.applyBlockStyle(style);
+                this.updateBubbleToolbar();
+            }
+        });
+
+        return dropdown;
+    }
+
+    /** Creates one bubble toolbar button, reusing the existing inline command path. */
+    private createBubbleButton(style: VisualInlineStyle, label: string, iconName: string): ToolbarButtonElement {
+        const button = this.createToolbarButton("markdown-editor__bubble-button", label, shortcutForInlineStyle(style));
+        button.textContent = "";
+        button.append(createToolbarIcon(iconName, label));
+        button.dataset["inlineStyle"] = style;
+        button.addEventListener("mousedown", (event: MouseEvent): void => {
+            event.preventDefault();
+        });
+        button.addEventListener("click", (): void => {
+            this.toggleInlineStyle(style);
+            this.updateBubbleToolbar();
+        });
+        this.bubbleStyleButtons.push({ button, style });
+
+        return button;
+    }
+
+    /** Shows or hides the bubble toolbar over the current visual selection under Studio. */
+    private updateBubbleToolbar(): void {
+        if (!this.bubbleToolbar) {
+            return;
+        }
+
+        if (!themeUsesStudioSurfaces(this.visualTheme) || !this.visualEditor) {
+            this.hideBubbleToolbar();
+            return;
+        }
+
+        const range = visualSelectionRange(this.visualEditor.element());
+
+        if (!range) {
+            this.hideBubbleToolbar();
+            return;
+        }
+
+        this.bubbleToolbar.hidden = false;
+        this.positionOverlay(this.bubbleToolbar, range.getBoundingClientRect());
+
+        if (this.bubbleStyleTrigger) {
+            this.bubbleStyleTrigger.textContent = blockStyleLabel(this.visualEditor.currentBlockStyle());
+        }
+
+        for (const { button, style } of this.bubbleStyleButtons) {
+            button.classList.toggle("markdown-editor__bubble-button--active", this.visualEditor.isInlineActive(style));
+        }
+    }
+
+    /** Hides the bubble toolbar. */
+    private hideBubbleToolbar(): void {
+        if (this.bubbleToolbar) {
+            this.bubbleToolbar.hidden = true;
+        }
+    }
+
+    /** Creates the Studio slash command menu, reusing the existing block and structure commands. */
+    private createSlashMenu(): HTMLDivElement {
+        const menu = document.createElement("div");
+        menu.className = "markdown-editor__slash-menu";
+        menu.setAttribute("role", "listbox");
+        menu.hidden = true;
+
+        const commands: { label: string; run: () => void }[] = [
+            { label: "Heading 1", run: (): void => this.applyBlockStyle("heading-1") },
+            { label: "Heading 2", run: (): void => this.applyBlockStyle("heading-2") },
+            { label: "Heading 3", run: (): void => this.applyBlockStyle("heading-3") },
+            { label: "Bullet list", run: (): void => this.toggleStructure("bullet-list") },
+            { label: "Numbered list", run: (): void => this.toggleStructure("ordered-list") },
+            { label: "Quote", run: (): void => this.toggleStructure("blockquote") },
+            { label: "Code block", run: (): void => this.toggleStructure("code-block") },
+        ];
+
+        for (const command of commands) {
+            const item = document.createElement("button");
+            item.type = "button";
+            item.className = "markdown-editor__slash-item";
+            item.textContent = command.label;
+            item.addEventListener("mousedown", (event: MouseEvent): void => {
+                event.preventDefault();
+            });
+            item.addEventListener("click", (): void => this.runSlashCommand(command.run));
+            menu.append(item);
+            this.slashItems.push({ button: item, run: (): void => this.runSlashCommand(command.run) });
+        }
+
+        return menu;
+    }
+
+    /** Shows or hides the slash menu at the caret when the current block is a slash trigger under Studio. */
+    private updateSlashMenu(): void {
+        if (!this.slashMenu) {
+            return;
+        }
+
+        if (!themeUsesStudioSurfaces(this.visualTheme) || !this.visualEditor?.isSlashTrigger()) {
+            this.closeSlashMenu();
+            return;
+        }
+
+        if (this.slashMenu.hidden) {
+            this.slashIndex = 0;
+            this.addEventListener("keydown", this.handleSlashKeydown, true);
+        }
+
+        this.slashMenu.hidden = false;
+        const caret = this.visualEditor.slashCaretRect() ?? this.activeEditPaneRect();
+
+        if (caret) {
+            this.positionOverlay(this.slashMenu, caret);
+        }
+
+        this.highlightSlashItem();
+    }
+
+    /** Hides the slash menu and removes its keyboard navigation. */
+    private closeSlashMenu(): void {
+        this.removeEventListener("keydown", this.handleSlashKeydown, true);
+
+        if (this.slashMenu) {
+            this.slashMenu.hidden = true;
+        }
+
+        this.slashIndex = 0;
+    }
+
+    /** Reflects the highlighted slash command onto the menu items. */
+    private highlightSlashItem(): void {
+        this.slashItems.forEach(({ button }, index): void => {
+            button.classList.toggle("markdown-editor__slash-item--active", index === this.slashIndex);
+        });
+    }
+
+    /** Removes the slash trigger and applies the chosen command. */
+    private runSlashCommand(apply: () => void): void {
+        this.visualEditor?.deleteSlashTrigger();
+        apply();
+        this.closeSlashMenu();
     }
 
     /** Creates one Web Awesome toolbar command button. */
@@ -1699,6 +1934,21 @@ function selectionClientRect(): DOMRect | null {
     const rect = firstUsableClientRect(range.getClientRects());
 
     return rect ?? range.getBoundingClientRect();
+}
+
+/** Returns the current selection range when it is non-empty and contained in the given surface. */
+function visualSelectionRange(surface: HTMLElement): Range | null {
+    const selection = window.getSelection();
+
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+        return null;
+    }
+
+    if (!surface.contains(selection.anchorNode) || !surface.contains(selection.focusNode)) {
+        return null;
+    }
+
+    return selection.getRangeAt(0);
 }
 
 /** Finds the first selection rectangle with useful dimensions. */

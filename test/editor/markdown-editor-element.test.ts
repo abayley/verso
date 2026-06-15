@@ -1122,6 +1122,298 @@ describe("MarkdownEditorElement visual themes", (): void => {
     });
 });
 
+describe("MarkdownEditorElement studio surfaces", (): void => {
+    const resetThemeState = (): void => {
+        document.body.textContent = "";
+        installLocalStorageStub();
+        const root = document.documentElement;
+        root.removeAttribute("data-editor-theme");
+        root.classList.remove("wa-light", "wa-dark");
+    };
+
+    beforeEach(resetThemeState);
+    afterEach(resetThemeState);
+
+    it("given the studio theme in visual mode, when initialised, then the command bar is suppressed", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("Edit this Markdown document.");
+
+        expect(editor.classList.contains("markdown-editor--studio-surfaces")).toBe(true);
+    });
+
+    it("given the studio theme in source mode, when initialised, then the command bar is kept", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "source");
+        editor.textContent = "Edit this Markdown document.";
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        expect(editor.classList.contains("markdown-editor--studio-surfaces")).toBe(false);
+    });
+
+    it("given the studio theme in split mode, when initialised, then the command bar is kept", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "split");
+        editor.textContent = "Edit this Markdown document.";
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        expect(editor.classList.contains("markdown-editor--studio-surfaces")).toBe(false);
+    });
+
+    it("given the studio theme in visual mode, when switched to source, then the command bar is restored", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("Edit this Markdown document.");
+        expect(editor.classList.contains("markdown-editor--studio-surfaces")).toBe(true);
+
+        selectMode(editor, "source");
+
+        expect(editor.classList.contains("markdown-editor--studio-surfaces")).toBe(false);
+    });
+
+    it("given the studio theme and a non-empty visual selection, when the selection changes, then the bubble toolbar shows", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("Edit this Markdown document.");
+
+        selectText(editor, "Markdown");
+        dispatchSelectionChange();
+
+        expect(bubbleToolbar(editor).hidden).toBe(false);
+    });
+
+    it("given the studio bubble toolbar, when Bold is clicked, then bold applies to the Markdown", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("Edit this Markdown document.");
+
+        selectText(editor, "Markdown");
+        dispatchSelectionChange();
+        bubbleButton(editor, "strong").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+        expect(editor.toMarkdown()).toContain("**Markdown**");
+    });
+
+    it("given a heading selected in studio, when Paragraph is chosen from the bubble, then the block becomes a paragraph", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("# A heading");
+
+        selectText(editor, "A heading");
+        dispatchSelectionChange();
+        selectBubbleStyle(editor, "paragraph");
+
+        expect(editor.querySelector(".markdown-editor__surface h1")).toBeNull();
+        expect(editor.toMarkdown()).toContain("A heading");
+        expect(editor.toMarkdown()).not.toContain("# A heading");
+    });
+
+    it("given a paragraph selected in studio, when Heading 1 is chosen from the bubble, then the block becomes a heading", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("Just a paragraph");
+
+        selectText(editor, "Just a paragraph");
+        dispatchSelectionChange();
+        selectBubbleStyle(editor, "heading-1");
+
+        expect(editor.querySelector(".markdown-editor__surface h1")).toBeInstanceOf(HTMLElement);
+        expect(editor.toMarkdown()).toContain("# Just a paragraph");
+    });
+
+    it("given a heading selected in studio, when the bubble shows, then its block selector reflects the heading", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("# A heading");
+
+        selectText(editor, "A heading");
+        dispatchSelectionChange();
+
+        expect(bubbleToolbar(editor).querySelector(".markdown-editor__bubble-style-trigger")?.textContent).toBe(
+            "Heading 1",
+        );
+    });
+
+    it("given the studio bubble toolbar shown, when the selection collapses, then the bubble toolbar hides", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("Edit this Markdown document.");
+
+        selectText(editor, "Markdown");
+        dispatchSelectionChange();
+        expect(bubbleToolbar(editor).hidden).toBe(false);
+
+        window.getSelection()?.removeAllRanges();
+        dispatchSelectionChange();
+
+        expect(bubbleToolbar(editor).hidden).toBe(true);
+    });
+
+    it("given the paper theme and a non-empty visual selection, when the selection changes, then the bubble toolbar stays hidden", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "paper");
+        const editor = await mountStudioEditor("Edit this Markdown document.");
+
+        selectText(editor, "Markdown");
+        dispatchSelectionChange();
+
+        expect(bubbleToolbar(editor).hidden).toBe(true);
+    });
+
+    it("given the studio theme and a block typed as a slash, when the selection changes, then the slash menu opens", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("/");
+
+        placeCaretAfterText(editor, "/");
+        dispatchSelectionChange();
+
+        expect(slashMenu(editor).hidden).toBe(false);
+        expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(7);
+    });
+
+    it("given the studio slash menu, when Heading 1 is chosen, then the block becomes a heading", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("/");
+
+        placeCaretAfterText(editor, "/");
+        dispatchSelectionChange();
+        slashItem(editor, "Heading 1").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+        expect(editor.querySelector(".markdown-editor__surface h1")).toBeInstanceOf(HTMLElement);
+        expect(slashMenu(editor).hidden).toBe(true);
+    });
+
+    it("given the studio slash menu, when Bullet list is chosen, then the block becomes a list", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("/");
+
+        placeCaretAfterText(editor, "/");
+        dispatchSelectionChange();
+        slashItem(editor, "Bullet list").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+        expect(editor.querySelector(".markdown-editor__surface ul li")).toBeInstanceOf(HTMLElement);
+    });
+
+    it("given the studio slash menu open, when Escape is pressed, then it closes", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("/");
+
+        placeCaretAfterText(editor, "/");
+        dispatchSelectionChange();
+        expect(slashMenu(editor).hidden).toBe(false);
+
+        editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+
+        expect(slashMenu(editor).hidden).toBe(true);
+    });
+
+    it("given the paper theme and a block typed as a slash, when the selection changes, then the slash menu stays hidden", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "paper");
+        const editor = await mountStudioEditor("/");
+
+        placeCaretAfterText(editor, "/");
+        dispatchSelectionChange();
+
+        expect(slashMenu(editor).hidden).toBe(true);
+    });
+});
+
+/** Mounts a visual-mode editor with the given Markdown and waits for it to initialise. */
+async function mountStudioEditor(markdown: string): Promise<MarkdownEditorElement> {
+    const editor = document.createElement(elementName) as MarkdownEditorElement;
+    editor.textContent = markdown;
+    document.body.append(editor);
+    await waitForInitialisation();
+
+    return editor;
+}
+
+/** Dispatches a document selectionchange event, which happy-dom does not emit on programmatic selection. */
+function dispatchSelectionChange(): void {
+    document.dispatchEvent(new Event("selectionchange"));
+}
+
+/** Returns the bubble toolbar element for assertions. */
+function bubbleToolbar(editor: Element): HTMLElement {
+    const bubble = editor.querySelector(".markdown-editor__bubble");
+
+    if (!(bubble instanceof HTMLElement)) {
+        throw new Error("Expected a bubble toolbar.");
+    }
+
+    return bubble;
+}
+
+/** Returns one bubble toolbar button by its inline style. */
+function bubbleButton(editor: Element, style: string): HTMLElement {
+    const button = bubbleToolbar(editor).querySelector(`.markdown-editor__bubble-button[data-inline-style="${style}"]`);
+
+    if (!(button instanceof HTMLElement)) {
+        throw new Error(`Expected a bubble button: ${style}`);
+    }
+
+    return button;
+}
+
+/** Chooses a block style from the bubble toolbar's block selector. */
+function selectBubbleStyle(editor: Element, style: string): void {
+    const dropdown = bubbleToolbar(editor).querySelector(".markdown-editor__bubble-style");
+
+    if (!dropdown) {
+        throw new Error("Expected a bubble block-style dropdown.");
+    }
+
+    const item = dropdown.querySelector(`wa-dropdown-item[value="${style}"]`);
+
+    if (!item) {
+        throw new Error(`Expected a bubble block-style item: ${style}`);
+    }
+
+    dropdown.dispatchEvent(new CustomEvent("wa-select", { detail: { item } }));
+}
+
+/** Returns the slash menu element for assertions. */
+function slashMenu(editor: Element): HTMLElement {
+    const menu = editor.querySelector(".markdown-editor__slash-menu");
+
+    if (!(menu instanceof HTMLElement)) {
+        throw new Error("Expected a slash menu.");
+    }
+
+    return menu;
+}
+
+/** Returns one slash menu item by its label. */
+function slashItem(editor: Element, label: string): HTMLElement {
+    const item = Array.from(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item")).find(
+        (candidate): boolean => candidate.textContent === label,
+    );
+
+    if (!(item instanceof HTMLElement)) {
+        throw new Error(`Expected a slash item: ${label}`);
+    }
+
+    return item;
+}
+
+/** Places a collapsed caret immediately after the given rendered text. */
+function placeCaretAfterText(editor: Element, text: string): void {
+    const surface = editor.querySelector(".markdown-editor__surface");
+
+    if (!(surface instanceof HTMLElement)) {
+        throw new Error("Expected visual editor surface.");
+    }
+
+    const textNode = findTextNode(surface, text);
+
+    if (!textNode) {
+        throw new Error(`Expected text node containing: ${text}`);
+    }
+
+    const range = document.createRange();
+    range.setStart(textNode, textNode.data.indexOf(text) + text.length);
+    range.collapse(true);
+
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+}
+
 /** Installs a fresh in-memory localStorage on window, since the test runtime
  * does not provide one (the editor reads window.localStorage). */
 function installLocalStorageStub(): void {

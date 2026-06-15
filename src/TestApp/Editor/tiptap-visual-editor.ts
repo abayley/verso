@@ -1,7 +1,7 @@
 import { Editor, type JSONContent, type SetContentOptions } from "@tiptap/core";
 import Heading from "@tiptap/extension-heading";
 import { Markdown } from "@tiptap/markdown";
-import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import type { Node as ProseMirrorNode, ResolvedPos } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
 
@@ -218,6 +218,87 @@ export class TiptapVisualEditor {
                 );
             }
         }
+    }
+
+    /** Returns the block style at the current selection (for the bubble toolbar's block selector). */
+    public currentBlockStyle(): VisualBlockStyle {
+        if (this.editor.isActive("heading", { level: 1 })) {
+            return "heading-1";
+        }
+
+        if (this.editor.isActive("heading", { level: 2 })) {
+            return "heading-2";
+        }
+
+        if (this.editor.isActive("heading", { level: 3 })) {
+            return "heading-3";
+        }
+
+        return "paragraph";
+    }
+
+    /** Reports whether an inline style is active at the current selection (for the bubble toolbar). */
+    public isInlineActive(style: VisualInlineStyle): boolean {
+        switch (style) {
+            case "strong":
+                return this.editor.isActive("bold");
+            case "emphasis":
+                return this.editor.isActive("italic");
+            case "code":
+                return this.editor.isActive("code");
+            case "strikethrough":
+                return this.editor.isActive("strike");
+            case "link":
+                return this.editor.isActive("link");
+        }
+    }
+
+    /** Reports whether the caret sits in a textblock whose only text is a slash trigger. */
+    public isSlashTrigger(): boolean {
+        const resolved = this.caretBlock();
+
+        return resolved?.parent.isTextblock === true && resolved.parent.textContent === "/";
+    }
+
+    /** Returns the caret rectangle for slash menu placement, or null when it cannot be resolved. */
+    public slashCaretRect(): DOMRect | null {
+        const selection = window.getSelection();
+
+        if (!this.isSlashTrigger() || !selection || selection.rangeCount === 0) {
+            return null;
+        }
+
+        return selection.getRangeAt(0).getBoundingClientRect();
+    }
+
+    /** Removes the leading slash of the current block before a slash command runs. */
+    public deleteSlashTrigger(): void {
+        const resolved = this.caretBlock();
+
+        if (!resolved) {
+            return;
+        }
+
+        const start = resolved.start();
+
+        this.editor
+            .chain()
+            .focus()
+            .deleteRange({ from: start, to: start + 1 })
+            .run();
+    }
+
+    /** Resolves the document position of the textblock holding the current DOM caret. */
+    private caretBlock(): ResolvedPos | null {
+        const selection = window.getSelection();
+
+        if (!selection?.anchorNode || !selection.isCollapsed || !this.root.contains(selection.anchorNode)) {
+            return null;
+        }
+
+        const position = this.editor.view.posAtDOM(selection.anchorNode, selection.anchorOffset);
+
+        return this.editor.state.doc.resolve(position);
     }
 
     /** Resolves a rendered link element to the Tiptap document range it covers. */

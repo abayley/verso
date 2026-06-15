@@ -590,3 +590,124 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   padding: 0.4rem 0.25rem;
   text-align: right;
 }
+
+/* Studio (RFC-0016): a calm Notion-style paper look that replaces the persistent
+   command bar with a selection bubble toolbar and a slash command menu. The
+   surfaces are activated by the editor element only under this theme; the chrome
+   below hides the bar and softens the page. */
+:root[data-editor-theme="studio"] {
+  --markdown-editor-accent: #2e66d0;
+  --markdown-editor-background: #eceae4;
+  --markdown-editor-code-background: #f4f4f0;
+  --markdown-editor-code-border: #e3e2de;
+  --markdown-editor-divider: #efefea;
+  --markdown-editor-error-accent: #b03a48;
+  --markdown-editor-error-text: #8f2f3b;
+  --markdown-editor-muted: #91908c;
+  --markdown-editor-pill-background: #ffffff;
+  --markdown-editor-pill-border: #e3e2de;
+  --markdown-editor-quote-border: #e3e2de;
+  --markdown-editor-save-clean: #2f8132;
+  --markdown-editor-save-dirty: #9a6b1f;
+  --markdown-editor-save-retry: #b03a48;
+  --markdown-editor-text: #37352f;
+}
+
+:root[data-editor-theme="studio"].wa-dark {
+  --markdown-editor-accent: #6ea8fe;
+  --markdown-editor-background: #191919;
+  --markdown-editor-code-background: #2a2a28;
+  --markdown-editor-code-border: #373735;
+  --markdown-editor-divider: #2f2f2d;
+  --markdown-editor-error-accent: #e5707e;
+  --markdown-editor-error-text: #f0a0a8;
+  --markdown-editor-muted: #8a8a86;
+  --markdown-editor-pill-background: #262625;
+  --markdown-editor-pill-border: #373735;
+  --markdown-editor-quote-border: #3a3a37;
+  --markdown-editor-save-clean: #57ab5a;
+  --markdown-editor-save-dirty: #daaa3f;
+  --markdown-editor-save-retry: #e5707e;
+  --markdown-editor-text: #d4d4d2;
+}
+
+/* Chrome: a breadcrumb-style top strip; no persistent command bar (the bubble
+   toolbar and slash menu replace it); autosave keeps content saved without the
+   explicit Save control. */
+:root[data-editor-theme="studio"] .markdown-editor__toolbar--top {
+  border-bottom: 1px solid var(--markdown-editor-divider);
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.6rem;
+}
+
+.markdown-editor--studio-surfaces .markdown-editor__toolbar--commands {
+  display: none;
+}
+
+/* The selection bubble toolbar floats over a non-empty visual selection. It is
+   positioned by the editor element (the same overlay helper as the link
+   popovers) and shown only under Studio. */
+.markdown-editor__bubble {
+  align-items: center;
+  background: var(--markdown-editor-pill-background);
+  border: 1px solid var(--markdown-editor-pill-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 12%);
+  display: inline-flex;
+  gap: 0.1rem;
+  padding: 0.2rem;
+  position: absolute;
+  z-index: 10;
+}
+
+.markdown-editor__bubble[hidden] {
+  display: none;
+}
+
+.markdown-editor__bubble-button--active {
+  color: var(--markdown-editor-accent);
+}
+
+.markdown-editor__bubble .markdown-editor__bubble-style {
+  border-right: 1px solid var(--markdown-editor-divider);
+  margin-right: 0.15rem;
+  padding-right: 0.15rem;
+}
+
+.markdown-editor__bubble-style-trigger {
+  white-space: nowrap;
+}
+
+/* The slash command menu opens at the caret when a block is typed as "/". It is
+   positioned by the editor element and shown only under Studio. */
+.markdown-editor__slash-menu {
+  background: var(--markdown-editor-pill-background);
+  border: 1px solid var(--markdown-editor-pill-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 12%);
+  display: flex;
+  flex-direction: column;
+  min-width: 11rem;
+  padding: 0.25rem;
+  position: absolute;
+  z-index: 10;
+}
+
+.markdown-editor__slash-menu[hidden] {
+  display: none;
+}
+
+.markdown-editor__slash-item {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--markdown-editor-text);
+  cursor: pointer;
+  font: 14px system-ui, sans-serif;
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+}
+
+.markdown-editor__slash-item--active {
+  background: var(--markdown-editor-code-background);
+}

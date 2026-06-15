@@ -1,11 +1,12 @@
 # Markdown Editor Redesign Mockups
 
-This document records eight alternative visual designs for the TestApp
-Markdown editor page at `/documents/home/edit`. The mockups were produced on
-2026-06-10 as static HTML files in this directory. Designs A to D are
-practical directions; designs E to H are deliberately extreme style
-explorations. They are design references only; they are not served by the
-TestApp and are not part of the editor build.
+This document records alternative visual designs for the TestApp Markdown
+editor page at `/documents/home/edit`. The first round (designs A to H) was
+produced on 2026-06-10 as static HTML files in this directory: A to D are
+practical directions, E to H deliberately extreme style explorations. A second
+round (designs I to M) was added on 2026-06-15 -- five further directions, each
+distinct from the others and from the first round. They are design references
+only; they are not served by the TestApp and are not part of the editor build.
 
 Each mockup keeps the current editor functionality: visual, Markdown source,
 and split view modes, block styles, inline marks (bold, italic, strikethrough,
@@ -154,3 +155,87 @@ framing is the one idea worth stealing (save history presented as numbered
 inscriptions maps well onto a future filesystem store with versioning). As a
 whole design it is a novelty: heavy custom styling, no component library
 support, and the metaphor labels hide standard editing vocabulary.
+
+## Second Round (2026-06-15)
+
+Five further directions, chosen to be distinct from one another and from the
+first round: a technical blueprint, a glassmorphism surface, a comic book, a
+Bauhaus composition, and a naturalist herbarium.
+
+## Markdown Editor Redesign I: Blueprint Drafting
+
+Mockup: [markdown-editor-redesign-i-blueprint-drafting.html](markdown-editor-redesign-i-blueprint-drafting.html)
+
+An engineering-drawing blueprint. Cyan grid on a navy ground, the document
+drawn inside dimension lines (column width, sheet size), formatting controls as
+a left drafting-tool rail with text labels, and an engineering title block
+along the bottom carrying mode, revision, word count, and save state. Modes are
+tabs in the title bar; save is a `Plot` action.
+
+Trade-offs and effort: heavy custom styling that abandons the Web Awesome theme
+contract. The labelled tool rail removes the tooltip dependency and the
+title-block-as-status gives save and revision a natural home; the `REV` field
+hints at a versioned store, like Dungeon Scroll's archive but understated. The
+technical identity suits the developer-tool positioning, though a cool palette
+can read as cold for a writing surface.
+
+## Markdown Editor Redesign J: Aurora Glass
+
+Mockup: [markdown-editor-redesign-j-aurora-glass.html](markdown-editor-redesign-j-aurora-glass.html)
+
+A modern glassmorphism surface. Frosted translucent panels float over a vibrant
+aurora gradient: a glass segmented control for the view modes, a blurred
+floating toolbar, and a softly glowing `Saved` pill. The writing card is itself
+frosted glass with an inner highlight.
+
+Trade-offs and effort: mostly CSS over the existing controls, and very much of
+the moment. `backdrop-filter` blur is widely supported but GPU-costly and
+degrades to flat translucency where it is not; legibility over a busy gradient
+needs contrast care. The consumer-SaaS aesthetic sits a little at odds with the
+developer-tool positioning.
+
+## Markdown Editor Redesign K: Inkpress Comic
+
+Mockup: [markdown-editor-redesign-k-inkpress-comic.html](markdown-editor-redesign-k-inkpress-comic.html)
+
+A black-and-white comic book. Halftone screentone paper, thick inked panel
+borders with hard offset shadows, the toolbar housed in a speech bubble with a
+tail, and the save state as a yellow action-burst star (`Saved!`). The heading
+is heavy italic display lettering with a colour-pop shadow.
+
+Trade-offs and effort: bold and memorable, and staying black-and-white with one
+accent keeps it from competing with Candy Pop's colour. Cheap to style (no
+component library, one accent), but a novelty: the rotated panels and faux
+display lettering fight a precise editing surface, and the metaphor adds visual
+noise.
+
+## Markdown Editor Redesign L: Bauhaus
+
+Mockup: [markdown-editor-redesign-l-bauhaus.html](markdown-editor-redesign-l-bauhaus.html)
+
+A constructivist composition. Primary red, blue, and yellow with black on warm
+off-white, a circle/triangle/square mark, inline-mark controls as colour-coded
+tiles down a left rail, a red triangle wedge motif, and a strict asymmetric
+grid. Save is a black slab with a yellow disc.
+
+Trade-offs and effort: a timeless design-school identity, distinct from the
+web-brutalist Bold Press -- refined rather than loud. The colour-coded tiles aid
+learnability the way Candy Pop's do but read as serious. It abandons the Web
+Awesome contract for heavy custom styling, and the geometric display type needs
+a real geometric font (Futura and similar) to land.
+
+## Markdown Editor Redesign M: Herbarium
+
+Mockup: [markdown-editor-redesign-m-herbarium.html](markdown-editor-redesign-m-herbarium.html)
+
+A naturalist herbarium journal. A pressed-specimen sheet on ruled paper,
+formatting controls as botanical specimen labels (icon plus name), a botanical
+leaf illustration in the margin, and a `Pressed & catalogued` save state with a
+sage wax seal. The header reads as a specimen card with a number.
+
+Trade-offs and effort: calm and distinctive without the austerity of Quiet
+Paper. The specimen-label toolbar is legible with no tooltip dependency, and the
+catalogue framing maps onto a future versioned store (the Dungeon Scroll archive
+idea, understated). The naturalist theme is decorative for a developer tool, and
+the ruled background is cosmetic only; moderate styling over the existing
+controls.

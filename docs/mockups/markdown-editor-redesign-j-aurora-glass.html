@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign J: aurora glass</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root {
+  --sans: ui-sans-serif, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  --serif: "Iowan Old Style", Georgia, serif;
+  --glass: rgba(255, 255, 255, 0.10);
+  --glass-strong: rgba(255, 255, 255, 0.16);
+  --stroke: rgba(255, 255, 255, 0.22);
+  --text: #f3f0ff;
+  --muted: rgba(243, 240, 255, 0.66);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh; font-family: var(--sans); color: var(--text);
+  background:
+    radial-gradient(60% 55% at 12% 8%, rgba(255, 90, 180, 0.55), transparent 60%),
+    radial-gradient(55% 60% at 88% 12%, rgba(80, 220, 255, 0.50), transparent 60%),
+    radial-gradient(70% 70% at 78% 95%, rgba(150, 90, 255, 0.55), transparent 60%),
+    radial-gradient(60% 60% at 8% 92%, rgba(60, 250, 200, 0.40), transparent 60%),
+    #1a1430;
+  padding: 40px 20px;
+}
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+main { max-width: 760px; margin: 0 auto; }
+.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; }
+.brand { font-weight: 600; letter-spacing: 0.02em; opacity: 0.9; display: flex; align-items: center; gap: 8px; }
+.brand .dot { width: 9px; height: 9px; border-radius: 50%; background: linear-gradient(135deg, #ff7ad1, #7fdcff); }
+.seg { display: inline-flex; background: var(--glass); border: 1px solid var(--stroke); border-radius: 999px;
+  padding: 4px; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.seg span { padding: 6px 16px; border-radius: 999px; font-size: 13px; color: var(--muted); }
+.seg .on { color: #2a1147; background: linear-gradient(135deg, #ffd1ec, #cfeaff); font-weight: 600; }
+.theme { margin-left: 12px; width: 38px; height: 38px; border-radius: 50%; display: inline-flex; align-items: center;
+  justify-content: center; background: var(--glass); border: 1px solid var(--stroke);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.card { background: var(--glass); border: 1px solid var(--stroke); border-radius: 26px; padding: 40px 44px 30px;
+  backdrop-filter: blur(26px) saturate(140%); -webkit-backdrop-filter: blur(26px) saturate(140%);
+  box-shadow: 0 30px 80px rgba(20, 6, 40, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+h1 { font-family: var(--serif); font-weight: 600; font-size: 33px; margin: 0 0 18px; letter-spacing: -0.01em;
+  text-shadow: 0 2px 24px rgba(255, 160, 230, 0.35); }
+p { font-size: 17px; line-height: 1.85; margin: 0 0 14px; color: rgba(243, 240, 255, 0.92); }
+.caret { display: inline-block; width: 2px; height: 20px; background: #ff8fd6; vertical-align: -4px;
+  box-shadow: 0 0 10px #ff8fd6; }
+.toolbar { display: flex; align-items: center; gap: 6px; margin-top: 30px;
+  background: var(--glass-strong); border: 1px solid var(--stroke); border-radius: 999px; padding: 9px 12px;
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.30); }
+.toolbar .style { font-family: var(--serif); font-size: 14px; padding: 4px 12px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.10); display: inline-flex; gap: 6px; align-items: center; }
+.toolbar i { width: 34px; height: 30px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9px; font-size: 16px; color: var(--text); }
+.toolbar i:hover { background: rgba(255, 255, 255, 0.16); }
+.sep { width: 1px; height: 20px; background: var(--stroke); margin: 0 4px; }
+.save { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; padding: 8px 18px; border-radius: 999px;
+  font-weight: 600; color: #2a1147; background: linear-gradient(135deg, #b8ffe6, #9fd9ff);
+  box-shadow: 0 0 22px rgba(120, 240, 220, 0.45); }
+.save .pulse { width: 8px; height: 8px; border-radius: 50%; background: #1c8a5f; box-shadow: 0 0 8px #36e0a0; }
+.foot { display: flex; justify-content: flex-end; margin-top: 14px; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<h2 class="sr-only">Mockup J: a modern glassmorphism design. Frosted translucent panels float over a vibrant aurora gradient, with a glass segmented mode control, a blurred floating toolbar, and a softly glowing save pill.</h2>
+<main>
+  <div class="topbar">
+    <span class="brand"><span class="dot"></span> home.md</span>
+    <span>
+      <span class="seg"><span class="on">Visual</span><span>Markdown</span><span>Split</span></span>
+      <span class="theme"><i class="ti ti-moon-stars" aria-hidden="true"></i></span>
+    </span>
+  </div>
+  <div class="card">
+    <h1>Hello from MicroHttp</h1>
+    <p>Edit this Markdown document.</p>
+    <p>The surface is frosted glass floating over light, so the writing feels weightless.<span class="caret"></span></p>
+    <div class="toolbar">
+      <span class="style">Paragraph <i class="ti ti-chevron-down" aria-hidden="true" style="width:auto;font-size:12px;"></i></span>
+      <span class="sep"></span>
+      <i class="ti ti-bold" aria-hidden="true"></i>
+      <i class="ti ti-italic" aria-hidden="true"></i>
+      <i class="ti ti-strikethrough" aria-hidden="true"></i>
+      <i class="ti ti-code" aria-hidden="true"></i>
+      <i class="ti ti-link" aria-hidden="true"></i>
+      <span class="sep"></span>
+      <i class="ti ti-list" aria-hidden="true"></i>
+      <i class="ti ti-list-numbers" aria-hidden="true"></i>
+      <i class="ti ti-blockquote" aria-hidden="true"></i>
+      <i class="ti ti-code-dots" aria-hidden="true"></i>
+      <i class="ti ti-separator" aria-hidden="true"></i>
+      <span class="save"><span class="pulse"></span> Saved</span>
+    </div>
+  </div>
+  <div class="foot">21 words</div>
+</main>
+</body>
+</html>

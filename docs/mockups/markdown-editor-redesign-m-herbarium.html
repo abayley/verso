@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign M: herbarium</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root {
+  --paper: #f3efe2;
+  --sheet: #fbf8ef;
+  --ink: #4a4334;
+  --faded: #8a8268;
+  --sage: #7d8a6a;
+  --rust: #a8693d;
+  --rule: #d8d0ba;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink); font-family: var(--serif); padding: 34px 20px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+main { max-width: 820px; margin: 0 auto; background: var(--sheet);
+  border: 1px solid #e3dcc8; box-shadow: 0 16px 40px rgba(74, 67, 52, 0.12); }
+.head { display: flex; justify-content: space-between; align-items: flex-start; padding: 22px 28px 16px;
+  border-bottom: 1px solid var(--rule); }
+.head .name { font-style: italic; font-size: 21px; }
+.head .sub { font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--faded); margin-top: 3px; }
+.modes { font-size: 13px; color: var(--faded); }
+.modes span { margin-left: 4px; }
+.modes .on { color: var(--rust); border-bottom: 1.5px solid var(--rust); }
+.modes .theme { margin-left: 14px; color: var(--sage); }
+.shelf { display: flex; flex-wrap: wrap; gap: 7px; padding: 14px 28px; border-bottom: 1px solid var(--rule);
+  background: repeating-linear-gradient(0deg, transparent, transparent 27px, var(--rule) 27px, var(--rule) 28px); }
+.label { background: var(--sheet); border: 1px solid #ccc3a8; border-radius: 2px; padding: 4px 9px; font-size: 12px;
+  display: inline-flex; align-items: center; gap: 6px; box-shadow: 1px 1px 0 rgba(74,67,52,0.06); }
+.label i { color: var(--sage); font-size: 14px; }
+.label .cap { font-style: italic; color: var(--faded); font-size: 11px; }
+.shelf .div { width: 100%; height: 0; }
+.body { display: grid; grid-template-columns: 96px 1fr; }
+.margin { border-right: 1px solid var(--rule); padding: 28px 8px; text-align: center; }
+.margin svg { width: 56px; height: auto; }
+.margin .tag { writing-mode: vertical-rl; transform: rotate(180deg); margin-top: 14px; font-size: 10px;
+  letter-spacing: 0.22em; text-transform: uppercase; color: var(--faded); }
+.doc { padding: 30px 40px 26px; background-image: linear-gradient(var(--rule) 1px, transparent 1px);
+  background-size: 100% 30px; background-position: 0 34px; }
+h1 { font-weight: 600; font-size: 31px; margin: 0 0 18px; line-height: 30px; }
+p { font-size: 17px; line-height: 30px; margin: 0 0 0; }
+.caret { display: inline-block; width: 2px; height: 19px; background: var(--rust); vertical-align: -3px; }
+.foot { display: flex; justify-content: space-between; align-items: center; padding: 16px 28px;
+  border-top: 1px solid var(--rule); font-size: 13px; color: var(--faded); }
+.cat { font-style: italic; display: inline-flex; align-items: center; gap: 8px; }
+.cat .seal { width: 16px; height: 16px; border-radius: 50%; background: var(--sage);
+  box-shadow: inset 0 0 0 2px var(--sheet), 0 0 0 1px var(--sage); }
+.press { border: 1px solid var(--sage); background: var(--sheet); color: var(--sage); font-family: var(--serif);
+  font-style: italic; font-size: 14px; padding: 7px 18px; border-radius: 2px; cursor: pointer; }
+</style>
+</head>
+<body>
+<h2 class="sr-only">Mockup M: a naturalist herbarium journal. A pressed-specimen sheet on ruled paper, formatting controls as botanical specimen labels, a botanical leaf illustration in the margin, and a "pressed and catalogued" save state.</h2>
+<main>
+  <div class="head">
+    <div>
+      <div class="name">home.md</div>
+      <div class="sub">MicroHttp Herbarium &middot; Specimen No. 001</div>
+    </div>
+    <div class="modes">
+      <span class="on">Visual</span><span>&middot;</span><span>Markdown</span><span>&middot;</span><span>Split</span>
+      <span class="theme"><i class="ti ti-leaf" aria-hidden="true"></i></span>
+    </div>
+  </div>
+  <div class="shelf">
+    <span class="label"><span class="cap">Aa</span> Style</span>
+    <span class="label"><i class="ti ti-bold" aria-hidden="true"></i> Bold</span>
+    <span class="label"><i class="ti ti-italic" aria-hidden="true"></i> Italic</span>
+    <span class="label"><i class="ti ti-strikethrough" aria-hidden="true"></i> Strike</span>
+    <span class="label"><i class="ti ti-code" aria-hidden="true"></i> Code</span>
+    <span class="label"><i class="ti ti-link" aria-hidden="true"></i> Link</span>
+    <span class="label"><i class="ti ti-list" aria-hidden="true"></i> Bullets</span>
+    <span class="label"><i class="ti ti-list-numbers" aria-hidden="true"></i> Numbered</span>
+    <span class="label"><i class="ti ti-blockquote" aria-hidden="true"></i> Quote</span>
+    <span class="label"><i class="ti ti-code-dots" aria-hidden="true"></i> Block</span>
+    <span class="label"><i class="ti ti-separator" aria-hidden="true"></i> Rule</span>
+  </div>
+  <div class="body">
+    <div class="margin">
+      <svg viewBox="0 0 60 150" fill="none" stroke="#7d8a6a" stroke-width="1.4" aria-hidden="true">
+        <path d="M30 148 C30 110 30 70 30 8"/>
+        <path d="M30 120 C18 112 10 100 8 86 C22 90 28 104 30 118"/>
+        <path d="M30 100 C42 92 50 80 52 66 C38 70 32 84 30 98"/>
+        <path d="M30 78 C18 70 12 58 10 44 C24 48 28 62 30 76"/>
+        <path d="M30 56 C42 48 49 37 51 24 C38 28 32 42 30 54"/>
+        <path d="M30 8 C26 16 26 22 30 28 C34 22 34 16 30 8 Z" fill="#7d8a6a" fill-opacity="0.25"/>
+      </svg>
+      <div class="tag">Pressed 2026</div>
+    </div>
+    <div class="doc">
+      <h1>Hello from MicroHttp</h1>
+      <p>Edit this Markdown document.</p>
+      <p>Each control is a specimen label; the page is pressed, ruled, and catalogued.<span class="caret"></span></p>
+    </div>
+  </div>
+  <div class="foot">
+    <span class="cat"><span class="seal"></span> Pressed &amp; catalogued &middot; 10:32 &middot; 21 words</span>
+    <button class="press">Press &amp; file</button>
+  </div>
+</main>
+</body>
+</html>

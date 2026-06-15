@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign K: inkpress comic</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root {
+  --ink: #111;
+  --paper: #fdfbf4;
+  --pop: #ffd23f;
+  --sans: "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh; font-family: var(--sans); color: var(--ink);
+  background:
+    radial-gradient(circle, rgba(0,0,0,0.14) 1.4px, transparent 1.6px) 0 0 / 9px 9px,
+    var(--paper);
+  padding: 30px;
+}
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+main { max-width: 780px; margin: 0 auto; }
+.strip { display: flex; align-items: stretch; gap: 12px; margin-bottom: 14px; }
+.tab { background: #fff; border: 3px solid var(--ink); font-weight: 900; text-transform: uppercase; font-style: italic;
+  letter-spacing: 0.02em; padding: 8px 16px; transform: rotate(-2deg); box-shadow: 4px 4px 0 var(--ink); }
+.tab .on { background: var(--pop); padding: 2px 6px; }
+.tab .modes b { margin: 0 4px; }
+.spacer { flex: 1; }
+.theme { background: var(--ink); color: var(--paper); border: 3px solid var(--ink); width: 46px; display: flex;
+  align-items: center; justify-content: center; transform: rotate(2deg); box-shadow: 4px 4px 0 rgba(0,0,0,0.25); }
+.panel { background: #fff; border: 4px solid var(--ink); box-shadow: 10px 10px 0 var(--ink); padding: 34px 36px 26px;
+  position: relative; }
+.burst { position: absolute; top: -26px; right: -18px; background: var(--pop); border: 3px solid var(--ink);
+  font-weight: 900; font-style: italic; text-transform: uppercase; padding: 12px 16px; transform: rotate(8deg);
+  clip-path: polygon(50% 0, 63% 14%, 82% 8%, 80% 28%, 100% 38%, 84% 50%, 100% 64%, 80% 72%, 84% 92%, 63% 86%, 50% 100%, 37% 86%, 16% 92%, 20% 72%, 0 64%, 16% 50%, 0 38%, 20% 28%, 18% 8%, 37% 14%); }
+.burst small { display: block; font-size: 9px; }
+h1 { font-size: 40px; font-weight: 900; font-style: italic; text-transform: uppercase; letter-spacing: -0.01em;
+  margin: 0 0 16px; line-height: 0.98; text-shadow: 3px 3px 0 var(--pop); }
+p { font-size: 17px; line-height: 1.7; margin: 0 0 12px; }
+.caret { display: inline-block; width: 3px; height: 19px; background: var(--ink); vertical-align: -3px; }
+.bubble { position: relative; margin-top: 26px; background: #fff; border: 3px solid var(--ink); border-radius: 22px;
+  padding: 12px 16px; display: flex; align-items: center; gap: 6px; box-shadow: 5px 5px 0 var(--ink); }
+.bubble::after { content: ""; position: absolute; left: 40px; bottom: -16px; width: 18px; height: 18px; background: #fff;
+  border-right: 3px solid var(--ink); border-bottom: 3px solid var(--ink); transform: rotate(45deg); }
+.bubble .style { font-weight: 900; text-transform: uppercase; font-style: italic; font-size: 13px; padding: 4px 8px;
+  border: 2px solid var(--ink); }
+.bubble i { width: 36px; height: 32px; display: inline-flex; align-items: center; justify-content: center; font-size: 17px;
+  border: 2px solid var(--ink); border-radius: 6px; }
+.bubble i:hover { background: var(--pop); }
+.sep { width: 3px; height: 22px; background: var(--ink); margin: 0 4px; }
+.foot { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; font-weight: 900;
+  text-transform: uppercase; font-style: italic; font-size: 13px; }
+.save { background: var(--ink); color: var(--paper); border: 3px solid var(--ink); padding: 8px 18px;
+  box-shadow: 4px 4px 0 var(--pop); }
+.words { background: #fff; border: 3px solid var(--ink); padding: 6px 12px; }
+</style>
+</head>
+<body>
+<h2 class="sr-only">Mockup K: a black-and-white comic book. Halftone screentone paper, thick inked panel borders with hard offset shadows, the toolbar inside a speech bubble, and the save state as a yellow action-burst star.</h2>
+<main>
+  <div class="strip">
+    <div class="tab"><span class="modes"><span class="on">VISUAL</span> <b>&middot;</b> MARKDOWN <b>&middot;</b> SPLIT</span></div>
+    <div class="spacer"></div>
+    <div class="theme"><i class="ti ti-bulb" aria-hidden="true" style="font-size:20px;"></i></div>
+  </div>
+  <div class="panel">
+    <div class="burst">SAVED!<small>10:32</small></div>
+    <h1>Hello from MicroHttp</h1>
+    <p>Edit this Markdown document.</p>
+    <p>Each panel is inked and shadowed; the toolbar talks back from a speech bubble.<span class="caret"></span></p>
+    <div class="bubble">
+      <span class="style">Aa</span>
+      <span class="sep"></span>
+      <i class="ti ti-bold" aria-hidden="true"></i>
+      <i class="ti ti-italic" aria-hidden="true"></i>
+      <i class="ti ti-strikethrough" aria-hidden="true"></i>
+      <i class="ti ti-code" aria-hidden="true"></i>
+      <i class="ti ti-link" aria-hidden="true"></i>
+      <span class="sep"></span>
+      <i class="ti ti-list" aria-hidden="true"></i>
+      <i class="ti ti-list-numbers" aria-hidden="true"></i>
+      <i class="ti ti-blockquote" aria-hidden="true"></i>
+      <i class="ti ti-code-dots" aria-hidden="true"></i>
+      <i class="ti ti-separator" aria-hidden="true"></i>
+    </div>
+  </div>
+  <div class="foot">
+    <span class="words">21 WORDS</span>
+    <span class="save">SAVE!</span>
+  </div>
+</main>
+</body>
+</html>

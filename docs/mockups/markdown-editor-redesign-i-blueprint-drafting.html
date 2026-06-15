@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign I: blueprint drafting</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root {
+  --paper: #0e3a5f;
+  --ink: #e7f1ff;
+  --line: rgba(159, 208, 255, 0.30);
+  --line-soft: rgba(159, 208, 255, 0.12);
+  --cyan: #9fd0ff;
+  --amber: #ffcf6b;
+  --green: #6fe3b0;
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; min-height: 100vh; color: var(--ink);
+  font-family: var(--mono); font-size: 13px;
+  background:
+    linear-gradient(var(--line-soft) 1px, transparent 1px) 0 0 / 24px 24px,
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px) 0 0 / 24px 24px,
+    linear-gradient(var(--line-soft) 1px, transparent 1px) 0 0 / 120px 120px,
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px) 0 0 / 120px 120px,
+    var(--paper);
+  padding: 28px;
+}
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.sheet { max-width: 940px; margin: 0 auto; border: 1.5px solid var(--line); position: relative; }
+.titlebar { display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1.5px solid var(--line); padding: 10px 16px; letter-spacing: 0.14em; font-size: 11px; }
+.titlebar .logo { color: var(--cyan); }
+.modes span { padding: 3px 8px; border: 1px solid var(--line-soft); margin-left: 4px; color: #a9c6e6; }
+.modes .on { color: #07273f; background: var(--cyan); border-color: var(--cyan); }
+.frame { display: flex; }
+.toolrail { width: 132px; border-right: 1.5px solid var(--line); padding: 12px 0; }
+.toolrail .grp { padding: 4px 0; border-bottom: 1px dashed var(--line-soft); }
+.tool { display: flex; align-items: center; gap: 9px; padding: 6px 14px; color: #cfe3fb; cursor: default; }
+.tool i { width: 18px; text-align: center; color: var(--cyan); font-size: 15px; }
+.tool .k { margin-left: auto; font-size: 9px; color: #6f9bc4; }
+.canvas { flex: 1; position: relative; padding: 30px 40px 18px; }
+.dim { position: absolute; color: #7fa9d2; font-size: 9px; letter-spacing: 0.1em; }
+.dim.top { top: 9px; left: 40px; right: 24px; border-top: 1px solid var(--line); text-align: center; }
+.dim.top span { background: var(--paper); padding: 0 6px; position: relative; top: -7px; }
+.dim.left { top: 30px; bottom: 18px; left: 14px; border-left: 1px solid var(--line); writing-mode: vertical-rl; text-align: center; }
+.dim.left span { background: var(--paper); padding: 6px 0; }
+h1 { font-family: var(--mono); font-weight: 700; font-size: 27px; letter-spacing: -0.01em; color: #fff; margin: 4px 0 16px; }
+h1::before { content: "H1  "; color: var(--cyan); font-size: 12px; font-weight: 400; letter-spacing: 0.1em; }
+p { font-size: 14px; line-height: 1.85; margin: 0 0 12px; color: #d9e8fb; }
+.caret { display: inline-block; width: 2px; height: 18px; background: var(--amber); vertical-align: -3px; }
+.titleblock { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1.2fr;
+  border-top: 1.5px solid var(--line); font-size: 10px; letter-spacing: 0.08em; }
+.titleblock .cell { padding: 8px 12px; border-right: 1px solid var(--line-soft); }
+.titleblock .cell:last-child { border-right: 0; }
+.titleblock .lbl { color: #6f9bc4; font-size: 9px; }
+.titleblock .val { color: var(--ink); font-size: 12px; margin-top: 3px; }
+.plot { background: var(--cyan); color: #07273f; border: 0; font-family: var(--mono); font-weight: 700;
+  letter-spacing: 0.12em; padding: 7px 14px; cursor: pointer; }
+.dot { display: inline-block; width: 7px; height: 7px; background: var(--green); border-radius: 50%; margin-right: 6px; }
+</style>
+</head>
+<body>
+<h2 class="sr-only">Mockup I: an engineering-blueprint drafting table. Cyan grid on navy, the document drawn inside dimension lines, formatting tools as a drafting-tool rail, and an engineering title block carrying mode, revision, word count, and save state.</h2>
+<div class="sheet">
+  <div class="titlebar">
+    <span class="logo">MICROHTTP &mdash; DRAFTING TABLE</span>
+    <span class="modes">
+      <span class="on">VISUAL</span><span>MARKDOWN</span><span>SPLIT</span>
+      <span style="border:0; margin-left:14px;"><i class="ti ti-sun-moon" aria-hidden="true"></i></span>
+    </span>
+  </div>
+  <div class="frame">
+    <div class="toolrail">
+      <div class="grp">
+        <div class="tool"><i class="ti ti-heading"></i>STYLE<span class="k">Aa</span></div>
+      </div>
+      <div class="grp">
+        <div class="tool"><i class="ti ti-bold"></i>BOLD<span class="k">B</span></div>
+        <div class="tool"><i class="ti ti-italic"></i>ITALIC<span class="k">I</span></div>
+        <div class="tool"><i class="ti ti-strikethrough"></i>STRIKE</div>
+        <div class="tool"><i class="ti ti-code"></i>CODE</div>
+        <div class="tool"><i class="ti ti-link"></i>LINK</div>
+      </div>
+      <div class="grp">
+        <div class="tool"><i class="ti ti-list"></i>BULLET</div>
+        <div class="tool"><i class="ti ti-list-numbers"></i>NUMBER</div>
+        <div class="tool"><i class="ti ti-blockquote"></i>QUOTE</div>
+        <div class="tool"><i class="ti ti-code-dots"></i>BLOCK</div>
+        <div class="tool"><i class="ti ti-separator"></i>RULE</div>
+      </div>
+    </div>
+    <div class="canvas">
+      <div class="dim top"><span>COLUMN WIDTH 680</span></div>
+      <div class="dim left"><span>SHEET A4</span></div>
+      <h1>Hello from MicroHttp</h1>
+      <p>Edit this Markdown document.</p>
+      <p>Every element is drawn to scale and annotated, the way a draughtsman would lay out a sheet.<span class="caret"></span></p>
+    </div>
+  </div>
+  <div class="titleblock">
+    <div class="cell"><div class="lbl">TITLE</div><div class="val">home.md</div></div>
+    <div class="cell"><div class="lbl">MODE</div><div class="val">VISUAL</div></div>
+    <div class="cell"><div class="lbl">REV</div><div class="val">A.03</div></div>
+    <div class="cell"><div class="lbl">WORDS</div><div class="val">21</div></div>
+    <div class="cell" style="display:flex; align-items:center; justify-content:space-between;">
+      <span><div class="lbl">STATE</div><div class="val"><span class="dot"></span>SAVED 10:32</div></span>
+      <button class="plot">PLOT</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

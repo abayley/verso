@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Studio interaction spike</title>
+<style>
+:root { --line: #d9d4c7; --ink: #2c2a22; --accent: #b0532f; }
+body { margin: 0; background: #f4f0e6; color: var(--ink); font: 16px/1.7 Georgia, serif; }
+main { max-width: 680px; margin: 0 auto; padding: 48px 20px; }
+.hint { font: 13px/1.5 system-ui, sans-serif; color: #8c8571; margin-bottom: 18px; }
+#editor .ProseMirror { outline: none; min-height: 60vh; }
+#editor h1 { font-size: 30px; }
+#editor pre { background: #ece6d6; padding: 10px 14px; border-radius: 8px; font: 14px ui-monospace, monospace; }
+#editor blockquote { border-left: 3px solid var(--line); margin: 0; padding-left: 14px; color: #5f5a4c; }
+/* Bubble toolbar: positioned over the selection. */
+#bubble { position: absolute; transform: translateX(-50%); display: flex; gap: 2px; padding: 4px;
+  background: #fffefa; border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.16); z-index: 10; }
+#bubble button { font: 600 14px system-ui, sans-serif; min-width: 32px; height: 30px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--ink); cursor: pointer; }
+#bubble button:hover { background: #f0ece0; }
+#bubble button.active { background: var(--accent); color: #fff; }
+/* Slash menu: positioned under the cursor. */
+#slash { position: absolute; min-width: 180px; padding: 5px; background: #fffefa; border: 1px solid var(--line);
+  border-radius: 10px; box-shadow: 0 12px 28px rgba(0,0,0,0.18); z-index: 10; display: flex; flex-direction: column; }
+#slash button { font: 14px system-ui, sans-serif; text-align: left; padding: 7px 10px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--ink); cursor: pointer; }
+#slash button:hover, #slash button.active { background: #f0ece0; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <p class="hint">Studio interaction spike &mdash; bubble toolbar on selection, slash menu on an empty line.
+  Throwaway; not the production editor.</p>
+  <div id="editor"></div>
+</main>
+<div id="bubble" hidden></div>
+<div id="slash" hidden></div>
+<script type="module" src="./bundle.js"></script>
+</body>
+</html>

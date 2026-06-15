@@ -804,6 +804,45 @@ application ignored could in principle leave data unread, but that is the same
 best-effort lingering-close behaviour common to connection-close servers, and
 the bounded sweep keeps the handler responsive.
 
+### ADR-036: Editor Visual Themes As A Token Axis
+
+Status: Accepted.
+
+Context: The Markdown editor had one appearance axis -- light/dark, toggled by
+`wa-light`/`wa-dark` on `<html>`. Its surface is already token-driven (a full
+set of `--markdown-editor-*` custom properties under `:root` and `:root.wa-dark`
+in `markdown-editor.css`), and a round of redesign mockups (`docs/mockups/`)
+showed several distinct looks worth offering. The goal was to make the editor
+themeable without coupling a visual choice to the light/dark axis or to new
+editor behaviour.
+
+Decision: Add a `data-editor-theme` attribute on `<html>` as a visual-theme axis
+orthogonal to the colour scheme. A theme overrides the `--markdown-editor-*`
+tokens for both schemes (`:root[data-editor-theme="x"]` and its `.wa-dark`
+variant), with an optional structural-CSS layer scoped under the same selector
+for effects tokens cannot express (gradients, glass, grids, ruled paper, status
+chrome). An absent or unknown value is the default Paper look, so existing
+behaviour is unchanged. A `wa-dropdown` in the toolbar selects the theme; the
+theme and the colour scheme persist in `localStorage`, resolved (validated) on
+connect, and a pre-paint inline bootstrap applies the stored preference before
+first paint from a fixed allowlist so there is no flash. An `editor_theme`
+config key (RFC-0011) supplies the first-visit default; precedence is stored
+preference, then config default, then Paper, validated server-side to Paper. A
+theme may also set a small set of bounded layout presets the editor already
+supports (Workbench opens in Split; the source pane's line numbers come from
+CodeMirror's `basicSetup`); presets are defaults, not locks. The initial set is
+Paper, Aurora (neutral frosted glass), Blueprint (cyanotype/white-print grid),
+Herbarium (ruled-paper journal), and Workbench (IDE). The design is RFC-0015.
+
+Consequences: themes are a thin, mostly-CSS axis layered on the existing token
+and colour-scheme machinery, so adding one is a token block plus an optional
+structural layer, registered in four places (the CSS, the dropdown list, the
+server allowlist, and the bootstrap allowlist). Genuinely new interactions are
+out of scope for a theme: Studio (mockup C) -- defined by a selection bubble
+toolbar and a slash-command menu -- is deferred to a later round (the parked Lit
+spike) rather than shipped as a half-version. `backdrop-filter` themes degrade
+to flat translucency where unsupported.
+
 ## ADR Registry Open Review Items
 
 - Verify socket layout assumptions on non-macOS platforms before treating

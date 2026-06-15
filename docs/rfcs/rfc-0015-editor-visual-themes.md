@@ -16,7 +16,7 @@ superseded_by: null
 |-----------|------------|
 | Authored  | 2026-06-15 |
 | Started   | 2026-06-15 |
-| Completed |            |
+| Completed | 2026-06-15 |
 
 ## Summary
 
@@ -253,10 +253,11 @@ rather than a half-version.
    - [x] Behaviour tests for selection, persistence, independence, fallback, and
          the config default.
 3. Phase three: the layout-bearing theme.
-   - [ ] Workbench (tokens, status-bar chrome, Split and line-number presets).
+   - [x] Workbench (tokens, status-bar chrome, the Split preset; line numbers come
+         from CodeMirror's `basicSetup`, so no separate preset was needed).
 4. Phase four: document and decide deferrals.
-   - [ ] ADR for the theming architecture; note in the editor design docs.
-   - [ ] Record Studio as a future round (after the bubble/slash spike).
+   - [x] ADR for the theming architecture; note in the editor design docs.
+   - [x] Record Studio as a future round (after the bubble/slash spike).
 
 ### Rollout Plan Escape Hatch
 

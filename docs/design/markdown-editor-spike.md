@@ -586,6 +586,17 @@ Phase Six findings so far:
   decomposed into plain controller classes per
   [RFC-0002](../rfcs/rfc-0002-editor-shell-decomposition.md), so the spike measures
   declarative rendering rather than getting credit for ordinary refactoring.
+- RFC-0002 decomposition is complete (2026-06-15). Three plain controllers were
+  extracted from `markdown-editor-element.ts`: `SaveStateController` (164 lines),
+  `ToolbarTooltipController` (119 lines), and `LinkPopoverController` (324 lines),
+  each with explicit constructor dependencies and no test changes. The element
+  shrank from 2103 to 1642 lines; what remains is lifecycle, mode/theme
+  switching, pane command routing, toolbar/dropdown/bubble/slash construction,
+  and controller wiring. The shell is now ready for the Lit decision-test spike:
+  the toolbar construction and the controllers' rendered views (save button,
+  tooltip, link popovers) are the declarative-rendering surface Lit would be
+  measured on, while the controllers' state machines and the editor adapters stay
+  framework-agnostic.
 - Toolbar inline mark controls must preserve or recover the visual editor
   selection before applying Tiptap commands; otherwise button focus can collapse
   the selected text before the command runs.

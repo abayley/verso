@@ -1,11 +1,11 @@
 ---
 id: RFC-0002
 name: Editor Shell Decomposition
-status: Draft
+status: Completed
 owners:
     - alistair
 created: 2026-06-10
-updated: 2026-06-10
+updated: 2026-06-16
 supersedes: []
 superseded_by: null
 ---
@@ -16,7 +16,7 @@ superseded_by: null
 |-----------|------------------|
 | Authored  | 2026-06-10       |
 | Started   | 2026-06-15 22:08 |
-| Completed |                  |
+| Completed | 2026-06-16 08:50 |
 
 ## Summary
 
@@ -149,10 +149,13 @@ the Lit spike for the reasons in the context section.
          `ToolbarTooltipController` (`toolbar-tooltip-controller.ts`); the element
          registers controls. All tests pass unmodified.
 3. Phase three: extract the link popover controller.
-   - [ ] Move popover, hover actions, and pending selections behind the
-         controller.
-   - [ ] Record resulting module sizes in the spike document findings and
-         confirm readiness for the Lit spike.
+   - [x] Moved the link target editor, hover actions, hide grace timer, pending
+         selections, and document pointer wiring behind `LinkPopoverController`
+         (`link-popover-controller.ts`); the element supplies positioning and the
+         editor-adapter operations through a host interface. All tests and the
+         browser smoke pass unmodified.
+   - [x] Recorded module sizes in the spike document (element 2103 -> 1642 lines;
+         controllers 164 + 119 + 324) and confirmed readiness for the Lit spike.
 
 ### Rollout Plan Escape Hatch
 
@@ -174,13 +177,13 @@ Resolved before implementation (2026-06-15):
 - **Word count:** stays element code. It is not save state; the element keeps
   computing it on content change.
 
-Raised during phase three (not yet resolved):
+Resolved during phase three (2026-06-15):
 
 - **Shared overlay positioning.** RFC-0016 (added after this RFC was authored)
   made `positionOverlay` / `activeEditPaneRect` shared by the bubble toolbar and
-  slash menu, not just the link popover. The link popover controller therefore
-  cannot own positioning outright. Proposed: the element keeps `positionOverlay`
-  (used by all three surfaces) and passes it to the controller as a constructor
-  dependency, alongside the adapter selection-capture/apply callbacks and the
-  document pointer-dismissal wiring. This keeps the controller's inputs explicit
-  without duplicating the positioning helper. To confirm before extracting.
+  slash menu, not just the link popover. Resolved as proposed: the element keeps
+  `positionOverlay`/`activeEditPaneRect` (used by all three surfaces) and passes
+  positioning to `LinkPopoverController` through a `LinkPopoverHost` interface,
+  alongside the adapter selection-capture/apply callbacks and the visual-anchor
+  resolution. The controller owns the document pointer dismissal/hover wiring and
+  disposes it on disconnect. The positioning helper is not duplicated.

@@ -185,7 +185,7 @@ bound now lives in the application stack (serveRoutes), not the server.
 -}
 smallBodyApp :: Application
 smallBodyApp =
-    withErrorResponses (serveRoutes (parseLimits smallBodySettings) (TestApp.documentRoutes documentRoot))
+    withErrorResponses (serveRoutes (parseLimits smallBodySettings) (TestApp.documentRoutes "paper" documentRoot))
 
 documentRoot :: FilePath
 documentRoot = "build"

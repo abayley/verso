@@ -350,3 +350,79 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 .markdown-editor__error[hidden] {
   display: none;
 }
+
+/* ===================================================================
+   Visual themes (RFC-0015). Each theme overrides the --markdown-editor-*
+   tokens for both light and dark, keyed on data-editor-theme, plus an
+   optional structural layer for effects tokens cannot express. An absent
+   or unknown attribute is the default "Paper" look defined at the top.
+   =================================================================== */
+
+/* --- Aurora: a neutral frosted-glass theme, light and dark. --- */
+:root[data-editor-theme="aurora"] {
+  --markdown-editor-accent: #5b6b8c;
+  --markdown-editor-background: #e8eaf0;
+  --markdown-editor-code-background: rgba(255, 255, 255, 0.6);
+  --markdown-editor-code-border: rgba(90, 100, 120, 0.18);
+  --markdown-editor-divider: rgba(90, 100, 120, 0.18);
+  --markdown-editor-error-accent: #b05050;
+  --markdown-editor-error-text: #9a3b3b;
+  --markdown-editor-muted: #6b7180;
+  --markdown-editor-pill-background: rgba(255, 255, 255, 0.55);
+  --markdown-editor-pill-border: rgba(255, 255, 255, 0.75);
+  --markdown-editor-quote-border: rgba(90, 100, 120, 0.32);
+  --markdown-editor-save-clean: #2f9e78;
+  --markdown-editor-save-dirty: #b07d2a;
+  --markdown-editor-save-retry: #a84545;
+  --markdown-editor-text: #2a2d38;
+  --aurora-wash-1: rgba(120, 150, 200, 0.28);
+  --aurora-wash-2: rgba(150, 135, 190, 0.24);
+  --aurora-wash-3: rgba(120, 185, 180, 0.22);
+}
+
+:root[data-editor-theme="aurora"].wa-dark {
+  --markdown-editor-accent: #9db4d8;
+  --markdown-editor-background: #1b1d24;
+  --markdown-editor-code-background: rgba(255, 255, 255, 0.06);
+  --markdown-editor-code-border: rgba(255, 255, 255, 0.12);
+  --markdown-editor-divider: rgba(255, 255, 255, 0.12);
+  --markdown-editor-error-accent: #e08a8a;
+  --markdown-editor-error-text: #f0b0b0;
+  --markdown-editor-muted: rgba(233, 236, 242, 0.62);
+  --markdown-editor-pill-background: rgba(30, 33, 42, 0.55);
+  --markdown-editor-pill-border: rgba(255, 255, 255, 0.16);
+  --markdown-editor-quote-border: rgba(255, 255, 255, 0.24);
+  --markdown-editor-save-clean: #7fd1b0;
+  --markdown-editor-save-dirty: #e8c07d;
+  --markdown-editor-save-retry: #f0a5a5;
+  --markdown-editor-text: #eceef4;
+  --aurora-wash-1: rgba(90, 120, 180, 0.30);
+  --aurora-wash-2: rgba(120, 100, 165, 0.26);
+  --aurora-wash-3: rgba(70, 140, 140, 0.22);
+}
+
+:root[data-editor-theme="aurora"] body.markdown-editor-page {
+  background:
+    radial-gradient(58% 55% at 14% 8%, var(--aurora-wash-1), transparent 60%),
+    radial-gradient(54% 58% at 88% 14%, var(--aurora-wash-2), transparent 60%),
+    radial-gradient(68% 64% at 80% 96%, var(--aurora-wash-3), transparent 62%),
+    var(--markdown-editor-background);
+  background-attachment: fixed;
+}
+
+:root[data-editor-theme="aurora"] .markdown-editor__body {
+  background: var(--markdown-editor-pill-background);
+  -webkit-backdrop-filter: blur(22px) saturate(125%);
+  backdrop-filter: blur(22px) saturate(125%);
+  border: 1px solid var(--markdown-editor-pill-border);
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(12, 16, 34, 0.22);
+  margin-block: 0.75rem;
+  padding: 1.75rem 2.25rem;
+}
+
+:root[data-editor-theme="aurora"] .markdown-editor__toolbar--commands {
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  backdrop-filter: blur(18px) saturate(125%);
+  box-shadow: 0 10px 30px rgba(12, 16, 34, 0.18);
+}

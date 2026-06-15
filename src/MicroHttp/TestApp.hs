@@ -58,7 +58,9 @@ appFromConfig settings cfg =
         ( withErrorResponses
             ( Router.serveRoutes
                 (Server.parseLimits settings)
-                ( documentRoutes (configString "document_root" "data/documents" cfg)
+                ( documentRoutes
+                    (configString "editor_theme" "paper" cfg)
+                    (configString "document_root" "data/documents" cfg)
                     ++ [Static.static prefix root | (prefix, root) <- configMounts "static_mounts" cfg]
                 )
             )
@@ -76,20 +78,23 @@ fileStore root =
         , saveDocumentContent = saveFileDocument root
         }
 
--- | The routes for a filesystem document root (the bottom of the app stack).
-documentRoutes :: FilePath -> [Router.Route]
-documentRoutes root =
-    routes (fileStore root)
+{- | The routes for a filesystem document root (the bottom of the app stack).
+@editorThemeDefault@ is the visual theme the editor page emits for a first-time
+visitor (one with no stored preference); see RFC-0015.
+-}
+documentRoutes :: String -> FilePath -> [Router.Route]
+documentRoutes editorThemeDefault root =
+    routes editorThemeDefault (fileStore root)
 
 appWithStore :: DocumentStore -> Server.Application
 appWithStore store =
-    Router.serveRoutes (Server.parseLimits Server.defaultSettings) (routes store)
+    Router.serveRoutes (Server.parseLimits Server.defaultSettings) (routes "paper" store)
 
-routes :: DocumentStore -> [Router.Route]
-routes store =
+routes :: String -> DocumentStore -> [Router.Route]
+routes editorThemeDefault store =
     [ Router.get "/" index
     , Router.get "/index.html" index
-    , Router.get "/documents/:id/edit" editDocument
+    , Router.get "/documents/:id/edit" (editDocument editorThemeDefault)
     , Router.get "/documents/:id" (showDocument store)
     , Router.post "/documents/:id" (saveDocument store)
     , Static.static "/static/editor" "static/editor"
@@ -99,10 +104,10 @@ index :: Router.Handler
 index _ _ =
     pure (htmlResponse indexHtml)
 
-editDocument :: Router.Handler
-editDocument captures request =
+editDocument :: String -> Router.Handler
+editDocument editorThemeDefault captures request =
     let docId = documentId captures
-     in pure (htmlResponse (documentHtml (editorPage docId (editorMode request))))
+     in pure (htmlResponse (documentHtml (editorPage docId (editorMode request) editorThemeDefault)))
 
 showDocument :: DocumentStore -> Router.Handler
 showDocument store captures _ = do
@@ -215,11 +220,40 @@ indexPage =
                 Html.p [] "The MicroHs HTTP server is running."
                 Html.custom "status-card" [Html.attr "data-state" "ok"] "Served by src/TestApp.hs"
 
-editorPage :: String -> String -> Html.Html ()
-editorPage docId mode =
-    Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue"] $ do
+{- | The visual themes the editor implements (RFC-0015). The page default and
+the pre-paint bootstrap validate against this set, so an unknown configured or
+stored value falls back to Paper.
+-}
+knownEditorThemes :: [String]
+knownEditorThemes = ["paper", "aurora"]
+
+-- | Validates a configured default theme name, falling back to @paper@.
+safeEditorTheme :: String -> String
+safeEditorTheme theme
+    | theme `elem` knownEditorThemes = theme
+    | otherwise = "paper"
+
+{- | An inline, pre-paint script that applies the visitor's stored editor
+preferences before the body renders, so a saved theme or colour scheme does not
+flash the page default. It sets the theme attribute only from a fixed allowlist,
+so a tampered stored value cannot inject an attribute payload.
+-}
+editorThemeBootstrapScript :: String
+editorThemeBootstrapScript =
+    "<script>(function(){try{"
+        ++ "var K=['paper','aurora'];var r=document.documentElement;"
+        ++ "var t=localStorage.getItem('editor-theme');"
+        ++ "if(t&&K.indexOf(t)>=0){r.setAttribute('data-editor-theme',t);}"
+        ++ "var s=localStorage.getItem('editor-color-scheme');"
+        ++ "if(s==='dark'){r.classList.add('wa-dark');}else if(s==='light'){r.classList.add('wa-light');}"
+        ++ "}catch(e){}})();</script>"
+
+editorPage :: String -> String -> String -> Html.Html ()
+editorPage docId mode themeDefault =
+    Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
+            Html.rawTrusted editorThemeBootstrapScript
             Html.title [] "MicroHttp Markdown Editor"
             Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/webawesome.css\">"
             Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"

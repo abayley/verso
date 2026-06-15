@@ -10,6 +10,7 @@ import {
 
 type EditorMode = "visual" | "source" | "split";
 type EditorTheme = "light" | "dark" | "match-system";
+type VisualTheme = "paper" | "aurora";
 type ActivePane = "source" | "visual";
 type SaveState = "clean" | "dirty" | "saving" | "retry";
 type ToolbarButtonElement = HTMLElement;
@@ -18,7 +19,44 @@ const linkActionsHideDelayMilliseconds = 500;
 const toolbarTooltipHideDelayMilliseconds = 250;
 const toolbarTooltipShowDelayMilliseconds = 500;
 
+const visualThemeStorageKey = "editor-theme";
+const colorSchemeStorageKey = "editor-color-scheme";
+
+/** The selectable visual themes, in dropdown order; the first is the default. */
+const visualThemes: { value: VisualTheme; label: string }[] = [
+    { value: "paper", label: "Paper" },
+    { value: "aurora", label: "Aurora" },
+];
+
 let tooltipTargetSequence = 0;
+
+/** Narrows an arbitrary string to a known visual theme. */
+function isVisualTheme(value: string | null): value is VisualTheme {
+    return value !== null && visualThemes.some((theme) => theme.value === value);
+}
+
+/** The display label for a visual theme. */
+function themeLabel(theme: VisualTheme): string {
+    return visualThemes.find((entry) => entry.value === theme)?.label ?? theme;
+}
+
+/** Reads a stored preference, tolerating an unavailable or throwing localStorage. */
+function readStoredPreference(key: string): string | null {
+    try {
+        return window.localStorage.getItem(key);
+    } catch {
+        return null;
+    }
+}
+
+/** Writes a stored preference, ignoring an unavailable or throwing localStorage. */
+function writeStoredPreference(key: string, value: string): void {
+    try {
+        window.localStorage.setItem(key, value);
+    } catch {
+        // A preference that cannot be persisted is non-fatal; the session keeps it.
+    }
+}
 
 interface WaDropdownSelectEvent extends Event {
     detail: {
@@ -75,6 +113,9 @@ export class MarkdownEditorElement extends HTMLElement {
     private syncingEditors = false;
     private theme: EditorTheme = "match-system";
     private themeGroup: HTMLElement | null = null;
+    private themeDropdown: HTMLElement | null = null;
+    private themeDropdownTrigger: ToolbarButtonElement | null = null;
+    private visualTheme: VisualTheme = "paper";
     private toolbarTooltip: HTMLElement | null = null;
     private toolbarTooltipHideTimeout: number | null = null;
     private toolbarTooltipShowTimeout: number | null = null;
@@ -192,6 +233,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.markdown = await this.loadMarkdown();
         this.mode = this.editorMode();
         this.theme = this.editorTheme();
+        this.visualTheme = this.editorVisualTheme();
         this.textContent = "";
 
         this.toolbarTooltip = this.createToolbarTooltip();
@@ -241,6 +283,8 @@ export class MarkdownEditorElement extends HTMLElement {
         toolbar.append(this.documentName);
         this.modeGroup = this.createModeGroup();
         toolbar.append(this.modeGroup);
+        this.themeDropdown = this.createThemeDropdown();
+        toolbar.append(this.themeDropdown);
         this.themeGroup = this.createThemeGroup();
         toolbar.append(this.themeGroup);
 
@@ -338,6 +382,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
             if (isEditorTheme(theme) && theme !== this.theme) {
                 this.theme = theme;
+                writeStoredPreference(colorSchemeStorageKey, theme);
                 this.updateToolbarState();
             }
         });
@@ -356,6 +401,90 @@ export class MarkdownEditorElement extends HTMLElement {
         this.addTooltip(option, label);
 
         return option;
+    }
+
+    /** Creates the visual-theme dropdown shown in the top bar. */
+    private createThemeDropdown(): HTMLElement {
+        const dropdown = document.createElement("wa-dropdown");
+        dropdown.className = "markdown-editor__theme-dropdown";
+        dropdown.setAttribute("aria-label", "Visual theme");
+        dropdown.setAttribute("size", "small");
+
+        this.themeDropdownTrigger = this.createToolbarButton(
+            "markdown-editor__theme-trigger",
+            themeLabel(this.visualTheme),
+        );
+        this.themeDropdownTrigger.setAttribute("slot", "trigger");
+        this.themeDropdownTrigger.setAttribute("with-caret", "");
+        dropdown.append(this.themeDropdownTrigger);
+
+        for (const theme of visualThemes) {
+            dropdown.append(this.createThemeDropdownItem(theme.value, theme.label));
+        }
+
+        dropdown.addEventListener("wa-select", (event: Event): void => {
+            const value = elementValue((event as WaDropdownSelectEvent).detail.item as HTMLElement);
+
+            if (isVisualTheme(value)) {
+                this.setVisualTheme(value);
+            }
+        });
+
+        return dropdown;
+    }
+
+    /** Creates one item in the visual-theme dropdown. */
+    private createThemeDropdownItem(value: VisualTheme, label: string): HTMLElement {
+        const item = document.createElement("wa-dropdown-item");
+        item.setAttribute("value", value);
+        item.textContent = label;
+
+        return item;
+    }
+
+    /** Applies, persists, and reflects a chosen visual theme. */
+    private setVisualTheme(theme: VisualTheme): void {
+        this.visualTheme = theme;
+        writeStoredPreference(visualThemeStorageKey, theme);
+        this.applyVisualTheme();
+        this.syncThemeDropdown();
+    }
+
+    /** Sets the document's visual-theme attribute from the current selection. */
+    private applyVisualTheme(): void {
+        document.documentElement.setAttribute("data-editor-theme", this.visualTheme);
+    }
+
+    /** Resolves the initial visual theme: stored preference, then page attribute, else paper. */
+    private editorVisualTheme(): VisualTheme {
+        const stored = readStoredPreference(visualThemeStorageKey);
+
+        if (isVisualTheme(stored)) {
+            return stored;
+        }
+
+        const fromPage = document.documentElement.getAttribute("data-editor-theme");
+
+        return isVisualTheme(fromPage) ? fromPage : "paper";
+    }
+
+    /** Reflects the current visual theme into the dropdown trigger and items. */
+    private syncThemeDropdown(): void {
+        if (this.themeDropdownTrigger) {
+            this.themeDropdownTrigger.textContent = themeLabel(this.visualTheme);
+        }
+
+        if (!this.themeDropdown) {
+            return;
+        }
+
+        for (const item of this.themeDropdown.querySelectorAll("wa-dropdown-item")) {
+            if (item.getAttribute("value") === this.visualTheme) {
+                item.setAttribute("checked", "");
+            } else {
+                item.removeAttribute("checked");
+            }
+        }
     }
 
     /** Creates the explicit form submit button for manual saves. */
@@ -698,8 +827,14 @@ export class MarkdownEditorElement extends HTMLElement {
         return "visual";
     }
 
-    /** Returns the requested initial colour theme. */
+    /** Returns the initial colour scheme: stored preference, then attribute, else match-system. */
     private editorTheme(): EditorTheme {
+        const stored = readStoredPreference(colorSchemeStorageKey);
+
+        if (stored !== null && isEditorTheme(stored)) {
+            return stored;
+        }
+
         const theme = this.getAttribute("theme");
 
         if (theme === "light" || theme === "dark" || theme === "match-system") {
@@ -1377,6 +1512,8 @@ export class MarkdownEditorElement extends HTMLElement {
 
         this.setAttribute("data-theme", this.theme);
         this.applyDocumentTheme();
+        this.applyVisualTheme();
+        this.syncThemeDropdown();
 
         if (this.themeGroup) {
             setElementValue(this.themeGroup, this.theme);

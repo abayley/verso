@@ -15,7 +15,7 @@ superseded_by: null
 | Stage     | Timestamp        |
 |-----------|------------------|
 | Authored  | 2026-06-10       |
-| Started   |                  |
+| Started   | 2026-06-15 22:08 |
 | Completed |                  |
 
 ## Summary
@@ -139,10 +139,15 @@ the Lit spike for the reasons in the context section.
 ## Rollout Plan
 
 1. Phase one: extract the save state controller.
-   - [ ] Move save states, timers, and labels behind the controller.
-   - [ ] Fix the source-editor destroy gap in `disconnectedCallback`.
+   - [x] Moved save states, timers, and labels behind `SaveStateController`
+         (`save-state-controller.ts`); the element renders a reported view and
+         forwards htmx lifecycle + content-change. All tests pass unmodified.
+   - [x] Fixed the source-editor destroy gap in `disconnectedCallback` (and the
+         save timers are now disposed there via `controller.dispose()`).
 2. Phase two: extract the toolbar tooltip controller.
-   - [ ] Move tooltip timing and retargeting behind the controller.
+   - [x] Moved tooltip element, timing, and warm retargeting behind
+         `ToolbarTooltipController` (`toolbar-tooltip-controller.ts`); the element
+         registers controls. All tests pass unmodified.
 3. Phase three: extract the link popover controller.
    - [ ] Move popover, hover actions, and pending selections behind the
          controller.
@@ -161,8 +166,21 @@ the Lit spike for the reasons in the context section.
 
 ## Open Questions
 
-- Should the controllers receive an injected timer seam for testability, or
-  keep direct `window` timers since existing tests already drive them with
-  fake timers?
-- Does the word count belong in the save state controller's change feed or
-  stay as element code? It is two lines either way.
+Resolved before implementation (2026-06-15):
+
+- **Timer seam:** keep direct `window` timers. The existing tests drive them
+  with `vi.useFakeTimers`, which patches `window` globally, so an injected seam
+  would add indirection without testability gain.
+- **Word count:** stays element code. It is not save state; the element keeps
+  computing it on content change.
+
+Raised during phase three (not yet resolved):
+
+- **Shared overlay positioning.** RFC-0016 (added after this RFC was authored)
+  made `positionOverlay` / `activeEditPaneRect` shared by the bubble toolbar and
+  slash menu, not just the link popover. The link popover controller therefore
+  cannot own positioning outright. Proposed: the element keeps `positionOverlay`
+  (used by all three surfaces) and passes it to the controller as a constructor
+  dependency, alongside the adapter selection-capture/apply callbacks and the
+  document pointer-dismissal wiring. This keeps the controller's inputs explicit
+  without duplicating the positioning helper. To confirm before extracting.

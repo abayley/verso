@@ -1,5 +1,6 @@
 import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
 import { renderMarkdown } from "./markdown-render.js";
+import { SaveStateController, type SaveStateView } from "./save-state-controller.js";
 import {
     TiptapVisualEditor,
     type VisualBlockStyle,
@@ -7,17 +8,15 @@ import {
     type VisualLinkSelection,
     type VisualStructureStyle,
 } from "./tiptap-visual-editor.js";
+import { ToolbarTooltipController } from "./toolbar-tooltip-controller.js";
 
 type EditorMode = "visual" | "source" | "split";
 type EditorTheme = "light" | "dark" | "match-system";
 type VisualTheme = "paper" | "aurora" | "blueprint" | "herbarium" | "workbench" | "studio";
 type ActivePane = "source" | "visual";
-type SaveState = "clean" | "dirty" | "saving" | "retry";
 type ToolbarButtonElement = HTMLElement;
 
 const linkActionsHideDelayMilliseconds = 500;
-const toolbarTooltipHideDelayMilliseconds = 250;
-const toolbarTooltipShowDelayMilliseconds = 500;
 
 const visualThemeStorageKey = "editor-theme";
 const colorSchemeStorageKey = "editor-color-scheme";
@@ -31,8 +30,6 @@ const visualThemes: { value: VisualTheme; label: string }[] = [
     { value: "workbench", label: "Workbench" },
     { value: "studio", label: "Studio" },
 ];
-
-let tooltipTargetSequence = 0;
 
 /** Narrows an arbitrary string to a known visual theme. */
 function isVisualTheme(value: string | null): value is VisualTheme {
@@ -114,16 +111,12 @@ export class MarkdownEditorElement extends HTMLElement {
     private linkActions: HTMLDivElement | null = null;
     private linkEditor: HTMLDivElement | null = null;
     private linkTargetInput: HTMLInputElement | null = null;
-    private lastSubmittedMarkdown = "";
     private pendingLink = false;
     private pendingLinkSourceSelection: CodeMirrorSourceSelection | null = null;
     private pendingVisualLinkSelection: VisualLinkSelection | null = null;
     private saveButton: ToolbarButtonElement | null = null;
     private saveError: HTMLSpanElement | null = null;
-    private saveStartedAt = 0;
-    private saveState: SaveState = "clean";
-    private saveTransitionTimeout: number | null = null;
-    private saveTimeout: number | null = null;
+    private saveController: SaveStateController | null = null;
     private sourceEditor: CodeMirrorSourceEditor | null = null;
     private styleDropdown: HTMLElement | null = null;
     private styleTrigger: ToolbarButtonElement | null = null;
@@ -133,9 +126,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private themeDropdown: HTMLElement | null = null;
     private themeDropdownTrigger: ToolbarButtonElement | null = null;
     private visualTheme: VisualTheme = "paper";
-    private toolbarTooltip: HTMLElement | null = null;
-    private toolbarTooltipHideTimeout: number | null = null;
-    private toolbarTooltipShowTimeout: number | null = null;
+    private tooltipController: ToolbarTooltipController | null = null;
     private readonly handleSystemThemeChange = (): void => {
         if (this.theme === "match-system") {
             this.applyDocumentTheme();
@@ -268,7 +259,10 @@ export class MarkdownEditorElement extends HTMLElement {
         document.removeEventListener("selectionchange", this.handleSelectionChange);
         this.closeSlashMenu();
         this.cancelLinkActionsHide();
-        this.hideToolbarTooltip();
+        this.tooltipController?.hide();
+        this.saveController?.dispose();
+        this.sourceEditor?.destroy();
+        this.sourceEditor = null;
         this.visualEditor?.destroy();
         this.visualEditor = null;
     }
@@ -298,8 +292,12 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         this.internals?.setFormValue(this.markdown);
+        this.saveController = new SaveStateController(
+            (): string => this.toMarkdown(),
+            (view: SaveStateView): void => this.applySaveView(view),
+        );
 
-        this.toolbarTooltip = this.createToolbarTooltip();
+        this.tooltipController = new ToolbarTooltipController();
         this.toolbar = this.createToolbar();
         this.commandBar = this.createCommandBar();
         this.linkEditor = this.createLinkEditor();
@@ -329,7 +327,7 @@ export class MarkdownEditorElement extends HTMLElement {
             this.linkActions,
             this.bubbleToolbar,
             this.slashMenu,
-            this.toolbarTooltip,
+            this.tooltipController.element(),
             this.body,
             footer,
             this.wordCount,
@@ -466,7 +464,7 @@ export class MarkdownEditorElement extends HTMLElement {
         option.setAttribute("appearance", "button");
         option.setAttribute("aria-label", label);
         option.setAttribute("value", theme);
-        this.addTooltip(option, label);
+        this.tooltipController?.register(option, label);
 
         return option;
     }
@@ -911,112 +909,9 @@ export class MarkdownEditorElement extends HTMLElement {
         button.setAttribute("size", "small");
         button.setAttribute("type", "button");
         button.setAttribute("aria-label", label);
-        this.addTooltip(button, label, shortcut);
+        this.tooltipController?.register(button, label, shortcut);
 
         return button;
-    }
-
-    /** Registers a Web Awesome tooltip for one editor control. */
-    private addTooltip(target: HTMLElement, label: string, shortcut: string | null = null): void {
-        const tooltipId = `markdown-editor-control-${++tooltipTargetSequence}`;
-        const tooltipText = shortcut ? `${label} (${shortcut})` : label;
-
-        target.id = target.id || tooltipId;
-        target.dataset["tooltipText"] = tooltipText;
-        target.addEventListener("pointerover", (): void => this.showToolbarTooltip(target));
-        target.addEventListener("focusin", (): void => this.showToolbarTooltip(target));
-        target.addEventListener("pointerout", (): void => this.scheduleToolbarTooltipHide());
-        target.addEventListener("focusout", (): void => this.scheduleToolbarTooltipHide());
-    }
-
-    /** Creates the shared toolbar tooltip. */
-    private createToolbarTooltip(): HTMLElement {
-        const tooltip = document.createElement("wa-tooltip");
-        tooltip.className = "markdown-editor__tooltip";
-        tooltip.setAttribute("trigger", "manual");
-
-        return tooltip;
-    }
-
-    /** Shows or schedules the shared toolbar tooltip for a target control. */
-    private showToolbarTooltip(target: HTMLElement): void {
-        const tooltipText = target.dataset["tooltipText"];
-
-        if (!tooltipText) {
-            return;
-        }
-
-        const warmTooltip = this.isToolbarTooltipVisible() || this.toolbarTooltipHideTimeout !== null;
-
-        this.cancelToolbarTooltipHide();
-        this.cancelToolbarTooltipShow();
-
-        if (warmTooltip) {
-            this.openToolbarTooltip(target, tooltipText);
-            return;
-        }
-
-        this.toolbarTooltipShowTimeout = window.setTimeout((): void => {
-            this.toolbarTooltipShowTimeout = null;
-            this.openToolbarTooltip(target, tooltipText);
-        }, toolbarTooltipShowDelayMilliseconds);
-    }
-
-    /** Opens the shared toolbar tooltip on a target control. */
-    private openToolbarTooltip(target: HTMLElement, tooltipText: string): void {
-        if (!this.toolbarTooltip) {
-            return;
-        }
-
-        this.toolbarTooltip.setAttribute("for", target.id);
-        this.toolbarTooltip.textContent = tooltipText;
-        this.toolbarTooltip.setAttribute("open", "");
-    }
-
-    /** Hides the shared toolbar tooltip after a short grace period. */
-    private scheduleToolbarTooltipHide(): void {
-        this.cancelToolbarTooltipShow();
-
-        if (!this.isToolbarTooltipVisible() || this.toolbarTooltipHideTimeout !== null) {
-            return;
-        }
-
-        this.toolbarTooltipHideTimeout = window.setTimeout((): void => {
-            this.toolbarTooltipHideTimeout = null;
-            this.hideToolbarTooltip();
-        }, toolbarTooltipHideDelayMilliseconds);
-    }
-
-    /** Hides the shared toolbar tooltip immediately. */
-    private hideToolbarTooltip(): void {
-        this.cancelToolbarTooltipShow();
-        this.cancelToolbarTooltipHide();
-        this.toolbarTooltip?.removeAttribute("open");
-    }
-
-    /** Cancels a pending toolbar tooltip show timer. */
-    private cancelToolbarTooltipShow(): void {
-        if (this.toolbarTooltipShowTimeout === null) {
-            return;
-        }
-
-        window.clearTimeout(this.toolbarTooltipShowTimeout);
-        this.toolbarTooltipShowTimeout = null;
-    }
-
-    /** Cancels a pending toolbar tooltip hide timer. */
-    private cancelToolbarTooltipHide(): void {
-        if (this.toolbarTooltipHideTimeout === null) {
-            return;
-        }
-
-        window.clearTimeout(this.toolbarTooltipHideTimeout);
-        this.toolbarTooltipHideTimeout = null;
-    }
-
-    /** Checks whether the shared toolbar tooltip is currently open. */
-    private isToolbarTooltipVisible(): boolean {
-        return Boolean(this.toolbarTooltip?.hasAttribute("open"));
     }
 
     /** Creates one Web Awesome toolbar button group. */
@@ -1543,7 +1438,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private dispatchMarkdownChange(markdown: string): void {
         this.markdown = markdown;
         this.internals?.setFormValue(markdown);
-        this.markDirty();
+        this.saveController?.markDirty();
         this.updateWordCount();
         this.dispatchEvent(
             new CustomEvent("editor:changed", {
@@ -1613,128 +1508,45 @@ export class MarkdownEditorElement extends HTMLElement {
             const htmxEvent = event as HtmxConfigRequestEvent;
 
             htmxEvent.detail.parameters["markdown"] = markdown;
-            this.lastSubmittedMarkdown = markdown;
+            this.saveController?.markSubmitted(markdown);
         });
         form.addEventListener("htmx:beforeRequest", (): void => {
-            this.markSaving();
+            this.saveController?.markSaving();
         });
         form.addEventListener("htmx:afterRequest", (event: Event): void => {
-            this.handleSaveResponse(event as HtmxAfterRequestEvent);
+            const detail = (event as HtmxAfterRequestEvent).detail;
+            const successful = detail.successful ?? isSuccessfulStatus(detail.xhr?.status);
+
+            if (successful) {
+                this.saveController?.markSucceeded();
+            } else {
+                this.saveController?.markFailed(saveFailureReason(event as HtmxAfterRequestEvent));
+            }
         });
         form.addEventListener("htmx:responseError", (): void => {
-            this.markRetry("connection error");
+            this.saveController?.markFailed("connection error");
         });
         form.addEventListener("htmx:sendError", (): void => {
-            this.markRetry("connection error");
+            this.saveController?.markFailed("connection error");
         });
         form.addEventListener("htmx:timeout", (): void => {
-            this.markRetry("request timed out");
+            this.saveController?.markFailed("request timed out");
         });
     }
 
-    /** Marks the editor dirty after a local content change. */
-    private markDirty(): void {
-        if (this.saveState === "saving") {
-            return;
+    /** Renders the save controller's reported view onto the Save button and error text. */
+    private applySaveView(view: SaveStateView): void {
+        this.setAttribute("data-save-state", view.state);
+
+        if (this.saveButton) {
+            this.saveButton.textContent = view.buttonLabel;
+            setToolbarButtonDisabled(this.saveButton, view.buttonDisabled);
         }
 
-        this.clearSaveTransitionTimeout();
-        this.hideSaveError();
-        this.saveState = "dirty";
-        this.updateSaveButton();
-    }
-
-    /** Marks the current htmx request as an in-progress save. */
-    private markSaving(): void {
-        this.clearSaveTimeout();
-        this.clearSaveTransitionTimeout();
-        this.hideSaveError();
-        this.saveStartedAt = Date.now();
-        this.saveState = "saving";
-        this.updateSaveButton();
-        this.saveTimeout = window.setTimeout((): void => {
-            if (this.saveState === "saving") {
-                this.markRetry("request timed out");
-            }
-        }, 10_000);
-    }
-
-    /** Applies the save state after htmx reports the request outcome. */
-    private handleSaveResponse(event: HtmxAfterRequestEvent): void {
-        const successful = event.detail.successful ?? isSuccessfulStatus(event.detail.xhr?.status);
-
-        if (!successful) {
-            this.markRetry(saveFailureReason(event));
-            return;
+        if (this.saveError) {
+            this.saveError.textContent = view.error ?? "";
+            this.saveError.hidden = view.error === null;
         }
-
-        const remainingSavingTime = 500 - (Date.now() - this.saveStartedAt);
-
-        if (remainingSavingTime <= 0) {
-            this.markSaved();
-            return;
-        }
-
-        this.clearSaveTransitionTimeout();
-        this.saveTransitionTimeout = window.setTimeout((): void => this.markSaved(), remainingSavingTime);
-    }
-
-    /** Marks the submitted Markdown as saved after a positive server response. */
-    private markSaved(): void {
-        this.clearSaveTimeout();
-        this.clearSaveTransitionTimeout();
-        this.hideSaveError();
-        this.saveState = this.toMarkdown() === this.lastSubmittedMarkdown ? "clean" : "dirty";
-        this.updateSaveButton();
-    }
-
-    /** Marks the last save as failed and allows the user to retry. */
-    private markRetry(reason: string): void {
-        this.clearSaveTimeout();
-        this.clearSaveTransitionTimeout();
-        this.saveState = "retry";
-        this.showSaveError(`Save failed: ${reason}`);
-        this.updateSaveButton();
-    }
-
-    /** Clears the outstanding save timeout, if any. */
-    private clearSaveTimeout(): void {
-        if (this.saveTimeout === null) {
-            return;
-        }
-
-        window.clearTimeout(this.saveTimeout);
-        this.saveTimeout = null;
-    }
-
-    /** Clears a delayed save completion transition, if any. */
-    private clearSaveTransitionTimeout(): void {
-        if (this.saveTransitionTimeout === null) {
-            return;
-        }
-
-        window.clearTimeout(this.saveTransitionTimeout);
-        this.saveTransitionTimeout = null;
-    }
-
-    /** Shows a save transport error next to the Save button. */
-    private showSaveError(message: string): void {
-        if (!this.saveError) {
-            return;
-        }
-
-        this.saveError.textContent = message;
-        this.saveError.hidden = false;
-    }
-
-    /** Clears the save transport error. */
-    private hideSaveError(): void {
-        if (!this.saveError) {
-            return;
-        }
-
-        this.saveError.textContent = "";
-        this.saveError.hidden = true;
     }
 
     /** Shows the latest Markdown parse error in the editor chrome. */
@@ -1821,31 +1633,9 @@ export class MarkdownEditorElement extends HTMLElement {
             setToolbarButtonDisabled(button, !this.visualEditor && !this.sourceEditor);
         }
 
-        this.updateSaveButton();
-    }
-
-    /** Reflects the current save state onto the explicit Save button. */
-    private updateSaveButton(): void {
-        this.setAttribute("data-save-state", this.saveState);
-
-        if (!this.saveButton) {
-            return;
+        if (this.saveController) {
+            this.applySaveView(this.saveController.view());
         }
-
-        if (this.saveState === "saving") {
-            this.saveButton.textContent = "Auto-Saving...";
-            setToolbarButtonDisabled(this.saveButton, true);
-            return;
-        }
-
-        if (this.saveState === "retry") {
-            this.saveButton.textContent = "Retry";
-            setToolbarButtonDisabled(this.saveButton, false);
-            return;
-        }
-
-        this.saveButton.textContent = "Save";
-        setToolbarButtonDisabled(this.saveButton, this.saveState === "clean");
     }
 
     /** Updates the word count from the current Markdown document. */

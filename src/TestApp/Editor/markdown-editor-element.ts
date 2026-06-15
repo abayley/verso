@@ -95,6 +95,9 @@ interface HtmxAfterRequestEvent extends Event {
 
 /** Web component that edits one Markdown document through an htmx form. */
 export class MarkdownEditorElement extends HTMLElement {
+    /** Participates in form submission natively (RFC-0001), so htmx and ordinary posts share one value. */
+    static formAssociated = true;
+    private internals: ElementInternals | null = null;
     private body: HTMLDivElement | null = null;
     private activePane: ActivePane | null = null;
     private initialised = false;
@@ -277,11 +280,24 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         this.initialised = true;
+        this.internals = this.attachFormInternals();
+        const fallback = this.fallbackTextarea();
         this.markdown = await this.loadMarkdown();
         this.visualTheme = this.editorVisualTheme();
         this.theme = this.editorTheme();
         this.mode = this.editorMode();
-        this.textContent = "";
+        this.replaceChildren();
+
+        if (fallback) {
+            // Adopt the server-rendered textarea but keep it inert: disabled so it
+            // does not double-submit, hidden so the rich editor renders alone, but
+            // present in the DOM (RFC-0001).
+            fallback.disabled = true;
+            fallback.hidden = true;
+            this.append(fallback);
+        }
+
+        this.internals?.setFormValue(this.markdown);
 
         this.toolbarTooltip = this.createToolbarTooltip();
         this.toolbar = this.createToolbar();
@@ -375,7 +391,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private createDocumentName(): HTMLSpanElement {
         const name = document.createElement("span");
         name.className = "markdown-editor__document-name";
-        const fileName = documentFileName(this.getAttribute("src"));
+        const fileName = documentFileName(this.getAttribute("data-document") ?? this.getAttribute("src"));
         name.textContent = fileName ?? "";
         name.hidden = fileName === null;
 
@@ -1088,11 +1104,33 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /** Loads Markdown from the `src` attribute, or from inline element text. */
+    /** Attaches form internals, tolerating runtimes (e.g. happy-dom) without support. */
+    private attachFormInternals(): ElementInternals | null {
+        try {
+            return this.attachInternals();
+        } catch {
+            return null;
+        }
+    }
+
+    /** The server-rendered Markdown fallback textarea wrapped by this element, if any. */
+    private fallbackTextarea(): HTMLTextAreaElement | null {
+        const element = this.querySelector("textarea");
+
+        return element instanceof HTMLTextAreaElement ? element : null;
+    }
+
     private async loadMarkdown(): Promise<string> {
+        const fallback = this.fallbackTextarea();
+
+        if (fallback) {
+            return fallback.value;
+        }
+
         const src = this.getAttribute("src");
 
         if (!src) {
-            return this.textContent.trim();
+            return this.textContent?.trim() ?? "";
         }
 
         const response = await fetch(src, {
@@ -1504,6 +1542,7 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Records a valid Markdown change and notifies htmx autosave listeners. */
     private dispatchMarkdownChange(markdown: string): void {
         this.markdown = markdown;
+        this.internals?.setFormValue(markdown);
         this.markDirty();
         this.updateWordCount();
         this.dispatchEvent(
@@ -1560,17 +1599,19 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Hooks the editor value into the surrounding htmx form submission. */
     private configureFormSubmission(): void {
         const form = this.closest("form");
-        const field = document.getElementById("markdown-field");
 
-        if (!(form instanceof HTMLFormElement) || !(field instanceof HTMLInputElement)) {
+        if (!(form instanceof HTMLFormElement)) {
             return;
         }
 
+        // The current Markdown reaches the server natively through ElementInternals
+        // (RFC-0001); this also writes it into the htmx request parameters so an
+        // htmx autosave carries the live value regardless of how htmx collects
+        // form-associated custom element values.
         form.addEventListener("htmx:configRequest", (event: Event): void => {
             const markdown = this.toMarkdown();
             const htmxEvent = event as HtmxConfigRequestEvent;
 
-            field.value = markdown;
             htmxEvent.detail.parameters["markdown"] = markdown;
             this.lastSubmittedMarkdown = markdown;
         });

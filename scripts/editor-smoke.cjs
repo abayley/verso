@@ -169,7 +169,7 @@ async function main() {
   await page.waitForFunction(() => document.querySelector(".markdown-editor__error")?.hidden === true);
   await page.getByRole("button", { name: "Save" }).click();
   await waitForSavedDocument(page, quotedSpreadListMarkdown);
-  assert.equal(await page.locator("#markdown-field").inputValue(), quotedSpreadListMarkdown);
+  assert.equal(await formMarkdownValue(page), quotedSpreadListMarkdown);
 
   const listBlockquoteMarkdown = ["- > # blockquote heading 1", "  >", "  > paragraph 1"].join("\n");
   await fillSourceMarkdown(page, ".markdown-editor__source", listBlockquoteMarkdown);
@@ -226,7 +226,7 @@ async function main() {
   await page.getByRole("button", { name: "Save" }).click();
   await waitForSavedDocument(page, sourceMarkdown);
 
-  assert.equal(await page.locator("#markdown-field").inputValue(), sourceMarkdown);
+  assert.equal(await formMarkdownValue(page), sourceMarkdown);
 
   await page.goto(`${baseUrl}/documents/home`);
   assert.equal((await page.locator("body").innerText()).trim(), sourceMarkdown);
@@ -497,7 +497,7 @@ async function main() {
 
   await page.getByRole("button", { name: "Save" }).click();
   await waitForSavedDocument(page, /\*\*Split source paragraph\.\*\*/);
-  assert.match(await page.locator("#markdown-field").inputValue(), /\*\*Split source paragraph\.\*\*/);
+  assert.match(await formMarkdownValue(page), /\*\*Split source paragraph\.\*\*/);
 
   await page.goto(`${baseUrl}/documents/home`);
   assert.match((await page.locator("body").innerText()).trim(), /\*\*Split source paragraph\.\*\*/);
@@ -532,6 +532,30 @@ async function main() {
   assert.equal(await page.locator(".markdown-editor__preview").count(), 0);
 
   assert.deepEqual(consoleErrors, []);
+
+  await assertNoScriptFallback();
+}
+
+/** Progressive enhancement (RFC-0001): with JavaScript disabled the edit page is a
+ * working textarea form that saves through an ordinary post and redirect. */
+async function assertNoScriptFallback() {
+  const context = await browser.newContext({ javaScriptEnabled: false });
+
+  try {
+    const page = await context.newPage();
+    await page.goto(`${baseUrl}/documents/home/edit`);
+
+    const fallbackMarkdown = "# Saved without JavaScript\n\nThe textarea fallback works.";
+    await page.locator("textarea[name='markdown']").fill(fallbackMarkdown);
+    await page.getByRole("button", { name: "Save" }).click();
+
+    // The ordinary post redirects (303) back to the edit page; the document round-trips.
+    await page.waitForURL(`${baseUrl}/documents/home/edit`);
+    await waitForSavedDocument(page, fallbackMarkdown);
+    assert.equal(await page.locator("textarea[name='markdown']").inputValue(), fallbackMarkdown);
+  } finally {
+    await context.close();
+  }
 }
 
 async function assertPortFree() {
@@ -550,6 +574,15 @@ async function sourceMarkdownValue(page, rootSelector = ".markdown-editor__sourc
 
 async function editorMarkdownValue(page) {
   return page.locator("markdown-editor").evaluate((editor) => editor.toMarkdown());
+}
+
+/** The form-associated value the markdown-editor element submits (RFC-0001), via FormData. */
+async function formMarkdownValue(page) {
+  return page.evaluate(() => {
+    const form = document.querySelector("form");
+
+    return form ? new FormData(form).get("markdown") : null;
+  });
 }
 
 async function waitForSavedDocument(page, expected) {

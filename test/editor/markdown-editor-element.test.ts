@@ -812,7 +812,7 @@ describe("MarkdownEditorElement", (): void => {
     });
 
     it("given edited content, when htmx save succeeds, then save returns to clean disabled state after minimum saving time", async (): Promise<void> => {
-        const { editor, field } = await initialiseEditorForm();
+        const { editor } = await initialiseEditorForm();
         vi.useFakeTimers();
 
         selectText(editor, "Plain");
@@ -821,7 +821,7 @@ describe("MarkdownEditorElement", (): void => {
         expect(saveButton(editor).textContent).toBe("Save");
         expect(saveButton(editor).hasAttribute("disabled")).toBe(false);
 
-        dispatchHtmxConfigRequest(editor, field);
+        dispatchHtmxConfigRequest(editor);
         dispatchHtmxRequestEvent(editor, "htmx:beforeRequest");
 
         expect(saveButton(editor).textContent).toBe("Auto-Saving...");
@@ -845,11 +845,11 @@ describe("MarkdownEditorElement", (): void => {
     });
 
     it("given edited content, when htmx save fails with an HTTP status, then save becomes retry and shows the status", async (): Promise<void> => {
-        const { editor, field } = await initialiseEditorForm();
+        const { editor } = await initialiseEditorForm();
 
         selectText(editor, "Plain");
         clickToolbarButton(editor, "Bold");
-        dispatchHtmxConfigRequest(editor, field);
+        dispatchHtmxConfigRequest(editor);
         dispatchHtmxRequestEvent(editor, "htmx:beforeRequest");
 
         dispatchHtmxRequestEvent(editor, "htmx:afterRequest", { successful: false, xhr: { status: 500 } });
@@ -861,11 +861,11 @@ describe("MarkdownEditorElement", (): void => {
     });
 
     it("given edited content, when htmx cannot send the save request, then save shows a connection error", async (): Promise<void> => {
-        const { editor, field } = await initialiseEditorForm();
+        const { editor } = await initialiseEditorForm();
 
         selectText(editor, "Plain");
         clickToolbarButton(editor, "Bold");
-        dispatchHtmxConfigRequest(editor, field);
+        dispatchHtmxConfigRequest(editor);
         dispatchHtmxRequestEvent(editor, "htmx:beforeRequest");
 
         dispatchHtmxRequestEvent(editor, "htmx:sendError");
@@ -877,12 +877,12 @@ describe("MarkdownEditorElement", (): void => {
     });
 
     it("given auto-save starts, when no response arrives within ten seconds, then save becomes retry and shows an error", async (): Promise<void> => {
-        const { editor, field } = await initialiseEditorForm();
+        const { editor } = await initialiseEditorForm();
         vi.useFakeTimers();
 
         selectText(editor, "Plain");
         clickToolbarButton(editor, "Bold");
-        dispatchHtmxConfigRequest(editor, field);
+        dispatchHtmxConfigRequest(editor);
         dispatchHtmxRequestEvent(editor, "htmx:beforeRequest");
 
         vi.advanceTimersByTime(10_000);
@@ -1313,6 +1313,44 @@ describe("MarkdownEditorElement studio surfaces", (): void => {
     });
 });
 
+describe("MarkdownEditorElement form participation", (): void => {
+    afterEach((): void => {
+        document.body.textContent = "";
+    });
+
+    it("given an element wrapping a textarea, when initialised, then it adopts the content and disables the textarea", async (): Promise<void> => {
+        const form = document.createElement("form");
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        const textarea = document.createElement("textarea");
+        textarea.name = "markdown";
+        textarea.value = "# Adopted\n\nFrom the textarea.";
+        editor.append(textarea);
+        form.append(editor);
+        document.body.append(form);
+        await waitForInitialisation();
+
+        expect(editor.toMarkdown()).toContain("# Adopted");
+        expect(editor.toMarkdown()).toContain("From the textarea.");
+        expect(textarea.disabled).toBe(true);
+        expect(editor.contains(textarea)).toBe(true);
+    });
+
+    it("given a wrapped textarea, when initialised, then the rich editor renders and the textarea is hidden", async (): Promise<void> => {
+        const form = document.createElement("form");
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        const textarea = document.createElement("textarea");
+        textarea.name = "markdown";
+        textarea.value = "Plain paragraph";
+        editor.append(textarea);
+        form.append(editor);
+        document.body.append(form);
+        await waitForInitialisation();
+
+        expect(editor.querySelector(".markdown-editor__surface .ProseMirror")).toBeInstanceOf(HTMLElement);
+        expect(textarea.hidden).toBe(true);
+    });
+});
+
 /** Mounts a visual-mode editor with the given Markdown and waits for it to initialise. */
 async function mountStudioEditor(markdown: string): Promise<MarkdownEditorElement> {
     const editor = document.createElement(elementName) as MarkdownEditorElement;
@@ -1595,33 +1633,30 @@ function saveError(editor: Element): HTMLElement {
 }
 
 /** Creates an editor inside the same htmx form shape used by TestApp. */
-async function initialiseEditorForm(): Promise<{ editor: MarkdownEditorElement; field: HTMLInputElement }> {
+async function initialiseEditorForm(): Promise<{ editor: MarkdownEditorElement }> {
     const form = document.createElement("form");
     const editor = document.createElement(elementName) as MarkdownEditorElement;
-    const field = document.createElement("input");
-    field.id = "markdown-field";
-    field.name = "markdown";
-    field.type = "hidden";
     editor.textContent = "Plain paragraph";
-    form.append(editor, field);
+    form.append(editor);
     document.body.append(form);
     await waitForInitialisation();
 
-    return { editor, field };
+    return { editor };
 }
 
-/** Dispatches the htmx config request event used to copy Markdown into transport parameters. */
-function dispatchHtmxConfigRequest(editor: Element, field: HTMLInputElement): void {
+/** Dispatches the htmx config request event and asserts the live Markdown reaches the request parameters. */
+function dispatchHtmxConfigRequest(editor: Element): void {
+    const parameters: Record<string, unknown> = {};
     editor.dispatchEvent(
         new CustomEvent("htmx:configRequest", {
             bubbles: true,
             detail: {
-                parameters: {},
+                parameters,
             },
         }),
     );
 
-    expect(field.value).toBe((editor as MarkdownEditorElement).toMarkdown());
+    expect(parameters["markdown"]).toBe((editor as MarkdownEditorElement).toMarkdown());
 }
 
 /** Dispatches an htmx request lifecycle event from the editor form. */

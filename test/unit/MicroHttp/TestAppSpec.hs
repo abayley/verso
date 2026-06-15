@@ -23,10 +23,15 @@ spec =
             bodyText response `shouldInclude` "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
             bodyText response `shouldInclude` "hx-trigger=\"submit, editor:changed delay:2s from:markdown-editor\""
             bodyText response `shouldInclude` "hx-swap=\"none\""
-            bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" src=\"/documents/home\"></markdown-editor>"
-            bodyText response `shouldInclude` "<input type=\"hidden\" name=\"markdown\" id=\"markdown-field\">"
+            bodyText response `shouldInclude` "action=\"/documents/home\""
+            bodyText response `shouldInclude` "method=\"post\""
+            bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" data-document=\"home\">"
+            bodyText response `shouldInclude` "<textarea name=\"markdown\" aria-label=\"Markdown source\" class=\"markdown-editor__fallback\">"
+            bodyText response `shouldInclude` "# Hello from MicroHttp\n\nEdit this Markdown document."
+            bodyText response `shouldInclude` "<noscript><button type=\"submit\">Save</button></noscript>"
+            bodyText response `shouldNotInclude` "src=\"/documents/home\""
+            bodyText response `shouldNotInclude` "id=\"markdown-field\""
             bodyText response `shouldNotInclude` "id=\"save-status\""
-            bodyText response `shouldNotInclude` "# Hello from MicroHttp"
         it "given a configured editor theme default, when routing the editor, then it is emitted on the page" $ do
             response <- runThemedApp "aurora" (request GET ["documents", "home", "edit"])
             bodyText response `shouldInclude` "data-editor-theme=\"aurora\""
@@ -39,40 +44,54 @@ spec =
         it "given source mode editor request, when routing, then source mode is selected" $ do
             response <- runApp ((request GET ["documents", "home", "edit"]){requestQuery = [("mode", "source")]}) ""
             statusCode (responseStatus response) `shouldBe` 200
-            bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" mode=\"source\" src=\"/documents/home\"></markdown-editor>"
+            bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" data-document=\"home\" mode=\"source\">"
         it "given split mode editor request, when routing, then split mode is selected" $ do
             response <- runApp ((request GET ["documents", "home", "edit"]){requestQuery = [("mode", "split")]}) ""
             statusCode (responseStatus response) `shouldBe` 200
-            bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" mode=\"split\" src=\"/documents/home\"></markdown-editor>"
+            bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" data-document=\"home\" mode=\"split\">"
         it "given markdown form post, when routing, then save status fragment is returned" $ do
-            response <- runApp (request POST ["documents", "home"]) "markdown=%23+Saved+heading"
+            response <- runApp (htmxPost ["documents", "home"]) "markdown=%23+Saved+heading"
             statusCode (responseStatus response) `shouldBe` 200
             bodyText response `shouldBe` "<p id=\"save-status\">Saved Markdown document: # Saved heading</p>"
         it "given source markdown form post, when routing, then exact markdown is returned" $ do
-            response <- runApp (request POST ["documents", "home"]) "markdown=%23+Saved+heading%0A%0AExact+paragraph."
+            response <- runApp (htmxPost ["documents", "home"]) "markdown=%23+Saved+heading%0A%0AExact+paragraph."
             statusCode (responseStatus response) `shouldBe` 200
             bodyText response `shouldBe` "<p id=\"save-status\">Saved Markdown document: # Saved heading\n\nExact paragraph.</p>"
         it "given fenced code markdown form post, when routing, then save status fragment is returned" $ do
-            response <- runApp (request POST ["documents", "home"]) "markdown=%60%60%60typescript%0Aconst+value+%3D+1%3B%0A%60%60%60"
+            response <- runApp (htmxPost ["documents", "home"]) "markdown=%60%60%60typescript%0Aconst+value+%3D+1%3B%0A%60%60%60"
             statusCode (responseStatus response) `shouldBe` 200
             bodyText response `shouldBe` "<p id=\"save-status\">Saved Markdown document: ```typescript\nconst value = 1;\n```</p>"
         it "given blockquote markdown form post, when routing, then save status fragment is returned" $ do
-            response <- runApp (request POST ["documents", "home"]) "markdown=%3E+Quoted+text."
+            response <- runApp (htmxPost ["documents", "home"]) "markdown=%3E+Quoted+text."
             statusCode (responseStatus response) `shouldBe` 200
             bodyText response `shouldBe` "<p id=\"save-status\">Saved Markdown document: &gt; Quoted text.</p>"
         it "given blockquoted ordered list with fenced code, when routing, then save status fragment is returned" $ do
-            response <- runApp (request POST ["documents", "home"]) "markdown=%3E+1.+xxx%0A%3E+2.+yyy%0A%3E++++%0A%3E++++%60%60%60typescript%0A%3E++++export+type+EditorBlock+%3D+BlockquoteBlock+%7C+CodeBlock+%7C+HeadingBlock+%7C+HorizontalRuleBlock+%7C+ListBlock+%7C+ParagraphBlock%3B%0A%3E++++%60%60%60"
+            response <- runApp (htmxPost ["documents", "home"]) "markdown=%3E+1.+xxx%0A%3E+2.+yyy%0A%3E++++%0A%3E++++%60%60%60typescript%0A%3E++++export+type+EditorBlock+%3D+BlockquoteBlock+%7C+CodeBlock+%7C+HeadingBlock+%7C+HorizontalRuleBlock+%7C+ListBlock+%7C+ParagraphBlock%3B%0A%3E++++%60%60%60"
             statusCode (responseStatus response) `shouldBe` 200
             bodyText response `shouldInclude` "Saved Markdown document: &gt; 1. xxx"
             bodyText response `shouldInclude` "export type EditorBlock"
         it "given raw html form post, when routing, then validation fragment is returned" $ do
-            response <- runApp (request POST ["documents", "home"]) "markdown=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
+            response <- runApp (htmxPost ["documents", "home"]) "markdown=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
             statusCode (responseStatus response) `shouldBe` 200
             bodyText response `shouldBe` "<p id=\"save-status\">Unsupported Markdown: raw HTML is not supported in this spike.</p>"
         it "given unsupported markdown form post, when routing, then validation fragment is returned" $ do
-            response <- runApp (request POST ["documents", "home"]) "markdown=%60%60%60typescript%0Aunterminated"
+            response <- runApp (htmxPost ["documents", "home"]) "markdown=%60%60%60typescript%0Aunterminated"
             statusCode (responseStatus response) `shouldBe` 200
             bodyText response `shouldBe` "<p id=\"save-status\">Unsupported Markdown: unsupported block syntax.</p>"
+        it "given a form post with CRLF newlines, when saving, then they are normalised to line feeds" $ do
+            response <- runApp (htmxPost ["documents", "home"]) "markdown=Line+one%0D%0A%0D%0ALine+two"
+            statusCode (responseStatus response) `shouldBe` 200
+            bodyText response `shouldBe` "<p id=\"save-status\">Saved Markdown document: Line one\n\nLine two</p>"
+        it "given a non-htmx valid post, when saving, then it redirects to the edit page" $ do
+            response <- runApp (request POST ["documents", "home"]) "markdown=%23+Saved+heading"
+            statusCode (responseStatus response) `shouldBe` 303
+            responseHeaders response `shouldBe` [(normaliseHeaderName (BS.pack "Location"), BS.pack "/documents/home/edit")]
+        it "given a non-htmx invalid post, when validating, then the edit page is re-rendered with the message and the escaped submission" $ do
+            response <- runApp (request POST ["documents", "home"]) "markdown=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
+            statusCode (responseStatus response) `shouldBe` 200
+            bodyText response `shouldInclude` "Unsupported Markdown: raw HTML is not supported in this spike."
+            bodyText response `shouldInclude` "<textarea name=\"markdown\""
+            bodyText response `shouldInclude` "&lt;script&gt;alert(1)&lt;/script&gt;"
         it "given saved markdown document, when routing document page, then raw markdown is returned" $ do
             response <- runApp (request GET ["documents", "home"]) ""
             statusCode (responseStatus response) `shouldBe` 200
@@ -87,6 +106,13 @@ request method path =
     emptyRequestHead
         { requestMethod = method
         , requestPath = path
+        }
+
+-- | A POST carrying the @hx-request@ header, as htmx sends.
+htmxPost :: [String] -> RequestHead
+htmxPost path =
+    (request POST path)
+        { requestHeaders = [(normaliseHeaderName (BS.pack "hx-request"), BS.pack "true")]
         }
 
 {- | Runs the test application over a request head and body, returning the

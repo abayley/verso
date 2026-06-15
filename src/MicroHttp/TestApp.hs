@@ -95,9 +95,9 @@ routes :: String -> DocumentStore -> [Router.Route]
 routes editorThemeDefault store =
     [ Router.get "/" index
     , Router.get "/index.html" index
-    , Router.get "/documents/:id/edit" (editDocument editorThemeDefault)
+    , Router.get "/documents/:id/edit" (editDocument editorThemeDefault store)
     , Router.get "/documents/:id" (showDocument store)
-    , Router.post "/documents/:id" (saveDocument store)
+    , Router.post "/documents/:id" (saveDocument editorThemeDefault store)
     , Static.static "/static/editor" "static/editor"
     ]
 
@@ -105,25 +105,38 @@ index :: Router.Handler
 index _ _ =
     pure (documentResponse indexPage)
 
-editDocument :: String -> Router.Handler
-editDocument editorThemeDefault captures request =
+editDocument :: String -> DocumentStore -> Router.Handler
+editDocument editorThemeDefault store captures request = do
     let docId = documentId captures
-     in pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault))
+    content <- liftIO (loadDocument store docId)
+    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault content Nothing))
 
 showDocument :: DocumentStore -> Router.Handler
 showDocument store captures _ = do
     markdown <- liftIO (loadDocument store (documentId captures))
     pure (markdownResponse markdown)
 
-saveDocument :: DocumentStore -> Router.Handler
-saveDocument store captures _ = do
+{- | Saves a posted Markdown document, answering both htmx and ordinary form
+posts from one route (RFC-0001). An htmx request (the @hx-request@ header is
+present) keeps the status-fragment behaviour; an ordinary form post follows
+post-redirect-get on success (@303@ back to the edit page) and re-renders the
+edit page with the validation message and the submitted Markdown on failure.
+-}
+saveDocument :: String -> DocumentStore -> Router.Handler
+saveDocument editorThemeDefault store captures request = do
     bodyBytes <- readBodyStrict (StreamParseError BodyTooLarge) formBodyLimit
     let markdown = markdownFromBody bodyBytes
+        docId = documentId captures
     case validateMarkdown markdown of
-        Just err -> pure (htmlResponseChunks (validationStatusFragment err))
+        Just err
+            | isHtmxRequest request -> pure (htmlResponseChunks (validationStatusFragment err))
+            | otherwise ->
+                pure (documentResponse (editorPage docId Nothing editorThemeDefault markdown (Just err)))
         Nothing -> do
-            liftIO (saveDocumentContent store (documentId captures) markdown)
-            pure (htmlResponseChunks (saveStatusFragment markdown))
+            liftIO (saveDocumentContent store docId markdown)
+            if isHtmxRequest request
+                then pure (htmlResponseChunks (saveStatusFragment markdown))
+                else pure (seeOtherResponse ("/documents/" ++ docId ++ "/edit"))
 
 -- | The handler's own body bound; the server pipeline also caps the body.
 formBodyLimit :: Int
@@ -152,6 +165,23 @@ markdownResponse body =
         Http.okStatus
         [(Http.normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/markdown")]
         (Http.StrictBody (BS.pack body))
+
+-- | A @303 See Other@ redirect to the given location, with an empty body.
+seeOtherResponse :: String -> Http.Response
+seeOtherResponse location =
+    Http.Response
+        (Http.Status 303 "See Other")
+        [(Http.normaliseHeaderName (BS.pack "Location"), BS.pack location)]
+        (Http.StrictBody (BS.pack ""))
+
+{- | Whether a request came from htmx, identified by the @hx-request@ header
+(request header names are normalised to lower case at parse time, RFC-0001).
+-}
+isHtmxRequest :: Http.RequestHead -> Bool
+isHtmxRequest req =
+    any (\(key, _) -> key == hxRequestHeader) (Http.requestHeaders req)
+  where
+    hxRequestHeader = Http.normaliseHeaderName (BS.pack "hx-request")
 
 capture :: String -> Router.Captures -> String
 capture _ [] = ""
@@ -196,7 +226,17 @@ editorMode request =
 
 markdownFromBody :: BS.ByteString -> String
 markdownFromBody bytes =
-    capture "markdown" (formFields (BS.unpack bytes))
+    normaliseNewlines (capture "markdown" (formFields (BS.unpack bytes)))
+
+{- | Canonicalises line endings to @\\n@. A no-JavaScript form post encodes
+textarea newlines as @CRLF@ (HTML form submission, RFC-0001), so the document
+contract stays line-feed only regardless of submission mode.
+-}
+normaliseNewlines :: String -> String
+normaliseNewlines [] = []
+normaliseNewlines ('\r' : '\n' : rest) = '\n' : normaliseNewlines rest
+normaliseNewlines ('\r' : rest) = '\n' : normaliseNewlines rest
+normaliseNewlines (c : rest) = c : normaliseNewlines rest
 
 formFields :: String -> [(String, String)]
 formFields "" = []
@@ -266,8 +306,16 @@ editorThemeBootstrapScript =
         ++ "if(s==='dark'){r.classList.add('wa-dark');}else if(s==='light'){r.classList.add('wa-light');}"
         ++ "}catch(e){}})();</script>"
 
-editorPage :: String -> Maybe String -> String -> Html.Html ()
-editorPage docId mode themeDefault =
+{- | The Markdown editor page (RFC-0001). It is a complete, server-rendered form
+that works without JavaScript: a @\<textarea name="markdown"\>@ holding the
+current document inside the @\<markdown-editor\>@ element, and a no-script submit
+button. When scripting is available the element adopts the textarea, participates
+in form submission through @ElementInternals@, and htmx autosaves; the textarea
+is disabled so it does not double-submit. @maybeError@ re-renders a validation
+message after a failed ordinary post.
+-}
+editorPage :: String -> Maybe String -> String -> String -> Maybe String -> Html.Html ()
+editorPage docId mode themeDefault content maybeError =
     Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
@@ -280,19 +328,26 @@ editorPage docId mode themeDefault =
         Html.body [Html.class_ "markdown-editor-page"] $ do
             Html.main [] $ do
                 Html.form_
-                    [ Html.hxPost ("/documents/" ++ docId)
+                    [ Html.attr "action" ("/documents/" ++ docId)
+                    , Html.attr "method" "post"
+                    , Html.hxPost ("/documents/" ++ docId)
                     , Html.hxSwap "none"
                     , Html.attr "hx-trigger" "submit, editor:changed delay:2s from:markdown-editor"
                     ]
                     $ do
+                        maybe (return ()) validationStatusFragment maybeError
                         Html.custom
                             "markdown-editor"
-                            ( [Html.attr "name" "markdown"]
+                            ( [Html.attr "name" "markdown", Html.attr "data-document" docId]
                                 ++ maybe [] (\m -> [Html.attr "mode" m]) mode
-                                ++ [Html.attr "src" ("/documents/" ++ docId)]
                             )
-                            (return ())
-                        Html.input [Html.attr "type" "hidden", Html.attr "name" "markdown", Html.attr "id" "markdown-field"]
+                            ( Html.custom
+                                "textarea"
+                                [Html.attr "name" "markdown", Html.attr "aria-label" "Markdown source", Html.class_ "markdown-editor__fallback"]
+                                (Html.text content)
+                            )
+                        Html.custom "noscript" [] $
+                            Html.button_ [Html.attr "type" "submit"] (Html.text "Save")
 
 seededMarkdown :: String
 seededMarkdown =

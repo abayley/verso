@@ -1,11 +1,11 @@
 ---
 id: RFC-0001
 name: Editor Progressive Enhancement
-status: Draft
+status: Implemented
 owners:
     - alistair
 created: 2026-06-10
-updated: 2026-06-10
+updated: 2026-06-15
 supersedes: []
 superseded_by: null
 ---
@@ -15,8 +15,8 @@ superseded_by: null
 | Stage     | Timestamp        |
 |-----------|------------------|
 | Authored  | 2026-06-10       |
-| Started   |                  |
-| Completed |                  |
+| Started   | 2026-06-15 20:50 |
+| Completed | 2026-06-15 21:29 |
 
 ## Summary
 
@@ -168,22 +168,36 @@ Test cases, simplest to most complex:
 
 ## Rollout Plan
 
+Note: the textarea and the hidden input cannot coexist (both name `markdown`,
+first-wins form parsing), so the page-structure and element changes landed
+together to keep the app working at every commit, rather than as the literal
+three-phase split.
+
 1. Phase one: server-rendered fallback form and dual-mode post handling
    (test cases 1 to 4).
-   - [ ] Render the textarea form from `editorPage` with document content.
-   - [ ] Branch `POST /documents/:id` on the `hx-request` header.
-   - [ ] Post-redirect-get and validation re-render for non-htmx posts.
+   - [x] Render the textarea form from `editorPage` with document content (and a
+         `<noscript>` submit button).
+   - [x] Branch `POST /documents/:id` on the `hx-request` header.
+   - [x] Post-redirect-get (`303` to the edit page) and validation re-render for
+         non-htmx posts; integration test confirms persistence + redirect.
+   - [x] Normalise CRLF to LF on form posts (browsers encode textarea newlines as
+         CRLF) so the document contract stays line-feed only.
 2. Phase two: element adoption and form participation (test cases 5, 6, 8).
-   - [ ] Adopt wrapped textarea content as initial Markdown.
-   - [ ] Add `ElementInternals` form participation and keep the value
-         current.
-   - [ ] Verify htmx submission carries the element's form value.
-3. Phase three: remove legacy plumbing and extend smoke coverage (test case
-   7).
-   - [ ] Remove the hidden input and the `configRequest` value copy.
-   - [ ] Stop using `src` on the edit page; decide the document-name source.
-   - [ ] Add the JavaScript-disabled smoke pass.
-   - [ ] Flip RFC status and record the outcome in the spike document.
+   - [x] Adopt the wrapped textarea as initial Markdown; disable + hide it but
+         keep it in the DOM.
+   - [x] `static formAssociated` + `ElementInternals` (guarded for runtimes
+         without support); `setFormValue` on init and on every change. Document
+         name from the explicit `data-document` attribute; `src` no longer used
+         on the edit page (still supported for embedding).
+   - [x] Verified in the browser that `FormData` carries the element's value and
+         the htmx autosave round-trips without the hidden field.
+3. Phase three: remove legacy plumbing and extend smoke coverage (test case 7).
+   - [x] Removed the hidden `#markdown-field`; the `configRequest` hook is kept
+         only to set the htmx request parameter (no hidden field), as a robust
+         complement to `ElementInternals`.
+   - [x] Added a JavaScript-disabled browser smoke pass (textarea form posts,
+         redirects, round-trips) and a JS pass asserting the value via `FormData`.
+   - [x] Flipped RFC status; recorded the outcome (ADR-039).
 
 ### Rollout Plan Escape Hatch
 
@@ -197,13 +211,26 @@ Test cases, simplest to most complex:
 
 ## Open Questions
 
-- Does `happy-dom` implement `ElementInternals.setFormValue` well enough for
-  unit-level form-value tests, or does that assertion belong in the browser
-  smoke script?
-- Does htmx 2 parameter collection include form-associated custom element
-  values built from `FormData`? Verify early in phase two; the fallback is a
-  `formdata` event listener on the form.
-- Where should the displayed document name derive from once the edit page
-  stops using `src`: the form action, or an explicit attribute?
-- Should the adopted textarea stay in the DOM for assistive technology, or
-  be removed after upgrade?
+Resolved during implementation (2026-06-15):
+
+- **`happy-dom` and `ElementInternals`:** `attachInternals` is called behind a
+  try/catch so an unsupporting runtime degrades to `null`; the unit (vitest)
+  tests therefore assert the value path through the htmx `configRequest`
+  parameter rather than `setFormValue`, and the browser smoke confirms the real
+  `FormData` value. No reliance on happy-dom form-internals support.
+- **htmx 2 and form-associated values:** confirmed in the browser that
+  `new FormData(form).get("markdown")` returns the element's value, so htmx's
+  FormData-based collection carries it without the hidden field. The
+  `configRequest` parameter set is retained as a robust complement (it also
+  guarantees the value regardless of how htmx collects), so the `formdata`-event
+  fallback was unnecessary.
+- **Document name source:** an explicit `data-document` attribute on
+  `<markdown-editor>` (not the form action); the element falls back to `src` for
+  embedding contexts.
+- **Adopted textarea:** kept in the DOM, disabled and hidden, so the value flows
+  through `ElementInternals` without a destructive removal.
+- **Newline encoding (found during the no-JS smoke):** HTML form submission
+  encodes textarea newlines as CRLF, so the server normalises CRLF to LF on the
+  form-post path, keeping the document contract line-feed only across both modes.
+
+None outstanding.

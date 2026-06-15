@@ -225,7 +225,7 @@ the pre-paint bootstrap validate against this set, so an unknown configured or
 stored value falls back to Paper.
 -}
 knownEditorThemes :: [String]
-knownEditorThemes = ["paper", "aurora"]
+knownEditorThemes = ["paper", "aurora", "blueprint", "herbarium"]
 
 -- | Validates a configured default theme name, falling back to @paper@.
 safeEditorTheme :: String -> String
@@ -241,7 +241,7 @@ so a tampered stored value cannot inject an attribute payload.
 editorThemeBootstrapScript :: String
 editorThemeBootstrapScript =
     "<script>(function(){try{"
-        ++ "var K=['paper','aurora'];var r=document.documentElement;"
+        ++ "var K=['paper','aurora','blueprint','herbarium'];var r=document.documentElement;"
         ++ "var t=localStorage.getItem('editor-theme');"
         ++ "if(t&&K.indexOf(t)>=0){r.setAttribute('data-editor-theme',t);}"
         ++ "var s=localStorage.getItem('editor-color-scheme');"

@@ -10,7 +10,7 @@ import {
 
 type EditorMode = "visual" | "source" | "split";
 type EditorTheme = "light" | "dark" | "match-system";
-type VisualTheme = "paper" | "aurora";
+type VisualTheme = "paper" | "aurora" | "blueprint" | "herbarium";
 type ActivePane = "source" | "visual";
 type SaveState = "clean" | "dirty" | "saving" | "retry";
 type ToolbarButtonElement = HTMLElement;
@@ -26,6 +26,8 @@ const colorSchemeStorageKey = "editor-color-scheme";
 const visualThemes: { value: VisualTheme; label: string }[] = [
     { value: "paper", label: "Paper" },
     { value: "aurora", label: "Aurora" },
+    { value: "blueprint", label: "Blueprint" },
+    { value: "herbarium", label: "Herbarium" },
 ];
 
 let tooltipTargetSequence = 0;

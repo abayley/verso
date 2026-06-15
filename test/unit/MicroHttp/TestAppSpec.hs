@@ -27,6 +27,12 @@ spec =
             bodyText response `shouldInclude` "<input type=\"hidden\" name=\"markdown\" id=\"markdown-field\">"
             bodyText response `shouldNotInclude` "id=\"save-status\""
             bodyText response `shouldNotInclude` "# Hello from MicroHttp"
+        it "given a configured editor theme default, when routing the editor, then it is emitted on the page" $ do
+            response <- runThemedApp "aurora" (request GET ["documents", "home", "edit"])
+            bodyText response `shouldInclude` "data-editor-theme=\"aurora\""
+        it "given an unknown configured editor theme default, when routing the editor, then it falls back to paper" $ do
+            response <- runThemedApp "bogus-theme" (request GET ["documents", "home", "edit"])
+            bodyText response `shouldInclude` "data-editor-theme=\"paper\""
         it "given source mode editor request, when routing, then source mode is selected" $ do
             response <- runApp ((request GET ["documents", "home", "edit"]){requestQuery = [("mode", "source")]}) ""
             statusCode (responseStatus response) `shouldBe` 200
@@ -95,15 +101,27 @@ framing, so the tests can pass a 'RequestHead' directly. The store is in
 memory, so this stays a unit test with no filesystem effects.
 -}
 testApp :: RequestHead -> Iter StreamError Response
-testApp =
-    Router.route
-        ( TestApp.routes
-            "paper"
-            TestApp.DocumentStore
-                { TestApp.loadDocument = \_ -> return "# Hello from MicroHttp\n\nEdit this Markdown document."
-                , TestApp.saveDocumentContent = \_ _ -> return ()
-                }
-        )
+testApp = themedApp "paper"
+
+-- | Routes through the test store with a chosen editor theme default.
+themedApp :: String -> RequestHead -> Iter StreamError Response
+themedApp themeDefault =
+    Router.route (TestApp.routes themeDefault testStore)
+
+testStore :: TestApp.DocumentStore
+testStore =
+    TestApp.DocumentStore
+        { TestApp.loadDocument = \_ -> return "# Hello from MicroHttp\n\nEdit this Markdown document."
+        , TestApp.saveDocumentContent = \_ _ -> return ()
+        }
+
+-- | Renders the editor page for a request through an app with the given theme default.
+runThemedApp :: String -> RequestHead -> IO Response
+runThemedApp themeDefault head = do
+    outcome <- strictEnumerator (BS.pack "") (themedApp themeDefault head) >>= run
+    case outcome of
+        Right response -> return response
+        Left err -> expectFailure err
 
 expectFailure :: StreamError -> IO Response
 expectFailure err = do

@@ -426,3 +426,106 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   backdrop-filter: blur(18px) saturate(125%);
   box-shadow: 0 10px 30px rgba(12, 16, 34, 0.18);
 }
+
+/* --- Blueprint: a technical drawing, light (white print) and dark (cyanotype). --- */
+:root[data-editor-theme="blueprint"] {
+  --markdown-editor-accent: #2b5c8a;
+  --markdown-editor-background: #eef3f8;
+  --markdown-editor-code-background: rgba(43, 92, 138, 0.06);
+  --markdown-editor-code-border: rgba(43, 92, 138, 0.22);
+  --markdown-editor-divider: rgba(43, 92, 138, 0.20);
+  --markdown-editor-error-accent: #a84545;
+  --markdown-editor-error-text: #8f3a3a;
+  --markdown-editor-muted: #5a7a96;
+  --markdown-editor-pill-background: rgba(255, 255, 255, 0.82);
+  --markdown-editor-pill-border: rgba(43, 92, 138, 0.30);
+  --markdown-editor-quote-border: rgba(43, 92, 138, 0.35);
+  --markdown-editor-save-clean: #1f8a63;
+  --markdown-editor-save-dirty: #b07d2a;
+  --markdown-editor-save-retry: #a84545;
+  --markdown-editor-text: #1c3a52;
+  --blueprint-grid: rgba(43, 92, 138, 0.12);
+}
+
+:root[data-editor-theme="blueprint"].wa-dark {
+  --markdown-editor-accent: #9fd0ff;
+  --markdown-editor-background: #0e2f4d;
+  --markdown-editor-code-background: rgba(159, 208, 255, 0.08);
+  --markdown-editor-code-border: rgba(159, 208, 255, 0.22);
+  --markdown-editor-divider: rgba(159, 208, 255, 0.20);
+  --markdown-editor-error-accent: #ff9a9a;
+  --markdown-editor-error-text: #ffb3b3;
+  --markdown-editor-muted: #84acd4;
+  --markdown-editor-pill-background: rgba(10, 36, 60, 0.72);
+  --markdown-editor-pill-border: rgba(159, 208, 255, 0.35);
+  --markdown-editor-quote-border: rgba(159, 208, 255, 0.40);
+  --markdown-editor-save-clean: #6fe3b0;
+  --markdown-editor-save-dirty: #ffcf6b;
+  --markdown-editor-save-retry: #ff9a9a;
+  --markdown-editor-text: #e7f1ff;
+  --blueprint-grid: rgba(159, 208, 255, 0.14);
+}
+
+:root[data-editor-theme="blueprint"] body.markdown-editor-page {
+  background:
+    linear-gradient(var(--blueprint-grid) 1px, transparent 1px) 0 0 / 26px 26px,
+    linear-gradient(90deg, var(--blueprint-grid) 1px, transparent 1px) 0 0 / 26px 26px,
+    var(--markdown-editor-background);
+  background-attachment: fixed;
+}
+
+:root[data-editor-theme="blueprint"] .markdown-editor__body {
+  background: var(--markdown-editor-pill-background);
+  border: 1px solid var(--markdown-editor-pill-border);
+  border-radius: 4px;
+  margin-block: 0.75rem;
+  padding: 1.5rem 2rem;
+}
+
+/* --- Herbarium: a naturalist journal on ruled paper, light and dark. --- */
+:root[data-editor-theme="herbarium"] {
+  --markdown-editor-accent: #a8693d;
+  --markdown-editor-background: #f3efe2;
+  --markdown-editor-code-background: #ece5d3;
+  --markdown-editor-code-border: #d8d0ba;
+  --markdown-editor-divider: #d8d0ba;
+  --markdown-editor-error-accent: #9a3b3b;
+  --markdown-editor-error-text: #8a3434;
+  --markdown-editor-muted: #8a8268;
+  --markdown-editor-pill-background: #fbf8ef;
+  --markdown-editor-pill-border: #ccc3a8;
+  --markdown-editor-quote-border: #c9bfa0;
+  --markdown-editor-save-clean: #5f7a4a;
+  --markdown-editor-save-dirty: #a8693d;
+  --markdown-editor-save-retry: #9a3b3b;
+  --markdown-editor-text: #4a4334;
+  --herbarium-rule: #ddd5bf;
+}
+
+:root[data-editor-theme="herbarium"].wa-dark {
+  --markdown-editor-accent: #d09a63;
+  --markdown-editor-background: #221f18;
+  --markdown-editor-code-background: #2b2719;
+  --markdown-editor-code-border: #4a4334;
+  --markdown-editor-divider: #4a4334;
+  --markdown-editor-error-accent: #e08a8a;
+  --markdown-editor-error-text: #f0b0b0;
+  --markdown-editor-muted: #9a917b;
+  --markdown-editor-pill-background: #2b2719;
+  --markdown-editor-pill-border: #4a4334;
+  --markdown-editor-quote-border: #57503a;
+  --markdown-editor-save-clean: #9bb07a;
+  --markdown-editor-save-dirty: #d8a35a;
+  --markdown-editor-save-retry: #e08a8a;
+  --markdown-editor-text: #e6e0cf;
+  --herbarium-rule: #3a3527;
+}
+
+:root[data-editor-theme="herbarium"] .markdown-editor__body {
+  background-image: repeating-linear-gradient(
+    var(--markdown-editor-background),
+    var(--markdown-editor-background) 27px,
+    var(--herbarium-rule) 27px,
+    var(--herbarium-rule) 28px
+  );
+}

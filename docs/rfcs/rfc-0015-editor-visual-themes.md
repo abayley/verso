@@ -242,15 +242,15 @@ rather than a half-version.
 ## Rollout Plan
 
 1. Phase one: the mechanism and the first visual theme.
-   - [ ] `data-editor-theme` axis, token contract, and the default `paper`
+   - [x] `data-editor-theme` axis, token contract, and the default `paper`
          mapping in `markdown-editor.css` (no visual change to the default).
-   - [ ] Theme dropdown, `localStorage` persistence for both axes, the validated
+   - [x] Theme dropdown, `localStorage` persistence for both axes, the validated
          pre-paint bootstrap, and the `editor_theme` config default (fallback
          only). `make check` green.
-   - [ ] Aurora theme (neutral, light and dark, plus its glass/gradient layer).
+   - [x] Aurora theme (neutral, light and dark, plus its glass/gradient layer).
 2. Phase two: the remaining visual-only themes.
-   - [ ] Blueprint and Herbarium (tokens plus their structural layers).
-   - [ ] Behaviour tests for selection, persistence, independence, fallback, and
+   - [x] Blueprint and Herbarium (tokens plus their structural layers).
+   - [x] Behaviour tests for selection, persistence, independence, fallback, and
          the config default.
 3. Phase three: the layout-bearing theme.
    - [ ] Workbench (tokens, status-bar chrome, Split and line-number presets).

@@ -1042,6 +1042,106 @@ describe("MarkdownEditorElement", (): void => {
     });
 });
 
+describe("MarkdownEditorElement visual themes", (): void => {
+    const resetThemeState = (): void => {
+        document.body.textContent = "";
+        installLocalStorageStub();
+        const root = document.documentElement;
+        root.removeAttribute("data-editor-theme");
+        root.classList.remove("wa-light", "wa-dark");
+    };
+
+    beforeEach(resetThemeState);
+    afterEach(resetThemeState);
+
+    it("given a theme chosen from the dropdown, when selected, then the root attribute is set and the choice persists", async (): Promise<void> => {
+        const editor = document.createElement(elementName);
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        selectVisualTheme(editor, "aurora");
+
+        expect(document.documentElement.getAttribute("data-editor-theme")).toBe("aurora");
+        expect(window.localStorage.getItem("editor-theme")).toBe("aurora");
+    });
+
+    it("given a stored theme, when the editor initialises, then that theme is applied", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "blueprint");
+
+        const editor = document.createElement(elementName);
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        expect(document.documentElement.getAttribute("data-editor-theme")).toBe("blueprint");
+    });
+
+    it("given an invalid stored theme, when the editor initialises, then it falls back to paper", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "not-a-theme");
+
+        const editor = document.createElement(elementName);
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        expect(document.documentElement.getAttribute("data-editor-theme")).toBe("paper");
+    });
+
+    it("given a stored colour scheme, when the editor initialises, then the scheme applies without changing the theme", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "aurora");
+        window.localStorage.setItem("editor-color-scheme", "dark");
+
+        const editor = document.createElement(elementName);
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        expect(document.documentElement.classList.contains("wa-dark")).toBe(true);
+        expect(document.documentElement.getAttribute("data-editor-theme")).toBe("aurora");
+    });
+});
+
+/** Installs a fresh in-memory localStorage on window, since the test runtime
+ * does not provide one (the editor reads window.localStorage). */
+function installLocalStorageStub(): void {
+    const store = new Map<string, string>();
+    const stub: Storage = {
+        get length(): number {
+            return store.size;
+        },
+        clear(): void {
+            store.clear();
+        },
+        getItem(key: string): string | null {
+            return store.has(key) ? (store.get(key) as string) : null;
+        },
+        key(index: number): string | null {
+            return Array.from(store.keys())[index] ?? null;
+        },
+        removeItem(key: string): void {
+            store.delete(key);
+        },
+        setItem(key: string, value: string): void {
+            store.set(key, value);
+        },
+    };
+    Object.defineProperty(window, "localStorage", { configurable: true, value: stub });
+}
+
+/** Selects a visual theme by dispatching the theme dropdown's selection event. */
+function selectVisualTheme(editor: Element, theme: string): void {
+    const dropdown = editor.querySelector(".markdown-editor__theme-dropdown");
+
+    if (!dropdown) {
+        throw new Error("Expected a theme dropdown.");
+    }
+
+    const item = dropdown.querySelector(`wa-dropdown-item[value="${theme}"]`);
+
+    if (!item) {
+        throw new Error(`Expected a theme dropdown item: ${theme}`);
+    }
+
+    dropdown.dispatchEvent(new CustomEvent("wa-select", { detail: { item } }));
+}
+
 /** Waits for the custom element's asynchronous initialisation timer. */
 function waitForInitialisation(): Promise<void> {
     return new Promise((resolve: () => void): void => {

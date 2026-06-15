@@ -1,7 +1,7 @@
 ---
 id: RFC-0015
 name: Editor Visual Themes
-status: Draft
+status: Implemented
 owners:
     - alistair
 created: 2026-06-15

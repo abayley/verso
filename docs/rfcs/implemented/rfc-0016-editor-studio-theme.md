@@ -1,7 +1,7 @@
 ---
 id: RFC-0016
 name: Editor Studio Theme
-status: Completed
+status: Implemented
 owners:
     - alistair
 created: 2026-06-15

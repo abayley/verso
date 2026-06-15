@@ -1,7 +1,7 @@
 ---
 id: RFC-0013
 name: HTML Response Builder
-status: Completed
+status: Implemented
 owners:
     - alistair
 created: 2026-06-13

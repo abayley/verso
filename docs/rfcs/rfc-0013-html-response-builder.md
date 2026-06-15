@@ -1,7 +1,7 @@
 ---
 id: RFC-0013
 name: HTML Response Builder
-status: Draft
+status: Completed
 owners:
     - alistair
 created: 2026-06-13
@@ -15,8 +15,8 @@ superseded_by: null
 | Stage     | Timestamp  |
 |-----------|------------|
 | Authored  | 2026-06-13 |
-| Started   |            |
-| Completed |            |
+| Started   | 2026-06-15 |
+| Completed | 2026-06-15 |
 
 ## Summary
 
@@ -252,29 +252,28 @@ eligible for a future keep-alive RFC.
 ## Rollout Plan
 
 1. Phase one: the builder and coalescing, behind the unchanged combinator API.
-   - [ ] Introduce the `Builder` difference list and swap `Html`'s accumulator
-         from `String` to `Builder`; pre-pack constant fragments and escape
-         replacements as CAFs. Keep `renderHtml :: Html a -> String`; add
-         `renderChunks :: Html a -> [ByteString]` that coalesces the builder
-         output into buffer-sized segments. `HtmlSpec` golden cases pass
-         unchanged.
+   - [x] Introduced the `Builder` difference list and swapped `Html`'s
+         accumulator from `String` to `Builder`; pre-packed constant fragments
+         and escape replacements as CAFs. Kept `renderHtml :: Html a -> String`;
+         added `renderChunks :: Html a -> [ByteString]` that coalesces the
+         builder output into buffer-sized segments. `HtmlSpec` golden cases pass
+         unchanged, plus new chunk/coalesce tests.
 2. Phase two: switch the caller to a single coalesced body.
-   - [ ] `TestApp.htmlResponse` builds its body from `renderChunks h` -- a
-         single `StrictBody` segment for pages under the buffer. Confirm the
-         editor and fragment responses are byte-identical on the wire and the app
-         still serves; the socket write count is unchanged from today.
-         `make check` green.
-3. Phase three (optional): stream large pages as segments.
-   - [ ] Only if a real page exceeds the coalescing buffer: add
-         `ChunksBody [ByteString]` to `ResponseBody` (with `Eq`/`Show`);
-         `writeResponse` writes the head with the summed exact `Content-Length`
-         then sinks each segment; `serialiseResponse` flattens for the pure path.
-         Tests for the summed length, segment order, and pure-path byte-equality
-         with `StrictBody`. Defer if no page is large enough to need it.
+   - [x] `TestApp` HTML responses build from `renderChunks h` concatenated into a
+         single `StrictBody` (via `htmlResponseChunks`/`documentResponse`, the
+         doctype folded into the builder). Integration `TestAppSpec` confirms the
+         responses are byte-identical on the wire; verified the app still serves
+         (index, editor shell ~1.2 KB, fragments). Socket write count unchanged.
+         `make check` green (bar the pre-existing `TODO.md` line-length).
+3. Phase three (optional): stream large pages as segments. Deferred.
+   - [ ] Not needed yet: no current page approaches the 16 KB buffer (the editor
+         shell is ~1.2 KB), so `renderChunks` yields one segment and the single
+         `StrictBody` send suffices. Add `ChunksBody [ByteString]` only if a real
+         page later exceeds the buffer.
 4. Phase four: document and close.
-   - [ ] ADR for the builder representation and the coalescing decision; note the
-         spike; mark this RFC Completed. Re-run `make bench-html-builder` to
-         record the before/after.
+   - [x] ADR-038 records the builder + coalescing decision; the spike is noted.
+         This RFC is Completed. `make bench-html-builder` (the `current` vs
+         `dlist-coalesce` rows) captures the before/after.
 
 ### Rollout Plan Escape Hatch
 

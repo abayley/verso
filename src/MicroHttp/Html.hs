@@ -48,6 +48,7 @@ module MicroHttp.Html (
     p,
     p_,
     rawTrusted,
+    renderChunks,
     renderHtml,
     section,
     section_,
@@ -61,44 +62,98 @@ module MicroHttp.Html (
     voidEl,
 ) where
 
+import Data.ByteString.Char8 (ByteString)
+import qualified Data.ByteString.Char8 as BS
 import Data.String (IsString (..))
 import Prelude hiding (div, head, span)
 
-newtype Html a = Html (String, a)
+{- | A difference list of 'ByteString' chunks: O(1) append by composition, run
+to a chunk list in document order (RFC-0013). Constant tag and escape fragments
+are pre-packed CAFs; only dynamic text packs per render.
+-}
+newtype Builder = Builder ([ByteString] -> [ByteString])
+
+instance Semigroup Builder where
+    Builder f <> Builder g = Builder (f . g)
+
+instance Monoid Builder where
+    mempty = Builder id
+
+-- | Appends one chunk to a builder.
+chunk :: ByteString -> Builder
+chunk bytes = Builder (bytes :)
+
+-- | Runs a builder to its chunk list, in document order.
+runBuilder :: Builder -> [ByteString]
+runBuilder (Builder f) = f []
+
+newtype Html a = Html (Builder, a)
 
 instance Functor Html where
     fmap f (Html (out, value)) = Html (out, f value)
 
 instance Applicative Html where
-    pure value = Html ("", value)
-    Html (left, f) <*> Html (right, value) = Html (left ++ right, f value)
+    pure value = Html (mempty, value)
+    Html (left, f) <*> Html (right, value) = Html (left <> right, f value)
 
 instance Monad Html where
     return = pure
     Html (left, value) >>= f =
         case f value of
-            Html (right, next) -> Html (left ++ right, next)
+            Html (right, next) -> Html (left <> right, next)
 
 instance IsString (Html ()) where
     fromString = text
 
+{- | Renders to a 'String', identical to the pre-builder renderer for the same
+input (the @HtmlSpec@ golden contract). Retained for tests and callers that
+still want a 'String'; the response path uses 'renderChunks'.
+-}
 renderHtml :: Html a -> String
-renderHtml (Html (out, _)) = out
+renderHtml = concatMap BS.unpack . runBuilder . htmlBuilder
+
+{- | Renders to a list of 'ByteString' chunks coalesced into buffer-sized
+segments, for streaming to the socket without a whole-page concatenation or
+hundreds of per-fragment writes (RFC-0013). A page below the buffer is a single
+segment.
+-}
+renderChunks :: Html a -> [ByteString]
+renderChunks = coalesce coalesceBufferSize . runBuilder . htmlBuilder
+
+-- | The accumulated builder of a rendered document.
+htmlBuilder :: Html a -> Builder
+htmlBuilder (Html (out, _)) = out
+
+-- | Coalescing segment size: many small fragments become few buffer-sized writes.
+coalesceBufferSize :: Int
+coalesceBufferSize = 16384
+
+{- | Packs a chunk list into segments of at least @bufSize@ bytes, in one pass,
+so the socket sees few large writes rather than one fragment per chunk.
+-}
+coalesce :: Int -> [ByteString] -> [ByteString]
+coalesce bufSize = finish . foldl step ([], [], 0)
+  where
+    step (out, cur, len) c
+        | len >= bufSize = (BS.concat (reverse cur) : out, [c], BS.length c)
+        | otherwise = (out, c : cur, len + BS.length c)
+    finish (out, cur, _) =
+        reverse (if null cur then out else BS.concat (reverse cur) : out)
 
 text :: String -> Html ()
 text = emit . escapeText
 
 rawTrusted :: String -> Html ()
-rawTrusted = emit
+rawTrusted = emit . chunk . BS.pack
 
 el :: String -> [(String, String)] -> Html () -> Html ()
 el name attrs children = do
-    emit ("<" ++ name ++ renderAttrs attrs ++ ">")
+    emit (openTag name attrs)
     children
-    emit ("</" ++ name ++ ">")
+    emit (closeTag name)
 
 voidEl :: String -> [(String, String)] -> Html ()
-voidEl name attrs = emit ("<" ++ name ++ renderAttrs attrs ++ ">")
+voidEl name attrs = emit (openTag name attrs)
 
 attr :: String -> String -> (String, String)
 attr name value = (name, value)
@@ -265,25 +320,66 @@ meta_ = voidEl "meta"
 meta :: [(String, String)] -> Html ()
 meta = meta_
 
-emit :: String -> Html ()
+emit :: Builder -> Html ()
 emit out = Html (out, ())
 
-renderAttrs :: [(String, String)] -> String
-renderAttrs [] = ""
-renderAttrs attrs = concatMap renderAttr attrs
+-- | The opening tag @\<name attrs\>@ as builder chunks.
+openTag :: String -> [(String, String)] -> Builder
+openTag name attrs = openBracket <> chunk (BS.pack name) <> renderAttrs attrs <> closeBracket
+
+-- | The closing tag @\</name\>@ as builder chunks.
+closeTag :: String -> Builder
+closeTag name = closeOpen <> chunk (BS.pack name) <> closeBracket
+
+renderAttrs :: [(String, String)] -> Builder
+renderAttrs = foldMap renderAttr
   where
-    renderAttr (name, value) = " " ++ name ++ "=\"" ++ escapeAttr value ++ "\""
+    renderAttr (name, value) =
+        attrSpace <> chunk (BS.pack name) <> attrEquals <> escapeAttr value <> attrQuote
 
-escapeText :: String -> String
-escapeText = concatMap escapeChar
+escapeText :: String -> Builder
+escapeText = escapeChars
 
-escapeAttr :: String -> String
-escapeAttr = concatMap escapeChar
+escapeAttr :: String -> Builder
+escapeAttr = escapeChars
 
-escapeChar :: Char -> String
-escapeChar '<' = "&lt;"
-escapeChar '>' = "&gt;"
-escapeChar '&' = "&amp;"
-escapeChar '"' = "&quot;"
-escapeChar '\'' = "&#39;"
-escapeChar c = [c]
+{- | Escapes the five HTML-significant characters, coalescing runs of safe
+characters into one packed chunk. Byte-identical to the per-character renderer.
+-}
+escapeChars :: String -> Builder
+escapeChars [] = mempty
+escapeChars input =
+    case break isSpecial input of
+        (safe, []) -> packSafe safe
+        (safe, c : rest) -> packSafe safe <> replacement c <> escapeChars rest
+  where
+    packSafe [] = mempty
+    packSafe safe = chunk (BS.pack safe)
+
+isSpecial :: Char -> Bool
+isSpecial c = c == '<' || c == '>' || c == '&' || c == '"' || c == '\''
+
+replacement :: Char -> Builder
+replacement '<' = ltChunk
+replacement '>' = gtChunk
+replacement '&' = ampChunk
+replacement '"' = quotChunk
+replacement '\'' = aposChunk
+replacement c = chunk (BS.pack [c])
+
+-- Pre-packed constant fragments (shared CAFs).
+
+openBracket, closeBracket, closeOpen, attrSpace, attrEquals, attrQuote :: Builder
+openBracket = chunk (BS.pack "<")
+closeBracket = chunk (BS.pack ">")
+closeOpen = chunk (BS.pack "</")
+attrSpace = chunk (BS.pack " ")
+attrEquals = chunk (BS.pack "=\"")
+attrQuote = chunk (BS.pack "\"")
+
+ltChunk, gtChunk, ampChunk, quotChunk, aposChunk :: Builder
+ltChunk = chunk (BS.pack "&lt;")
+gtChunk = chunk (BS.pack "&gt;")
+ampChunk = chunk (BS.pack "&amp;")
+quotChunk = chunk (BS.pack "&quot;")
+aposChunk = chunk (BS.pack "&#39;")

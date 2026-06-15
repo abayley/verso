@@ -103,12 +103,12 @@ routes editorThemeDefault store =
 
 index :: Router.Handler
 index _ _ =
-    pure (htmlResponse indexHtml)
+    pure (documentResponse indexPage)
 
 editDocument :: String -> Router.Handler
 editDocument editorThemeDefault captures request =
     let docId = documentId captures
-     in pure (htmlResponse (documentHtml (editorPage docId (editorMode request) editorThemeDefault)))
+     in pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault))
 
 showDocument :: DocumentStore -> Router.Handler
 showDocument store captures _ = do
@@ -120,21 +120,31 @@ saveDocument store captures _ = do
     bodyBytes <- readBodyStrict (StreamParseError BodyTooLarge) formBodyLimit
     let markdown = markdownFromBody bodyBytes
     case validateMarkdown markdown of
-        Just err -> pure (htmlResponse (Html.renderHtml (validationStatusFragment err)))
+        Just err -> pure (htmlResponseChunks (validationStatusFragment err))
         Nothing -> do
             liftIO (saveDocumentContent store (documentId captures) markdown)
-            pure (htmlResponse (Html.renderHtml (saveStatusFragment markdown)))
+            pure (htmlResponseChunks (saveStatusFragment markdown))
 
 -- | The handler's own body bound; the server pipeline also caps the body.
 formBodyLimit :: Int
 formBodyLimit = 1048576
 
-htmlResponse :: String -> Http.Response
-htmlResponse body =
+{- | An HTML response built from the editor's chunk builder (RFC-0013): the body
+is the coalesced chunks concatenated into one strict body, avoiding the @String@
+round-trip and whole-page pack-copy of the old renderer. Coalescing keeps the
+socket-write count low; for pages below the buffer this is a single segment.
+-}
+htmlResponseChunks :: Html.Html () -> Http.Response
+htmlResponseChunks page =
     Http.Response
         Http.okStatus
         [(Http.normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/html")]
-        (Http.StrictBody (BS.pack body))
+        (Http.StrictBody (BS.concat (Html.renderChunks page)))
+
+-- | A full-document response: the HTML5 doctype followed by the page.
+documentResponse :: Html.Html () -> Http.Response
+documentResponse page =
+    htmlResponseChunks (Html.rawTrusted "<!doctype html>" >> page)
 
 markdownResponse :: String -> Http.Response
 markdownResponse body =
@@ -204,14 +214,6 @@ splitOn separator text =
     case break (== separator) text of
         (before, _ : after) -> before : splitOn separator after
         (before, []) -> [before]
-
-indexHtml :: String
-indexHtml =
-    documentHtml indexPage
-
-documentHtml :: Html.Html () -> String
-documentHtml page =
-    "<!doctype html>" ++ Html.renderHtml page
 
 indexPage :: Html.Html ()
 indexPage =

@@ -2,6 +2,7 @@
 
 module MicroHttp.HtmlSpec (spec) where
 
+import qualified Data.ByteString.Char8 as BS
 import qualified MicroHttp.Html as H
 import Test.Hspec
 
@@ -14,6 +15,14 @@ spec =
             H.renderHtml document `shouldBe` documentExpected
         it "given blaze-style elements and overloaded strings, when rendering, then text is escaped" $
             H.renderHtml blazeStyleDocument `shouldBe` blazeStyleExpected
+        it "given a rendered document, when chunked, then the concatenated chunks equal the string render" $
+            BS.unpack (BS.concat (H.renderChunks todoItem)) `shouldBe` H.renderHtml todoItem
+        it "given a small page, when chunked, then it coalesces to a single segment" $
+            length (H.renderChunks document) `shouldBe` 1
+        it "given a page larger than the coalescing buffer, when chunked, then it splits into bounded segments" $ do
+            let segments = H.renderChunks largeDocument
+            (length segments > 1) `shouldBe` True
+            (BS.length (head segments) >= 16384) `shouldBe` True
 
 todoItem :: H.Html ()
 todoItem =
@@ -78,3 +87,8 @@ blazeStyleExpected =
     "<html lang=\"en\"><head><title>MicroHttp</title></head>"
         ++ "<body><main><h1>Hello &lt;MicroHttp&gt;</h1>"
         ++ "<p>Overloaded strings render escaped text</p></main></body></html>"
+
+-- | A document large enough to exceed the coalescing buffer (16 KB).
+largeDocument :: H.Html ()
+largeDocument =
+    mapM_ (\_ -> H.p_ [] (H.text "A padding paragraph used to exceed the coalescing buffer.")) [1 .. (800 :: Int)]

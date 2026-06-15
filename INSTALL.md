@@ -1,6 +1,6 @@
 # Installation Guide
 
-This project currently targets MicroHs 0.16.0.0 and uses `mcabal` for MicroHs
+This project currently targets MicroHs 0.16.3.0 and uses `mcabal` for MicroHs
 package installation. The project is intentionally small, but the test
 dependencies still need a few MicroHs-specific steps on a fresh machine.
 
@@ -8,7 +8,7 @@ dependencies still need a few MicroHs-specific steps on a fresh machine.
 
 Install or build these tools first:
 
-- MicroHs 0.16.0.0
+- MicroHs 0.16.3.0
 - MicroCabal 0.5.10.0
 - `make`
 - `markdownlint-cli2`
@@ -51,25 +51,25 @@ hlint --version
 `mcabal` installs packages into this package database:
 
 ```text
-~/.mcabal/mhs-0.16.0.0
+~/.mcabal/mhs-0.16.3.0
 ```
 
 Some MicroHs builds may otherwise look in:
 
 ```text
-~/.mcabal-user/mhs-0.16.0.0
+~/.mcabal-user/mhs-0.16.3.0
 ```
 
 The project Makefile passes the package database explicitly:
 
 ```make
 MHS = mhs
-MHS_PACKAGE_DB = $(HOME)/.mcabal/mhs-0.16.0.0
+MHS_PACKAGE_DB = $(HOME)/.mcabal/mhs-0.16.3.0
 MHSFLAGS = -a$(MHS_PACKAGE_DB)
 ```
 
 Use an absolute or `$HOME`-expanded path with `-a`. Do not pass
-`-a~/.mcabal/mhs-0.16.0.0`, because MicroHs treats the tilde literally.
+`-a~/.mcabal/mhs-0.16.3.0`, because MicroHs treats the tilde literally.
 
 ## Test Package Installation
 
@@ -85,8 +85,10 @@ Start by installing the shared dependencies:
 ```
 
 Patch `call-stack` if `hspec-expectations` cannot import `HasCallStack`.
-On the local MicroHs 0.16.0.0 setup, `call-stack-0.4.0` only exported
-`HasCallStack` when `__GLASGOW_HASKELL__ >= 704`, which MicroHs did not define.
+On 0.16.3.0 this patch was not needed -- `call-stack-0.4.0` installed and the
+suite built without it. On the earlier MicroHs 0.16.0.0 setup, `call-stack-0.4.0`
+only exported `HasCallStack` when `__GLASGOW_HASKELL__ >= 704`, which MicroHs did
+not define; apply the patch below only if you hit that import error.
 
 Edit this file:
 
@@ -178,7 +180,7 @@ main =
 EOF
 
 mhs \
-  -a"$HOME/.mcabal/mhs-0.16.0.0" \
+  -a"$HOME/.mcabal/mhs-0.16.3.0" \
   /tmp/micro-http-hspec-smoke.hs \
   -o /tmp/micro-http-hspec-smoke
 
@@ -199,7 +201,7 @@ main =
 EOF
 
 mhs \
-  -a"$HOME/.mcabal/mhs-0.16.0.0" \
+  -a"$HOME/.mcabal/mhs-0.16.3.0" \
   /tmp/micro-http-quickcheck-smoke.hs \
   -o /tmp/micro-http-quickcheck-smoke
 

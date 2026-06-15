@@ -4,12 +4,18 @@ This document is a bug report prepared for the MicroHs project. It is not a
 MicroHttp design document; it records a runtime fault found while building the
 network layer. The reproducers referenced here are retained under `spike/`.
 
-> **Status (2026-06-12): no longer reproduces on the installed toolchain.**
-> The MicroHs runtime now guards the `evalbytestring` walk against time-slice
-> preemption (it saves `glob_slice`, raises it for the walk, and restores it),
-> so `spike/MicroHttp/Spike11.hs` prints the correct lengths and concurrent
-> serving is safe. The fix path matches the analysis below. This report is
-> kept as the historical record and the upstream-facing write-up.
+> **Status (2026-06-15): fixed upstream in MicroHs 0.16.3.0 (combinator file
+> version v8.4).** The reproducer `spike/MicroHttp/Spike11.hs` prints the
+> correct lengths (1000 then 5000) on every run against a stock 0.16.3.0
+> toolchain with no local runtime patch, and larger lazily-built payloads
+> (4096, 65536, 1000000 bytes after a `forkIO`) all pack correctly. The earlier
+> local mitigation (a non-preemptible `evalbytestring` walk; see "Local
+> Mitigation Applied" below) is therefore no longer needed. This report is kept
+> as the historical record and the upstream-facing write-up.
+>
+> Earlier status (2026-06-12): did not reproduce on the developer's locally
+> patched 0.16.0.0 runtime (the mitigation below), which guarded the
+> `evalbytestring` walk against time-slice preemption.
 
 ## Title
 

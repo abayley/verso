@@ -836,8 +836,9 @@ Herbarium (ruled-paper journal), and Workbench (IDE). The design is RFC-0015.
 
 Consequences: themes are a thin, mostly-CSS axis layered on the existing token
 and colour-scheme machinery, so adding one is a token block plus an optional
-structural layer, registered in four places (the CSS, the dropdown list, the
-server allowlist, and the bootstrap allowlist). Genuinely new interactions are
+structural layer, registered in three places (the CSS, the editor dropdown list,
+and the server allowlist); the pre-paint bootstrap's allowlist is derived from
+the server list rather than duplicated. Genuinely new interactions are
 out of scope for a theme: Studio (mockup C) -- defined by a selection bubble
 toolbar and a slash-command menu -- is deferred to a later round (the parked Lit
 spike) rather than shipped as a half-version. `backdrop-filter` themes degrade

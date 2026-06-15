@@ -14,6 +14,7 @@ module MicroHttp.TestApp (
 
 import qualified Data.ByteString.Char8 as BS
 import Data.Char (isDigit, isSpace)
+import Data.List (intercalate)
 import MicroHttp.Config (Config, configMounts, configString)
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http as Http
@@ -237,6 +238,15 @@ safeEditorTheme theme
     | theme `elem` knownEditorThemes = theme
     | otherwise = "paper"
 
+{- | A JavaScript array literal of the given strings, e.g. @['a','b']@. The
+theme names are simple identifiers, so single-quoting without escaping is safe;
+this keeps the bootstrap allowlist derived from 'knownEditorThemes' rather than
+duplicated. (The dropdown's parallel list lives in the editor TypeScript.)
+-}
+jsStringArray :: [String] -> String
+jsStringArray items =
+    "[" ++ intercalate "," (map (\item -> "'" ++ item ++ "'") items) ++ "]"
+
 {- | An inline, pre-paint script that applies the visitor's stored editor
 preferences before the body renders, so a saved theme or colour scheme does not
 flash the page default. It sets the theme attribute only from a fixed allowlist,
@@ -245,7 +255,9 @@ so a tampered stored value cannot inject an attribute payload.
 editorThemeBootstrapScript :: String
 editorThemeBootstrapScript =
     "<script>(function(){try{"
-        ++ "var K=['paper','aurora','blueprint','herbarium','workbench'];var r=document.documentElement;"
+        ++ "var K="
+        ++ jsStringArray knownEditorThemes
+        ++ ";var r=document.documentElement;"
         ++ "var t=localStorage.getItem('editor-theme');"
         ++ "if(t&&K.indexOf(t)>=0){r.setAttribute('data-editor-theme',t);}"
         ++ "var s=localStorage.getItem('editor-color-scheme');"

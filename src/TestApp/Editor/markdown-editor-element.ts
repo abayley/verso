@@ -10,7 +10,7 @@ import {
 
 type EditorMode = "visual" | "source" | "split";
 type EditorTheme = "light" | "dark" | "match-system";
-type VisualTheme = "paper" | "aurora" | "blueprint" | "herbarium";
+type VisualTheme = "paper" | "aurora" | "blueprint" | "herbarium" | "workbench";
 type ActivePane = "source" | "visual";
 type SaveState = "clean" | "dirty" | "saving" | "retry";
 type ToolbarButtonElement = HTMLElement;
@@ -28,6 +28,7 @@ const visualThemes: { value: VisualTheme; label: string }[] = [
     { value: "aurora", label: "Aurora" },
     { value: "blueprint", label: "Blueprint" },
     { value: "herbarium", label: "Herbarium" },
+    { value: "workbench", label: "Workbench" },
 ];
 
 let tooltipTargetSequence = 0;
@@ -40,6 +41,11 @@ function isVisualTheme(value: string | null): value is VisualTheme {
 /** The display label for a visual theme. */
 function themeLabel(theme: VisualTheme): string {
     return visualThemes.find((entry) => entry.value === theme)?.label ?? theme;
+}
+
+/** A theme's default view mode (a preset applied when no mode is requested), or null. */
+function themeDefaultMode(theme: VisualTheme): EditorMode | null {
+    return theme === "workbench" ? "split" : null;
 }
 
 /** Reads a stored preference, tolerating an unavailable or throwing localStorage. */
@@ -233,9 +239,9 @@ export class MarkdownEditorElement extends HTMLElement {
 
         this.initialised = true;
         this.markdown = await this.loadMarkdown();
-        this.mode = this.editorMode();
-        this.theme = this.editorTheme();
         this.visualTheme = this.editorVisualTheme();
+        this.theme = this.editorTheme();
+        this.mode = this.editorMode();
         this.textContent = "";
 
         this.toolbarTooltip = this.createToolbarTooltip();
@@ -822,11 +828,11 @@ export class MarkdownEditorElement extends HTMLElement {
     private editorMode(): EditorMode {
         const mode = this.getAttribute("mode");
 
-        if (mode === "source" || mode === "split") {
+        if (mode === "source" || mode === "split" || mode === "visual") {
             return mode;
         }
 
-        return "visual";
+        return themeDefaultMode(this.visualTheme) ?? "visual";
     }
 
     /** Returns the initial colour scheme: stored preference, then attribute, else match-system. */

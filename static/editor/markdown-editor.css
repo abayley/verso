@@ -529,3 +529,64 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
     var(--herbarium-rule) 28px
   );
 }
+
+/* --- Workbench: an IDE look, dark (primary) and light, with status-bar chrome.
+   Opens in Split by default (a layout preset, not a lock); the source pane's
+   line numbers come from CodeMirror's basicSetup. --- */
+:root[data-editor-theme="workbench"] {
+  --markdown-editor-accent: #2b6cb0;
+  --markdown-editor-background: #f4f5f7;
+  --markdown-editor-code-background: #eceef1;
+  --markdown-editor-code-border: #dfe2e7;
+  --markdown-editor-divider: #dfe2e7;
+  --markdown-editor-error-accent: #b03a48;
+  --markdown-editor-error-text: #8f2f3b;
+  --markdown-editor-muted: #6a7280;
+  --markdown-editor-pill-background: #ffffff;
+  --markdown-editor-pill-border: #dfe2e7;
+  --markdown-editor-quote-border: #c9cfd8;
+  --markdown-editor-save-clean: #2f8132;
+  --markdown-editor-save-dirty: #9a6b1f;
+  --markdown-editor-save-retry: #b03a48;
+  --markdown-editor-text: #24292f;
+}
+
+:root[data-editor-theme="workbench"].wa-dark {
+  --markdown-editor-accent: #6cb6ff;
+  --markdown-editor-background: #1e2127;
+  --markdown-editor-code-background: #262b33;
+  --markdown-editor-code-border: #353b45;
+  --markdown-editor-divider: #353b45;
+  --markdown-editor-error-accent: #e5707e;
+  --markdown-editor-error-text: #f0a0a8;
+  --markdown-editor-muted: #8b92a0;
+  --markdown-editor-pill-background: #262a31;
+  --markdown-editor-pill-border: #353b45;
+  --markdown-editor-quote-border: #4a5160;
+  --markdown-editor-save-clean: #57ab5a;
+  --markdown-editor-save-dirty: #daaa3f;
+  --markdown-editor-save-retry: #e5707e;
+  --markdown-editor-text: #d4d7dd;
+}
+
+/* Chrome: a title strip on top, a squarer command toolbar, and the word count
+   rendered as a full-width bottom status bar. */
+:root[data-editor-theme="workbench"] .markdown-editor__toolbar--top {
+  border-bottom: 1px solid var(--markdown-editor-divider);
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.6rem;
+}
+
+:root[data-editor-theme="workbench"] .markdown-editor__toolbar--commands {
+  border-radius: 6px;
+}
+
+:root[data-editor-theme="workbench"] .markdown-editor__word-count {
+  border-top: 1px solid var(--markdown-editor-divider);
+  display: block;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 11px;
+  margin-top: 0.75rem;
+  padding: 0.4rem 0.25rem;
+  text-align: right;
+}

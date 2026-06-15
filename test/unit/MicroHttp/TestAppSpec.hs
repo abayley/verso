@@ -23,7 +23,7 @@ spec =
             bodyText response `shouldInclude` "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
             bodyText response `shouldInclude` "hx-trigger=\"submit, editor:changed delay:2s from:markdown-editor\""
             bodyText response `shouldInclude` "hx-swap=\"none\""
-            bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" mode=\"visual\" src=\"/documents/home\"></markdown-editor>"
+            bodyText response `shouldInclude` "<markdown-editor name=\"markdown\" src=\"/documents/home\"></markdown-editor>"
             bodyText response `shouldInclude` "<input type=\"hidden\" name=\"markdown\" id=\"markdown-field\">"
             bodyText response `shouldNotInclude` "id=\"save-status\""
             bodyText response `shouldNotInclude` "# Hello from MicroHttp"

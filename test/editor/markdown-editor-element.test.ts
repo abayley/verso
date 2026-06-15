@@ -1096,6 +1096,30 @@ describe("MarkdownEditorElement visual themes", (): void => {
         expect(document.documentElement.classList.contains("wa-dark")).toBe(true);
         expect(document.documentElement.getAttribute("data-editor-theme")).toBe("aurora");
     });
+
+    it("given the workbench theme and no requested mode, when initialised, then it opens in split", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "workbench");
+
+        const editor = document.createElement(elementName);
+        editor.textContent = "# Heading";
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        expect(editor.querySelector(".markdown-editor__split")).toBeInstanceOf(HTMLElement);
+    });
+
+    it("given the workbench theme and an explicit mode, when initialised, then the explicit mode wins", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "workbench");
+
+        const editor = document.createElement(elementName);
+        editor.setAttribute("mode", "visual");
+        editor.textContent = "# Heading";
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        expect(editor.querySelector(".markdown-editor__split")).toBeNull();
+        expect(editor.querySelector(".markdown-editor__surface")).toBeInstanceOf(HTMLElement);
+    });
 });
 
 /** Installs a fresh in-memory localStorage on window, since the test runtime

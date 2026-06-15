@@ -172,12 +172,16 @@ queryValue :: String -> Http.RequestHead -> String
 queryValue name request =
     capture name (Http.requestQuery request)
 
-editorMode :: Http.RequestHead -> String
+{- | The explicitly requested view mode from @?mode@, or 'Nothing' when absent
+so the editor can fall back to a theme's default mode (RFC-0015 presets).
+-}
+editorMode :: Http.RequestHead -> Maybe String
 editorMode request =
     case queryValue "mode" request of
-        "source" -> "source"
-        "split" -> "split"
-        _ -> "visual"
+        "source" -> Just "source"
+        "split" -> Just "split"
+        "visual" -> Just "visual"
+        _ -> Nothing
 
 markdownFromBody :: BS.ByteString -> String
 markdownFromBody bytes =
@@ -225,7 +229,7 @@ the pre-paint bootstrap validate against this set, so an unknown configured or
 stored value falls back to Paper.
 -}
 knownEditorThemes :: [String]
-knownEditorThemes = ["paper", "aurora", "blueprint", "herbarium"]
+knownEditorThemes = ["paper", "aurora", "blueprint", "herbarium", "workbench"]
 
 -- | Validates a configured default theme name, falling back to @paper@.
 safeEditorTheme :: String -> String
@@ -241,14 +245,14 @@ so a tampered stored value cannot inject an attribute payload.
 editorThemeBootstrapScript :: String
 editorThemeBootstrapScript =
     "<script>(function(){try{"
-        ++ "var K=['paper','aurora','blueprint','herbarium'];var r=document.documentElement;"
+        ++ "var K=['paper','aurora','blueprint','herbarium','workbench'];var r=document.documentElement;"
         ++ "var t=localStorage.getItem('editor-theme');"
         ++ "if(t&&K.indexOf(t)>=0){r.setAttribute('data-editor-theme',t);}"
         ++ "var s=localStorage.getItem('editor-color-scheme');"
         ++ "if(s==='dark'){r.classList.add('wa-dark');}else if(s==='light'){r.classList.add('wa-light');}"
         ++ "}catch(e){}})();</script>"
 
-editorPage :: String -> String -> String -> Html.Html ()
+editorPage :: String -> Maybe String -> String -> Html.Html ()
 editorPage docId mode themeDefault =
     Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
@@ -269,10 +273,10 @@ editorPage docId mode themeDefault =
                     $ do
                         Html.custom
                             "markdown-editor"
-                            [ Html.attr "name" "markdown"
-                            , Html.attr "mode" mode
-                            , Html.attr "src" ("/documents/" ++ docId)
-                            ]
+                            ( [Html.attr "name" "markdown"]
+                                ++ maybe [] (\m -> [Html.attr "mode" m]) mode
+                                ++ [Html.attr "src" ("/documents/" ++ docId)]
+                            )
                             (return ())
                         Html.input [Html.attr "type" "hidden", Html.attr "name" "markdown", Html.attr "id" "markdown-field"]
 

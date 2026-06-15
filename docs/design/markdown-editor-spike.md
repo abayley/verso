@@ -597,6 +597,14 @@ Phase Six findings so far:
   tooltip, link popovers) are the declarative-rendering surface Lit would be
   measured on, while the controllers' state machines and the editor adapters stay
   framework-agnostic.
+- The Lit decision-test spike has now run; see
+  [editor-lit-spike.md](editor-lit-spike.md). Key result: Web Awesome already
+  ships Lit (`lit ^3.2.1`), so adopting Lit for the view layer adds no dependency
+  or runtime weight, and declarative rendering is a clear clarity win for the
+  toolbar/save/popover views while the controllers and adapters stay unchanged.
+  The "defer Lit on bundle cost" bias above no longer holds; the recommendation
+  is to adopt Lit for the view layer when table editing arrives (still the
+  natural trigger), not as a standalone rewrite.
 - Toolbar inline mark controls must preserve or recover the visual editor
   selection before applying Tiptap commands; otherwise button focus can collapse
   the selected text before the command runs.

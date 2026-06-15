@@ -6,3 +6,4 @@ static/editor/markdown-editor.js
 static/editor/webawesome.css
 dist-newstyle/
 spike/editor-studio/bundle.js
+spike/editor-lit/bundle.js

@@ -234,7 +234,7 @@ function blockFromElement(block: Element, ctx: FromElementContext): EditorBlock 
 
     if (block.tagName === "H1") {
         return {
-            children: inlineNodesFromElement(block),
+            children: ctx.inlinesFromElement(block),
             level: 1,
             type: "heading",
         };
@@ -242,7 +242,7 @@ function blockFromElement(block: Element, ctx: FromElementContext): EditorBlock 
 
     if (block.tagName === "H2") {
         return {
-            children: inlineNodesFromElement(block),
+            children: ctx.inlinesFromElement(block),
             level: 2,
             type: "heading",
         };
@@ -250,7 +250,7 @@ function blockFromElement(block: Element, ctx: FromElementContext): EditorBlock 
 
     if (block.tagName === "H3") {
         return {
-            children: inlineNodesFromElement(block),
+            children: ctx.inlinesFromElement(block),
             level: 3,
             type: "heading",
         };
@@ -273,7 +273,7 @@ function blockFromElement(block: Element, ctx: FromElementContext): EditorBlock 
     }
 
     return {
-        children: inlineNodesFromElement(block),
+        children: ctx.inlinesFromElement(block),
         type: "paragraph",
     };
 }
@@ -289,7 +289,7 @@ function listItemFromElement(item: Element, ctx: FromElementContext): ListItemBl
     return {
         blocks: [
             {
-                children: inlineNodesFromElement(item),
+                children: ctx.inlinesFromElement(item),
                 type: "paragraph",
             },
         ],
@@ -306,13 +306,8 @@ function isBlockElement(element: Element): boolean {
     return ["BLOCKQUOTE", "H1", "H2", "H3", "HR", "OL", "P", "PRE", "UL"].includes(element.tagName);
 }
 
-/** Converts child inline DOM nodes to editor inline nodes. */
-function inlineNodesFromElement(element: Element): InlineNode[] {
-    return Array.from(element.childNodes).flatMap((node: ChildNode): InlineNode[] => inlineNodesFromNode(node));
-}
-
-/** Converts one inline DOM node to zero or more editor inline nodes. */
-function inlineNodesFromNode(node: ChildNode): InlineNode[] {
+/** Converts one inline DOM node to built-in editor inline nodes (the base extension's inline serialise-in). */
+function inlineFromElement(node: ChildNode, ctx: FromElementContext): InlineNode[] {
     if (node.nodeType === Node.TEXT_NODE) {
         return textNode(node.textContent ?? "");
     }
@@ -340,7 +335,7 @@ function inlineNodesFromNode(node: ChildNode): InlineNode[] {
     if (element.tagName === "STRONG" || element.tagName === "B") {
         return [
             {
-                children: inlineNodesFromElement(element),
+                children: ctx.inlinesFromElement(element),
                 type: "strong",
             },
         ];
@@ -349,7 +344,7 @@ function inlineNodesFromNode(node: ChildNode): InlineNode[] {
     if (element.tagName === "EM" || element.tagName === "I") {
         return [
             {
-                children: inlineNodesFromElement(element),
+                children: ctx.inlinesFromElement(element),
                 type: "emphasis",
             },
         ];
@@ -358,7 +353,7 @@ function inlineNodesFromNode(node: ChildNode): InlineNode[] {
     if (element.tagName === "DEL" || element.tagName === "S" || element.tagName === "STRIKE") {
         return [
             {
-                children: inlineNodesFromElement(element),
+                children: ctx.inlinesFromElement(element),
                 type: "strikethrough",
             },
         ];
@@ -376,14 +371,14 @@ function inlineNodesFromNode(node: ChildNode): InlineNode[] {
     if (element.tagName === "A") {
         return [
             {
-                children: inlineNodesFromElement(element),
+                children: ctx.inlinesFromElement(element),
                 type: "link",
                 url: element.getAttribute("href") ?? "",
             },
         ];
     }
 
-    return inlineNodesFromElement(element);
+    return ctx.inlinesFromElement(element);
 }
 
 /** Converts a preformatted DOM block to an editor code block. */
@@ -419,7 +414,7 @@ function blockToMarkdown(block: EditorBlock, ctx: ToMarkdownContext): string {
     }
 
     if (block.type === "heading") {
-        return `${"#".repeat(block.level)} ${inlineNodesToMarkdown(block.children).trim()}`;
+        return `${"#".repeat(block.level)} ${ctx.inlinesToMarkdown(block.children).trim()}`;
     }
 
     if (block.type === "list") {
@@ -432,7 +427,7 @@ function blockToMarkdown(block: EditorBlock, ctx: ToMarkdownContext): string {
     }
 
     if (block.type === "paragraph") {
-        return inlineNodesToMarkdown(block.children).trim();
+        return ctx.inlinesToMarkdown(block.children).trim();
     }
 
     return "";
@@ -463,7 +458,7 @@ function listItemSeparator(previousItem: ListItemBlock | undefined): string {
 /** Serialises one list item, preserving tight single-paragraph list Markdown. */
 function listItemToMarkdown(marker: string, item: ListItemBlock, ctx: ToMarkdownContext): string {
     if (isTightListItem(item)) {
-        return `${marker} ${inlineNodesToMarkdown(item.blocks[0].children).trim()}`;
+        return `${marker} ${ctx.inlinesToMarkdown(item.blocks[0].children).trim()}`;
     }
 
     return prefixListItemMarkdown(marker, listItemBodyToMarkdown(item.blocks, ctx));
@@ -504,23 +499,18 @@ function prefixListItemMarkdown(marker: string, markdown: string): string {
     return remaining ? `${first}\n${remaining}` : first;
 }
 
-/** Serialises editor inline nodes to Markdown. */
-function inlineNodesToMarkdown(nodes: InlineNode[]): string {
-    return nodes.map((node: InlineNode): string => inlineNodeToMarkdown(node)).join("");
-}
-
-/** Serialises one editor inline node to Markdown. */
-function inlineNodeToMarkdown(node: InlineNode): string {
+/** Serialises one built-in editor inline node to Markdown (the base extension's inline serialise-out). */
+function inlineToMarkdown(node: InlineNode, ctx: ToMarkdownContext): string {
     if (node.type === "strong") {
-        return `**${inlineNodesToMarkdown(node.children)}**`;
+        return `**${ctx.inlinesToMarkdown(node.children)}**`;
     }
 
     if (node.type === "emphasis") {
-        return `*${inlineNodesToMarkdown(node.children)}*`;
+        return `*${ctx.inlinesToMarkdown(node.children)}*`;
     }
 
     if (node.type === "strikethrough") {
-        return `~~${inlineNodesToMarkdown(node.children)}~~`;
+        return `~~${ctx.inlinesToMarkdown(node.children)}~~`;
     }
 
     if (node.type === "code") {
@@ -528,7 +518,7 @@ function inlineNodeToMarkdown(node: InlineNode): string {
     }
 
     if (node.type === "link") {
-        return `[${inlineNodesToMarkdown(node.children)}](${node.url})`;
+        return `[${ctx.inlinesToMarkdown(node.children)}](${node.url})`;
     }
 
     if (node.type === "break") {
@@ -574,7 +564,9 @@ const baseExtension: ContentExtension = {
     blockFromElement,
     blockFromMdast,
     blockToMarkdown,
+    inlineFromElement,
     inlineFromMdast,
+    inlineToMarkdown,
     name: "base",
     renderBlock,
     renderInline,

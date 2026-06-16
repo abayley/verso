@@ -24,12 +24,16 @@ export interface RenderContext {
 export interface FromElementContext {
     blockFromElement(element: Element): EditorBlock;
     documentFromElements(elements: HTMLCollection | Element[]): EditorDocument;
+    inlineFromNode(node: ChildNode): InlineNode[];
+    inlinesFromElement(element: Element): InlineNode[];
 }
 
 /** Recursion helpers handed to an extension while serialising the editor model to Markdown. */
 export interface ToMarkdownContext {
     blockToMarkdown(block: EditorBlock): string;
     documentToMarkdown(document: EditorDocument): string;
+    inlineToMarkdown(node: InlineNode): string;
+    inlinesToMarkdown(nodes: InlineNode[]): string;
 }
 
 /**
@@ -41,9 +45,13 @@ export interface ContentExtension {
     blockFromElement?(element: Element, ctx: FromElementContext): EditorBlock | null;
     blockFromMdast?(node: RootContent, ctx: ParseContext): EditorBlock | null;
     blockToMarkdown?(block: EditorBlock, ctx: ToMarkdownContext): string | null;
+    inlineFromElement?(node: ChildNode, ctx: FromElementContext): InlineNode[] | null;
     inlineFromMdast?(node: PhrasingContent, ctx: ParseContext): InlineNode | null;
+    inlineToMarkdown?(node: InlineNode, ctx: ToMarkdownContext): string | null;
     renderBlock?(block: EditorBlock, ctx: RenderContext): string | null;
     renderInline?(node: InlineNode, ctx: RenderContext): string | null;
+    /** A document-level render that an extension may take over (e.g. footnotes' collected list). */
+    renderDocument?(document: EditorDocument, ctx: RenderContext): string | null;
     /** remark/unified plugins this extension installs in the parse processor (e.g. a custom syntax). */
     remarkPlugins?: PluggableList;
 }
@@ -141,7 +149,7 @@ const parseContext: ParseContext = {
 // Render seams: fail soft. A node no extension renders is skipped rather than throwing.
 
 /** Renders one editor block to HTML, or an empty string if no extension handles it. */
-export function renderBlock(block: EditorBlock): string {
+function renderBlock(block: EditorBlock): string {
     for (const extension of orderedExtensions()) {
         const html = extension.renderBlock?.(block, renderContext);
 
@@ -184,6 +192,23 @@ const renderContext: RenderContext = {
     renderInlines,
 };
 
+/**
+ * Renders an editor document to HTML. An extension may take over the whole document (returning HTML)
+ * for document-level layout such as footnotes' numbered references and collected definitions list;
+ * otherwise the default per-block rendering applies.
+ */
+export function renderDocument(document: EditorDocument): string {
+    for (const extension of orderedExtensions()) {
+        const html = extension.renderDocument?.(document, renderContext);
+
+        if (html != null) {
+            return html;
+        }
+    }
+
+    return renderBlocks(document.blocks);
+}
+
 // Serialise-in seam: fail soft. The base extension treats any unrecognised element as a paragraph.
 
 /** Converts a DOM block element to an editor block. */
@@ -206,9 +231,29 @@ export function documentFromElements(elements: HTMLCollection | Element[]): Edit
     };
 }
 
+/** Converts one inline DOM node to zero or more editor inline nodes (the base extension claims any node). */
+function inlineFromNode(node: ChildNode): InlineNode[] {
+    for (const extension of orderedExtensions()) {
+        const nodes = extension.inlineFromElement?.(node, fromElementContext);
+
+        if (nodes != null) {
+            return nodes;
+        }
+    }
+
+    return [];
+}
+
+/** Converts an element's inline DOM children to editor inline nodes. */
+function inlinesFromElement(element: Element): InlineNode[] {
+    return Array.from(element.childNodes).flatMap((node: ChildNode): InlineNode[] => inlineFromNode(node));
+}
+
 const fromElementContext: FromElementContext = {
     blockFromElement,
     documentFromElements,
+    inlineFromNode,
+    inlinesFromElement,
 };
 
 // Serialise-out seam: fail soft. The base extension serialises any unrecognised block as a paragraph.
@@ -231,7 +276,27 @@ export function documentToMarkdown(document: EditorDocument): string {
     return document.blocks.map((block: EditorBlock): string => blockToMarkdown(block)).join("\n\n");
 }
 
+/** Serialises one editor inline node to Markdown, or an empty string if no extension handles it. */
+function inlineToMarkdown(node: InlineNode): string {
+    for (const extension of orderedExtensions()) {
+        const markdown = extension.inlineToMarkdown?.(node, toMarkdownContext);
+
+        if (markdown != null) {
+            return markdown;
+        }
+    }
+
+    return "";
+}
+
+/** Serialises editor inline nodes to Markdown. */
+function inlinesToMarkdown(nodes: InlineNode[]): string {
+    return nodes.map((node: InlineNode): string => inlineToMarkdown(node)).join("");
+}
+
 const toMarkdownContext: ToMarkdownContext = {
     blockToMarkdown,
     documentToMarkdown,
+    inlineToMarkdown,
+    inlinesToMarkdown,
 };

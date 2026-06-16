@@ -337,6 +337,15 @@ markdown-editor[mode="split"] .markdown-editor__body {
   padding-top: 0.5rem;
 }
 
+/* Reference links render as ordinary links; their definitions are kept visible as muted source chrome
+   so they survive editing (definitions are invisible markup in standard Markdown output). */
+.markdown-reference-def {
+  color: var(--markdown-editor-muted);
+  font: 13px ui-monospace, monospace;
+  opacity: 0.8;
+  padding: 0.15rem 0;
+}
+
 .markdown-editor__surface table,
 .markdown-editor__preview table {
   border-collapse: collapse;

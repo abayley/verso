@@ -4,6 +4,7 @@ import { Markdown } from "@tiptap/markdown";
 import {
     Fragment,
     type Mark as ProseMirrorMark,
+    type MarkType as ProseMirrorMarkType,
     type Node as ProseMirrorNode,
     type NodeType as ProseMirrorNodeType,
     type ResolvedPos,
@@ -16,6 +17,7 @@ import { documentFromElements, documentToMarkdown } from "./markdown-serialise.j
 import { Admonition } from "./tiptap-admonition-node.js";
 import { Collapsible } from "./tiptap-collapsible-node.js";
 import { FootnoteDefinition, FootnoteReference } from "./tiptap-footnote-node.js";
+import { ReferenceDefinition, ReferenceLink } from "./tiptap-reference-link-node.js";
 import { tableExtensions } from "./tiptap-table-extensions.js";
 
 /** Callback fired when the visual editor content changes. */
@@ -106,6 +108,42 @@ function extractFootnoteDefinitions(markdown: string): { definitions: FootnoteDe
     return { definitions, stripped: bodyLines.join("\n") };
 }
 
+/** A link reference definition pulled out of the raw Markdown before marked parses it. */
+interface ReferenceDefinitionSource {
+    label: string;
+    title: string | null;
+    url: string;
+}
+
+/**
+ * Pulls link reference definitions (`[label]: url "title"`, single line) out of the Markdown before
+ * marked sees it. marked would otherwise consume them as link reference definitions and resolve
+ * `[text][label]` into a plain inline link (losing the reference form); removing them leaves the
+ * references as literal text, which {@link loadReferenceLinks} promotes to reference-link marks.
+ */
+function extractReferenceDefinitions(markdown: string): { definitions: ReferenceDefinitionSource[]; stripped: string } {
+    const lines = markdown.split("\n");
+    const bodyLines: string[] = [];
+    const definitions: ReferenceDefinitionSource[] = [];
+
+    for (const line of lines) {
+        const match = /^\[([^^\]][^\]]*)\]:[ \t]+(\S+)(?:[ \t]+"([^"]*)")?[ \t]*$/.exec(line);
+
+        if (match) {
+            definitions.push({ label: match[1] ?? "", title: match[3] ?? null, url: match[2] ?? "" });
+        } else {
+            bodyLines.push(line);
+        }
+    }
+
+    return { definitions, stripped: bodyLines.join("\n") };
+}
+
+/** Normalises a reference label for matching (case-fold + collapse whitespace), as CommonMark does. */
+function normaliseReferenceLabel(label: string): string {
+    return label.trim().replace(/\s+/gu, " ").toLowerCase();
+}
+
 const HeadingWithoutInputRules = Heading.extend({
     /** Keeps heading nodes available while preventing typed hash shortcuts. */
     addInputRules() {
@@ -127,9 +165,10 @@ export class TiptapVisualEditor {
         this.onLinkShortcut = onLinkShortcut;
 
         const footnotes = extractFootnoteDefinitions(markdown);
+        const references = extractReferenceDefinitions(footnotes.stripped);
 
         this.editor = new Editor({
-            content: footnotes.stripped,
+            content: references.stripped,
             contentType: "markdown",
             element: this.root,
             extensions: [
@@ -141,6 +180,8 @@ export class TiptapVisualEditor {
                 Collapsible,
                 FootnoteReference,
                 FootnoteDefinition,
+                ReferenceLink,
+                ReferenceDefinition,
                 ...tableExtensions,
                 Markdown.configure({
                     markedOptions: {
@@ -167,6 +208,7 @@ export class TiptapVisualEditor {
         this.upgradeAlertBlockquotes();
         this.upgradeCollapsibles();
         this.loadFootnotes(footnotes.definitions);
+        this.loadReferenceLinks(references.definitions);
         this.collapseSoftBreaks();
     }
 
@@ -190,10 +232,12 @@ export class TiptapVisualEditor {
         };
 
         const footnotes = extractFootnoteDefinitions(markdown);
-        this.editor.commands.setContent(footnotes.stripped, options);
+        const references = extractReferenceDefinitions(footnotes.stripped);
+        this.editor.commands.setContent(references.stripped, options);
         this.upgradeAlertBlockquotes();
         this.upgradeCollapsibles();
         this.loadFootnotes(footnotes.definitions);
+        this.loadReferenceLinks(references.definitions);
         this.collapseSoftBreaks();
     }
 
@@ -419,6 +463,120 @@ export class TiptapVisualEditor {
                 replacement.from,
                 replacement.to,
                 referenceType.create({ footnoteId: replacement.id }, null, replacement.marks),
+            );
+        }
+
+        this.editor.view.dispatch(transaction.setMeta("addToHistory", false));
+    }
+
+    /**
+     * Loads link reference definitions (pre-extracted before marked, like footnotes): appends them as
+     * definition nodes and promotes full `[text][id]` and collapsed `[text][]` references to reference-link
+     * marks (so they show as links and round-trip). Shortcut `[text]` references stay literal text.
+     */
+    private loadReferenceLinks(definitions: ReferenceDefinitionSource[]): void {
+        if (definitions.length === 0) {
+            return;
+        }
+
+        const schema = this.editor.state.schema;
+        const definitionType = schema.nodes["referenceDefinition"];
+        const markType = schema.marks["referenceLink"];
+
+        if (!definitionType || !markType) {
+            return;
+        }
+
+        this.appendReferenceDefinitions(definitionType, definitions);
+        const byLabel = new Map<string, ReferenceDefinitionSource>();
+
+        for (const definition of definitions) {
+            byLabel.set(normaliseReferenceLabel(definition.label), definition);
+        }
+
+        this.upgradeReferenceLinks(markType, byLabel);
+    }
+
+    /** Appends one definition node per pre-extracted link reference definition. */
+    private appendReferenceDefinitions(
+        definitionType: ProseMirrorNodeType,
+        definitions: ReferenceDefinitionSource[],
+    ): void {
+        const nodes = definitions.map(
+            (definition: ReferenceDefinitionSource): ProseMirrorNode =>
+                definitionType.create({ label: definition.label, title: definition.title, url: definition.url }),
+        );
+        const transaction = this.editor.state.tr;
+        transaction.insert(this.editor.state.doc.content.size, Fragment.fromArray(nodes));
+        this.editor.view.dispatch(transaction.setMeta("addToHistory", false));
+    }
+
+    /** Replaces `[text][id]` / `[text][]` text matching a definition with reference-link-marked text. */
+    private upgradeReferenceLinks(
+        markType: ProseMirrorMarkType,
+        byLabel: Map<string, ReferenceDefinitionSource>,
+    ): void {
+        const schema = this.editor.state.schema;
+        const replacements: Array<{
+            from: number;
+            label: string;
+            marks: readonly ProseMirrorMark[];
+            referenceType: string;
+            text: string;
+            title: string | null;
+            to: number;
+            url: string;
+        }> = [];
+
+        this.editor.state.doc.descendants((node: ProseMirrorNode, position: number): boolean => {
+            if (!node.isText || node.text === undefined) {
+                return true;
+            }
+
+            const pattern = /\[([^[\]]+)\]\[([^[\]]*)\]/g;
+            let match = pattern.exec(node.text);
+
+            while (match !== null) {
+                const text = match[1] ?? "";
+                const rawLabel = match[2] ?? "";
+                const definition = byLabel.get(normaliseReferenceLabel(rawLabel === "" ? text : rawLabel));
+
+                if (definition) {
+                    replacements.push({
+                        from: position + match.index,
+                        label: rawLabel === "" ? definition.label : rawLabel,
+                        marks: node.marks,
+                        referenceType: rawLabel === "" ? "collapsed" : "full",
+                        text,
+                        title: definition.title,
+                        to: position + match.index + match[0].length,
+                        url: definition.url,
+                    });
+                }
+
+                match = pattern.exec(node.text);
+            }
+
+            return true;
+        });
+
+        if (replacements.length === 0) {
+            return;
+        }
+
+        const transaction = this.editor.state.tr;
+
+        for (const replacement of replacements.reverse()) {
+            const mark = markType.create({
+                label: replacement.label,
+                referenceType: replacement.referenceType,
+                title: replacement.title,
+                url: replacement.url,
+            });
+            transaction.replaceWith(
+                replacement.from,
+                replacement.to,
+                schema.text(replacement.text, [...replacement.marks, mark]),
             );
         }
 

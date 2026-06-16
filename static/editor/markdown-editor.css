@@ -1,5 +1,10 @@
 :root {
   --markdown-editor-accent: #b0532f;
+  --markdown-alert-note: #5a7892;
+  --markdown-alert-tip: #1d9e75;
+  --markdown-alert-important: #7b66a6;
+  --markdown-alert-warning: #ba7517;
+  --markdown-alert-caution: #a32d2d;
   --markdown-editor-background: #f4f0e6;
   --markdown-editor-code-background: #ece6d6;
   --markdown-editor-code-border: #dcd5c2;
@@ -18,6 +23,11 @@
 
 :root.wa-dark {
   --markdown-editor-accent: #d88a66;
+  --markdown-alert-note: #84a4c0;
+  --markdown-alert-tip: #5dcaa5;
+  --markdown-alert-important: #ac98d6;
+  --markdown-alert-warning: #ef9f27;
+  --markdown-alert-caution: #f09595;
   --markdown-editor-background: #211e16;
   --markdown-editor-code-background: #2b2719;
   --markdown-editor-code-border: #3c3624;
@@ -189,6 +199,49 @@ markdown-editor[mode="split"] .markdown-editor__body {
   color: var(--markdown-editor-muted);
   margin-left: 0;
   padding-left: 1rem;
+}
+
+.markdown-editor__surface .markdown-alert,
+.markdown-editor__preview .markdown-alert {
+  background: color-mix(in srgb, var(--markdown-alert-accent, var(--markdown-editor-quote-border)) 8%, transparent);
+  border-inline-start: 3px solid var(--markdown-alert-accent, var(--markdown-editor-quote-border));
+  border-radius: 6px;
+  margin-left: 0;
+  padding: 0.5rem 1rem;
+}
+
+/*
+ * Kind modifiers set the accent custom property the rule above reads. The accent is read via the
+ * cascade (not a same-rule declaration) so these lower-specificity class selectors still apply.
+ */
+.markdown-alert-note {
+  --markdown-alert-accent: var(--markdown-alert-note);
+}
+
+.markdown-alert-tip {
+  --markdown-alert-accent: var(--markdown-alert-tip);
+}
+
+.markdown-alert-important {
+  --markdown-alert-accent: var(--markdown-alert-important);
+}
+
+.markdown-alert-warning {
+  --markdown-alert-accent: var(--markdown-alert-warning);
+}
+
+.markdown-alert-caution {
+  --markdown-alert-accent: var(--markdown-alert-caution);
+}
+
+.markdown-alert-title {
+  color: var(--markdown-alert-accent, var(--markdown-editor-quote-border));
+  font-weight: 600;
+  margin: 0;
+}
+
+.markdown-alert > :last-child {
+  margin-bottom: 0;
 }
 
 .markdown-editor__split {

@@ -347,8 +347,39 @@ table phase (the spike's "when table editing arrives" trigger).
        `make test-editor-browser`); the 109 existing editor tests pass
        unmodified.
 2. Phase two: admonitions (cheapest, validates the mechanism on a real feature).
-   - [ ] GFM alert recognition on blockquotes, render + Tiptap decoration + slash
+   - [x] GFM alert recognition on blockquotes, render + Tiptap decoration + slash
          entry; degradation test (renders as a blockquote without the extension).
+
+     Landed as `admonition-extension.ts` (the data seams: parse, render,
+     blockFromElement, blockToMarkdown -- registered as a feature extension
+     through `register-extensions.ts`, with no edits to the core dispatchers),
+     `tiptap-admonition-node.ts` (the editor-side callout node), and callout CSS
+     in `markdown-editor.css` (theme-native per-kind accents, not GitHub's).
+     Decisions/notes from the phase:
+     - The mechanism proved out: the whole feature is a new module plus one
+       `registerExtension` call. Feature extensions are consulted before the
+       base fallback (the registry's `fallback` flag), so the admonition
+       handler claims an alert blockquote before base treats it as a plain one.
+     - Marker recognition is on the *mdast* blockquote (first paragraph text
+       opens with `[!KIND]` on its own line). In the visual editor, marked +
+       the soft-break collapse merge the marker into the body, so
+       `upgradeAlertBlockquotes` runs on the ProseMirror doc *before*
+       `collapseSoftBreaks` to promote alert blockquotes to admonition nodes
+       while the marker is still line-isolated.
+     - One callout DOM contract across render and the Tiptap node:
+       `div.markdown-alert > p.markdown-alert-title + div.markdown-alert-body`.
+       `blockFromElement` reads `.markdown-alert-body` (the title is chrome),
+       closing the editor round-trip (verified exact in the browser).
+     - Degradation: alerts are valid GFM and round-trip byte-for-byte, so a
+       no-extension/no-JS reader sees readable `> [!NOTE]` source (pinned by the
+       round-trip tests rather than a registry-disabled test, since the registry
+       is process-global).
+     - `renderMarkdown` is currently a mode-switch validation step, not a live
+       preview pane (ADR-040), so the callout chrome is visible via the Tiptap
+       node in the visual surface, not a preview.
+     - Deferred: switching an existing admonition's kind in the editor (insert
+       is note-only; other kinds round-trip from source). 125 editor tests
+       green; `make check` and `make test-editor-browser` pass.
 3. Phase three: tables.
    - [ ] Model + render + `@tiptap/extension-table` editing + pipe-table
          serialiser + slash insert; round-trip and cell-edit smoke tests. Adopt

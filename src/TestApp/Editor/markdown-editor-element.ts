@@ -1,5 +1,11 @@
 import type { AdmonitionKind } from "./admonition-extension.js";
 import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
+import {
+    CommandBarElement,
+    type CommandBlockStyleEventDetail,
+    type CommandInlineEventDetail,
+    type CommandStructureEventDetail,
+} from "./command-bar-element.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
 import { renderMarkdown } from "./markdown-render.js";
 import { SaveStateController, type SaveStateView } from "./save-state-controller.js";
@@ -110,14 +116,10 @@ export class MarkdownEditorElement extends HTMLElement {
     private panes: HTMLDivElement | null = null;
     private parseError: HTMLDivElement | null = null;
     private preview: HTMLDivElement | null = null;
-    private readonly inlineStyleButtons: ToolbarButtonElement[] = [];
     private linkController: LinkPopoverController | null = null;
-    private saveButton: ToolbarButtonElement | null = null;
     private saveError: HTMLSpanElement | null = null;
     private saveController: SaveStateController | null = null;
     private sourceEditor: CodeMirrorSourceEditor | null = null;
-    private styleDropdown: HTMLElement | null = null;
-    private styleTrigger: ToolbarButtonElement | null = null;
     private syncingEditors = false;
     private theme: EditorTheme = "match-system";
     private themeGroup: HTMLElement | null = null;
@@ -163,7 +165,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private readonly slashItems: { button: ToolbarButtonElement; run: () => void }[] = [];
     private slashIndex = 0;
     private tableControls: TableControlsElement | null = null;
-    private commandBar: HTMLDivElement | null = null;
+    private commandBar: CommandBarElement | null = null;
     private documentName: HTMLSpanElement | null = null;
     private toolbar: HTMLDivElement | null = null;
     private visualEditor: TiptapVisualEditor | null = null;
@@ -288,30 +290,26 @@ export class MarkdownEditorElement extends HTMLElement {
         return toolbar;
     }
 
-    /** Creates the floating command bar with formatting and save controls. */
-    private createCommandBar(): HTMLDivElement {
-        const bar = document.createElement("div");
+    /** Creates the floating Lit command bar and routes its command events to the active editor. */
+    private createCommandBar(): CommandBarElement {
+        const bar = new CommandBarElement();
         bar.className = "markdown-editor__toolbar markdown-editor__toolbar--commands";
         bar.setAttribute("role", "toolbar");
-        this.styleDropdown = this.createStyleDropdown();
-        bar.append(this.styleDropdown);
-        bar.append(
-            this.createToolbarButtonGroup(
-                this.createInlineStyleButton("strong", "Bold", "bold"),
-                this.createInlineStyleButton("emphasis", "Italic", "italic"),
-                this.createInlineStyleButton("strikethrough", "Strike", "strikethrough"),
-                this.createInlineStyleButton("code", "Code", "code"),
-                this.createInlineStyleButton("link", "Link", "link"),
-            ),
-            this.createToolbarButtonGroup(
-                this.createStructureButton("bullet-list", "Bullet List", "list"),
-                this.createStructureButton("ordered-list", "Ordered List", "list-ol"),
-                this.createStructureButton("blockquote", "Blockquote", "quote-left"),
-                this.createStructureButton("code-block", "Code Block", "file-code"),
-                this.createStructureButton("thematic-break", "Horizontal rule", "window-minimize"),
-            ),
-        );
-        bar.append(this.createSaveButton());
+        bar.tooltipController = this.tooltipController;
+        bar.addEventListener("command-block-style", (event: Event): void => {
+            const style = (event as CustomEvent<CommandBlockStyleEventDetail>).detail.style;
+
+            if (isVisualBlockStyle(style)) {
+                this.setStyleDropdownValue(style);
+                this.applyBlockStyle(style);
+            }
+        });
+        bar.addEventListener("command-inline", (event: Event): void => {
+            this.toggleInlineStyle((event as CustomEvent<CommandInlineEventDetail>).detail.style);
+        });
+        bar.addEventListener("command-structure", (event: Event): void => {
+            this.toggleStructure((event as CustomEvent<CommandStructureEventDetail>).detail.style);
+        });
 
         return bar;
     }
@@ -489,15 +487,6 @@ export class MarkdownEditorElement extends HTMLElement {
         }
     }
 
-    /** Creates the explicit form submit button for manual saves. */
-    private createSaveButton(): ToolbarButtonElement {
-        const button = this.createToolbarButton("markdown-editor__save-button", "Save");
-        button.setAttribute("type", "submit");
-        this.saveButton = button;
-
-        return button;
-    }
-
     /** Creates the save error message shown when the last save failed. */
     private createSaveError(): HTMLSpanElement {
         const error = document.createElement("span");
@@ -579,35 +568,6 @@ export class MarkdownEditorElement extends HTMLElement {
         }
     }
 
-    /** Creates the block style toolbar control. */
-    private createStyleDropdown(): HTMLElement {
-        const dropdown = document.createElement("wa-dropdown");
-        dropdown.className = "markdown-editor__style-dropdown";
-        dropdown.setAttribute("aria-label", "Block style");
-        dropdown.setAttribute("size", "small");
-
-        this.styleTrigger = this.createToolbarButton("markdown-editor__style-trigger", "Paragraph");
-        this.styleTrigger.setAttribute("slot", "trigger");
-        this.styleTrigger.setAttribute("with-caret", "");
-        dropdown.append(
-            this.styleTrigger,
-            this.createStyleDropdownItem("paragraph", "Paragraph"),
-            this.createStyleDropdownItem("heading-1", "Heading 1"),
-            this.createStyleDropdownItem("heading-2", "Heading 2"),
-            this.createStyleDropdownItem("heading-3", "Heading 3"),
-        );
-        dropdown.addEventListener("wa-select", (event: Event): void => {
-            const style = elementValue((event as WaDropdownSelectEvent).detail.item as HTMLElement);
-
-            if (isVisualBlockStyle(style)) {
-                this.setStyleDropdownValue(style);
-                this.applyBlockStyle(style);
-            }
-        });
-
-        return dropdown;
-    }
-
     /** Creates one item in the block style dropdown control. */
     private createStyleDropdownItem(value: VisualBlockStyle, label: string): HTMLElement {
         const item = document.createElement("wa-dropdown-item");
@@ -615,35 +575,6 @@ export class MarkdownEditorElement extends HTMLElement {
         item.textContent = label;
 
         return item;
-    }
-
-    /** Creates one inline style toolbar button. */
-    private createInlineStyleButton(style: VisualInlineStyle, label: string, iconName: string): ToolbarButtonElement {
-        const button = this.createToolbarButton("markdown-editor__inline-button", label, shortcutForInlineStyle(style));
-        button.textContent = "";
-        button.append(createToolbarIcon(iconName, label));
-        button.dataset["inlineStyle"] = style;
-        button.addEventListener("mousedown", (event: MouseEvent): void => {
-            event.preventDefault();
-        });
-        button.addEventListener("click", (): void => this.toggleInlineStyle(style));
-        this.inlineStyleButtons.push(button);
-
-        return button;
-    }
-
-    /** Creates one structural style toolbar button. */
-    private createStructureButton(style: VisualStructureStyle, label: string, iconName: string): ToolbarButtonElement {
-        const button = this.createToolbarButton("markdown-editor__structure-button", label);
-        button.textContent = "";
-        button.append(createToolbarIcon(iconName, label));
-        button.dataset["structureStyle"] = style;
-        button.addEventListener("mousedown", (event: MouseEvent): void => {
-            event.preventDefault();
-        });
-        button.addEventListener("click", (): void => this.toggleStructure(style));
-
-        return button;
     }
 
     /** Creates the Studio selection bubble toolbar with the inline command buttons. */
@@ -901,15 +832,6 @@ export class MarkdownEditorElement extends HTMLElement {
         this.tooltipController?.register(button, label, shortcut);
 
         return button;
-    }
-
-    /** Creates one Web Awesome toolbar button group. */
-    private createToolbarButtonGroup(...buttons: ToolbarButtonElement[]): HTMLElement {
-        const group = document.createElement("wa-button-group");
-        group.className = "markdown-editor__button-group";
-        group.append(...buttons);
-
-        return group;
     }
 
     /** Re-renders the editor body for the current mode. */
@@ -1366,9 +1288,10 @@ export class MarkdownEditorElement extends HTMLElement {
     private applySaveView(view: SaveStateView): void {
         this.setAttribute("data-save-state", view.state);
 
-        if (this.saveButton) {
-            this.saveButton.textContent = view.buttonLabel;
-            setToolbarButtonDisabled(this.saveButton, view.buttonDisabled);
+        if (this.commandBar) {
+            this.commandBar.saveLabel = view.buttonLabel;
+            this.commandBar.saveDisabled = view.buttonDisabled;
+            this.commandBar.flush();
         }
 
         if (this.saveError) {
@@ -1452,14 +1375,11 @@ export class MarkdownEditorElement extends HTMLElement {
             }
         }
 
-        if (this.styleTrigger) {
-            setToolbarButtonDisabled(this.styleTrigger, !this.visualEditor && !this.sourceEditor);
-            this.setStyleDropdownValue("paragraph");
+        if (this.commandBar) {
+            this.commandBar.commandsDisabled = !this.visualEditor && !this.sourceEditor;
         }
 
-        for (const button of this.inlineStyleButtons) {
-            setToolbarButtonDisabled(button, !this.visualEditor && !this.sourceEditor);
-        }
+        this.setStyleDropdownValue("paragraph");
 
         if (this.saveController) {
             this.applySaveView(this.saveController.view());
@@ -1506,20 +1426,11 @@ export class MarkdownEditorElement extends HTMLElement {
         return window.matchMedia("(prefers-color-scheme: dark)");
     }
 
-    /** Reflects the current block style label into the dropdown trigger. */
+    /** Reflects the current block style onto the command bar's style dropdown. */
     private setStyleDropdownValue(style: VisualBlockStyle): void {
-        if (!this.styleDropdown || !this.styleTrigger) {
-            return;
-        }
-
-        this.styleTrigger.textContent = blockStyleLabel(style);
-
-        for (const item of this.styleDropdown.querySelectorAll("wa-dropdown-item")) {
-            if (item.getAttribute("value") === style) {
-                item.setAttribute("checked", "");
-            } else {
-                item.removeAttribute("checked");
-            }
+        if (this.commandBar) {
+            this.commandBar.blockStyle = style;
+            this.commandBar.flush();
         }
     }
 }
@@ -1708,14 +1619,4 @@ function shortcutForInlineStyle(style: VisualInlineStyle): string | null {
 /** Returns the platform-specific primary command modifier label. */
 function primaryModifierLabel(): string {
     return /\bMac/.test(navigator.platform) ? "Cmd" : "Ctrl";
-}
-
-/** Reflects disabled state onto custom toolbar command elements. */
-function setToolbarButtonDisabled(button: ToolbarButtonElement, disabled: boolean): void {
-    if (disabled) {
-        button.setAttribute("disabled", "");
-        return;
-    }
-
-    button.removeAttribute("disabled");
 }

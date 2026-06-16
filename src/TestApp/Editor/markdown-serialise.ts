@@ -1,7 +1,7 @@
-import "./base-extension.js";
+import "./register-extensions.js";
 
 /**
  * The DOM-to-model and model-to-Markdown serialisers run through the content-extension registry.
- * This module re-exports the registry entry points and ensures the base extension is registered.
+ * This module re-exports the registry entry points and ensures the extensions are registered.
  */
 export { documentFromElements, documentToMarkdown } from "./content-extension.js";

@@ -3,3 +3,4 @@
 // extension registers as the fallback; feature extensions are consulted before it.
 import "./base-extension.js";
 import "./admonition-extension.js";
+import "./table-extension.js";

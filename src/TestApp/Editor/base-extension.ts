@@ -324,6 +324,12 @@ function inlineNodesFromNode(node: ChildNode): InlineNode[] {
     const element = node as Element;
 
     if (element.tagName === "BR") {
+        // ProseMirror inserts a trailing <br> into empty textblocks for cursor visibility; it is an
+        // editor artifact, not content (a real hard break carries no such class).
+        if (element.classList.contains("ProseMirror-trailingBreak")) {
+            return [];
+        }
+
         return [
             {
                 type: "break",

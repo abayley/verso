@@ -782,6 +782,23 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   display: none;
 }
 
+.markdown-editor__table-controls {
+  align-items: center;
+  background: var(--markdown-editor-pill-background);
+  border: 1px solid var(--markdown-editor-pill-border);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 12%);
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.25rem 0.4rem;
+  position: absolute;
+  z-index: 10;
+}
+
+.markdown-editor__table-controls[hidden] {
+  display: none;
+}
+
 .markdown-editor__slash-item {
   background: transparent;
   border: 0;

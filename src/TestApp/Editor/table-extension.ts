@@ -119,13 +119,15 @@ function delimiterCell(align: TableAlign): string {
 
 // Serialise-in: a rendered `<table>` element becomes a custom table block.
 
-/** Converts a DOM table element to a custom table block, declining any other element. */
+/** Converts a DOM table element (or a wrapper around one, as Tiptap renders it) to a custom table block. */
 function blockFromElement(element: Element, ctx: FromElementContext): EditorBlock | null {
-    if (element.tagName !== "TABLE") {
+    const table = element.tagName === "TABLE" ? element : element.querySelector(":scope > table");
+
+    if (!table) {
         return null;
     }
 
-    const rows = Array.from(element.querySelectorAll("tr"));
+    const rows = Array.from(table.querySelectorAll("tr"));
     const [headerRow, ...bodyRows] = rows;
 
     if (!headerRow) {

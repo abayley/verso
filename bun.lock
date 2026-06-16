@@ -5,6 +5,7 @@
     "": {
       "dependencies": {
         "@tiptap/extension-table": "^3.26.0",
+        "lit": "^3.3.3",
       },
       "devDependencies": {
         "@awesome.me/webawesome": "^3.8.0",

@@ -4,11 +4,17 @@ import { LinkPopoverController } from "./link-popover-controller.js";
 import { renderMarkdown } from "./markdown-render.js";
 import { SaveStateController, type SaveStateView } from "./save-state-controller.js";
 import {
+    type TableAlignEventDetail,
+    type TableCommandEventDetail,
+    TableControlsElement,
+} from "./table-controls-element.js";
+import {
     TiptapVisualEditor,
     type VisualBlockStyle,
     type VisualInlineStyle,
     type VisualLinkSelection,
     type VisualStructureStyle,
+    type VisualTableCommand,
 } from "./tiptap-visual-editor.js";
 import { ToolbarTooltipController } from "./toolbar-tooltip-controller.js";
 
@@ -127,6 +133,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private readonly handleSelectionChange = (): void => {
         this.updateBubbleToolbar();
         this.updateSlashMenu();
+        this.updateTableControls();
     };
     private readonly handleSlashKeydown = (event: KeyboardEvent): void => {
         if (!this.slashMenu || this.slashMenu.hidden) {
@@ -155,6 +162,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private slashMenu: HTMLDivElement | null = null;
     private readonly slashItems: { button: ToolbarButtonElement; run: () => void }[] = [];
     private slashIndex = 0;
+    private tableControls: TableControlsElement | null = null;
     private commandBar: HTMLDivElement | null = null;
     private documentName: HTMLSpanElement | null = null;
     private toolbar: HTMLDivElement | null = null;
@@ -225,6 +233,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.linkController = this.createLinkController();
         this.bubbleToolbar = this.createBubbleToolbar();
         this.slashMenu = this.createSlashMenu();
+        this.tableControls = this.createTableControls();
         this.body = document.createElement("div");
         this.body.className = "markdown-editor__body";
         this.parseError = document.createElement("div");
@@ -248,6 +257,7 @@ export class MarkdownEditorElement extends HTMLElement {
             this.linkController.actionsElement(),
             this.bubbleToolbar,
             this.slashMenu,
+            this.tableControls,
             this.tooltipController.element(),
             this.body,
             footer,
@@ -799,6 +809,57 @@ export class MarkdownEditorElement extends HTMLElement {
         this.highlightSlashItem();
     }
 
+    /** Creates the floating Lit table-editing controls and routes their events to table commands. */
+    private createTableControls(): TableControlsElement {
+        const controls = new TableControlsElement();
+        controls.className = "markdown-editor__table-controls";
+        controls.hidden = true;
+        controls.addEventListener("table-command", (event: Event): void => {
+            this.runTableCommand((event as CustomEvent<TableCommandEventDetail>).detail.command);
+        });
+        controls.addEventListener("table-align", (event: Event): void => {
+            this.alignTableColumn((event as CustomEvent<TableAlignEventDetail>).detail.align);
+        });
+
+        return controls;
+    }
+
+    /** Shows the table controls anchored to the current table when the visual selection is inside one. */
+    private updateTableControls(): void {
+        if (!this.tableControls) {
+            return;
+        }
+
+        const rect = this.shouldUseSourceCommands()
+            ? null
+            : this.visualEditor?.isInTable()
+              ? this.visualEditor.tableRect()
+              : null;
+
+        if (!rect) {
+            this.tableControls.hidden = true;
+            return;
+        }
+
+        this.tableControls.hidden = false;
+        this.positionOverlay(this.tableControls, rect);
+    }
+
+    /** Runs a table-editing command through the visual editor and refreshes the controls. */
+    private runTableCommand(command: VisualTableCommand): void {
+        if (this.visualEditor?.runTableCommand(command)) {
+            this.handleVisualInput();
+            this.updateTableControls();
+        }
+    }
+
+    /** Sets the GFM column alignment on the selected table cells. */
+    private alignTableColumn(align: "left" | "center" | "right"): void {
+        if (this.visualEditor?.setColumnAlignment(align)) {
+            this.handleVisualInput();
+        }
+    }
+
     /** Hides the slash menu and removes its keyboard navigation. */
     private closeSlashMenu(): void {
         this.removeEventListener("keydown", this.handleSlashKeydown, true);
@@ -1198,6 +1259,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.visualEditorChanged = true;
         this.syncSourceEditor(markdown);
         this.dispatchMarkdownChange(markdown);
+        this.updateTableControls();
     }
 
     /** Records a valid Markdown change and notifies htmx autosave listeners. */

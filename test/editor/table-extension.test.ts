@@ -94,6 +94,14 @@ describe("table DOM serialisation", (): void => {
         expect(documentToMarkdown(documentFromElements(root.children))).toBe(TWO_COLUMN);
     });
 
+    it("given a table wrapped in a div (as Tiptap renders it), when serialised, then it becomes a GFM table", (): void => {
+        const root = document.createElement("div");
+        root.innerHTML =
+            '<div class="tableWrapper"><table><tbody><tr><th>H</th></tr><tr><td>v</td></tr></tbody></table></div>';
+
+        expect(documentToMarkdown(documentFromElements(root.children))).toBe(["| H |", "| --- |", "| v |"].join("\n"));
+    });
+
     it("given a table whose header cells are in the body, when serialised, then the first row is the header", (): void => {
         const root = document.createElement("div");
         root.innerHTML = "<table><tbody><tr><th>H</th></tr><tr><td>v</td></tr></tbody></table>";

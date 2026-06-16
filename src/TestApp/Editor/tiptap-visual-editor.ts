@@ -3,6 +3,7 @@ import Heading from "@tiptap/extension-heading";
 import { Markdown } from "@tiptap/markdown";
 import {
     Fragment,
+    type Mark as ProseMirrorMark,
     type Node as ProseMirrorNode,
     type NodeType as ProseMirrorNodeType,
     type ResolvedPos,
@@ -14,6 +15,7 @@ import { type CollapsibleKind, matchCollapsibleMarker } from "./collapsible-exte
 import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
 import { Admonition } from "./tiptap-admonition-node.js";
 import { Collapsible } from "./tiptap-collapsible-node.js";
+import { FootnoteDefinition, FootnoteReference } from "./tiptap-footnote-node.js";
 import { tableExtensions } from "./tiptap-table-extensions.js";
 
 /** Callback fired when the visual editor content changes. */
@@ -52,6 +54,58 @@ interface MarkdownParseEditor {
     };
 }
 
+/** A footnote definition pulled out of the raw Markdown before marked parses it. */
+interface FootnoteDefinitionSource {
+    id: string;
+    markdown: string;
+}
+
+/**
+ * Pulls GFM footnote definitions (`[^id]: body`, with four-space/tab-indented continuation lines) out of
+ * the Markdown before marked sees it. marked has no footnote support and would treat a single-token
+ * definition as a link reference definition (turning `[^id]` into a link and swallowing the body); removing
+ * the definitions leaves the `[^id]` references as literal text, which {@link loadFootnotes} promotes.
+ */
+function extractFootnoteDefinitions(markdown: string): { definitions: FootnoteDefinitionSource[]; stripped: string } {
+    const lines = markdown.split("\n");
+    const bodyLines: string[] = [];
+    const definitions: FootnoteDefinitionSource[] = [];
+
+    for (let index = 0; index < lines.length; index += 1) {
+        const match = /^\[\^([^\]\s]+)\]:[ \t]?(.*)$/.exec(lines[index] ?? "");
+
+        if (!match) {
+            bodyLines.push(lines[index] ?? "");
+
+            continue;
+        }
+
+        const definitionLines = [match[2] ?? ""];
+
+        while (index + 1 < lines.length) {
+            const next = lines[index + 1] ?? "";
+
+            if (next.trim() === "") {
+                definitionLines.push("");
+                index += 1;
+            } else if (/^( {4}|\t)/.test(next)) {
+                definitionLines.push(next.replace(/^( {4}|\t)/, ""));
+                index += 1;
+            } else {
+                break;
+            }
+        }
+
+        while (definitionLines.length > 0 && definitionLines[definitionLines.length - 1] === "") {
+            definitionLines.pop();
+        }
+
+        definitions.push({ id: match[1] ?? "", markdown: definitionLines.join("\n") });
+    }
+
+    return { definitions, stripped: bodyLines.join("\n") };
+}
+
 const HeadingWithoutInputRules = Heading.extend({
     /** Keeps heading nodes available while preventing typed hash shortcuts. */
     addInputRules() {
@@ -72,8 +126,10 @@ export class TiptapVisualEditor {
         this.root.className = "markdown-editor__surface";
         this.onLinkShortcut = onLinkShortcut;
 
+        const footnotes = extractFootnoteDefinitions(markdown);
+
         this.editor = new Editor({
-            content: markdown,
+            content: footnotes.stripped,
             contentType: "markdown",
             element: this.root,
             extensions: [
@@ -83,6 +139,8 @@ export class TiptapVisualEditor {
                 HeadingWithoutInputRules,
                 Admonition,
                 Collapsible,
+                FootnoteReference,
+                FootnoteDefinition,
                 ...tableExtensions,
                 Markdown.configure({
                     markedOptions: {
@@ -108,6 +166,7 @@ export class TiptapVisualEditor {
         });
         this.upgradeAlertBlockquotes();
         this.upgradeCollapsibles();
+        this.loadFootnotes(footnotes.definitions);
         this.collapseSoftBreaks();
     }
 
@@ -130,9 +189,11 @@ export class TiptapVisualEditor {
             emitUpdate: false,
         };
 
-        this.editor.commands.setContent(markdown, options);
+        const footnotes = extractFootnoteDefinitions(markdown);
+        this.editor.commands.setContent(footnotes.stripped, options);
         this.upgradeAlertBlockquotes();
         this.upgradeCollapsibles();
+        this.loadFootnotes(footnotes.definitions);
         this.collapseSoftBreaks();
     }
 
@@ -263,6 +324,105 @@ export class TiptapVisualEditor {
             { collapsibleType: marker.kind, open: marker.open, title: marker.title },
             Fragment.fromArray(bodyNodes),
         );
+    }
+
+    /**
+     * Loads GFM footnotes after content loads. The definitions were pre-extracted before marked saw the
+     * Markdown (marked would otherwise consume a single-token `[^id]: dest` as a link reference definition
+     * and turn `[^id]` into a link): they are appended as definition nodes here, and the now-literal
+     * `[^id]` references are promoted to inline reference nodes. Runs before {@link collapseSoftBreaks}.
+     */
+    private loadFootnotes(definitions: FootnoteDefinitionSource[]): void {
+        if (definitions.length === 0) {
+            return;
+        }
+
+        const schema = this.editor.state.schema;
+        const definitionType = schema.nodes["footnoteDefinition"];
+        const referenceType = schema.nodes["footnoteReference"];
+
+        if (!definitionType || !referenceType) {
+            return;
+        }
+
+        this.appendFootnoteDefinitions(definitionType, definitions);
+        this.upgradeFootnoteReferences(referenceType, new Set(definitions.map((definition) => definition.id)));
+    }
+
+    /** Appends one footnote definition node per pre-extracted definition, re-parsing each body's Markdown. */
+    private appendFootnoteDefinitions(
+        definitionType: ProseMirrorNodeType,
+        definitions: FootnoteDefinitionSource[],
+    ): void {
+        const schema = this.editor.state.schema;
+        const paragraphType = schema.nodes["paragraph"];
+        const nodes = definitions.map((definition: FootnoteDefinitionSource): ProseMirrorNode => {
+            const parsed = (this.editor as unknown as MarkdownParseEditor).markdown.parse(definition.markdown);
+            const bodyDoc = schema.nodeFromJSON(parsed);
+            const bodyNodes: ProseMirrorNode[] = [];
+
+            bodyDoc.content.forEach((child: ProseMirrorNode): void => {
+                bodyNodes.push(child);
+            });
+
+            if (bodyNodes.length === 0 && paragraphType) {
+                bodyNodes.push(paragraphType.create());
+            }
+
+            return definitionType.create({ footnoteId: definition.id }, Fragment.fromArray(bodyNodes));
+        });
+
+        const transaction = this.editor.state.tr;
+        transaction.insert(this.editor.state.doc.content.size, Fragment.fromArray(nodes));
+        this.editor.view.dispatch(transaction.setMeta("addToHistory", false));
+    }
+
+    /** Replaces `[^id]` text matching a known definition with inline footnote reference nodes. */
+    private upgradeFootnoteReferences(referenceType: ProseMirrorNodeType, ids: Set<string>): void {
+        const replacements: Array<{ from: number; id: string; marks: readonly ProseMirrorMark[]; to: number }> = [];
+
+        this.editor.state.doc.descendants((node: ProseMirrorNode, position: number): boolean => {
+            if (!node.isText || node.text === undefined) {
+                return true;
+            }
+
+            const pattern = /\[\^([^\]\s]+)\]/g;
+            let match = pattern.exec(node.text);
+
+            while (match !== null) {
+                const id = match[1] ?? "";
+
+                if (ids.has(id)) {
+                    replacements.push({
+                        from: position + match.index,
+                        id,
+                        // Carry the text's marks onto the atom so a reference inside e.g. bold stays inside it.
+                        marks: node.marks,
+                        to: position + match.index + match[0].length,
+                    });
+                }
+
+                match = pattern.exec(node.text);
+            }
+
+            return true;
+        });
+
+        if (replacements.length === 0) {
+            return;
+        }
+
+        const transaction = this.editor.state.tr;
+
+        for (const replacement of replacements.reverse()) {
+            transaction.replaceWith(
+                replacement.from,
+                replacement.to,
+                referenceType.create({ footnoteId: replacement.id }, null, replacement.marks),
+            );
+        }
+
+        this.editor.view.dispatch(transaction.setMeta("addToHistory", false));
     }
 
     /** Inserts a 3x3 GFM table with a header row at the current selection. */

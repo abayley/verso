@@ -308,6 +308,35 @@ markdown-editor[mode="split"] .markdown-editor__body {
   margin-bottom: 0;
 }
 
+/* Footnotes: superscript references and the collected definitions. */
+.markdown-footnote-ref {
+  color: var(--markdown-editor-accent);
+  font-weight: 600;
+}
+
+.markdown-footnote-def {
+  border-inline-start: 3px solid var(--markdown-editor-divider);
+  color: var(--markdown-editor-muted);
+  font-size: 0.95em;
+  margin-left: 0;
+  padding: 0.25rem 1rem;
+}
+
+.markdown-footnote-def-label {
+  color: var(--markdown-editor-muted);
+  font-weight: 600;
+  margin-right: 0.4rem;
+  user-select: none;
+}
+
+.markdown-footnotes {
+  border-top: 1px solid var(--markdown-editor-divider);
+  color: var(--markdown-editor-muted);
+  font-size: 0.95em;
+  margin-top: 1.5rem;
+  padding-top: 0.5rem;
+}
+
 .markdown-editor__surface table,
 .markdown-editor__preview table {
   border-collapse: collapse;

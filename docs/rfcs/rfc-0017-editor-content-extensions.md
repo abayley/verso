@@ -462,10 +462,52 @@ table phase (the spike's "when table editing arrives" trigger).
        and `make test-editor-browser` pass; browser-verified round-trip, toggle,
        and slash insert across types.
 5. Phase five: footnotes (the most complex; inline plus document-level).
-   - [ ] `footnoteReference` / `footnoteDefinition` model (inline + block), render
+   - [x] `footnoteReference` / `footnoteDefinition` model (inline + block), render
          (superscript references linking to a collected definitions list with
          back-links), Tiptap inline reference node and definition handling, and a
          serialiser preserving `[^id]` labels; round-trip and degradation tests.
+
+     Landed in three slices. Decisions (per the resolved open question):
+     - **Editing approach = custom inline node** (not a community extension):
+       `tiptap-footnote-node.ts` defines an inline atom `FootnoteReference`
+       (`sup.markdown-footnote-ref`) and a block `FootnoteDefinition`
+       (`div.markdown-footnote-def`), serialised by our own seams -- full
+       round-trip control, no third-party runtime dep.
+     - **Render fidelity = GitHub-style collected list:** a new document-level
+       `renderDocument` registry seam (5a) lets the footnote extension number
+       references by first-reference order and emit a trailing
+       `<section class="markdown-footnotes">` ordered list with back-links;
+       per-render numbering is module state set by `renderDocument` and read by
+       `renderInline`.
+     - **5a (mechanism, behaviour-preserving):** opened the inline serialise
+       seams the registry deferred -- `inlineFromElement` (DOM->inline) and
+       `inlineToMarkdown` (inline->Markdown) became registry walks with the base
+       subset routed through them, so an extension inline node serialises inside
+       built-in blocks. Plus the `renderDocument` seam. 152 tests unchanged.
+     - **5b (data seams, TDD):** `footnote-extension.ts` -- parse
+       reference/definition, render the collected list, serialise reference
+       `[^id]` and definition `[^id]: body`. A reference only parses when a
+       matching definition exists (GFM behaviour, pinned by a test). 9 golden
+       tests.
+     - **5c (editor):** the Tiptap nodes + the load path. Key gotcha: marked
+       (the visual editor's loader, via `@tiptap/markdown`) has no footnote
+       support and consumes a single-token `[^id]: dest` as a *link reference
+       definition* (turning `[^id]` into a link and swallowing the body), which a
+       post-load transform cannot recover. Fix: **pre-extract footnote
+       definitions from the raw Markdown before marked sees it** (so `[^id]`
+       references stay literal text), then append them as definition nodes
+       (re-parsing each body via `editor.markdown.parse` + `nodeFromJSON`) and
+       promote the literal references to reference atoms, carrying the
+       surrounding text marks so a reference inside e.g. bold stays inside it.
+     - Known limitation: pre-extracted definitions are re-appended at document
+       end in the visual editor, so a visual-editor round-trip normalises
+       definition position to the end (conventional for GFM); the data-layer
+       round-trip (source mode) preserves position. No footnote insert UI yet
+       (creating a reference + a definition with a generated id is deferred);
+       references and definitions round-trip from source.
+     - 161 editor tests; `make check` and `make test-editor-browser` pass;
+       browser-verified round-trip (single- and multi-token definitions,
+       reference inside bold) and rendering.
 6. Phase six: server guard and docs.
    - [ ] Narrow the Haskell guard to raw-HTML rejection (drop block-structure
          validation); `MicroHttp.TestApp` tests for the narrowed guard. ADR for
@@ -504,8 +546,9 @@ Resolved during phase four (2026-06-17):
   micromark construct -- same supported syntax, lower risk (see the phase-four
   rollout note).
 
-Still open:
-
-- **Footnote editing in Tiptap:** a community footnote extension versus a custom
-  inline node plus managed definition region; decide during the footnotes phase
-  against round-trip fidelity and Web Awesome/Lit fit.
+- **Footnote editing in Tiptap (resolved during phase five, 2026-06-17):** a
+  custom inline reference atom plus block definition nodes serialised by our own
+  seams, not a community extension -- full round-trip control and no third-party
+  runtime dependency. Definitions are pre-extracted from the raw Markdown before
+  marked (which has no footnote support) can mis-parse them. See the phase-five
+  rollout note.

@@ -6,6 +6,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { type AdmonitionKind, matchAlertMarker } from "./admonition-extension.js";
 import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
 import { Admonition } from "./tiptap-admonition-node.js";
+import { tableExtensions } from "./tiptap-table-extensions.js";
 
 /** Callback fired when the visual editor content changes. */
 export type TiptapChangeHandler = () => void;
@@ -21,6 +22,9 @@ export type VisualInlineStyle = "strong" | "emphasis" | "code" | "strikethrough"
 
 /** Supported visual structure commands exposed by the editor toolbar. */
 export type VisualStructureStyle = "bullet-list" | "ordered-list" | "blockquote" | "code-block" | "thematic-break";
+
+/** Supported table-editing commands exposed when the selection is inside a table. */
+export type VisualTableCommand = "row-after" | "row-delete" | "column-after" | "column-delete" | "delete";
 
 /** A link mark range resolved from the rendered visual editor. */
 export interface VisualLinkSelection {
@@ -63,6 +67,7 @@ export class TiptapVisualEditor {
                 }),
                 HeadingWithoutInputRules,
                 Admonition,
+                ...tableExtensions,
                 Markdown.configure({
                     markedOptions: {
                         gfm: true,
@@ -158,6 +163,39 @@ export class TiptapVisualEditor {
     /** Inserts an admonition callout of the given kind around the current selection. */
     public insertAdmonition(kind: AdmonitionKind): boolean {
         return this.editor.chain().focus().wrapIn("admonition", { kind }).run();
+    }
+
+    /** Inserts a 3x3 GFM table with a header row at the current selection. */
+    public insertTable(): boolean {
+        return this.editor.chain().focus().insertTable({ cols: 3, rows: 3, withHeaderRow: true }).run();
+    }
+
+    /** Reports whether the selection is inside a table (for showing the table controls). */
+    public isInTable(): boolean {
+        return this.editor.isActive("table");
+    }
+
+    /** Runs one table-editing command at the current selection. */
+    public runTableCommand(command: VisualTableCommand): boolean {
+        const chain = this.editor.chain().focus();
+
+        switch (command) {
+            case "row-after":
+                return chain.addRowAfter().run();
+            case "row-delete":
+                return chain.deleteRow().run();
+            case "column-after":
+                return chain.addColumnAfter().run();
+            case "column-delete":
+                return chain.deleteColumn().run();
+            case "delete":
+                return chain.deleteTable().run();
+        }
+    }
+
+    /** Sets the GFM column alignment on the selected table cells. */
+    public setColumnAlignment(align: "left" | "center" | "right" | null): boolean {
+        return this.editor.chain().focus().setCellAttribute("textAlign", align).run();
     }
 
     /** Replaces soft line breaks in non-code text with spaces, matching CommonMark rendering. */

@@ -31,5 +31,8 @@
         "typescript": "^6.0.3",
         "unified": "^11.0.5",
         "vitest": "^4.1.8"
+    },
+    "dependencies": {
+        "@tiptap/extension-table": "^3.26.0"
     }
 }

@@ -247,6 +247,35 @@ markdown-editor[mode="split"] .markdown-editor__body {
   margin-bottom: 0;
 }
 
+.markdown-editor__surface table,
+.markdown-editor__preview table {
+  border-collapse: collapse;
+  margin: 0;
+}
+
+.markdown-editor__surface th,
+.markdown-editor__surface td,
+.markdown-editor__preview th,
+.markdown-editor__preview td {
+  border: 1px solid var(--markdown-editor-divider);
+  padding: 0.4rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-editor__surface th,
+.markdown-editor__preview th {
+  background: color-mix(in srgb, var(--markdown-editor-accent) 8%, transparent);
+  font-weight: 600;
+}
+
+.markdown-editor__surface th > *,
+.markdown-editor__surface td > *,
+.markdown-editor__preview th > *,
+.markdown-editor__preview td > * {
+  margin: 0;
+}
+
 .markdown-editor__split {
   display: grid;
   gap: 2.5rem;

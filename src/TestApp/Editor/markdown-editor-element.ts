@@ -754,6 +754,7 @@ export class MarkdownEditorElement extends HTMLElement {
             { label: "Quote", run: (): void => this.toggleStructure("blockquote") },
             { label: "Code block", run: (): void => this.toggleStructure("code-block") },
             { label: "Note callout", run: (): void => this.insertAdmonition("note") },
+            { label: "Table", run: (): void => this.insertTable() },
         ];
 
         for (const command of commands) {
@@ -1126,6 +1127,13 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Inserts an admonition callout of the given kind at the current visual selection. */
     private insertAdmonition(kind: AdmonitionKind): void {
         if (this.visualEditor?.insertAdmonition(kind)) {
+            this.handleVisualInput();
+        }
+    }
+
+    /** Inserts a table at the current visual selection. */
+    private insertTable(): void {
+        if (this.visualEditor?.insertTable()) {
             this.handleVisualInput();
         }
     }

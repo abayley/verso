@@ -2,7 +2,14 @@ export interface EditorDocument {
     blocks: EditorBlock[];
 }
 
-export type EditorBlock = BlockquoteBlock | CodeBlock | HeadingBlock | HorizontalRuleBlock | ListBlock | ParagraphBlock;
+export type EditorBlock =
+    | BlockquoteBlock
+    | CodeBlock
+    | CustomBlock
+    | HeadingBlock
+    | HorizontalRuleBlock
+    | ListBlock
+    | ParagraphBlock;
 
 interface BlockquoteBlock {
     blocks: EditorBlock[];
@@ -40,14 +47,31 @@ interface HorizontalRuleBlock {
     type: "horizontalRule";
 }
 
+/** A block contributed by a content extension; its payload is owned and validated by that extension. */
+interface CustomBlock {
+    children?: EditorBlock[];
+    data: unknown;
+    extension: string;
+    type: "custom";
+}
+
 export type InlineNode =
     | BreakInline
     | CodeInline
+    | CustomInline
     | EmphasisInline
     | LinkInline
     | StrikethroughInline
     | StrongInline
     | TextInline;
+
+/** An inline node contributed by a content extension; its payload is owned and validated by that extension. */
+interface CustomInline {
+    children?: InlineNode[];
+    data: unknown;
+    extension: string;
+    type: "custom";
+}
 
 interface BreakInline {
     type: "break";

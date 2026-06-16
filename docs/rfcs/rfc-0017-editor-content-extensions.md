@@ -15,7 +15,7 @@ superseded_by: null
 | Stage     | Timestamp        |
 |-----------|------------------|
 | Authored  | 2026-06-16       |
-| Started   |                  |
+| Started   | 2026-06-16       |
 | Completed |                  |
 
 ## Summary
@@ -310,13 +310,42 @@ table phase (the spike's "when table editing arrives" trigger).
 ## Rollout Plan
 
 1. Phase one: the extension mechanism (no new features).
-   - [ ] Introduce the `ContentExtension` interface, the registry, and the
+   - [x] Introduce the `ContentExtension` interface, the registry, and the
          `CustomBlock` / `CustomInline` model variants; convert the core
          dispatchers (`blockFromMdast`, `inlineNodeFromMdast`, `renderBlock`,
          `renderInlineNode`, `blockFromElement`, `blockToMarkdown`) to registry
          walks with fail-soft fallbacks; reframe the built-in subset as the base
          extension. The registry covers block and inline extensions. Existing
          tests pass unmodified.
+
+     Implemented in `content-extension.ts` (the mechanism: the
+     `ContentExtension` interface, the per-seam context interfaces,
+     `registerExtension` with a `fallback` flag, and the six registry-walk
+     dispatchers) and `base-extension.ts` (the built-in subset consolidated as
+     the fallback extension, registered via `registerExtension(..., { fallback:
+     true })`). `editor-model.ts` gained the `CustomBlock` / `CustomInline`
+     union members. `remark-adapter.ts`, `markdown-render.ts`, and
+     `markdown-serialise.ts` are now thin public-API wrappers over the registry
+     walks. Decisions taken this phase:
+     - Parse seams (`blockFromMdast`, `inlineFromMdast`) stay *strict*: a node
+       no extension claims throws `unsupportedNode`, preserving the raw-HTML
+       rejection guard the existing tests pin. Render and serialise seams fail
+       soft (skip / empty / paragraph fallback). This keeps the base subset
+       byte-identical while opening the model.
+     - The built-in handler logic was consolidated into `base-extension.ts`
+       (one module per the RFC), not left scattered in the three pipeline
+       files; imports stay acyclic (pipeline -> {content-extension,
+       base-extension}; base-extension -> content-extension).
+     - `CustomBlock` / `CustomInline` are non-exported union members for now
+       (matching the other block interfaces); a later phase exports them when
+       an extension references the type by name. `registerExtension` is
+       exported now and exercised by the base extension's fallback
+       registration.
+     - `remarkPlugins` and the Tiptap/command seams from the interface sketch
+       are deferred to the phases that first need them, to avoid unused
+       contract. All gates green (`make editor-check`,
+       `make test-editor-browser`); the 109 existing editor tests pass
+       unmodified.
 2. Phase two: admonitions (cheapest, validates the mechanism on a real feature).
    - [ ] GFM alert recognition on blockquotes, render + Tiptap decoration + slash
          entry; degradation test (renders as a blockquote without the extension).

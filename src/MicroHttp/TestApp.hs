@@ -15,6 +15,7 @@ module MicroHttp.TestApp (
 import qualified Data.ByteString.Char8 as BS
 import Data.Char (isSpace)
 import Data.List (intercalate)
+import MicroHttp.Attachment (attachmentRoutes, fileAttachmentStore)
 import MicroHttp.Config (Config, configMounts, configString)
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http as Http
@@ -62,6 +63,7 @@ appFromConfig settings cfg =
                 ( documentRoutes
                     (configString "editor_theme" "paper" cfg)
                     (configString "document_root" "data/documents" cfg)
+                    ++ attachmentRoutes (fileAttachmentStore (configString "attachment_root" "data/attachments" cfg))
                     ++ [Static.static prefix root | (prefix, root) <- configMounts "static_mounts" cfg]
                 )
             )
@@ -89,7 +91,9 @@ documentRoutes editorThemeDefault root =
 
 appWithStore :: DocumentStore -> Server.Application
 appWithStore store =
-    Router.serveRoutes (Server.parseLimits Server.defaultSettings) (routes "paper" store)
+    Router.serveRoutes
+        (Server.parseLimits Server.defaultSettings)
+        (routes "paper" store ++ attachmentRoutes (fileAttachmentStore "data/attachments"))
 
 routes :: String -> DocumentStore -> [Router.Route]
 routes editorThemeDefault store =

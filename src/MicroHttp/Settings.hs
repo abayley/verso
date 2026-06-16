@@ -38,7 +38,10 @@ defaultSettings =
         , settingsBacklog = 16
         , settingsMaxActiveHandlers = 32
         , settingsMaxHeaderBytes = 8192
-        , settingsMaxBodyBytes = 1048576
+        , -- The framing body cap applies to every route; it must be at least the attachment upload
+          -- limit (RFC-0018, MicroHttp.Attachment.attachmentMaxBytes = 10 MiB). Handlers still apply
+          -- their own tighter bounds (e.g. the document form keeps a 1 MiB limit).
+          settingsMaxBodyBytes = 10485760
         , settingsReadBufferBytes = 8192
         , settingsIdleReadTimeoutMicros = 30000000
         , settingsIdleWriteTimeoutMicros = 30000000

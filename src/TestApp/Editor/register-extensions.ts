@@ -5,3 +5,4 @@ import "./base-extension.js";
 import "./admonition-extension.js";
 import "./table-extension.js";
 import "./collapsible-extension.js";
+import "./footnote-extension.js";

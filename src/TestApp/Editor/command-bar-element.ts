@@ -1,4 +1,13 @@
 import { html, LitElement } from "lit";
+import {
+    BLOCK_STYLES,
+    blockLabel,
+    elementValue,
+    INLINE_COMMANDS,
+    inlineShortcut,
+    preventDefault,
+    type WaDropdownSelectEvent,
+} from "./editor-toolbar-shared.js";
 import type { VisualInlineStyle, VisualStructureStyle } from "./tiptap-visual-editor.js";
 import type { ToolbarTooltipController } from "./toolbar-tooltip-controller.js";
 
@@ -17,30 +26,7 @@ export interface CommandStructureEventDetail {
     style: VisualStructureStyle;
 }
 
-interface WaDropdownSelectEvent extends Event {
-    detail: {
-        item: Element;
-    };
-}
-
-/** The block styles offered by the style dropdown, in dropdown order; the first is the default. */
-const BLOCK_STYLES: { value: string; label: string }[] = [
-    { value: "paragraph", label: "Paragraph" },
-    { value: "heading-1", label: "Heading 1" },
-    { value: "heading-2", label: "Heading 2" },
-    { value: "heading-3", label: "Heading 3" },
-];
-
-/** The inline command buttons, with the keymap suffix used to build the tooltip shortcut. */
-const INLINE_COMMANDS: { style: VisualInlineStyle; label: string; icon: string; shortcut: string }[] = [
-    { style: "strong", label: "Bold", icon: "bold", shortcut: "B" },
-    { style: "emphasis", label: "Italic", icon: "italic", shortcut: "I" },
-    { style: "strikethrough", label: "Strike", icon: "strikethrough", shortcut: "Shift+S" },
-    { style: "code", label: "Code", icon: "code", shortcut: "E" },
-    { style: "link", label: "Link", icon: "link", shortcut: "K" },
-];
-
-/** The structural command buttons, in toolbar order. */
+/** The structural command buttons, in toolbar order (specific to the persistent command bar). */
 const STRUCTURE_COMMANDS: { style: VisualStructureStyle; label: string; icon: string }[] = [
     { style: "bullet-list", label: "Bullet List", icon: "list" },
     { style: "ordered-list", label: "Ordered List", icon: "list-ol" },
@@ -48,32 +34,6 @@ const STRUCTURE_COMMANDS: { style: VisualStructureStyle; label: string; icon: st
     { style: "code-block", label: "Code Block", icon: "file-code" },
     { style: "thematic-break", label: "Horizontal rule", icon: "window-minimize" },
 ];
-
-/** Returns the display label for a block style value, defaulting to Paragraph. */
-function blockLabel(style: string): string {
-    return BLOCK_STYLES.find((entry) => entry.value === style)?.label ?? "Paragraph";
-}
-
-/** Returns the platform-specific primary command modifier label. */
-function primaryModifierLabel(): string {
-    return /\bMac/.test(navigator.platform) ? "Cmd" : "Ctrl";
-}
-
-/** Suppresses the default mousedown so a toolbar press does not steal the editor selection. */
-function preventDefault(event: Event): void {
-    event.preventDefault();
-}
-
-/** Reads the string value from an HTML or custom form control host. */
-function elementValue(element: HTMLElement): string {
-    const value = (element as HTMLElement & { value?: unknown }).value;
-
-    if (typeof value === "string") {
-        return value;
-    }
-
-    return element.getAttribute("value") ?? "";
-}
 
 /**
  * The persistent command bar (style dropdown, inline/structure button groups, save button), rendered
@@ -132,11 +92,7 @@ export class CommandBarElement extends LitElement {
             );
 
             if (button) {
-                this.tooltipController?.register(
-                    button,
-                    command.label,
-                    `${primaryModifierLabel()}+${command.shortcut}`,
-                );
+                this.tooltipController?.register(button, command.label, inlineShortcut(command));
             }
         }
 

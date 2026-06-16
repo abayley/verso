@@ -1,4 +1,5 @@
 import type { AdmonitionKind } from "./admonition-extension.js";
+import { BubbleToolbarElement } from "./bubble-toolbar-element.js";
 import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
 import {
     CommandBarElement,
@@ -6,9 +7,11 @@ import {
     type CommandInlineEventDetail,
     type CommandStructureEventDetail,
 } from "./command-bar-element.js";
+import { INLINE_COMMANDS } from "./editor-toolbar-shared.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
 import { renderMarkdown } from "./markdown-render.js";
 import { SaveStateController, type SaveStateView } from "./save-state-controller.js";
+import { SlashMenuElement, type SlashSelectEventDetail } from "./slash-menu-element.js";
 import {
     type TableAlignEventDetail,
     type TableCommandEventDetail,
@@ -146,23 +149,25 @@ export class MarkdownEditorElement extends HTMLElement {
             event.preventDefault();
             event.stopPropagation();
             const delta = event.key === "ArrowDown" ? 1 : -1;
-            this.slashIndex = (this.slashIndex + delta + this.slashItems.length) % this.slashItems.length;
+            this.slashIndex = (this.slashIndex + delta + this.slashCommands.length) % this.slashCommands.length;
             this.highlightSlashItem();
         } else if (event.key === "Enter") {
             event.preventDefault();
             event.stopPropagation();
-            this.slashItems[this.slashIndex]?.run();
+            const command = this.slashCommands[this.slashIndex];
+
+            if (command) {
+                this.runSlashCommand(command.run);
+            }
         } else if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
             this.closeSlashMenu();
         }
     };
-    private bubbleToolbar: HTMLDivElement | null = null;
-    private bubbleStyleTrigger: ToolbarButtonElement | null = null;
-    private readonly bubbleStyleButtons: { style: VisualInlineStyle; button: ToolbarButtonElement }[] = [];
-    private slashMenu: HTMLDivElement | null = null;
-    private readonly slashItems: { button: ToolbarButtonElement; run: () => void }[] = [];
+    private bubbleToolbar: BubbleToolbarElement | null = null;
+    private slashMenu: SlashMenuElement | null = null;
+    private slashCommands: { label: string; run: () => void }[] = [];
     private slashIndex = 0;
     private tableControls: TableControlsElement | null = null;
     private commandBar: CommandBarElement | null = null;
@@ -568,78 +573,27 @@ export class MarkdownEditorElement extends HTMLElement {
         }
     }
 
-    /** Creates one item in the block style dropdown control. */
-    private createStyleDropdownItem(value: VisualBlockStyle, label: string): HTMLElement {
-        const item = document.createElement("wa-dropdown-item");
-        item.setAttribute("value", value);
-        item.textContent = label;
-
-        return item;
-    }
-
-    /** Creates the Studio selection bubble toolbar with the inline command buttons. */
-    private createBubbleToolbar(): HTMLDivElement {
-        const bubble = document.createElement("div");
+    /** Creates the Studio selection bubble toolbar and routes its command events to the active editor. */
+    private createBubbleToolbar(): BubbleToolbarElement {
+        const bubble = new BubbleToolbarElement();
         bubble.className = "markdown-editor__bubble";
         bubble.setAttribute("role", "toolbar");
         bubble.hidden = true;
-        bubble.append(
-            this.createBubbleStyleDropdown(),
-            this.createBubbleButton("strong", "Bold", "bold"),
-            this.createBubbleButton("emphasis", "Italic", "italic"),
-            this.createBubbleButton("strikethrough", "Strike", "strikethrough"),
-            this.createBubbleButton("code", "Code", "code"),
-            this.createBubbleButton("link", "Link", "link"),
-        );
-
-        return bubble;
-    }
-
-    /** Creates the bubble's block-style selector, reusing the command bar's block command path. */
-    private createBubbleStyleDropdown(): HTMLElement {
-        const dropdown = document.createElement("wa-dropdown");
-        dropdown.className = "markdown-editor__bubble-style";
-        dropdown.setAttribute("aria-label", "Block style");
-        dropdown.setAttribute("size", "small");
-
-        this.bubbleStyleTrigger = this.createToolbarButton("markdown-editor__bubble-style-trigger", "Paragraph");
-        this.bubbleStyleTrigger.setAttribute("slot", "trigger");
-        this.bubbleStyleTrigger.setAttribute("with-caret", "");
-        dropdown.append(
-            this.bubbleStyleTrigger,
-            this.createStyleDropdownItem("paragraph", "Paragraph"),
-            this.createStyleDropdownItem("heading-1", "Heading 1"),
-            this.createStyleDropdownItem("heading-2", "Heading 2"),
-            this.createStyleDropdownItem("heading-3", "Heading 3"),
-        );
-        dropdown.addEventListener("wa-select", (event: Event): void => {
-            const style = elementValue((event as WaDropdownSelectEvent).detail.item as HTMLElement);
+        bubble.tooltipController = this.tooltipController;
+        bubble.addEventListener("command-block-style", (event: Event): void => {
+            const style = (event as CustomEvent<CommandBlockStyleEventDetail>).detail.style;
 
             if (isVisualBlockStyle(style)) {
                 this.applyBlockStyle(style);
                 this.updateBubbleToolbar();
             }
         });
-
-        return dropdown;
-    }
-
-    /** Creates one bubble toolbar button, reusing the existing inline command path. */
-    private createBubbleButton(style: VisualInlineStyle, label: string, iconName: string): ToolbarButtonElement {
-        const button = this.createToolbarButton("markdown-editor__bubble-button", label, shortcutForInlineStyle(style));
-        button.textContent = "";
-        button.append(createToolbarIcon(iconName, label));
-        button.dataset["inlineStyle"] = style;
-        button.addEventListener("mousedown", (event: MouseEvent): void => {
-            event.preventDefault();
-        });
-        button.addEventListener("click", (): void => {
-            this.toggleInlineStyle(style);
+        bubble.addEventListener("command-inline", (event: Event): void => {
+            this.toggleInlineStyle((event as CustomEvent<CommandInlineEventDetail>).detail.style);
             this.updateBubbleToolbar();
         });
-        this.bubbleStyleButtons.push({ button, style });
 
-        return button;
+        return bubble;
     }
 
     /** Shows or hides the bubble toolbar over the current visual selection under Studio. */
@@ -660,16 +614,14 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
+        const editor = this.visualEditor;
+        this.bubbleToolbar.blockStyle = editor.currentBlockStyle();
+        this.bubbleToolbar.activeStyles = INLINE_COMMANDS.map((command) => command.style).filter((style) =>
+            editor.isInlineActive(style),
+        );
+        this.bubbleToolbar.flush();
         this.bubbleToolbar.hidden = false;
         this.positionOverlay(this.bubbleToolbar, range.getBoundingClientRect());
-
-        if (this.bubbleStyleTrigger) {
-            this.bubbleStyleTrigger.textContent = blockStyleLabel(this.visualEditor.currentBlockStyle());
-        }
-
-        for (const { button, style } of this.bubbleStyleButtons) {
-            button.classList.toggle("markdown-editor__bubble-button--active", this.visualEditor.isInlineActive(style));
-        }
     }
 
     /** Hides the bubble toolbar. */
@@ -679,14 +631,13 @@ export class MarkdownEditorElement extends HTMLElement {
         }
     }
 
-    /** Creates the Studio slash command menu, reusing the existing block and structure commands. */
-    private createSlashMenu(): HTMLDivElement {
-        const menu = document.createElement("div");
+    /** Creates the Studio slash command menu and runs the chosen block or structure command. */
+    private createSlashMenu(): SlashMenuElement {
+        const menu = new SlashMenuElement();
         menu.className = "markdown-editor__slash-menu";
         menu.setAttribute("role", "listbox");
         menu.hidden = true;
-
-        const commands: { label: string; run: () => void }[] = [
+        this.slashCommands = [
             { label: "Heading 1", run: (): void => this.applyBlockStyle("heading-1") },
             { label: "Heading 2", run: (): void => this.applyBlockStyle("heading-2") },
             { label: "Heading 3", run: (): void => this.applyBlockStyle("heading-3") },
@@ -697,19 +648,14 @@ export class MarkdownEditorElement extends HTMLElement {
             { label: "Note callout", run: (): void => this.insertAdmonition("note") },
             { label: "Table", run: (): void => this.insertTable() },
         ];
+        menu.items = this.slashCommands.map((command) => command.label);
+        menu.addEventListener("slash-select", (event: Event): void => {
+            const command = this.slashCommands[(event as CustomEvent<SlashSelectEventDetail>).detail.index];
 
-        for (const command of commands) {
-            const item = document.createElement("button");
-            item.type = "button";
-            item.className = "markdown-editor__slash-item";
-            item.textContent = command.label;
-            item.addEventListener("mousedown", (event: MouseEvent): void => {
-                event.preventDefault();
-            });
-            item.addEventListener("click", (): void => this.runSlashCommand(command.run));
-            menu.append(item);
-            this.slashItems.push({ button: item, run: (): void => this.runSlashCommand(command.run) });
-        }
+            if (command) {
+                this.runSlashCommand(command.run);
+            }
+        });
 
         return menu;
     }
@@ -730,14 +676,13 @@ export class MarkdownEditorElement extends HTMLElement {
             this.addEventListener("keydown", this.handleSlashKeydown, true);
         }
 
+        this.highlightSlashItem();
         this.slashMenu.hidden = false;
         const caret = this.visualEditor.slashCaretRect() ?? this.activeEditPaneRect();
 
         if (caret) {
             this.positionOverlay(this.slashMenu, caret);
         }
-
-        this.highlightSlashItem();
     }
 
     /** Creates the floating Lit table-editing controls and routes their events to table commands. */
@@ -804,9 +749,10 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Reflects the highlighted slash command onto the menu items. */
     private highlightSlashItem(): void {
-        this.slashItems.forEach(({ button }, index): void => {
-            button.classList.toggle("markdown-editor__slash-item--active", index === this.slashIndex);
-        });
+        if (this.slashMenu) {
+            this.slashMenu.activeIndex = this.slashIndex;
+            this.slashMenu.flush();
+        }
     }
 
     /** Removes the slash trigger and applies the chosen command. */
@@ -1449,23 +1395,6 @@ function isVisualBlockStyle(style: string): style is VisualBlockStyle {
     return style === "paragraph" || style === "heading-1" || style === "heading-2" || style === "heading-3";
 }
 
-/** Returns the toolbar label for a supported block style. */
-function blockStyleLabel(style: VisualBlockStyle): string {
-    if (style === "heading-1") {
-        return "Heading 1";
-    }
-
-    if (style === "heading-2") {
-        return "Heading 2";
-    }
-
-    if (style === "heading-3") {
-        return "Heading 3";
-    }
-
-    return "Paragraph";
-}
-
 /** Checks whether a value is an editor mode. */
 function isEditorMode(mode: string): mode is EditorMode {
     return mode === "visual" || mode === "source" || mode === "split";
@@ -1589,34 +1518,4 @@ function createToolbarIcon(name: string, label: string, family?: string): HTMLEl
     }
 
     return icon;
-}
-
-/** Returns the shortcut label for inline controls backed by editor keymaps. */
-function shortcutForInlineStyle(style: VisualInlineStyle): string | null {
-    if (style === "strong") {
-        return `${primaryModifierLabel()}+B`;
-    }
-
-    if (style === "emphasis") {
-        return `${primaryModifierLabel()}+I`;
-    }
-
-    if (style === "code") {
-        return `${primaryModifierLabel()}+E`;
-    }
-
-    if (style === "strikethrough") {
-        return `${primaryModifierLabel()}+Shift+S`;
-    }
-
-    if (style === "link") {
-        return `${primaryModifierLabel()}+K`;
-    }
-
-    return null;
-}
-
-/** Returns the platform-specific primary command modifier label. */
-function primaryModifierLabel(): string {
-    return /\bMac/.test(navigator.platform) ? "Cmd" : "Ctrl";
 }

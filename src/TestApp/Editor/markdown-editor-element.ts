@@ -506,8 +506,7 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Creates the link popover controller, wiring its host dependencies (RFC-0002). */
     private createLinkController(): LinkPopoverController {
         return new LinkPopoverController({
-            createButton: (className: string, label: string): HTMLElement => this.createToolbarButton(className, label),
-            createIcon: (name: string, label: string): HTMLElement => createToolbarIcon(name, label),
+            tooltipController: this.tooltipController,
             position: (overlay: HTMLElement, anchor: DOMRect): void => this.positionOverlay(overlay, anchor),
             editorAnchorRect: (anchorRect: DOMRect | null): DOMRect =>
                 anchorRect ??

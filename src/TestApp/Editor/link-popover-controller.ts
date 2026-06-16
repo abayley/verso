@@ -1,18 +1,19 @@
 import type { CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
+import { LinkActionsElement, LinkEditorElement } from "./link-popover-elements.js";
 import type { VisualLinkSelection } from "./tiptap-visual-editor.js";
+import type { ToolbarTooltipController } from "./toolbar-tooltip-controller.js";
 
 /** The grace period before existing-link hover actions hide. */
 const linkActionsHideDelayMilliseconds = 500;
 
 /**
- * What the link popover controller needs from its host (RFC-0002): DOM control
- * factories, overlay positioning (shared with the bubble/slash surfaces, so it
- * stays in the element), and the editor-adapter routing for capturing selections
- * and applying or removing links. Inputs are explicit constructor dependencies.
+ * What the link popover controller needs from its host (RFC-0002): the shared tooltip (so the popover's
+ * Lit views can register their controls), overlay positioning (shared with the bubble/slash surfaces, so
+ * it stays in the element), and the editor-adapter routing for capturing selections and applying or
+ * removing links. Inputs are explicit constructor dependencies.
  */
 export interface LinkPopoverHost {
-    createButton(className: string, label: string): HTMLElement;
-    createIcon(name: string, label: string): HTMLElement;
+    tooltipController: ToolbarTooltipController | null;
     position(overlay: HTMLElement, anchor: DOMRect): void;
     editorAnchorRect(anchorRect: DOMRect | null): DOMRect;
     usingSource(): boolean;
@@ -33,13 +34,13 @@ export interface LinkPopoverHost {
  * plain controller. It owns the link target editor, the existing-link hover
  * actions, the hide grace timer, the pending source/visual selection captured
  * when the popover opens, and the document pointer dismissal/hover wiring. The
- * element supplies positioning and the editor-adapter operations through the host.
+ * two Lit view elements render the controls and emit events; this controller
+ * keeps all state and the host supplies positioning and editor-adapter operations.
  */
 export class LinkPopoverController {
     private readonly host: LinkPopoverHost;
-    private readonly editor: HTMLDivElement;
-    private readonly input: HTMLInputElement;
-    private readonly actions: HTMLDivElement;
+    private readonly editor: LinkEditorElement;
+    private readonly actions: LinkActionsElement;
     private pendingLink = false;
     private pendingSourceSelection: CodeMirrorSourceSelection | null = null;
     private pendingVisualSelection: VisualLinkSelection | null = null;
@@ -49,9 +50,20 @@ export class LinkPopoverController {
 
     constructor(host: LinkPopoverHost) {
         this.host = host;
-        this.editor = this.createEditor();
-        this.input = this.editor.querySelector("input") as HTMLInputElement;
-        this.actions = this.createActions();
+        this.editor = new LinkEditorElement();
+        this.editor.className = "markdown-editor__link-editor";
+        this.editor.hidden = true;
+        this.editor.tooltipController = host.tooltipController;
+        this.editor.addEventListener("link-apply", (): void => this.applyTarget());
+        this.editor.addEventListener("link-cancel", (): void => this.hideEditor());
+
+        this.actions = new LinkActionsElement();
+        this.actions.className = "markdown-editor__link-actions";
+        this.actions.hidden = true;
+        this.actions.tooltipController = host.tooltipController;
+        this.actions.addEventListener("link-edit", (): void => this.editActive());
+        this.actions.addEventListener("link-remove", (): void => this.removeActive());
+        this.actions.addEventListener("pointerover", (): void => this.cancelHide());
     }
 
     /** The link target editor element, appended once by the host. */
@@ -74,10 +86,10 @@ export class LinkPopoverController {
         this.pendingLink = true;
         this.pendingSourceSelection = this.host.usingSource() ? this.host.captureSourceSelection() : null;
         this.pendingVisualSelection = visualSelection;
-        this.input.value = href;
+        this.editor.value = href;
         this.editor.hidden = false;
         this.host.position(this.editor, this.host.editorAnchorRect(anchorRect));
-        this.input.focus();
+        this.editor.focusInput();
         window.setTimeout((): void => {
             if (this.pendingLink) {
                 document.addEventListener("pointerdown", this.handleDocumentPointerDown);
@@ -116,66 +128,6 @@ export class LinkPopoverController {
 
         this.showActions(selection, anchor.getBoundingClientRect());
     };
-
-    private createEditor(): HTMLDivElement {
-        const editor = document.createElement("div");
-        editor.className = "markdown-editor__link-editor";
-        editor.hidden = true;
-
-        const input = document.createElement("input");
-        input.className = "markdown-editor__link-target";
-        input.placeholder = "Link target";
-        input.type = "url";
-
-        const applyButton = this.host.createButton("markdown-editor__link-apply", "Apply");
-        applyButton.addEventListener("click", (): void => this.applyTarget());
-
-        const cancelButton = this.host.createButton("markdown-editor__link-cancel", "Cancel");
-        cancelButton.addEventListener("click", (): void => this.hideEditor());
-
-        input.addEventListener("keydown", (event: KeyboardEvent): void => {
-            if (event.key === "Enter") {
-                event.preventDefault();
-                this.applyTarget();
-            }
-
-            if (event.key === "Escape") {
-                event.preventDefault();
-                this.hideEditor();
-            }
-        });
-
-        editor.append(input, applyButton, cancelButton);
-
-        return editor;
-    }
-
-    private createActions(): HTMLDivElement {
-        const actions = document.createElement("div");
-        actions.className = "markdown-editor__link-actions";
-        actions.hidden = true;
-
-        const editButton = this.host.createButton("markdown-editor__link-edit", "Edit link");
-        editButton.textContent = "";
-        editButton.append(this.host.createIcon("pencil", "Edit link"));
-        editButton.addEventListener("mousedown", (event: MouseEvent): void => {
-            event.preventDefault();
-        });
-        editButton.addEventListener("click", (): void => this.editActive());
-
-        const removeButton = this.host.createButton("markdown-editor__link-remove", "Remove link");
-        removeButton.textContent = "";
-        removeButton.append(this.host.createIcon("link-slash", "Remove link"));
-        removeButton.addEventListener("mousedown", (event: MouseEvent): void => {
-            event.preventDefault();
-        });
-        removeButton.addEventListener("click", (): void => this.removeActive());
-        actions.addEventListener("pointerover", (): void => this.cancelHide());
-
-        actions.append(editButton, removeButton);
-
-        return actions;
-    }
 
     private readonly handleDocumentPointerDown = (event: PointerEvent): void => {
         if (!this.pendingLink && !this.isActionsVisible()) {
@@ -226,7 +178,7 @@ export class LinkPopoverController {
         this.pendingLink = false;
         this.pendingSourceSelection = null;
         this.pendingVisualSelection = null;
-        this.input.value = "";
+        this.editor.value = "";
         this.editor.hidden = true;
 
         if (!this.isActionsVisible()) {
@@ -239,7 +191,7 @@ export class LinkPopoverController {
             return;
         }
 
-        const href = this.input.value.trim();
+        const href = this.editor.value.trim();
 
         if (!href) {
             return;

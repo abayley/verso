@@ -175,6 +175,20 @@ export class TiptapVisualEditor {
         return this.editor.isActive("table");
     }
 
+    /** Returns the bounding rectangle of the table containing the selection, for anchoring the controls. */
+    public tableRect(): DOMRect | null {
+        const node = window.getSelection()?.anchorNode;
+
+        if (!node || !this.root.contains(node)) {
+            return null;
+        }
+
+        const element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+        const table = element?.closest("table");
+
+        return table ? table.getBoundingClientRect() : null;
+    }
+
     /** Runs one table-editing command at the current selection. */
     public runTableCommand(command: VisualTableCommand): boolean {
         const chain = this.editor.chain().focus();

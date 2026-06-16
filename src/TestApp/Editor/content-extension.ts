@@ -1,4 +1,5 @@
 import type { PhrasingContent, RootContent } from "mdast";
+import type { PluggableList } from "unified";
 import type { EditorBlock, EditorDocument, InlineNode } from "./editor-model.js";
 
 /** Recursion helpers handed to an extension while parsing mdast into the editor model. */
@@ -43,6 +44,8 @@ export interface ContentExtension {
     inlineFromMdast?(node: PhrasingContent, ctx: ParseContext): InlineNode | null;
     renderBlock?(block: EditorBlock, ctx: RenderContext): string | null;
     renderInline?(node: InlineNode, ctx: RenderContext): string | null;
+    /** remark/unified plugins this extension installs in the parse processor (e.g. a custom syntax). */
+    remarkPlugins?: PluggableList;
 }
 
 const extensions: ContentExtension[] = [];
@@ -67,6 +70,11 @@ export function registerExtension(extension: ContentExtension, options: { fallba
 /** Returns feature extensions in registration order, followed by the fallback extension. */
 function orderedExtensions(): ContentExtension[] {
     return fallbackExtension ? [...extensions, fallbackExtension] : [...extensions];
+}
+
+/** Collects the remark/unified plugins every registered extension installs into the parse processor. */
+export function collectRemarkPlugins(): PluggableList {
+    return orderedExtensions().flatMap((extension: ContentExtension): PluggableList => extension.remarkPlugins ?? []);
 }
 
 /** Builds an unsupported-node error for the current editor subset. */

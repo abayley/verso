@@ -1,7 +1,7 @@
 ---
 id: RFC-0017
 name: Editor Content Extensions
-status: Draft
+status: Completed
 owners:
     - alistair
 created: 2026-06-16
@@ -16,7 +16,7 @@ superseded_by: null
 |-----------|------------------|
 | Authored  | 2026-06-16       |
 | Started   | 2026-06-16       |
-| Completed |                  |
+| Completed | 2026-06-17       |
 
 ## Summary
 
@@ -509,10 +509,18 @@ table phase (the spike's "when table editing arrives" trigger).
        browser-verified round-trip (single- and multi-token definitions,
        reference inside bold) and rendering.
 6. Phase six: server guard and docs.
-   - [ ] Narrow the Haskell guard to raw-HTML rejection (drop block-structure
+   - [x] Narrow the Haskell guard to raw-HTML rejection (drop block-structure
          validation); `MicroHttp.TestApp` tests for the narrowed guard. ADR for
          the extension architecture and the guard change; record the Lit
          view-layer adoption; mark this RFC Completed.
+
+     `MicroHttp.TestApp.validateMarkdown` now rejects raw HTML and accepts
+     everything else (the ~110-line block-structure helper cluster removed; the
+     `unsupported block syntax` test repurposed to assert a previously-rejected
+     unterminated fence now saves). ADR-041 records the content-extension
+     registry, the Lit view-layer adoption, and the guard narrowing (refining
+     ADR-040, whose retained "supported-block subset check" is now dropped). The
+     38 Haskell examples and 161 editor tests pass; `make check` green.
 
 ### Rollout Plan Escape Hatch
 

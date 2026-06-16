@@ -74,10 +74,12 @@ spec =
             response <- runApp (htmxPost ["documents", "home"]) "markdown=%3Cscript%3Ealert(1)%3C%2Fscript%3E"
             statusCode (responseStatus response) `shouldBe` 200
             bodyText response `shouldBe` "<p id=\"save-status\">Unsupported Markdown: raw HTML is not supported in this spike.</p>"
-        it "given unsupported markdown form post, when routing, then validation fragment is returned" $ do
+        it "given markdown the former block guard rejected, when routing, then it is now saved (guard narrowed to raw HTML only)" $ do
+            -- An unterminated code fence was rejected as "unsupported block syntax" before RFC-0017;
+            -- block-structure validation is gone (the editor owns its open subset), so it now saves.
             response <- runApp (htmxPost ["documents", "home"]) "markdown=%60%60%60typescript%0Aunterminated"
             statusCode (responseStatus response) `shouldBe` 200
-            bodyText response `shouldBe` "<p id=\"save-status\">Unsupported Markdown: unsupported block syntax.</p>"
+            bodyText response `shouldBe` "<p id=\"save-status\">Saved Markdown document: ```typescript\nunterminated</p>"
         it "given a form post with CRLF newlines, when saving, then they are normalised to line feeds" $ do
             response <- runApp (htmxPost ["documents", "home"]) "markdown=Line+one%0D%0A%0D%0ALine+two"
             statusCode (responseStatus response) `shouldBe` 200

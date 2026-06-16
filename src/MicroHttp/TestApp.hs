@@ -13,7 +13,7 @@ module MicroHttp.TestApp (
 ) where
 
 import qualified Data.ByteString.Char8 as BS
-import Data.Char (isDigit, isSpace)
+import Data.Char (isSpace)
 import Data.List (intercalate)
 import MicroHttp.Config (Config, configMounts, configString)
 import qualified MicroHttp.Html as Html
@@ -365,127 +365,20 @@ validationStatusFragment err =
         Html.text "Unsupported Markdown: "
         Html.text err
 
+-- The save-time guard defends the trust boundary only: raw HTML stays rejected
+-- (the server never trusts client Markdown to be safe). Block-structure validation
+-- was dropped (RFC-0017) -- the editor is the authority on its own open, extensible
+-- subset, so keeping a Haskell recogniser in sync would be the cross-language
+-- dual-implementation trap ADR-040 rejected for rendering. See ADR-041.
 validateMarkdown :: String -> Maybe String
 validateMarkdown markdown
     | containsRawHtml markdown = Just "raw HTML is not supported in this spike."
-    | otherwise = validateBlocks (paragraphBlocks markdown)
+    | otherwise = Nothing
 
 containsRawHtml :: String -> Bool
 containsRawHtml [] = False
 containsRawHtml ('<' : _) = True
 containsRawHtml (_ : rest) = containsRawHtml rest
-
-paragraphBlocks :: String -> [String]
-paragraphBlocks markdown =
-    filter (not . null) (map trim (splitParagraphs (lines markdown)))
-
-splitParagraphs :: [String] -> [String]
-splitParagraphs [] = []
-splitParagraphs rows =
-    case break (all isSpace) rows of
-        (before, _ : after) -> unlinesNoTrailing before : splitParagraphs after
-        (before, []) -> [unlinesNoTrailing before]
-
-unlinesNoTrailing :: [String] -> String
-unlinesNoTrailing [] = ""
-unlinesNoTrailing [row] = row
-unlinesNoTrailing (row : rows) = row ++ "\n" ++ unlinesNoTrailing rows
-
-validateBlocks :: [String] -> Maybe String
-validateBlocks [] = Nothing
-validateBlocks (block : rest)
-    | supportedBlock block = validateBlocks rest
-    | otherwise = Just "unsupported block syntax."
-
-supportedBlock :: String -> Bool
-supportedBlock block =
-    isHeading block || isUnorderedListBlock block || isOrderedListBlock block || isFencedCodeBlock block || isBlockquoteBlock block || isParagraph block
-
-isHeading :: String -> Bool
-isHeading ('#' : ' ' : rest) = not (null (trim rest))
-isHeading ('#' : '#' : ' ' : rest) = not (null (trim rest))
-isHeading ('#' : '#' : '#' : ' ' : rest) = not (null (trim rest))
-isHeading ('#' : _) = False
-isHeading _ = False
-
-isParagraph :: String -> Bool
-isParagraph block =
-    not (startsUnsupportedBlock block)
-
-startsUnsupportedBlock :: String -> Bool
-startsUnsupportedBlock block =
-    case trimStart block of
-        '>' : _ -> True
-        '`' : '`' : '`' : _ -> True
-        _ -> False
-
-isFencedCodeBlock :: String -> Bool
-isFencedCodeBlock block =
-    case lines block of
-        opening : body -> isCodeFenceOpening opening && hasClosingCodeFence body
-        [] -> False
-
-isCodeFenceOpening :: String -> Bool
-isCodeFenceOpening row =
-    case trimStart row of
-        '`' : '`' : '`' : _ -> True
-        _ -> False
-
-hasClosingCodeFence :: [String] -> Bool
-hasClosingCodeFence [] = False
-hasClosingCodeFence [row] = isCodeFenceClosing row
-hasClosingCodeFence (_ : rows) = hasClosingCodeFence rows
-
-isCodeFenceClosing :: String -> Bool
-isCodeFenceClosing row =
-    trim row == "```"
-
-isBlockquoteBlock :: String -> Bool
-isBlockquoteBlock block =
-    all isBlockquoteLine (lines block)
-
-isBlockquoteLine :: String -> Bool
-isBlockquoteLine row =
-    case trimStart row of
-        '>' : rest | all isSpace rest -> True
-        '>' : ' ' : rest -> not (null (trim rest))
-        _ -> False
-
-isUnorderedListBlock :: String -> Bool
-isUnorderedListBlock block =
-    all isUnorderedListItem (lines block)
-
-isUnorderedListItem :: String -> Bool
-isUnorderedListItem row =
-    case trimStart row of
-        '-' : ' ' : rest -> not (null (trim rest))
-        '*' : ' ' : rest -> not (null (trim rest))
-        '+' : ' ' : rest -> not (null (trim rest))
-        _ -> False
-
-startsOrderedList :: String -> Bool
-startsOrderedList block =
-    case span isDigit (trimStart block) of
-        ("", _) -> False
-        (_, '.' : ' ' : _) -> True
-        _ -> False
-
-isOrderedListBlock :: String -> Bool
-isOrderedListBlock block =
-    all isOrderedListItem (lines block)
-
-isOrderedListItem :: String -> Bool
-isOrderedListItem row =
-    case span isDigit (trimStart row) of
-        ("", _) -> False
-        (_, '.' : ' ' : rest) -> not (null (trim rest))
-        _ -> False
-
-orderedListItemText :: String -> String
-orderedListItemText row =
-    case span isDigit (trimStart row) of
-        (_, '.' : ' ' : rest) -> rest
-        _ -> trimStart row
 
 trim :: String -> String
 trim =

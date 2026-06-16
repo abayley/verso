@@ -356,6 +356,15 @@ table phase (the spike's "when table editing arrives" trigger).
      `tiptap-admonition-node.ts` (the editor-side callout node), and callout CSS
      in `markdown-editor.css` (theme-native per-kind accents, not GitHub's).
      Decisions/notes from the phase:
+     - Callout chrome routes through a shared semantic accent palette
+       (`--markdown-editor-info` / `success` / `warning` / `danger` /
+       `emphasis`) rather than an extension-private token family, so a theme
+       reskins every callout (and future chrome-bearing extensions) by
+       overriding five tokens once, instead of N tokens per extension. The
+       six built-in themes were screenshotted across the five kinds: no clash
+       warrants an override (the closest is `note` on the deliberately
+       monochrome-blue `blueprint`, which is theme-correct), so themes inherit
+       the base semantic palette.
      - The mechanism proved out: the whole feature is a new module plus one
        `registerExtension` call. Feature extensions are consulted before the
        base fallback (the registry's `fallback` flag), so the admonition

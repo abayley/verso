@@ -1,10 +1,5 @@
 :root {
   --markdown-editor-accent: #b0532f;
-  --markdown-alert-note: #5a7892;
-  --markdown-alert-tip: #1d9e75;
-  --markdown-alert-important: #7b66a6;
-  --markdown-alert-warning: #ba7517;
-  --markdown-alert-caution: #a32d2d;
   --markdown-editor-background: #f4f0e6;
   --markdown-editor-code-background: #ece6d6;
   --markdown-editor-code-border: #dcd5c2;
@@ -19,15 +14,16 @@
   --markdown-editor-save-dirty: #ba7517;
   --markdown-editor-save-retry: #a32d2d;
   --markdown-editor-text: #2c2a22;
+  /* Semantic content accents, shared by content extensions; a theme may override these once. */
+  --markdown-editor-info: #5a7892;
+  --markdown-editor-success: #1d9e75;
+  --markdown-editor-warning: #ba7517;
+  --markdown-editor-danger: #a32d2d;
+  --markdown-editor-emphasis: #7b66a6;
 }
 
 :root.wa-dark {
   --markdown-editor-accent: #d88a66;
-  --markdown-alert-note: #84a4c0;
-  --markdown-alert-tip: #5dcaa5;
-  --markdown-alert-important: #ac98d6;
-  --markdown-alert-warning: #ef9f27;
-  --markdown-alert-caution: #f09595;
   --markdown-editor-background: #211e16;
   --markdown-editor-code-background: #2b2719;
   --markdown-editor-code-border: #3c3624;
@@ -42,6 +38,12 @@
   --markdown-editor-save-dirty: #ef9f27;
   --markdown-editor-save-retry: #f09595;
   --markdown-editor-text: #e8e3d2;
+  /* Semantic content accents, shared by content extensions; a theme may override these once. */
+  --markdown-editor-info: #84a4c0;
+  --markdown-editor-success: #5dcaa5;
+  --markdown-editor-warning: #ef9f27;
+  --markdown-editor-danger: #f09595;
+  --markdown-editor-emphasis: #ac98d6;
 }
 
 body.markdown-editor-page {
@@ -211,27 +213,28 @@ markdown-editor[mode="split"] .markdown-editor__body {
 }
 
 /*
- * Kind modifiers set the accent custom property the rule above reads. The accent is read via the
- * cascade (not a same-rule declaration) so these lower-specificity class selectors still apply.
+ * Kind modifiers map each alert kind onto a shared semantic accent. The accent is read via the
+ * cascade (not a same-rule declaration) so these lower-specificity class selectors still apply, and
+ * a theme that overrides the semantic tokens reskins every callout (and future extensions) at once.
  */
 .markdown-alert-note {
-  --markdown-alert-accent: var(--markdown-alert-note);
+  --markdown-alert-accent: var(--markdown-editor-info);
 }
 
 .markdown-alert-tip {
-  --markdown-alert-accent: var(--markdown-alert-tip);
+  --markdown-alert-accent: var(--markdown-editor-success);
 }
 
 .markdown-alert-important {
-  --markdown-alert-accent: var(--markdown-alert-important);
+  --markdown-alert-accent: var(--markdown-editor-emphasis);
 }
 
 .markdown-alert-warning {
-  --markdown-alert-accent: var(--markdown-alert-warning);
+  --markdown-alert-accent: var(--markdown-editor-warning);
 }
 
 .markdown-alert-caution {
-  --markdown-alert-accent: var(--markdown-alert-caution);
+  --markdown-alert-accent: var(--markdown-editor-danger);
 }
 
 .markdown-alert-title {

@@ -1,7 +1,7 @@
 ---
 id: RFC-0002
 name: Editor Shell Decomposition
-status: Completed
+status: Implemented
 owners:
     - alistair
 created: 2026-06-10

@@ -247,6 +247,67 @@ markdown-editor[mode="split"] .markdown-editor__body {
   margin-bottom: 0;
 }
 
+/*
+ * Collapsible callouts (mkdocs ??? / ???+) share the alerts' semantic accent palette but use distinct
+ * classes so the DOM serialise seams do not collide. The title bar toggles the open state; a collapsed
+ * callout hides its body.
+ */
+.markdown-editor__surface .markdown-collapsible,
+.markdown-editor__preview .markdown-collapsible {
+  background: color-mix(in srgb, var(--markdown-collapsible-accent, var(--markdown-editor-quote-border)) 8%, transparent);
+  border-inline-start: 3px solid var(--markdown-collapsible-accent, var(--markdown-editor-quote-border));
+  border-radius: 6px;
+  margin-left: 0;
+  padding: 0.5rem 1rem;
+}
+
+.markdown-collapsible-note {
+  --markdown-collapsible-accent: var(--markdown-editor-info);
+}
+
+.markdown-collapsible-tip {
+  --markdown-collapsible-accent: var(--markdown-editor-success);
+}
+
+.markdown-collapsible-important {
+  --markdown-collapsible-accent: var(--markdown-editor-emphasis);
+}
+
+.markdown-collapsible-warning {
+  --markdown-collapsible-accent: var(--markdown-editor-warning);
+}
+
+.markdown-collapsible-caution {
+  --markdown-collapsible-accent: var(--markdown-editor-danger);
+}
+
+.markdown-collapsible-title {
+  color: var(--markdown-collapsible-accent, var(--markdown-editor-quote-border));
+  cursor: pointer;
+  font-weight: 600;
+  margin: 0;
+  user-select: none;
+}
+
+.markdown-collapsible-title::before {
+  content: "\25b8";
+  display: inline-block;
+  margin-right: 0.4rem;
+  transition: transform 0.15s ease;
+}
+
+.markdown-collapsible[data-open="true"] > .markdown-collapsible-title::before {
+  transform: rotate(90deg);
+}
+
+.markdown-collapsible[data-open="false"] > .markdown-collapsible-body {
+  display: none;
+}
+
+.markdown-collapsible-body > :last-child {
+  margin-bottom: 0;
+}
+
 .markdown-editor__surface table,
 .markdown-editor__preview table {
   border-collapse: collapse;

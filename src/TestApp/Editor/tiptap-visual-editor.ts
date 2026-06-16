@@ -1,11 +1,19 @@
 import { Editor, type JSONContent, type SetContentOptions } from "@tiptap/core";
 import Heading from "@tiptap/extension-heading";
 import { Markdown } from "@tiptap/markdown";
-import { Fragment, type Node as ProseMirrorNode, type ResolvedPos, type Schema } from "@tiptap/pm/model";
+import {
+    Fragment,
+    type Node as ProseMirrorNode,
+    type NodeType as ProseMirrorNodeType,
+    type ResolvedPos,
+    type Schema,
+} from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import { type AdmonitionKind, matchAlertMarker } from "./admonition-extension.js";
+import { type CollapsibleKind, matchCollapsibleMarker } from "./collapsible-extension.js";
 import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
 import { Admonition } from "./tiptap-admonition-node.js";
+import { Collapsible } from "./tiptap-collapsible-node.js";
 import { tableExtensions } from "./tiptap-table-extensions.js";
 
 /** Callback fired when the visual editor content changes. */
@@ -37,6 +45,13 @@ type MarkdownSetContentOptions = SetContentOptions & {
     contentType: "markdown";
 };
 
+/** The `@tiptap/markdown` extension augments the editor with a Markdown parser used to re-parse bodies. */
+interface MarkdownParseEditor {
+    markdown: {
+        parse(markdown: string): JSONContent;
+    };
+}
+
 const HeadingWithoutInputRules = Heading.extend({
     /** Keeps heading nodes available while preventing typed hash shortcuts. */
     addInputRules() {
@@ -67,6 +82,7 @@ export class TiptapVisualEditor {
                 }),
                 HeadingWithoutInputRules,
                 Admonition,
+                Collapsible,
                 ...tableExtensions,
                 Markdown.configure({
                     markedOptions: {
@@ -91,6 +107,7 @@ export class TiptapVisualEditor {
             },
         });
         this.upgradeAlertBlockquotes();
+        this.upgradeCollapsibles();
         this.collapseSoftBreaks();
     }
 
@@ -115,6 +132,7 @@ export class TiptapVisualEditor {
 
         this.editor.commands.setContent(markdown, options);
         this.upgradeAlertBlockquotes();
+        this.upgradeCollapsibles();
         this.collapseSoftBreaks();
     }
 
@@ -163,6 +181,88 @@ export class TiptapVisualEditor {
     /** Inserts an admonition callout of the given kind around the current selection. */
     public insertAdmonition(kind: AdmonitionKind): boolean {
         return this.editor.chain().focus().wrapIn("admonition", { kind }).run();
+    }
+
+    /** Inserts a collapsed collapsible callout of the given type around the current selection. */
+    public insertCollapsible(kind: CollapsibleKind): boolean {
+        return this.editor.chain().focus().wrapIn("collapsible", { collapsibleType: kind }).run();
+    }
+
+    /**
+     * Promotes a mkdocs collapsible (a `??? type` marker paragraph followed by the indented body, which
+     * marked loads as a code block) into a collapsible node after content loads, re-parsing the body
+     * Markdown into rich nodes. Runs before {@link collapseSoftBreaks} so the body content is normalised too.
+     */
+    private upgradeCollapsibles(): void {
+        const schema = this.editor.state.schema;
+        const collapsibleType = schema.nodes["collapsible"];
+
+        if (!collapsibleType) {
+            return;
+        }
+
+        const doc = this.editor.state.doc;
+        const replacements: Array<{ from: number; node: ProseMirrorNode; to: number }> = [];
+
+        doc.forEach((node: ProseMirrorNode, offset: number, index: number): void => {
+            if (node.type.name !== "paragraph") {
+                return;
+            }
+
+            const marker = matchCollapsibleMarker(node.textContent);
+            const body = index + 1 < doc.childCount ? doc.child(index + 1) : null;
+
+            if (!marker || !body || body.type.name !== "codeBlock") {
+                return;
+            }
+
+            replacements.push({
+                from: offset,
+                node: this.collapsibleNode(collapsibleType, marker, body.textContent),
+                to: offset + node.nodeSize + body.nodeSize,
+            });
+        });
+
+        if (replacements.length === 0) {
+            return;
+        }
+
+        const transaction = this.editor.state.tr;
+
+        for (const replacement of replacements.reverse()) {
+            transaction.replaceWith(replacement.from, replacement.to, replacement.node);
+        }
+
+        this.editor.view.dispatch(transaction.setMeta("addToHistory", false));
+    }
+
+    /** Builds a collapsible node, re-parsing the body Markdown into rich child nodes. */
+    private collapsibleNode(
+        collapsibleType: ProseMirrorNodeType,
+        marker: { kind: CollapsibleKind; title: string | null; open: boolean },
+        bodyMarkdown: string,
+    ): ProseMirrorNode {
+        const schema = this.editor.state.schema;
+        const parsed = (this.editor as unknown as MarkdownParseEditor).markdown.parse(bodyMarkdown);
+        const bodyDoc = schema.nodeFromJSON(parsed);
+        const bodyNodes: ProseMirrorNode[] = [];
+
+        bodyDoc.content.forEach((child: ProseMirrorNode): void => {
+            bodyNodes.push(child);
+        });
+
+        if (bodyNodes.length === 0) {
+            const paragraphType = schema.nodes["paragraph"];
+
+            if (paragraphType) {
+                bodyNodes.push(paragraphType.create());
+            }
+        }
+
+        return collapsibleType.create(
+            { collapsibleType: marker.kind, open: marker.open, title: marker.title },
+            Fragment.fromArray(bodyNodes),
+        );
     }
 
     /** Inserts a 3x3 GFM table with a header row at the current selection. */

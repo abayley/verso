@@ -13,9 +13,9 @@ import {
 import type { EditorBlock } from "./editor-model.js";
 
 /** The collapsible types recognised, sharing the admonitions' callout chrome via the semantic palette. */
-const COLLAPSIBLE_KINDS = ["note", "tip", "important", "warning", "caution"] as const;
+export const COLLAPSIBLE_KINDS = ["note", "tip", "important", "warning", "caution"] as const;
 
-type CollapsibleKind = (typeof COLLAPSIBLE_KINDS)[number];
+export type CollapsibleKind = (typeof COLLAPSIBLE_KINDS)[number];
 
 /** The extension-owned payload carried on a custom collapsible block. */
 interface CollapsibleData {
@@ -51,13 +51,30 @@ const MARKER_PATTERN = /^(\?\?\?\+?) +(note|tip|important|warning|caution)(?: +"
 /** Re-parses a collapsible's dedented body text; carries no collapsible plugin, so bodies do not nest. */
 const bodyProcessor = unified().use(remarkParse).use(remarkGfm);
 
+/** Matches a collapsible marker line (`??? type "title"` / `???+ type`), returning its parts or null. */
+export function matchCollapsibleMarker(
+    text: string,
+): { kind: CollapsibleKind; title: string | null; open: boolean } | null {
+    const match = MARKER_PATTERN.exec(text);
+
+    if (!match) {
+        return null;
+    }
+
+    return {
+        kind: match[2] as CollapsibleKind,
+        open: match[1] === "???+",
+        title: match[3] ?? null,
+    };
+}
+
 /** Title-cases a collapsible type for the default callout heading. */
-function collapsibleTitle(kind: CollapsibleKind): string {
+export function collapsibleTitle(kind: CollapsibleKind): string {
     return kind.charAt(0).toUpperCase() + kind.slice(1);
 }
 
 /** Returns the collapsible type named by a `markdown-collapsible-<kind>` class, or null. */
-function kindFromClassName(classes: DOMTokenList): CollapsibleKind | null {
+export function kindFromClassName(classes: DOMTokenList): CollapsibleKind | null {
     return (
         COLLAPSIBLE_KINDS.find((kind: CollapsibleKind): boolean => classes.contains(`markdown-collapsible-${kind}`)) ??
         null
@@ -74,17 +91,7 @@ function markerFromParagraph(
         return null;
     }
 
-    const match = MARKER_PATTERN.exec(only.value);
-
-    if (!match) {
-        return null;
-    }
-
-    return {
-        kind: match[2] as CollapsibleKind,
-        open: match[1] === "???+",
-        title: match[3] ?? null,
-    };
+    return matchCollapsibleMarker(only.value);
 }
 
 /** Builds a collapsible mdast node, re-parsing the indented body block's text as Markdown. */

@@ -417,10 +417,50 @@ table phase (the spike's "when table editing arrives" trigger).
      is tracked separately; it is a behaviour-preserving refactor of the editor
      shell, not part of the table deliverable.
 4. Phase four: collapsibles.
-   - [ ] Custom mkdocs `???`/`???+` micromark/remark parser (the main risk, with
+   - [x] Custom mkdocs `???`/`???+` micromark/remark parser (the main risk, with
          focused parsing tests), model + render (shared callout chrome with
          admonitions) + custom Tiptap collapsible node + toggle UI + slash entry;
          round-trip (`???` vs `???+`) and degradation tests.
+
+     Landed as `collapsible-extension.ts` (the data seams + the parser),
+     `tiptap-collapsible-node.ts` (the editor-side node with the toggle
+     NodeView), collapsible CSS, and the visual-editor wiring. Decisions and
+     notes from the phase:
+     - **Parser approach (departs from the RFC's "custom micromark construct"
+       wording):** a remark *tree-transform* instead of a hand-written micromark
+       construct. CommonMark already isolates a `??? type "title"` marker line as
+       a paragraph and the four-space-indented body as a code block; the
+       transform recognises that pair, re-parses the dedented body text as
+       Markdown (a plain remark+gfm processor, so bodies do not nest), and merges
+       them into a module-augmented `collapsible` mdast node. Same supported
+       syntax and mdast outcome, far less risk than a from-scratch tokenizer,
+       fully reversible. The `remarkPlugins` seam deferred in phase 1 was
+       activated for this (`collectRemarkPlugins` + `remark-adapter` now
+       `runSync`s the processor's transformers).
+     - **Scope = the RFC's recommended minimal set:** `???`/`???+`, the five
+       admonition kinds (shared callout chrome via the semantic palette, distinct
+       `.markdown-collapsible*` classes so the DOM serialise seams do not collide
+       with admonitions), an optional `"title"`, a required blank line + indented
+       body, no nesting. Unknown type / missing body / trailing text after the
+       title degrade to a plain paragraph (pinned by tests).
+     - The model carries `{collapsibleType, title, open}`; `???` vs `???+` is the
+       `open` flag and round-trips. The Tiptap node's title bar toggles `open`
+       (CSS hides a collapsed body); the title is not inline-editable in the
+       visual editor (it round-trips from source) -- editing it is deferred, as
+       admonition deferred kind-switching.
+     - The visual editor loads via `@tiptap/markdown` (marked), which reads the
+       body as a code block, so `upgradeCollapsibles` (mirroring
+       `upgradeAlertBlockquotes`) promotes the marker-paragraph + code-block pair
+       after load, re-parsing the body with `editor.markdown.parse` +
+       `schema.nodeFromJSON` into rich nodes. Runs before `collapseSoftBreaks`.
+     - Known limitation: a freshly-inserted *empty* collapsible serialises to
+       `??? note\n\n` and degrades to a plain paragraph on reload until body
+       content is typed (the content model always has at least an empty
+       paragraph; normal use fills it).
+     - The slash menu gained a "Collapsible" entry (count test updated 9 -> 10).
+       152 editor tests green (135 + 17 collapsible golden tests); `make check`
+       and `make test-editor-browser` pass; browser-verified round-trip, toggle,
+       and slash insert across types.
 5. Phase five: footnotes (the most complex; inline plus document-level).
    - [ ] `footnoteReference` / `footnoteDefinition` model (inline + block), render
          (superscript references linking to a collected definitions list with
@@ -456,12 +496,16 @@ Resolved with the owner (2026-06-16):
 - **CodeMirror source highlighting:** deferred. New syntaxes rely on
   `lang-markdown`'s defaults for now; bespoke highlighting is later polish.
 
+Resolved during phase four (2026-06-17):
+
+- **mkdocs parser scope:** the minimal `???`/`???+ type "title"` with the fixed
+  five-kind set and no nesting (the recommended option). Implemented as a remark
+  tree-transform that re-parses the indented body, rather than a hand-written
+  micromark construct -- same supported syntax, lower risk (see the phase-four
+  rollout note).
+
 Still open:
 
-- **mkdocs parser scope:** how much of the mkdocs/Python-Markdown admonition
-  grammar to implement -- just `???`/`???+` with a type and optional title, or also
-  nested admonitions and the full type set? Recommendation: the minimal
-  `???`/`???+ type "title"` with a fixed type set first; nesting later if needed.
 - **Footnote editing in Tiptap:** a community footnote extension versus a custom
   inline node plus managed definition region; decide during the footnotes phase
   against round-trip fidelity and Web Awesome/Lit fit.

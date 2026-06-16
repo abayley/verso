@@ -1,6 +1,7 @@
 import type { AdmonitionKind } from "./admonition-extension.js";
 import { BubbleToolbarElement } from "./bubble-toolbar-element.js";
 import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
+import type { CollapsibleKind } from "./collapsible-extension.js";
 import {
     CommandBarElement,
     type CommandBlockStyleEventDetail,
@@ -645,6 +646,7 @@ export class MarkdownEditorElement extends HTMLElement {
             { label: "Quote", run: (): void => this.toggleStructure("blockquote") },
             { label: "Code block", run: (): void => this.toggleStructure("code-block") },
             { label: "Note callout", run: (): void => this.insertAdmonition("note") },
+            { label: "Collapsible", run: (): void => this.insertCollapsible("note") },
             { label: "Table", run: (): void => this.insertTable() },
         ];
         menu.items = this.slashCommands.map((command) => command.label);
@@ -1055,6 +1057,13 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Inserts an admonition callout of the given kind at the current visual selection. */
     private insertAdmonition(kind: AdmonitionKind): void {
         if (this.visualEditor?.insertAdmonition(kind)) {
+            this.handleVisualInput();
+        }
+    }
+
+    /** Inserts a collapsible callout of the given type at the current visual selection. */
+    private insertCollapsible(kind: CollapsibleKind): void {
+        if (this.visualEditor?.insertCollapsible(kind)) {
             this.handleVisualInput();
         }
     }

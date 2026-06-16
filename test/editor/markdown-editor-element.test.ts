@@ -1263,7 +1263,7 @@ describe("MarkdownEditorElement studio surfaces", (): void => {
         dispatchSelectionChange();
 
         expect(slashMenu(editor).hidden).toBe(false);
-        expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(9);
+        expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(10);
     });
 
     it("given the studio slash menu, when Heading 1 is chosen, then the block becomes a heading", async (): Promise<void> => {

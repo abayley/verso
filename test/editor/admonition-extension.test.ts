@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseMarkdown } from "../../src/TestApp/Editor/markdown-parse.js";
 import { renderMarkdown } from "../../src/TestApp/Editor/markdown-render.js";
-import { documentToMarkdown } from "../../src/TestApp/Editor/markdown-serialise.js";
+import { documentFromElements, documentToMarkdown } from "../../src/TestApp/Editor/markdown-serialise.js";
 
 describe("admonition parsing", (): void => {
     it("given a NOTE alert blockquote, when parsed, then it becomes a custom admonition block", (): void => {
@@ -78,7 +78,7 @@ describe("admonition rendering", (): void => {
         expect(renderMarkdown(["> [!NOTE]", "> Body **text**."].join("\n"))).toBe(
             '<div class="markdown-alert markdown-alert-note">' +
                 '<p class="markdown-alert-title">Note</p>' +
-                "<p>Body <strong>text</strong>.</p>" +
+                '<div class="markdown-alert-body"><p>Body <strong>text</strong>.</p></div>' +
                 "</div>",
         );
     });
@@ -97,5 +97,31 @@ describe("admonition Markdown round-trip", (): void => {
 
     it("given a marker-only alert, when parsed and serialised, then the GFM source round-trips", (): void => {
         expect(documentToMarkdown(parseMarkdown("> [!CAUTION]"))).toBe("> [!CAUTION]");
+    });
+});
+
+describe("admonition DOM serialisation", (): void => {
+    it("given a rendered callout element, when serialised, then it becomes a GFM alert", (): void => {
+        const root = document.createElement("div");
+        root.innerHTML =
+            '<div class="markdown-alert markdown-alert-warning">' +
+            '<p class="markdown-alert-title" contenteditable="false">Warning</p>' +
+            '<div class="markdown-alert-body"><p>Be <strong>careful</strong>.</p></div>' +
+            "</div>";
+
+        expect(documentToMarkdown(documentFromElements(root.children))).toBe("> [!WARNING]\n> Be **careful**.");
+    });
+
+    it("given a callout element whose title text differs, when serialised, then the kind comes from the class", (): void => {
+        const root = document.createElement("div");
+        root.innerHTML =
+            '<div class="markdown-alert markdown-alert-tip">' +
+            '<p class="markdown-alert-title" contenteditable="false">Anything</p>' +
+            '<div class="markdown-alert-body"><p>Body.</p></div>' +
+            "</div>";
+
+        const document_ = documentFromElements(root.children);
+
+        expect(document_.blocks[0]).toMatchObject({ data: { kind: "tip" }, extension: "admonition", type: "custom" });
     });
 });

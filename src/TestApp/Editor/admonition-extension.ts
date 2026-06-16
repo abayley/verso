@@ -1,6 +1,7 @@
 import type { Blockquote, Paragraph, PhrasingContent, RootContent, Text } from "mdast";
 import {
     type ContentExtension,
+    type FromElementContext,
     type ParseContext,
     type RenderContext,
     registerExtension,
@@ -11,7 +12,7 @@ import type { EditorBlock } from "./editor-model.js";
 /** The GFM alert kinds recognised as admonitions. */
 const ADMONITION_KINDS = ["note", "tip", "important", "warning", "caution"] as const;
 
-type AdmonitionKind = (typeof ADMONITION_KINDS)[number];
+export type AdmonitionKind = (typeof ADMONITION_KINDS)[number];
 
 /** The extension-owned payload carried on a custom admonition block. */
 interface AdmonitionData {
@@ -21,8 +22,28 @@ interface AdmonitionData {
 const MARKER_PATTERN = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:\n|$)/;
 
 /** Title-cases an admonition kind for the rendered callout heading. */
-function admonitionTitle(kind: AdmonitionKind): string {
+export function admonitionTitle(kind: AdmonitionKind): string {
     return kind.charAt(0).toUpperCase() + kind.slice(1);
+}
+
+/** Matches a leading GFM alert marker (`[!NOTE]` on its own line), returning the kind and match length. */
+export function matchAlertMarker(text: string): { kind: AdmonitionKind; length: number } | null {
+    const match = MARKER_PATTERN.exec(text);
+    const kind = match?.[1]?.toLowerCase();
+
+    if (!match || !kind) {
+        return null;
+    }
+
+    return {
+        kind: kind as AdmonitionKind,
+        length: match[0].length,
+    };
+}
+
+/** Returns the admonition kind named by a `markdown-alert-<kind>` class, or null. */
+export function kindFromClassName(classes: DOMTokenList): AdmonitionKind | null {
+    return ADMONITION_KINDS.find((kind: AdmonitionKind): boolean => classes.contains(`markdown-alert-${kind}`)) ?? null;
 }
 
 // Parse: a blockquote whose first line is a GFM alert marker becomes a custom admonition block.
@@ -61,17 +82,7 @@ function alertMarker(node: Blockquote): { kind: AdmonitionKind; length: number }
         return null;
     }
 
-    const match = MARKER_PATTERN.exec(firstInline.value);
-    const kind = match?.[1]?.toLowerCase();
-
-    if (!match || !kind) {
-        return null;
-    }
-
-    return {
-        kind: kind as AdmonitionKind,
-        length: match[0].length,
-    };
+    return matchAlertMarker(firstInline.value);
 }
 
 /** Returns the blockquote body with the marker stripped from the leading paragraph. */
@@ -103,7 +114,31 @@ function renderBlock(block: EditorBlock, ctx: RenderContext): string | null {
     const title = ctx.escapeHtml(admonitionTitle(kind));
     const body = ctx.renderBlocks(block.children ?? []);
 
-    return `<div class="markdown-alert markdown-alert-${kind}"><p class="markdown-alert-title">${title}</p>${body}</div>`;
+    return `<div class="markdown-alert markdown-alert-${kind}"><p class="markdown-alert-title">${title}</p><div class="markdown-alert-body">${body}</div></div>`;
+}
+
+// Serialise-in: a rendered callout element (the Tiptap node's DOM) becomes a custom admonition block.
+
+/** Recognises a `.markdown-alert` callout element and rebuilds the custom admonition block, declining otherwise. */
+function blockFromElement(element: Element, ctx: FromElementContext): EditorBlock | null {
+    if (element.tagName !== "DIV" || !element.classList.contains("markdown-alert")) {
+        return null;
+    }
+
+    const kind = kindFromClassName(element.classList);
+
+    if (!kind) {
+        return null;
+    }
+
+    const body = element.querySelector(".markdown-alert-body");
+
+    return {
+        children: body ? ctx.documentFromElements(body.children).blocks : [],
+        data: { kind },
+        extension: "admonition",
+        type: "custom",
+    };
 }
 
 // Serialise-out: a custom admonition block becomes a GFM alert blockquote.
@@ -136,6 +171,7 @@ function alertLineToMarkdown(line: string): string {
 
 /** GFM alert blockquotes (`> [!NOTE]`) recognised and styled as callouts. */
 const admonitionExtension: ContentExtension = {
+    blockFromElement,
     blockFromMdast,
     blockToMarkdown,
     name: "admonition",

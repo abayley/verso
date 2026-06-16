@@ -1,3 +1,4 @@
+import type { AdmonitionKind } from "./admonition-extension.js";
 import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
 import { renderMarkdown } from "./markdown-render.js";
@@ -752,6 +753,7 @@ export class MarkdownEditorElement extends HTMLElement {
             { label: "Numbered list", run: (): void => this.toggleStructure("ordered-list") },
             { label: "Quote", run: (): void => this.toggleStructure("blockquote") },
             { label: "Code block", run: (): void => this.toggleStructure("code-block") },
+            { label: "Note callout", run: (): void => this.insertAdmonition("note") },
         ];
 
         for (const command of commands) {
@@ -1117,6 +1119,13 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         if (this.visualEditor?.toggleStructure(style)) {
+            this.handleVisualInput();
+        }
+    }
+
+    /** Inserts an admonition callout of the given kind at the current visual selection. */
+    private insertAdmonition(kind: AdmonitionKind): void {
+        if (this.visualEditor?.insertAdmonition(kind)) {
             this.handleVisualInput();
         }
     }

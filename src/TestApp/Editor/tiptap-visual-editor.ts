@@ -1,9 +1,11 @@
 import { Editor, type JSONContent, type SetContentOptions } from "@tiptap/core";
 import Heading from "@tiptap/extension-heading";
 import { Markdown } from "@tiptap/markdown";
-import type { Node as ProseMirrorNode, ResolvedPos } from "@tiptap/pm/model";
+import { Fragment, type Node as ProseMirrorNode, type ResolvedPos, type Schema } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
+import { type AdmonitionKind, matchAlertMarker } from "./admonition-extension.js";
 import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
+import { Admonition } from "./tiptap-admonition-node.js";
 
 /** Callback fired when the visual editor content changes. */
 export type TiptapChangeHandler = () => void;
@@ -60,6 +62,7 @@ export class TiptapVisualEditor {
                     heading: false,
                 }),
                 HeadingWithoutInputRules,
+                Admonition,
                 Markdown.configure({
                     markedOptions: {
                         gfm: true,
@@ -82,6 +85,7 @@ export class TiptapVisualEditor {
                 onChange();
             },
         });
+        this.upgradeAlertBlockquotes();
         this.collapseSoftBreaks();
     }
 
@@ -105,7 +109,55 @@ export class TiptapVisualEditor {
         };
 
         this.editor.commands.setContent(markdown, options);
+        this.upgradeAlertBlockquotes();
         this.collapseSoftBreaks();
+    }
+
+    /**
+     * Promotes GFM alert blockquotes (`> [!NOTE]` ...) into admonition nodes after content loads.
+     * Runs before {@link collapseSoftBreaks} so the marker is still on its own line in the text.
+     */
+    private upgradeAlertBlockquotes(): void {
+        const schema = this.editor.state.schema;
+
+        if (!schema.nodes["admonition"]) {
+            return;
+        }
+
+        const replacements: Array<{ from: number; node: ProseMirrorNode; to: number }> = [];
+
+        this.editor.state.doc.descendants((node: ProseMirrorNode, position: number): boolean => {
+            if (node.type.name !== "blockquote") {
+                return true;
+            }
+
+            const admonition = admonitionFromBlockquote(schema, node);
+
+            if (admonition) {
+                replacements.push({ from: position, node: admonition, to: position + node.nodeSize });
+
+                return false;
+            }
+
+            return true;
+        });
+
+        if (replacements.length === 0) {
+            return;
+        }
+
+        const transaction = this.editor.state.tr;
+
+        for (const replacement of replacements.reverse()) {
+            transaction.replaceWith(replacement.from, replacement.to, replacement.node);
+        }
+
+        this.editor.view.dispatch(transaction.setMeta("addToHistory", false));
+    }
+
+    /** Inserts an admonition callout of the given kind around the current selection. */
+    public insertAdmonition(kind: AdmonitionKind): boolean {
+        return this.editor.chain().focus().wrapIn("admonition", { kind }).run();
     }
 
     /** Replaces soft line breaks in non-code text with spaces, matching CommonMark rendering. */
@@ -468,6 +520,42 @@ export class TiptapVisualEditor {
             to: Math.max(anchor, focus),
         };
     }
+}
+
+/** Builds an admonition node from an alert-marker blockquote, or null when the blockquote is not an alert. */
+function admonitionFromBlockquote(schema: Schema, blockquote: ProseMirrorNode): ProseMirrorNode | null {
+    const paragraphType = schema.nodes["paragraph"];
+    const admonitionType = schema.nodes["admonition"];
+    const firstChild = blockquote.firstChild;
+
+    if (!paragraphType || !admonitionType || !firstChild || firstChild.type.name !== "paragraph") {
+        return null;
+    }
+
+    const marker = matchAlertMarker(firstChild.textContent);
+
+    if (!marker) {
+        return null;
+    }
+
+    const bodyNodes: ProseMirrorNode[] = [];
+    const leadingParagraph = firstChild.type.create(firstChild.attrs, firstChild.content.cut(marker.length));
+
+    if (leadingParagraph.content.size > 0) {
+        bodyNodes.push(leadingParagraph);
+    }
+
+    blockquote.content.forEach((child: ProseMirrorNode, _offset: number, index: number): void => {
+        if (index > 0) {
+            bodyNodes.push(child);
+        }
+    });
+
+    if (bodyNodes.length === 0) {
+        bodyNodes.push(paragraphType.create());
+    }
+
+    return admonitionType.create({ kind: marker.kind }, Fragment.fromArray(bodyNodes));
 }
 
 /** Checks whether a keyboard event matches a primary-modifier shortcut key. */

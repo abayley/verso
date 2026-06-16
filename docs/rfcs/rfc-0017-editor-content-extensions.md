@@ -390,9 +390,32 @@ table phase (the spike's "when table editing arrives" trigger).
        is note-only; other kinds round-trip from source). 125 editor tests
        green; `make check` and `make test-editor-browser` pass.
 3. Phase three: tables.
-   - [ ] Model + render + `@tiptap/extension-table` editing + pipe-table
+   - [x] Model + render + `@tiptap/extension-table` editing + pipe-table
          serialiser + slash insert; round-trip and cell-edit smoke tests. Adopt
          Lit for the table view controls (per the Lit spike).
+
+     Landed as `table-extension.ts` (data seams: parse the `remark-gfm` table
+     mdast, render to an HTML table with per-column `text-align`, serialise to a
+     canonical GFM pipe table, read a `<table>` -- or Tiptap's wrapper div around
+     one -- back to the model; cell inline content reuses the base paragraph seam
+     through the context, so no new inline seam was added), `tiptap-table-
+     extensions.ts` (Table/Row/Header/Cell, the cells extended with a `textAlign`
+     attribute so GFM column alignment survives the editor), and `table-controls-
+     element.ts` (the Lit floating controls: add/delete row and column, column
+     alignment, delete table). New deps: `@tiptap/extension-table` and `lit`
+     (declared directly; already transitively present via Web Awesome). Notes:
+     - Two serialise fixes surfaced only in the browser: Tiptap wraps the table
+       in a div (so `blockFromElement` matches a table or a wrapper around one),
+       and empty cells carried ProseMirror's trailing-break `<br>` (the base
+       inline DOM walk now drops `<br class="ProseMirror-trailingBreak">`).
+     - Column alignment is read from the header row (GFM is per-column); setting
+       alignment uses `setCellAttribute`, so it applies to the selected cells.
+     - 135 editor tests green; `make check` and the Playwright smoke pass.
+
+     Note: a broader Lit migration of the existing toolbar/link-popover view
+     layer (beyond this phase's table controls) was requested as extra scope and
+     is tracked separately; it is a behaviour-preserving refactor of the editor
+     shell, not part of the table deliverable.
 4. Phase four: collapsibles.
    - [ ] Custom mkdocs `???`/`???+` micromark/remark parser (the main risk, with
          focused parsing tests), model + render (shared callout chrome with

@@ -81,6 +81,26 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
     });
 
+    it("given a standalone image, when loaded in the visual editor, then it is wrapped in a paragraph (a valid document)", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "![cat](/cat.png)\n\nhello world";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        const surface = editor.querySelector(".markdown-editor__surface .ProseMirror");
+
+        // A bare top-level <img> would make the document schema-invalid (the doc allows only blocks), and a
+        // later insert would throw "Called contentMatchAt on a node with invalid content".
+        const hasBareImageChild = Array.from(surface?.children ?? []).some(
+            (child: Element): boolean => child.tagName === "IMG",
+        );
+
+        expect(hasBareImageChild).toBe(false);
+        expect(surface?.querySelector("p > img")).toBeInstanceOf(HTMLElement);
+        expect(editor.toMarkdown()).toContain("![cat](/cat.png)");
+    });
+
     it("given visual mode, when mode radio options are selected, then it changes modes without losing Markdown", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = "# Heading\n\nParagraph with **strong** text.";

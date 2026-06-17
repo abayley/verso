@@ -209,6 +209,7 @@ export class TiptapVisualEditor {
         });
         this.upgradeAlertBlockquotes();
         this.upgradeCollapsibles();
+        this.wrapBareImages();
         this.loadFootnotes(footnotes.definitions);
         this.loadReferenceLinks(references.definitions);
         this.collapseSoftBreaks();
@@ -238,6 +239,7 @@ export class TiptapVisualEditor {
         this.editor.commands.setContent(references.stripped, options);
         this.upgradeAlertBlockquotes();
         this.upgradeCollapsibles();
+        this.wrapBareImages();
         this.loadFootnotes(footnotes.definitions);
         this.loadReferenceLinks(references.definitions);
         this.collapseSoftBreaks();
@@ -370,6 +372,44 @@ export class TiptapVisualEditor {
             { collapsibleType: marker.kind, open: marker.open, title: marker.title },
             Fragment.fromArray(bodyNodes),
         );
+    }
+
+    /**
+     * Wraps any bare top-level image in a paragraph. A standalone `![](url)` line loads (via marked and the
+     * image node's parse handler) as an image node that is a *direct child of the document*, but the image
+     * node is inline, so the document is then schema-invalid (the doc allows only blocks). ProseMirror
+     * tolerates the load but a later insert (e.g. an upload at the caret) throws "Called contentMatchAt on a
+     * node with invalid content" while fitting the change. Wrapping each top-level image in a paragraph
+     * restores a valid document; an inline image already inside a paragraph is untouched.
+     */
+    private wrapBareImages(): void {
+        const schema = this.editor.state.schema;
+        const imageType = schema.nodes["image"];
+        const paragraphType = schema.nodes["paragraph"];
+
+        if (!imageType || !paragraphType) {
+            return;
+        }
+
+        const replacements: Array<{ from: number; node: ProseMirrorNode; to: number }> = [];
+
+        this.editor.state.doc.forEach((node: ProseMirrorNode, offset: number): void => {
+            if (node.type === imageType) {
+                replacements.push({ from: offset, node: paragraphType.create(null, node), to: offset + node.nodeSize });
+            }
+        });
+
+        if (replacements.length === 0) {
+            return;
+        }
+
+        const transaction = this.editor.state.tr;
+
+        for (const replacement of replacements.reverse()) {
+            transaction.replaceWith(replacement.from, replacement.to, replacement.node);
+        }
+
+        this.editor.view.dispatch(transaction.setMeta("addToHistory", false));
     }
 
     /**

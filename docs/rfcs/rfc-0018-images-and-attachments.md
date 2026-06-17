@@ -302,9 +302,41 @@ path (the Markdown already carries the URL).
        disallowed types; `404` for malformed or absent hashes. `make check` green
        (122 unit incl. 10 attachment, 38 integration).
 2. Phase two: image content extension and Tiptap node.
-   - [ ] `image-extension.ts` (parse `image` mdast, render `<img>`, serialise
+   - [x] `image-extension.ts` (parse `image` mdast, render `<img>`, serialise
          `![alt](src "title")`) + a Tiptap image node; round-trip and degradation
          golden tests. Attachments need no extension (links already supported).
+
+     Landed as `image-extension.ts` (registered after `reference-link` in
+     `register-extensions.ts`) and `tiptap-image-node.ts` (wired into
+     `tiptap-visual-editor.ts`), with `test/editor/image-extension.test.ts` (13
+     golden tests: parse, render+escaping, round-trip, DOM serialise). Notes /
+     decisions:
+     - **Custom inline, no model change.** Images are a `type: "custom"`,
+       `extension: "image"` inline carrying `{ alt, src, title }`, mirroring
+       `reference-link` -- the `editor-model` `InlineNode` union is unchanged.
+     - **`<img>` recognised without a marker class.** Unlike `reference-link`'s
+       anchor (a plain `<a>` is already claimed by the base extension), a bare
+       `<img>` is unambiguous, so `inlineFromElement` claims any `IMG` directly.
+     - **Block-level `<img>` seam.** The visual editor renders a standalone
+       `![](url)` as a *bare top-level* `<img>` (a direct child of the ProseMirror
+       root, not wrapped in `<p>`). The base extension would treat that childless
+       element as an empty paragraph and drop the image, so the extension adds a
+       `blockFromElement` that wraps a block-level `<img>` in a paragraph. Covered
+       by a dedicated test; the remark parse path already wraps standalone images.
+     - **marked needs a parse handler.** `@tiptap/markdown` (marked) tokenises
+       `![]()` correctly, but only maps a token to a node when the node declares
+       `parseMarkdown` (+ `markdownTokenName`, defaulting to the node name). A
+       node without it silently drops the image token (verified in-browser: the
+       inline image degraded to its alt text and the standalone image vanished).
+       The Tiptap `image` node therefore carries a `parseMarkdown(token)` mapping
+       `{ href, text, title }` -> `{ src, alt, title }`. Serialising back to
+       Markdown uses the DOM serialise seam (not marked), so no `renderMarkdown`
+       is needed. No new dependency: a small custom node, not
+       `@tiptap/extension-image` (consistent with collapsibles avoiding Pro).
+     - Verified in the running editor: an inline titled image, a standalone
+       external image, and an attachment link all load into the visual editor as
+       `<img>`/`<a>` and round-trip byte-identically through `toMarkdown`.
+       `make check` green (186 editor tests incl. 13 image, full server suite).
 3. Phase three: editor upload UX.
    - [ ] File picker + drag-and-drop + paste, each uploading via `POST
          /attachments` and inserting `![name](url)` (image) or `[name](url)`
@@ -341,10 +373,15 @@ Resolved with the owner (2026-06-17):
   never break serving); a mark-sweep over documents' referenced hashes is a later
   follow-up.
 
+Resolved during phase two (2026-06-17):
+
+- **Tiptap image node:** a small custom node (`tiptap-image-node.ts`), not
+  `@tiptap/extension-image` -- no new dependency, and the node only needs a
+  `parseMarkdown` handler (marked tokenises `![]()` natively) plus the `<img>`
+  render/parse markup the DOM serialise seam already round-trips. Consistent with
+  collapsibles avoiding a Pro dependency.
+
 Still open:
 
 - **Quotas / rate-limiting:** per-document or global storage caps and upload rate
   limits -- in-app or delegated to the fronting proxy (ADR-031)? Deferred.
-- **Tiptap image node:** `@tiptap/extension-image` versus a small custom node
-  (decide during phase two against round-trip fidelity and the no-Pro-dependency
-  preference, as with collapsibles).

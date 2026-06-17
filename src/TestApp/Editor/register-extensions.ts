@@ -7,3 +7,4 @@ import "./table-extension.js";
 import "./collapsible-extension.js";
 import "./footnote-extension.js";
 import "./reference-link-extension.js";
+import "./image-extension.js";

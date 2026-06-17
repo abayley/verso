@@ -17,6 +17,7 @@ import { documentFromElements, documentToMarkdown } from "./markdown-serialise.j
 import { Admonition } from "./tiptap-admonition-node.js";
 import { Collapsible } from "./tiptap-collapsible-node.js";
 import { FootnoteDefinition, FootnoteReference } from "./tiptap-footnote-node.js";
+import { Image } from "./tiptap-image-node.js";
 import { ReferenceDefinition, ReferenceLink } from "./tiptap-reference-link-node.js";
 import { tableExtensions } from "./tiptap-table-extensions.js";
 
@@ -182,6 +183,7 @@ export class TiptapVisualEditor {
                 FootnoteDefinition,
                 ReferenceLink,
                 ReferenceDefinition,
+                Image,
                 ...tableExtensions,
                 Markdown.configure({
                     markedOptions: {

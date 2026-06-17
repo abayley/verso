@@ -558,10 +558,20 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 .markdown-image {
   display: inline-block;
   line-height: 0;
+  max-width: 100%;
   position: relative;
 }
 
 .markdown-image img {
+  height: auto;
+  max-width: 100%;
+}
+
+/* Constrain any image (resize node view or rendered preview) to the editor width, scaling height to keep
+   the aspect ratio, so a large image or an over-wide {width=N} never overflows the editing surface. */
+.markdown-editor__surface img,
+.markdown-editor__preview img {
+  height: auto;
   max-width: 100%;
 }
 

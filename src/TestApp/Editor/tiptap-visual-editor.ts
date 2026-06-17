@@ -13,6 +13,7 @@ import {
 import StarterKit from "@tiptap/starter-kit";
 import { type AdmonitionKind, matchAlertMarker } from "./admonition-extension.js";
 import { type CollapsibleKind, matchCollapsibleMarker } from "./collapsible-extension.js";
+import { widthFromAttributes } from "./image-extension.js";
 import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
 import { Admonition } from "./tiptap-admonition-node.js";
 import { Collapsible } from "./tiptap-collapsible-node.js";
@@ -210,6 +211,7 @@ export class TiptapVisualEditor {
         this.upgradeAlertBlockquotes();
         this.upgradeCollapsibles();
         this.wrapBareImages();
+        this.loadImageWidths();
         this.loadFootnotes(footnotes.definitions);
         this.loadReferenceLinks(references.definitions);
         this.collapseSoftBreaks();
@@ -240,6 +242,7 @@ export class TiptapVisualEditor {
         this.upgradeAlertBlockquotes();
         this.upgradeCollapsibles();
         this.wrapBareImages();
+        this.loadImageWidths();
         this.loadFootnotes(footnotes.definitions);
         this.loadReferenceLinks(references.definitions);
         this.collapseSoftBreaks();
@@ -405,6 +408,69 @@ export class TiptapVisualEditor {
         }
 
         this.editor.commands.setContent({ content: wrapped, type: "doc" }, { emitUpdate: false });
+    }
+
+    /**
+     * Applies a `{width=N}` attribute list that follows an image. marked has no attribute-list support, so
+     * the `{width=N}` after a loaded image stays as literal text; this promotes that text onto the image
+     * node's `width` attribute (the resize node view and the DOM serialise seam then keep it round-tripping)
+     * and removes the consumed text. Mirrors the source pipeline's `remarkImageWidth` for the marked path.
+     */
+    private loadImageWidths(): void {
+        const replacements: Array<{
+            attrs: Record<string, unknown>;
+            from: number;
+            imagePos: number;
+            to: number;
+            width: number;
+        }> = [];
+
+        this.editor.state.doc.descendants(
+            (node: ProseMirrorNode, position: number, parent: ProseMirrorNode | null, index: number): boolean => {
+                if (!node.isText || node.text === undefined || !parent || index === 0) {
+                    return true;
+                }
+
+                const previous = parent.child(index - 1);
+
+                if (previous.type.name !== "image") {
+                    return true;
+                }
+
+                const match = /^\{([^}]*)\}/.exec(node.text);
+                const width = match ? widthFromAttributes(match[1] ?? "") : null;
+
+                if (!match || width === null) {
+                    return true;
+                }
+
+                replacements.push({
+                    attrs: previous.attrs,
+                    from: position,
+                    imagePos: position - previous.nodeSize,
+                    to: position + match[0].length,
+                    width,
+                });
+
+                return true;
+            },
+        );
+
+        if (replacements.length === 0) {
+            return;
+        }
+
+        const transaction = this.editor.state.tr;
+
+        for (const replacement of replacements.reverse()) {
+            transaction.delete(replacement.from, replacement.to);
+            transaction.setNodeMarkup(replacement.imagePos, undefined, {
+                ...replacement.attrs,
+                width: replacement.width,
+            });
+        }
+
+        this.editor.view.dispatch(transaction.setMeta("addToHistory", false));
     }
 
     /**

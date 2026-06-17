@@ -10,7 +10,7 @@ describe("image parsing", (): void => {
                 {
                     children: [
                         {
-                            data: { alt: "a cat", src: "/cat.png", title: null },
+                            data: { alt: "a cat", src: "/cat.png", title: null, width: null },
                             extension: "image",
                             type: "custom",
                         },
@@ -26,7 +26,7 @@ describe("image parsing", (): void => {
         const inline = (document.blocks[0] as { children: unknown[] }).children[0];
 
         expect(inline).toEqual({
-            data: { alt: "a cat", src: "/cat.png", title: "Tabby" },
+            data: { alt: "a cat", src: "/cat.png", title: "Tabby", width: null },
             extension: "image",
             type: "custom",
         });
@@ -37,6 +37,50 @@ describe("image parsing", (): void => {
         const inline = (document.blocks[0] as { children: { data?: { alt?: string } }[] }).children[0];
 
         expect(inline).toMatchObject({ data: { alt: "" } });
+    });
+});
+
+describe("image width attribute", (): void => {
+    it("given an image with a {width=N} attribute, when parsed, then the width is carried", (): void => {
+        const document = parseMarkdown("![a cat](/cat.png){width=300}");
+        const inline = (document.blocks[0] as { children: unknown[] }).children[0];
+
+        expect(inline).toEqual({
+            data: { alt: "a cat", src: "/cat.png", title: null, width: 300 },
+            extension: "image",
+            type: "custom",
+        });
+    });
+
+    it("given a width alongside a title, when parsed, then both are carried", (): void => {
+        const document = parseMarkdown('![a cat](/cat.png "Tabby"){width=300}');
+        const inline = (document.blocks[0] as { children: unknown[] }).children[0];
+
+        expect(inline).toEqual({
+            data: { alt: "a cat", src: "/cat.png", title: "Tabby", width: 300 },
+            extension: "image",
+            type: "custom",
+        });
+    });
+
+    it("given a width, when rendered, then a width attribute is emitted", (): void => {
+        expect(renderMarkdown("![a cat](/cat.png){width=300}")).toBe(
+            '<p><img src="/cat.png" alt="a cat" width="300"></p>',
+        );
+    });
+
+    it.each([
+        ["plain width", "![a cat](/cat.png){width=300}"],
+        ["titled width", '![a cat](/cat.png "Tabby"){width=300}'],
+    ])("given a %s image, when parsed and serialised, then the source round-trips", (_name, markdown): void => {
+        expect(documentToMarkdown(parseMarkdown(markdown))).toBe(markdown);
+    });
+
+    it("given an img with a width attribute, when serialised from the DOM, then {width=N} is emitted", (): void => {
+        const root = document.createElement("div");
+        root.innerHTML = '<p><img src="/cat.png" alt="a cat" width="300"></p>';
+
+        expect(documentToMarkdown(documentFromElements(root.children))).toBe("![a cat](/cat.png){width=300}");
     });
 });
 

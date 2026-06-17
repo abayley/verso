@@ -97,7 +97,8 @@ describe("MarkdownEditorElement", (): void => {
         );
 
         expect(hasBareImageChild).toBe(false);
-        expect(surface?.querySelector("p > img")).toBeInstanceOf(HTMLElement);
+        // The image renders inside its resize node-view wrapper within the paragraph.
+        expect(surface?.querySelector("p img")).toBeInstanceOf(HTMLElement);
         expect(editor.toMarkdown()).toContain("![cat](/cat.png)");
     });
 

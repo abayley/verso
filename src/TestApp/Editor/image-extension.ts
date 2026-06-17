@@ -1,4 +1,5 @@
-import type { PhrasingContent } from "mdast";
+import type { Nodes, PhrasingContent, Root } from "mdast";
+import type { Plugin } from "unified";
 import {
     type ContentExtension,
     type FromElementContext,
@@ -14,6 +15,103 @@ interface ImageData {
     alt: string;
     src: string;
     title: string | null;
+    /** Display width in pixels from a `{width=N}` attribute, or null when unsized. */
+    width: number | null;
+}
+
+/** A width attached to an mdast image node by the attribute-parsing transform. */
+interface ImageWidthData {
+    width?: number;
+}
+
+/**
+ * Parses a Pandoc-style attribute list (`{width=N}`) that immediately follows an image and attaches the
+ * width to the image node. Markdown has no native image-size syntax and the project rejects raw `<img>`
+ * HTML (ADR-040/041), so the size travels as a documented Markdown attribute list. remark parses the
+ * `{width=N}` as literal text after the image; this transform consumes that text and lifts the width onto
+ * the image's `data`, where {@link inlineFromMdast} reads it.
+ */
+const remarkImageWidth: Plugin<[], Root> = () => {
+    return (tree: Root): void => {
+        applyImageWidths(tree);
+    };
+};
+
+/** Walks the tree, applying `{width=N}` attribute lists that follow image nodes. */
+function applyImageWidths(node: Nodes): void {
+    if (!("children" in node)) {
+        return;
+    }
+
+    const children = node.children;
+
+    for (let index = 0; index < children.length; index += 1) {
+        const child = children[index];
+
+        if (!child) {
+            continue;
+        }
+
+        if (child.type === "image") {
+            consumeWidthAfterImage(child, children, index);
+        }
+
+        applyImageWidths(child);
+    }
+}
+
+/** Lifts a leading `{width=N}` from the text node after an image onto the image, consuming the text. */
+function consumeWidthAfterImage(image: Nodes, children: Nodes[], index: number): void {
+    const next = children[index + 1];
+
+    if (next?.type !== "text") {
+        return;
+    }
+
+    const match = /^\{([^}]*)\}/.exec(next.value);
+
+    if (!match) {
+        return;
+    }
+
+    const width = widthFromAttributes(match[1] ?? "");
+
+    if (width === null) {
+        return;
+    }
+
+    image.data = { ...image.data, width };
+    const rest = next.value.slice(match[0].length);
+
+    if (rest === "") {
+        children.splice(index + 1, 1);
+    } else {
+        next.value = rest;
+    }
+}
+
+/** Extracts a positive integer `width` from an attribute-list body, or null when absent/invalid. */
+export function widthFromAttributes(attributes: string): number | null {
+    const match = /(?:^|\s)width=(\d+)\b/.exec(attributes);
+
+    if (!match) {
+        return null;
+    }
+
+    const width = Number(match[1]);
+
+    return width > 0 ? width : null;
+}
+
+/** Parses a non-negative integer width attribute value, or null when absent/invalid. */
+function widthFromAttribute(value: string | null): number | null {
+    if (value === null || !/^\d+$/.test(value)) {
+        return null;
+    }
+
+    const width = Number(value);
+
+    return width > 0 ? width : null;
 }
 
 /** Whether an editor inline node is an image. */
@@ -29,8 +127,10 @@ function inlineFromMdast(node: PhrasingContent, _ctx: ParseContext): InlineNode 
         return null;
     }
 
+    const width = (node.data as ImageWidthData | undefined)?.width ?? null;
+
     return {
-        data: { alt: node.alt ?? "", src: node.url, title: node.title ?? null },
+        data: { alt: node.alt ?? "", src: node.url, title: node.title ?? null, width },
         extension: "image",
         type: "custom",
     };
@@ -44,10 +144,11 @@ function renderInline(node: InlineNode, ctx: RenderContext): string | null {
         return null;
     }
 
-    const { alt, src, title } = node.data as ImageData;
+    const { alt, src, title, width } = node.data as ImageData;
     const titleAttr = title !== null ? ` title="${ctx.escapeHtml(title)}"` : "";
+    const widthAttr = width !== null ? ` width="${width}"` : "";
 
-    return `<img src="${ctx.escapeHtml(src)}" alt="${ctx.escapeHtml(alt)}"${titleAttr}>`;
+    return `<img src="${ctx.escapeHtml(src)}" alt="${ctx.escapeHtml(alt)}"${titleAttr}${widthAttr}>`;
 }
 
 // Serialise-in: an <img> element -> a custom image inline.
@@ -59,6 +160,7 @@ function imageInlineFromElement(element: Element): InlineNode {
             alt: element.getAttribute("alt") ?? "",
             src: element.getAttribute("src") ?? "",
             title: element.getAttribute("title"),
+            width: widthFromAttribute(element.getAttribute("width")),
         },
         extension: "image",
         type: "custom",
@@ -116,19 +218,21 @@ function inlineToMarkdown(node: InlineNode, _ctx: ToMarkdownContext): string | n
         return null;
     }
 
-    const { alt, src, title } = node.data as ImageData;
+    const { alt, src, title, width } = node.data as ImageData;
     const destination = title !== null ? `${src} "${title}"` : src;
+    const widthSuffix = width !== null ? `{width=${width}}` : "";
 
-    return `![${alt}](${destination})`;
+    return `![${alt}](${destination})${widthSuffix}`;
 }
 
-/** GFM images (`![alt](src "title")`) rendered inline as `<img>`; raw HTML is never introduced. */
+/** GFM images (`![alt](src "title")`, optionally `{width=N}`) rendered inline as `<img>`; no raw HTML. */
 const imageExtension: ContentExtension = {
     blockFromElement,
     inlineFromElement,
     inlineFromMdast,
     inlineToMarkdown,
     name: "image",
+    remarkPlugins: [remarkImageWidth],
     renderInline,
 };
 

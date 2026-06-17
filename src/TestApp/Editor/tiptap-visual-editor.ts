@@ -590,6 +590,24 @@ export class TiptapVisualEditor {
         return this.editor.chain().focus().insertTable({ cols: 3, rows: 3, withHeaderRow: true }).run();
     }
 
+    /** Inserts an inline image (uploaded attachment) at the current selection. */
+    public insertImage(src: string, alt: string): boolean {
+        return this.editor
+            .chain()
+            .focus()
+            .insertContent({ attrs: { alt, src, title: null }, type: "image" })
+            .run();
+    }
+
+    /** Inserts a link to an uploaded attachment, with the filename as the link text, at the selection. */
+    public insertFileLink(url: string, text: string): boolean {
+        return this.editor
+            .chain()
+            .focus()
+            .insertContent({ marks: [{ attrs: { href: url }, type: "link" }], text, type: "text" })
+            .run();
+    }
+
     /** Reports whether the selection is inside a table (for showing the table controls). */
     public isInTable(): boolean {
         return this.editor.isActive("table");

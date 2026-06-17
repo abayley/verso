@@ -1,4 +1,5 @@
 import type { AdmonitionKind } from "./admonition-extension.js";
+import { attachmentMarkdown, isInlineImage, uploadAttachment } from "./attachment-upload.js";
 import { BubbleToolbarElement } from "./bubble-toolbar-element.js";
 import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
 import type { CollapsibleKind } from "./collapsible-extension.js";
@@ -172,6 +173,29 @@ export class MarkdownEditorElement extends HTMLElement {
     private slashIndex = 0;
     private tableControls: TableControlsElement | null = null;
     private commandBar: CommandBarElement | null = null;
+    private uploadNotice: HTMLDivElement | null = null;
+    private fileInput: HTMLInputElement | null = null;
+    private readonly handleDragOver = (event: DragEvent): void => {
+        if (dragHasFiles(event.dataTransfer)) {
+            event.preventDefault();
+        }
+    };
+    private readonly handleDrop = (event: DragEvent): void => {
+        const files = filesFromDataTransfer(event.dataTransfer);
+
+        if (files.length > 0) {
+            event.preventDefault();
+            void this.uploadFiles(files);
+        }
+    };
+    private readonly handlePaste = (event: ClipboardEvent): void => {
+        const files = filesFromDataTransfer(event.clipboardData);
+
+        if (files.length > 0) {
+            event.preventDefault();
+            void this.uploadFiles(files);
+        }
+    };
     private documentName: HTMLSpanElement | null = null;
     private toolbar: HTMLDivElement | null = null;
     private visualEditor: TiptapVisualEditor | null = null;
@@ -195,6 +219,9 @@ export class MarkdownEditorElement extends HTMLElement {
     disconnectedCallback(): void {
         this.systemThemeQuery()?.removeEventListener("change", this.handleSystemThemeChange);
         document.removeEventListener("selectionchange", this.handleSelectionChange);
+        this.body?.removeEventListener("dragover", this.handleDragOver);
+        this.body?.removeEventListener("drop", this.handleDrop);
+        this.body?.removeEventListener("paste", this.handlePaste, true);
         this.closeSlashMenu();
         this.linkController?.dispose();
         this.tooltipController?.hide();
@@ -251,9 +278,14 @@ export class MarkdownEditorElement extends HTMLElement {
         this.wordCount = document.createElement("span");
         this.wordCount.className = "markdown-editor__word-count";
 
+        this.uploadNotice = document.createElement("div");
+        this.uploadNotice.className = "markdown-editor__upload-notice";
+        this.uploadNotice.setAttribute("role", "status");
+        this.uploadNotice.hidden = true;
+
         const notices = document.createElement("div");
         notices.className = "markdown-editor__notices";
-        notices.append(this.parseError, this.createSaveError());
+        notices.append(this.parseError, this.uploadNotice, this.createSaveError());
 
         const footer = document.createElement("div");
         footer.className = "markdown-editor__footer";
@@ -271,6 +303,8 @@ export class MarkdownEditorElement extends HTMLElement {
             footer,
             this.wordCount,
         );
+        this.fileInput = this.createFileInput();
+        this.append(this.fileInput);
         this.renderMode();
         this.updateToolbarState();
         this.updatePreview();
@@ -278,6 +312,27 @@ export class MarkdownEditorElement extends HTMLElement {
         this.configureFormSubmission();
         this.systemThemeQuery()?.addEventListener("change", this.handleSystemThemeChange);
         document.addEventListener("selectionchange", this.handleSelectionChange);
+        this.body.addEventListener("dragover", this.handleDragOver);
+        this.body.addEventListener("drop", this.handleDrop);
+        this.body.addEventListener("paste", this.handlePaste, true);
+    }
+
+    /** Creates the hidden file input the toolbar and slash commands trigger for uploads. */
+    private createFileInput(): HTMLInputElement {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.hidden = true;
+        input.multiple = true;
+        input.addEventListener("change", (): void => {
+            const files = input.files ? Array.from(input.files) : [];
+            input.value = "";
+
+            if (files.length > 0) {
+                void this.uploadFiles(files);
+            }
+        });
+
+        return input;
     }
 
     /** Creates the top editor bar with the document name and view controls. */
@@ -312,6 +367,9 @@ export class MarkdownEditorElement extends HTMLElement {
         });
         bar.addEventListener("command-inline", (event: Event): void => {
             this.toggleInlineStyle((event as CustomEvent<CommandInlineEventDetail>).detail.style);
+        });
+        bar.addEventListener("command-insert-attachment", (): void => {
+            this.openFilePicker("file");
         });
         bar.addEventListener("command-structure", (event: Event): void => {
             this.toggleStructure((event as CustomEvent<CommandStructureEventDetail>).detail.style);
@@ -648,6 +706,8 @@ export class MarkdownEditorElement extends HTMLElement {
             { label: "Note callout", run: (): void => this.insertAdmonition("note") },
             { label: "Collapsible", run: (): void => this.insertCollapsible("note") },
             { label: "Table", run: (): void => this.insertTable() },
+            { label: "Image", run: (): void => this.openFilePicker("image") },
+            { label: "File", run: (): void => this.openFilePicker("file") },
         ];
         menu.items = this.slashCommands.map((command) => command.label);
         menu.addEventListener("slash-select", (event: Event): void => {
@@ -1075,6 +1135,74 @@ export class MarkdownEditorElement extends HTMLElement {
         }
     }
 
+    /** Opens the native file picker, limiting it to inline image types when an image was requested. */
+    private openFilePicker(kind: "image" | "file"): void {
+        if (!this.fileInput) {
+            return;
+        }
+
+        this.fileInput.accept = kind === "image" ? "image/png,image/jpeg,image/gif,image/webp" : "";
+        this.fileInput.click();
+    }
+
+    /**
+     * Uploads each file in turn, inserting its Markdown reference at the caret on success and surfacing a
+     * dismissable message (inserting nothing) on failure. An "Uploading…" status shows while in flight.
+     */
+    private async uploadFiles(files: File[]): Promise<void> {
+        for (const file of files) {
+            this.showUploadNotice(`Uploading ${file.name}…`, false);
+
+            try {
+                const url = await uploadAttachment(file);
+                this.insertUpload(file, url);
+                this.hideUploadNotice();
+            } catch (error: unknown) {
+                this.showUploadNotice(`${file.name}: ${errorMessage(error)}`, true);
+            }
+        }
+    }
+
+    /** Inserts an uploaded file's Markdown at the caret: an inline image, or a download link otherwise. */
+    private insertUpload(file: File, url: string): void {
+        if (this.shouldUseSourceCommands()) {
+            if (this.sourceEditor?.insertMarkdown(attachmentMarkdown(file, url))) {
+                this.handleSourceInput();
+            }
+
+            return;
+        }
+
+        const inserted = isInlineImage(file)
+            ? this.visualEditor?.insertImage(url, file.name)
+            : this.visualEditor?.insertFileLink(url, file.name);
+
+        if (inserted) {
+            this.handleVisualInput();
+        }
+    }
+
+    /** Shows the upload status (or error) notice with the given message. */
+    private showUploadNotice(message: string, isError: boolean): void {
+        if (!this.uploadNotice) {
+            return;
+        }
+
+        this.uploadNotice.textContent = message;
+        this.uploadNotice.classList.toggle("markdown-editor__upload-notice--error", isError);
+        this.uploadNotice.hidden = false;
+    }
+
+    /** Hides the upload status notice. */
+    private hideUploadNotice(): void {
+        if (!this.uploadNotice) {
+            return;
+        }
+
+        this.uploadNotice.textContent = "";
+        this.uploadNotice.hidden = true;
+    }
+
     /** Checks whether toolbar commands should target the source editor. */
     private shouldUseSourceCommands(): boolean {
         return Boolean(this.sourceEditor && (!this.visualEditor || this.activePane === "source"));
@@ -1396,6 +1524,16 @@ function errorMessage(error: unknown): string {
     }
 
     return "Markdown could not be parsed.";
+}
+
+/** Whether a drag carries files (so the editor should claim the drop rather than the browser). */
+function dragHasFiles(transfer: DataTransfer | null): boolean {
+    return transfer ? Array.from(transfer.types).includes("Files") : false;
+}
+
+/** Extracts the files from a drag or clipboard transfer (empty when it carries none). */
+function filesFromDataTransfer(transfer: DataTransfer | null): File[] {
+    return transfer ? Array.from(transfer.files) : [];
 }
 
 /** Checks that a toolbar value is a supported visual block style. */

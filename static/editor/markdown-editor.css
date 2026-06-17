@@ -535,6 +535,26 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   display: none;
 }
 
+.markdown-editor__upload-notice {
+  background: var(--markdown-editor-pill-background);
+  border: 1px solid var(--markdown-editor-pill-border);
+  border-left: 3px solid var(--markdown-editor-pill-border);
+  border-radius: 8px;
+  color: var(--markdown-editor-muted);
+  font: 13px system-ui, sans-serif;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.markdown-editor__upload-notice--error {
+  border-left-color: var(--markdown-editor-error-accent);
+  color: var(--markdown-editor-error-text);
+}
+
+.markdown-editor__upload-notice[hidden] {
+  display: none;
+}
+
 /* ===================================================================
    Visual themes (RFC-0015). Each theme overrides the --markdown-editor-*
    tokens for both light and dark, keyed on data-editor-theme, plus an

@@ -106,6 +106,12 @@ export class CommandBarElement extends LitElement {
             }
         }
 
+        const attachment = this.querySelector<HTMLElement>(".markdown-editor__attachment-button");
+
+        if (attachment) {
+            this.tooltipController?.register(attachment, "Insert image or file");
+        }
+
         const save = this.querySelector<HTMLElement>(".markdown-editor__save-button");
 
         if (save) {
@@ -148,6 +154,17 @@ export class CommandBarElement extends LitElement {
                 bubbles: true,
                 composed: true,
                 detail: { style },
+            }),
+        );
+    }
+
+    /** Dispatches a request to insert an image or file attachment (the host opens the file picker). */
+    private emitInsertAttachment(): void {
+        this.dispatchEvent(
+            new CustomEvent<undefined>("command-insert-attachment", {
+                bubbles: true,
+                composed: true,
+                detail: undefined,
             }),
         );
     }
@@ -224,6 +241,24 @@ export class CommandBarElement extends LitElement {
                         </wa-button>
                     `,
                 )}
+            </wa-button-group>
+            <wa-button-group class="markdown-editor__button-group">
+                <wa-button
+                    class="markdown-editor__button markdown-editor__attachment-button"
+                    appearance="plain"
+                    size="small"
+                    type="button"
+                    aria-label="Insert image or file"
+                    @mousedown=${preventDefault}
+                    @click=${(): void => this.emitInsertAttachment()}
+                >
+                    <wa-icon
+                        class="markdown-editor__button-icon"
+                        name="image"
+                        variant="solid"
+                        label="Insert image or file"
+                    ></wa-icon>
+                </wa-button>
             </wa-button-group>
             <wa-button
                 class="markdown-editor__button markdown-editor__save-button"

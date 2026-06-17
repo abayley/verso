@@ -338,10 +338,41 @@ path (the Markdown already carries the URL).
        `<img>`/`<a>` and round-trip byte-identically through `toMarkdown`.
        `make check` green (186 editor tests incl. 13 image, full server suite).
 3. Phase three: editor upload UX.
-   - [ ] File picker + drag-and-drop + paste, each uploading via `POST
+   - [x] File picker + drag-and-drop + paste, each uploading via `POST
          /attachments` and inserting `![name](url)` (image) or `[name](url)`
          (attachment) at the caret, with an uploading placeholder and an error
          path; toolbar/slash entries. Browser-verified.
+
+     Landed as `attachment-upload.ts` (the testable core: `uploadAttachment`
+     -- raw-body POST + percent-encoded `X-Attachment-Filename`, 413/415 mapped
+     to user messages; `isInlineImage` -- by extension, MIME fallback, SVG
+     excluded; `attachmentMarkdown` -- `![]()` vs `[]()`) with
+     `test/editor/attachment-upload.test.ts` (16 tests, `fetch` stubbed). Wired
+     into `markdown-editor-element.ts`: a hidden multi-file `<input>`, `dragover`/
+     `drop`/`paste` listeners on the editor body, an upload pipeline that shows an
+     "Uploading…" status (the `markdown-editor__upload-notice` region) and an
+     error notice on failure (inserting nothing), and `insertUpload` dispatching
+     to the active editor. Insertion seams added: `insertImage`/`insertFileLink`
+     on `TiptapVisualEditor` (Tiptap `insertContent`) and `insertMarkdown` on the
+     CodeMirror source editor. Triggers: a command-bar "Insert image or file"
+     button (always available) plus "Image"/"File" slash entries (Studio theme).
+     Notes / decisions:
+     - **Image vs link by the inline-image set, not `image/*`.** SVG is `image/*`
+       but is served as a download, so it (and pdf/txt/...) inserts as a
+       `[name](url)` link; only png/jpg/jpeg/gif/webp insert as `![]()` -- the
+       classification mirrors the server's inline-disposition set exactly.
+     - **Drag/paste claim files only.** The body listeners `preventDefault` (so
+       ProseMirror/CodeMirror do not also handle the drop/paste) *only* when the
+       transfer carries files; a normal text drag/paste is left untouched.
+     - **Insert at the caret, not the drop point.** v1 inserts at the current
+       selection via `insertContent`/`insertMarkdown`; precise drop-position
+       insertion is a later refinement.
+     - Browser-verified end-to-end against the running server: drag-drop of a PNG
+       inserts an inline image and serves byte-identically with the hardening
+       headers; a `.txt` inserts a download link; a `.exe` shows the 415 error and
+       inserts nothing; paste of a PNG inserts inline; the same bytes dedup to one
+       blob (distinct filenames in the URL). `make check` green (202 editor tests
+       incl. 16 upload + full server suite).
 4. Phase four: hardening and docs.
    - [ ] Finalise the type allow-list and SVG handling; confirm the CSP/nosniff/
          disposition headers in the browser; size-limit and config docs; an ADR

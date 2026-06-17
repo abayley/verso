@@ -188,6 +188,20 @@ export class CodeMirrorSourceEditor {
         return this.replaceCurrentLine("---");
     }
 
+    /** Inserts literal Markdown at the caret (replacing any selection) and places the caret after it. */
+    public insertMarkdown(markdownText: string): boolean {
+        const selection = this.currentSourceSelection();
+        const from = selection?.from ?? this.view.state.selection.main.from;
+        const to = selection?.to ?? this.view.state.selection.main.to;
+
+        this.view.dispatch({
+            changes: { from, insert: markdownText, to },
+            selection: { anchor: from + markdownText.length },
+        });
+
+        return true;
+    }
+
     /** Handles source editor keyboard shortcuts that should not leave the editor. */
     private handleKeyDown(event: KeyboardEvent): boolean {
         if (isPrimaryModifierShortcut(event, "b")) {

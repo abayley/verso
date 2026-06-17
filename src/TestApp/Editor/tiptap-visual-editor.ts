@@ -381,35 +381,30 @@ export class TiptapVisualEditor {
      * tolerates the load but a later insert (e.g. an upload at the caret) throws "Called contentMatchAt on a
      * node with invalid content" while fitting the change. Wrapping each top-level image in a paragraph
      * restores a valid document; an inline image already inside a paragraph is untouched.
+     *
+     * The wrap rebuilds the document from corrected JSON via `setContent` rather than splicing the live
+     * (invalid) document: an in-place `replaceWith` leaves the model valid but the browser's view
+     * unreconciled (a phantom empty `<img>` lingers in the DOM, which the DOM-reading serialiser then emits
+     * as a stray `![]()`); re-setting the content re-renders the view cleanly from a valid model.
      */
     private wrapBareImages(): void {
-        const schema = this.editor.state.schema;
-        const imageType = schema.nodes["image"];
-        const paragraphType = schema.nodes["paragraph"];
+        const content = this.editor.getJSON().content ?? [];
+        let wrappedAny = false;
+        const wrapped = content.map((node: JSONContent): JSONContent => {
+            if (node.type === "image") {
+                wrappedAny = true;
 
-        if (!imageType || !paragraphType) {
-            return;
-        }
-
-        const replacements: Array<{ from: number; node: ProseMirrorNode; to: number }> = [];
-
-        this.editor.state.doc.forEach((node: ProseMirrorNode, offset: number): void => {
-            if (node.type === imageType) {
-                replacements.push({ from: offset, node: paragraphType.create(null, node), to: offset + node.nodeSize });
+                return { content: [node], type: "paragraph" };
             }
+
+            return node;
         });
 
-        if (replacements.length === 0) {
+        if (!wrappedAny) {
             return;
         }
 
-        const transaction = this.editor.state.tr;
-
-        for (const replacement of replacements.reverse()) {
-            transaction.replaceWith(replacement.from, replacement.to, replacement.node);
-        }
-
-        this.editor.view.dispatch(transaction.setMeta("addToHistory", false));
+        this.editor.commands.setContent({ content: wrapped, type: "doc" }, { emitUpdate: false });
     }
 
     /**

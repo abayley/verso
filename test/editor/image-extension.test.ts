@@ -90,4 +90,13 @@ describe("image DOM serialisation", (): void => {
 
         expect(documentToMarkdown(documentFromElements(root.children))).toBe('![a cat](/cat.png "Tabby")');
     });
+
+    it("given ProseMirror's separator img beside an image, when serialised, then the separator is ignored", (): void => {
+        const root = document.createElement("div");
+        // ProseMirror inserts <img class="ProseMirror-separator"> next to an inline atom for cursor
+        // placement; it is an editor artifact, not content, and must not serialise as a stray image.
+        root.innerHTML = '<p><img src="/cat.png" alt="a cat"><img class="ProseMirror-separator" alt=""></p>';
+
+        expect(documentToMarkdown(documentFromElements(root.children))).toBe("![a cat](/cat.png)");
+    });
 });

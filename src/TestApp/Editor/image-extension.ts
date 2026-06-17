@@ -77,6 +77,12 @@ function inlineFromElement(node: ChildNode): InlineNode[] | null {
         return null;
     }
 
+    // ProseMirror inserts <img class="ProseMirror-separator"> beside an inline atom for cursor placement;
+    // it is an editor artifact (like the trailing <br>), not content, so it must not serialise as an image.
+    if (element.classList.contains("ProseMirror-separator")) {
+        return [];
+    }
+
     return [imageInlineFromElement(element)];
 }
 

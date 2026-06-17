@@ -101,8 +101,13 @@ contentTypeFor path =
         "jpg" -> "image/jpeg"
         "jpeg" -> "image/jpeg"
         "gif" -> "image/gif"
+        "webp" -> "image/webp"
         "woff2" -> "font/woff2"
         "txt" -> "text/plain"
+        "md" -> "text/markdown"
+        "csv" -> "text/csv"
+        "pdf" -> "application/pdf"
+        "zip" -> "application/zip"
         "ico" -> "image/x-icon"
         _ -> "application/octet-stream"
 

@@ -30,6 +30,16 @@ spec =
                 contentTypeFor "LOGO.PNG" `shouldBe` "image/png"
             it "given a path with directories, when choosing a type, then the file extension is used" $
                 contentTypeFor "a/b/c.svg" `shouldBe` "image/svg+xml"
+            it "given a webp image, when choosing a type, then image/webp is returned" $
+                contentTypeFor "photo.webp" `shouldBe` "image/webp"
+            it "given a pdf file, when choosing a type, then application/pdf is returned" $
+                contentTypeFor "report.pdf" `shouldBe` "application/pdf"
+            it "given a markdown file, when choosing a type, then text/markdown is returned" $
+                contentTypeFor "notes.md" `shouldBe` "text/markdown"
+            it "given a csv file, when choosing a type, then text/csv is returned" $
+                contentTypeFor "data.csv" `shouldBe` "text/csv"
+            it "given a zip file, when choosing a type, then application/zip is returned" $
+                contentTypeFor "bundle.zip" `shouldBe` "application/zip"
             it "given a file with no extension, when choosing a type, then the default is returned" $
                 contentTypeFor "README" `shouldBe` "application/octet-stream"
             it "given a dotted directory but a plain file, when choosing a type, then the default is returned" $

@@ -1,7 +1,7 @@
 ---
 id: RFC-0018
 name: Images and Attachments
-status: Draft
+status: Completed
 owners:
     - alistair
 created: 2026-06-17
@@ -16,7 +16,7 @@ superseded_by: null
 |-----------|------------------|
 | Authored  | 2026-06-17       |
 | Started   | 2026-06-17       |
-| Completed |                  |
+| Completed | 2026-06-17       |
 
 ## Summary
 
@@ -374,10 +374,21 @@ path (the Markdown already carries the URL).
        blob (distinct filenames in the URL). `make check` green (202 editor tests
        incl. 16 upload + full server suite).
 4. Phase four: hardening and docs.
-   - [ ] Finalise the type allow-list and SVG handling; confirm the CSP/nosniff/
+   - [x] Finalise the type allow-list and SVG handling; confirm the CSP/nosniff/
          disposition headers in the browser; size-limit and config docs; an ADR
          for the attachment store, the upload transport, and the serving security
          model; mark this RFC Completed.
+
+     The type allow-list and SVG-as-download were settled in phase one; the
+     CSP/nosniff/disposition/immutable-cache headers were confirmed in the browser
+     during phases one and three (a PNG serves `inline`, a `.txt`/SVG as a
+     download, all with `nosniff` + the sandbox CSP). The remaining code change
+     was the content-type table: `Static.contentTypeFor` lacked the attachment
+     types, so an allowed upload could serve with the wrong type -- notably
+     `webp` (an inline image type) fell through to `application/octet-stream`.
+     Added `webp`, `pdf`, `md`, `csv`, and `zip` mappings, with `StaticSpec`
+     tests. The store, upload transport, and serving security model are recorded
+     in ADR-042. `make check` green.
 
 ### Rollout Plan Escape Hatch
 

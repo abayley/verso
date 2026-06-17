@@ -84,11 +84,13 @@ markdown-editor {
 }
 
 .markdown-editor__mode-group,
+.markdown-editor__width-group,
 .markdown-editor__theme-group {
   inline-size: auto;
 }
 
 .markdown-editor__mode-option,
+.markdown-editor__width-option,
 .markdown-editor__theme-option {
   --wa-form-control-background-color: transparent;
   --wa-form-control-border-color: transparent;
@@ -102,6 +104,7 @@ markdown-editor {
 }
 
 .markdown-editor__mode-option[checked],
+.markdown-editor__width-option[checked],
 .markdown-editor__theme-option[checked] {
   --wa-form-control-value-color: var(--markdown-editor-text);
   color: var(--markdown-editor-text);
@@ -120,11 +123,34 @@ markdown-editor {
 .markdown-editor__body {
   flex: 1;
   margin: 0 auto;
-  max-width: 46rem;
+  max-width: 60rem;
   width: 100%;
 }
 
+markdown-editor[data-body-width="narrow"] .markdown-editor__body {
+  max-width: 46rem;
+}
+
+markdown-editor[data-body-width="medium"] .markdown-editor__body {
+  max-width: 60rem;
+}
+
+markdown-editor[data-body-width="wide"] .markdown-editor__body {
+  max-width: 76rem;
+}
+
+markdown-editor[data-body-width="full"] .markdown-editor__body {
+  max-width: none;
+}
+
+/* Split keeps the full page width regardless of the chosen single-column width;
+   declared after the width presets so it wins at equal specificity. */
 markdown-editor[mode="split"] .markdown-editor__body {
+  max-width: none;
+}
+
+/* "Full" also lifts the page's centred max-width so the editor fills the viewport. */
+body.markdown-editor-full-width main {
   max-width: none;
 }
 

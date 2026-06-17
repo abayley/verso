@@ -31,12 +31,27 @@ import { ToolbarTooltipController } from "./toolbar-tooltip-controller.js";
 
 type EditorMode = "visual" | "source" | "split";
 type EditorTheme = "light" | "dark" | "match-system";
+type BodyWidth = "narrow" | "medium" | "wide" | "full";
 type VisualTheme = "paper" | "aurora" | "blueprint" | "herbarium" | "workbench" | "studio";
 type ActivePane = "source" | "visual";
 type ToolbarButtonElement = HTMLElement;
 
 const visualThemeStorageKey = "editor-theme";
 const colorSchemeStorageKey = "editor-color-scheme";
+const bodyWidthStorageKey = "editor-body-width";
+
+/** The selectable editing-column widths, in toolbar order; "medium" is the default. */
+const bodyWidths: { value: BodyWidth; label: string }[] = [
+    { value: "narrow", label: "Narrow" },
+    { value: "medium", label: "Medium" },
+    { value: "wide", label: "Wide" },
+    { value: "full", label: "Full" },
+];
+
+/** Narrows an arbitrary string to a known editing-column width. */
+function isBodyWidth(value: string | null): value is BodyWidth {
+    return value !== null && bodyWidths.some((width) => width.value === value);
+}
 
 /** The selectable visual themes, in dropdown order; the first is the default. */
 const visualThemes: { value: VisualTheme; label: string }[] = [
@@ -117,6 +132,8 @@ export class MarkdownEditorElement extends HTMLElement {
     private initialised = false;
     private markdown = "";
     private modeGroup: HTMLElement | null = null;
+    private widthGroup: HTMLElement | null = null;
+    private bodyWidth: BodyWidth = "medium";
     private mode: EditorMode = "visual";
     private panes: HTMLDivElement | null = null;
     private parseError: HTMLDivElement | null = null;
@@ -222,6 +239,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.body?.removeEventListener("dragover", this.handleDragOver);
         this.body?.removeEventListener("drop", this.handleDrop);
         this.body?.removeEventListener("paste", this.handlePaste, true);
+        document.body.classList.remove("markdown-editor-full-width");
         this.closeSlashMenu();
         this.linkController?.dispose();
         this.tooltipController?.hide();
@@ -245,6 +263,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.visualTheme = this.editorVisualTheme();
         this.theme = this.editorTheme();
         this.mode = this.editorMode();
+        this.bodyWidth = this.editorBodyWidth();
         this.replaceChildren();
 
         if (fallback) {
@@ -305,6 +324,7 @@ export class MarkdownEditorElement extends HTMLElement {
         );
         this.fileInput = this.createFileInput();
         this.append(this.fileInput);
+        this.applyBodyWidth();
         this.renderMode();
         this.updateToolbarState();
         this.updatePreview();
@@ -343,6 +363,8 @@ export class MarkdownEditorElement extends HTMLElement {
         toolbar.append(this.documentName);
         this.modeGroup = this.createModeGroup();
         toolbar.append(this.modeGroup);
+        this.widthGroup = this.createWidthGroup();
+        toolbar.append(this.widthGroup);
         this.themeDropdown = this.createThemeDropdown();
         toolbar.append(this.themeDropdown);
         this.themeGroup = this.createThemeGroup();
@@ -422,6 +444,57 @@ export class MarkdownEditorElement extends HTMLElement {
         option.setAttribute("value", mode);
 
         return option;
+    }
+
+    /** Creates the editing-column width radio group. */
+    private createWidthGroup(): HTMLElement {
+        const group = document.createElement("wa-radio-group");
+        group.className = "markdown-editor__width-group";
+        group.setAttribute("aria-label", "Editor width");
+        group.setAttribute("orientation", "horizontal");
+        group.setAttribute("size", "small");
+        group.append(...bodyWidths.map((width): HTMLElement => this.createWidthOption(width.value, width.label)));
+        group.addEventListener("change", (): void => {
+            const value = elementValue(group);
+
+            if (isBodyWidth(value) && value !== this.bodyWidth) {
+                this.bodyWidth = value;
+                writeStoredPreference(bodyWidthStorageKey, value);
+                this.applyBodyWidth();
+                this.updateToolbarState();
+            }
+        });
+
+        return group;
+    }
+
+    /** Creates one editing-column width radio option with a text label. */
+    private createWidthOption(value: BodyWidth, label: string): HTMLElement {
+        const option = document.createElement("wa-radio");
+        option.className = "markdown-editor__width-option";
+        option.textContent = label;
+        option.setAttribute("appearance", "button");
+        option.setAttribute("aria-label", `${label} width`);
+        option.setAttribute("value", value);
+
+        return option;
+    }
+
+    /** Resolves the initial editing-column width: stored preference, else the medium default. */
+    private editorBodyWidth(): BodyWidth {
+        const stored = readStoredPreference(bodyWidthStorageKey);
+
+        return isBodyWidth(stored) ? stored : "medium";
+    }
+
+    /**
+     * Applies the chosen editing-column width as a `data-body-width` attribute the stylesheet keys off, and
+     * toggles a page-level class so the "full" width also lifts the centred page max-width to fill the
+     * viewport. The width is a client preference (localStorage), like the colour scheme and visual theme.
+     */
+    private applyBodyWidth(): void {
+        this.setAttribute("data-body-width", this.bodyWidth);
+        document.body.classList.toggle("markdown-editor-full-width", this.bodyWidth === "full");
     }
 
     /** Creates the editor theme radio group. */
@@ -1432,6 +1505,19 @@ export class MarkdownEditorElement extends HTMLElement {
 
             for (const option of this.modeGroup.querySelectorAll("wa-radio")) {
                 if (option.getAttribute("value") === this.mode) {
+                    option.setAttribute("checked", "");
+                } else {
+                    option.removeAttribute("checked");
+                }
+            }
+        }
+
+        if (this.widthGroup) {
+            setElementValue(this.widthGroup, this.bodyWidth);
+            this.widthGroup.setAttribute("value", this.bodyWidth);
+
+            for (const option of this.widthGroup.querySelectorAll("wa-radio")) {
+                if (option.getAttribute("value") === this.bodyWidth) {
                     option.setAttribute("checked", "");
                 } else {
                     option.removeAttribute("checked");

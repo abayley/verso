@@ -1114,6 +1114,80 @@ Extends ADR-034 (zero-copy `sendfile`) and ADR-030 (safe static serving) to a
 write path; rides ADR-014 (filesystem-backed stores) and ADR-031 (edge concerns
 at the proxy). Consistent with ADR-040/041 (raw HTML stays rejected).
 
+### ADR-043: Image Dimensions As A `{width=N}` Markdown Attribute List
+
+Status: Accepted.
+
+Context: Images (ADR-042, RFC-0018) needed a resize capability, which means a way
+to persist a display size. Markdown has no native image-size syntax, and the
+project uniformly rejects raw HTML at save time (ADR-040/041), so `<img width>`
+is not an option -- it would reopen the trust hole that guard exists to close. A
+size is only meaningful if it round-trips through the saved Markdown (visual ->
+Markdown -> reload), so it must live in a Markdown representation, not in editor
+state alone. Candidates: a Pandoc/`attr_list` attribute list
+(`![alt](src){width=N}`), an Obsidian-style pipe in the alt text
+(`![alt|N](src)`), or a query parameter on the URL handled by the serving layer.
+
+Decision: persist the size as a Pandoc-style attribute list immediately following
+the image -- `![alt](src "title"){width=N}` -- carried on the existing image
+content extension (ADR-041). The source pipeline parses it with a small remark
+transform that lifts a leading `{width=N}` off the text after an image onto the
+image node and consumes that text; render emits an escaped `<img ... width="N">`;
+serialise emits `{width=N}`; the DOM serialise seam reads the `width` attribute
+back. The visual editor's Tiptap image node gains a `width` attribute, a drag
+handle node view that commits the dragged width to it, and a post-load pass that
+applies a `{width=N}` left as literal text by marked (which has no attribute-list
+support) -- mirroring how the other non-CommonMark syntaxes are pre/post-processed
+around marked. v1 stores width only (height auto, aspect ratio preserved) in
+integer pixels; display is bounded to the editor width by CSS so an over-wide
+value never overflows, while the stored value is preserved.
+
+Consequences: image sizing stays inside the Markdown subset and the
+content-extension registry -- no raw HTML, no new server route, no
+attachment-layer transcoding -- so the save-time guard and browser-owned
+rendering (ADR-040) are unchanged. The attribute list is a documented, portable
+Markdown convention; the no-JavaScript raw-Markdown view shows the literal
+`{width=N}` text, which is acceptable (it is raw Markdown). The pipe-in-alt
+alternative was rejected (it corrupts the alt text and collides with a literal
+`|`); the URL-parameter alternative was rejected (it pushes resizing into the
+serving layer -- an RFC-0018 non-goal). `height`, percentage widths, and a numeric
+width control alongside the drag handle are natural later extensions of the same
+`{...}` syntax.
+
+Builds on ADR-041 (content-extension registry) and ADR-042 (the images it sizes);
+consistent with ADR-040 (raw HTML rejected, browser-owned rendering).
+
+### ADR-044: Editor View Preferences Persist Client-Side In localStorage
+
+Status: Accepted.
+
+Context: The editor carries view preferences that should survive across sessions
+-- the colour scheme (light/dark/match-system), the visual theme (ADR-036), and
+now an adjustable editing-column width (Narrow/Medium/Wide/Full, since the fixed
+default felt narrow). These are presentation choices with no bearing on document
+content. The question for the width preference (and the pattern in general) was
+where to keep it: a cookie (sent to the server) or client-side storage.
+
+Decision: persist editor view preferences client-side in `localStorage`, one
+key per preference (`editor-color-scheme`, `editor-theme`, `editor-body-width`),
+read on editor init and written on change through small accessors that tolerate an
+unavailable or throwing `localStorage`. No cookie, and the server is not involved.
+The width preference is applied as a `data-body-width` attribute the stylesheet
+keys off (a `max-width` per preset, with "Full" also lifting the page's centred
+max-width); the colour scheme and theme are applied as attributes likewise.
+
+Consequences: a cookie would only earn its place if the server needed the value
+at render time -- to emit the right markup server-side and avoid a first-paint
+flash. But rendering is browser-owned and the no-JavaScript path is raw Markdown
+(ADR-040), so these are pure client concerns; a cookie would add a server
+round-trip and a contract for no benefit. The trade-off accepted is that the page
+loads with defaults and the JS applies the stored preference (a brief flash is
+possible), and that preferences are per-browser, not per-user-account (there is no
+account model -- ADR-031). New view preferences follow the same one-key pattern.
+
+Extends ADR-036 (editor visual themes) to the persistence question and applies it
+to the width preference; consistent with ADR-040 (browser-owned rendering).
+
 ## ADR Registry Open Review Items
 
 - Verify socket layout assumptions on non-macOS platforms before treating

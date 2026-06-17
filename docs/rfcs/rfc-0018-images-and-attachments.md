@@ -1,7 +1,7 @@
 ---
 id: RFC-0018
 name: Images and Attachments
-status: Completed
+status: Implemented
 owners:
     - alistair
 created: 2026-06-17
@@ -14,9 +14,9 @@ superseded_by: null
 
 | Stage     | Timestamp        |
 |-----------|------------------|
-| Authored  | 2026-06-17       |
-| Started   | 2026-06-17       |
-| Completed | 2026-06-17       |
+| Authored  | 2026-06-17 11:29 |
+| Started   | 2026-06-17 11:29 |
+| Completed | 2026-06-17 12:25 |
 
 ## Summary
 

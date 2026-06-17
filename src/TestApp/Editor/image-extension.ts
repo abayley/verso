@@ -65,7 +65,19 @@ function imageInlineFromElement(element: Element): InlineNode {
     };
 }
 
-/** Recognises an `<img>` element and rebuilds the custom image inline, declining otherwise. */
+/**
+ * Whether an `<img>` is real content rather than an editor artifact. A meaningful image always carries a
+ * `src`; a src-less `<img>` is a ProseMirror artifact -- its cursor-placement separator
+ * (`class="ProseMirror-separator"`) beside an inline atom, or a leftover after an image is deleted -- and
+ * must never serialise (otherwise a stray `![]()` is emitted).
+ */
+function isContentImage(element: Element): boolean {
+    const src = element.getAttribute("src");
+
+    return src !== null && src !== "";
+}
+
+/** Recognises a content `<img>` element and rebuilds the custom image inline, declining otherwise. */
 function inlineFromElement(node: ChildNode): InlineNode[] | null {
     if (node.nodeType !== Node.ELEMENT_NODE) {
         return null;
@@ -77,22 +89,16 @@ function inlineFromElement(node: ChildNode): InlineNode[] | null {
         return null;
     }
 
-    // ProseMirror inserts <img class="ProseMirror-separator"> beside an inline atom for cursor placement;
-    // it is an editor artifact (like the trailing <br>), not content, so it must not serialise as an image.
-    if (element.classList.contains("ProseMirror-separator")) {
-        return [];
-    }
-
-    return [imageInlineFromElement(element)];
+    return isContentImage(element) ? [imageInlineFromElement(element)] : [];
 }
 
 /**
- * Claims a block-level `<img>` (the visual editor renders a standalone `![](url)` as a bare top-level
- * image rather than wrapping it in a paragraph) as a paragraph holding the image, declining otherwise.
- * Without this the base extension would treat the childless `<img>` as an empty paragraph and drop it.
+ * Claims a block-level content `<img>` (the visual editor can render a standalone `![](url)` as a bare
+ * top-level image rather than inside a paragraph) as a paragraph holding the image, declining otherwise.
+ * A src-less artifact `<img>` is declined so the base extension drops it rather than emitting `![]()`.
  */
 function blockFromElement(element: Element, _ctx: FromElementContext): EditorBlock | null {
-    if (element.tagName !== "IMG") {
+    if (element.tagName !== "IMG" || !isContentImage(element)) {
         return null;
     }
 

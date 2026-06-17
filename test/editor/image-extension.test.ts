@@ -99,4 +99,16 @@ describe("image DOM serialisation", (): void => {
 
         expect(documentToMarkdown(documentFromElements(root.children))).toBe("![a cat](/cat.png)");
     });
+
+    it.each([
+        ["a src-less img inside a paragraph", "<p>text<img></p>", "text"],
+        ["a src-less img alone in a paragraph", "<p><img></p>", ""],
+        ["a src-less img at block level", "<img>", ""],
+        ["a block-level separator img", '<img class="ProseMirror-separator">', ""],
+    ])("given %s (a deletion/cursor artifact), when serialised, then no stray image is emitted", (_name, html, expected): void => {
+        const root = document.createElement("div");
+        root.innerHTML = html;
+
+        expect(documentToMarkdown(documentFromElements(root.children))).toBe(expected);
+    });
 });

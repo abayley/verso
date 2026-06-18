@@ -46,6 +46,22 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
     });
 
+    it("given a document with frontmatter, when loaded, then the frontmatter is hidden from the editor but re-attached to the persisted document", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "source");
+        editor.textContent = "---\nname: Test\ncover-image: assets/x.png\n---\n\n# Heading\n\nBody.";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        // The editor only sees the body; the frontmatter is neither shown nor editable.
+        expect(editor.toMarkdown()).toBe("# Heading\n\nBody.");
+        expect(editor.toMarkdown()).not.toContain("cover-image");
+
+        // The persisted document re-attaches the frontmatter verbatim.
+        expect(editor.documentMarkdown()).toBe("---\nname: Test\ncover-image: assets/x.png\n---\n\n# Heading\n\nBody.");
+    });
+
     it("given source mode with a quoted list item containing code, when initialised, then it accepts the Markdown", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.setAttribute("mode", "source");

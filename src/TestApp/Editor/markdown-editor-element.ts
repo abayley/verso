@@ -10,6 +10,7 @@ import {
     type CommandStructureEventDetail,
 } from "./command-bar-element.js";
 import { INLINE_COMMANDS } from "./editor-toolbar-shared.js";
+import { joinFrontmatter, splitFrontmatter } from "./frontmatter.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
 import { renderMarkdown } from "./markdown-render.js";
 import { SaveStateController, type SaveStateView } from "./save-state-controller.js";
@@ -131,6 +132,8 @@ export class MarkdownEditorElement extends HTMLElement {
     private activePane: ActivePane | null = null;
     private initialised = false;
     private markdown = "";
+    /** The document's preserved YAML frontmatter (verbatim), hidden from editing and re-attached on save. */
+    private frontmatter: string | null = null;
     private modeGroup: HTMLElement | null = null;
     private widthGroup: HTMLElement | null = null;
     private bodyWidth: BodyWidth = "medium";
@@ -259,7 +262,9 @@ export class MarkdownEditorElement extends HTMLElement {
         this.initialised = true;
         this.internals = this.attachFormInternals();
         const fallback = this.fallbackTextarea();
-        this.markdown = await this.loadMarkdown();
+        const loaded = splitFrontmatter(await this.loadMarkdown());
+        this.frontmatter = loaded.frontmatter;
+        this.markdown = loaded.body;
         this.visualTheme = this.editorVisualTheme();
         this.theme = this.editorTheme();
         this.mode = this.editorMode();
@@ -275,7 +280,7 @@ export class MarkdownEditorElement extends HTMLElement {
             this.append(fallback);
         }
 
-        this.internals?.setFormValue(this.markdown);
+        this.internals?.setFormValue(this.documentMarkdown());
         this.saveController = new SaveStateController(
             (): string => this.toMarkdown(),
             (view: SaveStateView): void => this.applySaveView(view),
@@ -1054,17 +1059,24 @@ export class MarkdownEditorElement extends HTMLElement {
         return this.visualEditor.toMarkdown();
     }
 
+    /** The full document to persist: the editor body with the preserved frontmatter re-attached. */
+    public documentMarkdown(): string {
+        return joinFrontmatter(this.frontmatter, this.toMarkdown());
+    }
+
     /** Replaces the current Markdown document and refreshes the active editor. */
     public setMarkdown(markdown: string): void {
-        this.markdown = markdown;
+        const split = splitFrontmatter(markdown);
+        this.frontmatter = split.frontmatter;
+        this.markdown = split.body;
         this.visualEditorChanged = false;
 
         if (this.sourceEditor) {
-            this.sourceEditor.setMarkdown(markdown);
+            this.sourceEditor.setMarkdown(this.markdown);
         }
 
         if (this.visualEditor) {
-            this.visualEditor.setMarkdown(markdown);
+            this.visualEditor.setMarkdown(this.markdown);
         }
 
         this.updatePreview();
@@ -1342,7 +1354,7 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Records a valid Markdown change and notifies htmx autosave listeners. */
     private dispatchMarkdownChange(markdown: string): void {
         this.markdown = markdown;
-        this.internals?.setFormValue(markdown);
+        this.internals?.setFormValue(this.documentMarkdown());
         this.saveController?.markDirty();
         this.updateWordCount();
         this.dispatchEvent(
@@ -1409,11 +1421,12 @@ export class MarkdownEditorElement extends HTMLElement {
         // htmx autosave carries the live value regardless of how htmx collects
         // form-associated custom element values.
         form.addEventListener("htmx:configRequest", (event: Event): void => {
-            const markdown = this.toMarkdown();
             const htmxEvent = event as HtmxConfigRequestEvent;
 
-            htmxEvent.detail.parameters["markdown"] = markdown;
-            this.saveController?.markSubmitted(markdown);
+            // Persist the full document (frontmatter re-attached); track save state against the editor body,
+            // which is what the save controller's baseline getter returns.
+            htmxEvent.detail.parameters["markdown"] = this.documentMarkdown();
+            this.saveController?.markSubmitted(this.toMarkdown());
         });
         form.addEventListener("htmx:beforeRequest", (): void => {
             this.saveController?.markSaving();

@@ -2,6 +2,7 @@ build/
 node_modules/
 data/
 logs/
+micro-http.conf
 static/editor/markdown-editor.js
 static/editor/webawesome.css
 dist-newstyle/

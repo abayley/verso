@@ -2,6 +2,9 @@
 
 backend:
 
+- raise fault report against haskell time lib
+- replace mtl with heftia?
+- ensure logs are rolled
 - organise code - separate MicroHttp framework from TestApp, rename TestApp to something meaningfull.
 - generated ToC
 - plan where images and attachments should go

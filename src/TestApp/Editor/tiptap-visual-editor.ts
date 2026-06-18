@@ -14,6 +14,7 @@ import StarterKit from "@tiptap/starter-kit";
 import { type AdmonitionKind, matchAlertMarker } from "./admonition-extension.js";
 import { type CollapsibleKind, matchCollapsibleMarker } from "./collapsible-extension.js";
 import { widthFromAttributes } from "./image-extension.js";
+import { isAllowedLinkUri } from "./link-uri.js";
 import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
 import { rawHtmlSpans } from "./remark-adapter.js";
 import { Admonition } from "./tiptap-admonition-node.js";
@@ -216,6 +217,15 @@ export class TiptapVisualEditor {
             extensions: [
                 StarterKit.configure({
                     heading: false,
+                    // Page-relative links (`assets/x.pdf`, RFC-0019) have no URI scheme; Tiptap's default
+                    // href sanitisation drops them to an empty href. `isAllowedLinkUri` permits scheme-less
+                    // relative URLs while keeping the default validation for absolute ones.
+                    link: {
+                        isAllowedUri: (
+                            url: string,
+                            ctx: { defaultValidate: (candidate: string) => boolean },
+                        ): boolean => isAllowedLinkUri(url, ctx.defaultValidate),
+                    },
                 }),
                 HeadingWithoutInputRules,
                 Admonition,

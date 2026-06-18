@@ -149,6 +149,19 @@ spec = do
                            \  local_path: assets/My_Report.pdf\n\
                            \  extension: pdf\n\
                            \  external: false\n"
+        it "given an edit request after an attachment upload, when routing, then the page embeds the attachment list" $ do
+            root <- setupTreeFixture
+            _ <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (uploadRequest "/documents/sec/page.md?asset" "My Report.pdf" "PDFDATA"))
+            outcome <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (getRequest "/documents/sec/page.md?edit"))
+            fmap (bodyContains (BS.pack "data-attachments")) outcome `shouldBe` Right True
+            fmap (bodyContains (BS.pack "My Report.pdf")) outcome `shouldBe` Right True
+            fmap (bodyContains (BS.pack "assets/My_Report.pdf")) outcome `shouldBe` Right True
         it "given a save carrying image titles, when routing, then it syncs the page's images.yaml short_title" $ do
             root <- setupTreeFixture
             _ <-

@@ -1,4 +1,11 @@
 import type { AdmonitionKind } from "./admonition-extension.js";
+import {
+    ATTACHMENT_DRAG_TYPE,
+    AttachmentPanel,
+    attachmentLinkMarkdown,
+    type PanelAttachment,
+    parseEmbeddedAttachments,
+} from "./attachment-panel.js";
 import { attachmentMarkdown, isInlineImage, uploadAttachment } from "./attachment-upload.js";
 import { BubbleToolbarElement } from "./bubble-toolbar-element.js";
 import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
@@ -140,6 +147,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private modeGroup: HTMLElement | null = null;
     private widthGroup: HTMLElement | null = null;
     private bodyWidth: BodyWidth = "medium";
+    private attachmentPanel: AttachmentPanel | null = null;
     private mode: EditorMode = "visual";
     private panes: HTMLDivElement | null = null;
     private parseError: HTMLDivElement | null = null;
@@ -326,6 +334,18 @@ export class MarkdownEditorElement extends HTMLElement {
         footer.className = "markdown-editor__footer";
         footer.append(notices, this.commandBar);
 
+        const workspace = document.createElement("div");
+        workspace.className = "markdown-editor__workspace";
+        workspace.append(this.body);
+        if (this.isTreeMode()) {
+            this.attachmentPanel = new AttachmentPanel((attachment: PanelAttachment): void =>
+                this.insertAttachmentLink(attachment),
+            );
+            this.attachmentPanel.setAttachments(parseEmbeddedAttachments(this.getAttribute("data-attachments")));
+            workspace.append(this.attachmentPanel.element());
+            this.enableAttachmentDrop(this.body);
+        }
+
         this.append(
             this.toolbar,
             this.linkController.editorElement(),
@@ -334,7 +354,7 @@ export class MarkdownEditorElement extends HTMLElement {
             this.slashMenu,
             this.tableControls,
             this.tooltipController.element(),
-            this.body,
+            workspace,
             footer,
             this.wordCount,
         );
@@ -1260,6 +1280,9 @@ export class MarkdownEditorElement extends HTMLElement {
             try {
                 const url = await uploadAttachment(file, endpoint);
                 this.insertUpload(file, url);
+                if (this.isTreeMode() && !isInlineImage(file)) {
+                    this.attachmentPanel?.add({ name: file.name, localPath: url });
+                }
                 this.hideUploadNotice();
             } catch (error: unknown) {
                 this.showUploadNotice(`${file.name}: ${errorMessage(error)}`, true);
@@ -1296,6 +1319,42 @@ export class MarkdownEditorElement extends HTMLElement {
         if (inserted) {
             this.handleVisualInput();
         }
+    }
+
+    /** Inserts a Markdown link to an attachment (from the metadata panel) at the caret, in either pane. */
+    private insertAttachmentLink(attachment: PanelAttachment): void {
+        if (this.shouldUseSourceCommands()) {
+            if (this.sourceEditor?.insertMarkdown(attachmentLinkMarkdown(attachment))) {
+                this.handleSourceInput();
+            }
+
+            return;
+        }
+
+        if (this.visualEditor?.insertFileLink(attachment.localPath, attachment.name)) {
+            this.handleVisualInput();
+        }
+    }
+
+    /** Accepts attachments dragged from the metadata panel onto the editor body, inserting a link at the caret. */
+    private enableAttachmentDrop(target: HTMLElement): void {
+        target.addEventListener("dragover", (event: DragEvent): void => {
+            if (event.dataTransfer?.types.includes(ATTACHMENT_DRAG_TYPE)) {
+                event.preventDefault();
+            }
+        });
+        target.addEventListener("drop", (event: DragEvent): void => {
+            const payload = event.dataTransfer?.getData(ATTACHMENT_DRAG_TYPE);
+            if (!payload) {
+                return;
+            }
+
+            event.preventDefault();
+            const [attachment] = parseEmbeddedAttachments(`[${payload}]`);
+            if (attachment) {
+                this.insertAttachmentLink(attachment);
+            }
+        });
     }
 
     /** Shows the upload status (or error) notice with the given message. */

@@ -163,7 +163,8 @@ treeEdit editorThemeDefault root path request =
         Just fsPath -> do
             exists <- liftIO (doesFileExist fsPath)
             content <- if exists then liftIO (readFile fsPath) else pure seededMarkdown
-            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True Nothing))
+            attachments <- liftIO (loadPageAttachments root path)
+            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True attachments Nothing))
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
 treeServeFile :: FilePath -> String -> Iter StreamError Http.Response
@@ -244,6 +245,11 @@ assetsDirectoryFor :: FilePath -> String -> Maybe FilePath
 assetsDirectoryFor root path =
     fmap (\fsPath -> parentDirectory fsPath ++ "/assets") (Static.resolveStaticPath root (pathSegments path))
 
+-- | The page's recorded attachments as @(name, local_path)@ pairs for the metadata panel, or @[]@.
+loadPageAttachments :: FilePath -> String -> IO [(String, String)]
+loadPageAttachments root path =
+    maybe (pure []) DocumentMeta.readAttachmentEntries (DocumentMeta.metaDirectoryFor root path)
+
 {- | Stores bytes in an assets folder under a meaningful name, returning the name
 actually used. An identical file already present is reused (dedup); a name taken
 by different content is suffixed (@diagram.png@ -> @diagram-2.png@ -> ...).
@@ -285,6 +291,27 @@ splitExtension name =
     case break (== '.') (reverse name) of
         (revExt, '.' : revBase) -> (reverse revBase, '.' : reverse revExt)
         (_, _) -> (name, "")
+
+{- | The page's attachments as a compact JSON array of @{"name","localPath"}@
+objects, embedded on the editor element for the metadata panel (RFC-0019). Strings
+are JSON-escaped; the surrounding HTML attribute is escaped by the renderer.
+-}
+attachmentsJson :: [(String, String)] -> String
+attachmentsJson entries = "[" ++ intercalate "," (map attachmentObject entries) ++ "]"
+  where
+    attachmentObject (name, localPath) =
+        "{\"name\":" ++ jsonString name ++ ",\"localPath\":" ++ jsonString localPath ++ "}"
+
+-- | A JSON string literal: the value wrapped in quotes with the structural characters escaped.
+jsonString :: String -> String
+jsonString s = "\"" ++ concatMap escape s ++ "\""
+  where
+    escape '"' = "\\\""
+    escape '\\' = "\\\\"
+    escape '\n' = "\\n"
+    escape '\r' = "\\r"
+    escape '\t' = "\\t"
+    escape c = [c]
 
 jsonResponse :: String -> Http.Response
 jsonResponse body =
@@ -395,7 +422,7 @@ editDocument :: String -> DocumentStore -> Router.Handler
 editDocument editorThemeDefault store captures request = do
     let docId = documentId captures
     content <- liftIO (loadDocument store docId)
-    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault content False Nothing))
+    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault content False [] Nothing))
 
 showDocument :: DocumentStore -> Router.Handler
 showDocument store captures _ = do
@@ -417,7 +444,7 @@ saveDocument editorThemeDefault store captures request = do
         Just err
             | isHtmxRequest request -> pure (htmlResponseChunks (validationStatusFragment err))
             | otherwise ->
-                pure (documentResponse (editorPage docId Nothing editorThemeDefault markdown False (Just err)))
+                pure (documentResponse (editorPage docId Nothing editorThemeDefault markdown False [] (Just err)))
         Nothing -> do
             liftIO (saveDocumentContent store docId markdown)
             if isHtmxRequest request
@@ -600,8 +627,8 @@ in form submission through @ElementInternals@, and htmx autosaves; the textarea
 is disabled so it does not double-submit. @maybeError@ re-renders a validation
 message after a failed ordinary post.
 -}
-editorPage :: String -> Maybe String -> String -> String -> Bool -> Maybe String -> Html.Html ()
-editorPage docId mode themeDefault content treeMode maybeError =
+editorPage :: String -> Maybe String -> String -> String -> Bool -> [(String, String)] -> Maybe String -> Html.Html ()
+editorPage docId mode themeDefault content treeMode attachments maybeError =
     Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
@@ -627,6 +654,7 @@ editorPage docId mode themeDefault content treeMode maybeError =
                             ( [Html.attr "name" "markdown", Html.attr "data-document" docId]
                                 ++ maybe [] (\m -> [Html.attr "mode" m]) mode
                                 ++ [Html.attr "data-document-mode" "tree" | treeMode]
+                                ++ [Html.attr "data-attachments" (attachmentsJson attachments) | treeMode, not (null attachments)]
                             )
                             ( Html.custom
                                 "textarea"

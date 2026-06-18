@@ -154,6 +154,74 @@ body.markdown-editor-full-width main {
   max-width: none;
 }
 
+/* The editor body and the right-hand metadata panel sit side by side. The body
+   keeps its own centred max-width; the panel takes a fixed column on the right. */
+.markdown-editor__workspace {
+  align-items: flex-start;
+  display: flex;
+  flex: 1;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+.markdown-editor__metadata-panel {
+  color: var(--markdown-editor-muted);
+  flex: 0 0 15rem;
+  font: 13px system-ui, sans-serif;
+  position: sticky;
+  top: 1rem;
+}
+
+.markdown-editor__metadata-heading {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.75rem;
+  text-transform: uppercase;
+}
+
+.markdown-editor__attachment-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.markdown-editor__attachment {
+  align-items: center;
+  cursor: grab;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.markdown-editor__attachment-link {
+  color: var(--markdown-editor-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.markdown-editor__attachment-insert {
+  background: transparent;
+  border: 1px solid var(--markdown-editor-muted);
+  border-radius: 0.25rem;
+  color: var(--markdown-editor-muted);
+  cursor: pointer;
+  flex: none;
+  font: inherit;
+  padding: 0.1rem 0.4rem;
+}
+
+.markdown-editor__metadata-panel[data-empty="true"] .markdown-editor__attachment-list {
+  display: none;
+}
+
+.markdown-editor__metadata-panel[data-empty="false"] .markdown-editor__attachment-empty {
+  display: none;
+}
+
 .markdown-editor__surface,
 .markdown-editor__source,
 .markdown-editor__preview {

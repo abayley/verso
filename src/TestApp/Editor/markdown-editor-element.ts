@@ -253,7 +253,6 @@ export class MarkdownEditorElement extends HTMLElement {
         this.body?.removeEventListener("dragover", this.handleDragOver);
         this.body?.removeEventListener("drop", this.handleDrop);
         this.body?.removeEventListener("paste", this.handlePaste, true);
-        document.body.classList.remove("markdown-editor-full-width");
         this.closeSlashMenu();
         this.linkController?.dispose();
         this.tooltipController?.hide();
@@ -524,13 +523,13 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /**
-     * Applies the chosen editing-column width as a `data-body-width` attribute the stylesheet keys off, and
-     * toggles a page-level class so the "full" width also lifts the centred page max-width to fill the
-     * viewport. The width is a client preference (localStorage), like the colour scheme and visual theme.
+     * Applies the chosen editing-column width as a `data-body-width` attribute the stylesheet keys off. The
+     * top toolbar always spans the page, so changing the width (including "full") resizes only the editing
+     * column and never shifts the toolbar controls. The width is a client preference (localStorage), like
+     * the colour scheme and visual theme.
      */
     private applyBodyWidth(): void {
         this.setAttribute("data-body-width", this.bodyWidth);
-        document.body.classList.toggle("markdown-editor-full-width", this.bodyWidth === "full");
     }
 
     /** Creates the editor theme radio group. */

@@ -55,7 +55,6 @@ body.markdown-editor-page {
 
 body.markdown-editor-page main {
   margin: 0 auto;
-  max-width: 76rem;
   padding: 0 1.5rem;
 }
 
@@ -122,46 +121,45 @@ markdown-editor {
 
 .markdown-editor__body {
   flex: 1;
-  margin: 0 auto;
-  max-width: 60rem;
-  width: 100%;
+  min-width: 0;
 }
 
-markdown-editor[data-body-width="narrow"] .markdown-editor__body {
-  max-width: 46rem;
-}
-
-markdown-editor[data-body-width="medium"] .markdown-editor__body {
-  max-width: 60rem;
-}
-
-markdown-editor[data-body-width="wide"] .markdown-editor__body {
-  max-width: 76rem;
-}
-
-markdown-editor[data-body-width="full"] .markdown-editor__body {
-  max-width: none;
-}
-
-/* Split keeps the full page width regardless of the chosen single-column width;
-   declared after the width presets so it wins at equal specificity. */
-markdown-editor[mode="split"] .markdown-editor__body {
-  max-width: none;
-}
-
-/* "Full" also lifts the page's centred max-width so the editor fills the viewport. */
-body.markdown-editor-full-width main {
-  max-width: none;
-}
-
-/* The editor body and the right-hand metadata panel sit side by side. The body
-   keeps its own centred max-width; the panel takes a fixed column on the right. */
+/* The editing column (and its peer metadata panel) is centred and width-capped by the chosen preset; the
+   top toolbar spans the page independently, so changing the width never shifts the toolbar controls. */
 .markdown-editor__workspace {
   align-items: flex-start;
   display: flex;
   flex: 1;
   gap: 1.5rem;
+  margin: 0 auto;
+  max-width: 60rem;
   width: 100%;
+}
+
+markdown-editor[data-body-width="narrow"] .markdown-editor__workspace {
+  max-width: 46rem;
+}
+
+markdown-editor[data-body-width="medium"] .markdown-editor__workspace {
+  max-width: 60rem;
+}
+
+markdown-editor[data-body-width="wide"] .markdown-editor__workspace {
+  max-width: 76rem;
+}
+
+markdown-editor[data-body-width="full"] .markdown-editor__workspace {
+  max-width: none;
+}
+
+/* Split is always full width regardless of the chosen single-column preset; declared after the presets so
+   it wins at equal specificity. The width control has no effect in split, so it is hidden there. */
+markdown-editor[mode="split"] .markdown-editor__workspace {
+  max-width: none;
+}
+
+markdown-editor[mode="split"] .markdown-editor__width-group {
+  display: none;
 }
 
 .markdown-editor__metadata-panel {

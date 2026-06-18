@@ -1,7 +1,7 @@
 ---
 id: RFC-0020
 name: Reading Is The Default, Rendered Read-Only View
-status: Draft
+status: Implemented
 owners:
     - alistair
 created: 2026-06-19
@@ -17,8 +17,8 @@ superseded_by: null
 | Stage     | Timestamp        |
 |-----------|------------------|
 | Authored  | 2026-06-19 08:43 |
-| Started   |                  |
-| Completed |                  |
+| Started   | 2026-06-19 10:30 |
+| Completed | 2026-06-19 11:19 |
 
 ## Summary
 

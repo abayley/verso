@@ -1,7 +1,7 @@
 ---
 id: RFC-0019
 name: Sidecar Metadata Maintenance and the Attachments Panel
-status: Draft
+status: Implemented
 owners:
     - alistair
 created: 2026-06-18
@@ -18,7 +18,7 @@ superseded_by: null
 |-----------|------------------|
 | Authored  | 2026-06-18 20:34 |
 | Started   | 2026-06-18 20:34 |
-| Completed |                  |
+| Completed | 2026-06-18 21:10 |
 
 ## Summary
 

@@ -1188,6 +1188,130 @@ account model -- ADR-031). New view preferences follow the same one-key pattern.
 Extends ADR-036 (editor visual themes) to the persistence question and applies it
 to the width preference; consistent with ADR-040 (browser-owned rendering).
 
+### ADR-045: Document-Tree Mode Serves And Edits A Filesystem Tree In Place
+
+Status: Accepted.
+
+Context: Beyond the flat single-document store (ADR-014), the editor needs to
+serve and edit an existing MkDocs-style documentation tree on the filesystem:
+nested section folders of `.md` pages, each with a peer `assets/` folder, and
+page-relative image links (`![](assets/x.png)`). Read and write the real tree
+directly (versioning is a later concern). The hard parts are document identity
+for nested paths and -- the crux -- making a page's relative `assets/...` links
+resolve to the real files without rewriting them.
+
+Decision: add a tree mode, selected by a `document_tree_root` config key (the
+flat store stays the default). The whole tree is reachable under `/documents/` as
+resources whose URL mirrors their filesystem path: `GET /documents/<path>.md`
+serves the raw Markdown, `POST /documents/<path>.md` saves it, and every other
+tree file (images, attachments) is served statically and path-safely (reusing
+`Static.resolveStaticPath`, ADR-030/034). The editor opens at the document's own
+URL with a `?edit` flag (`/documents/<path>.md?edit`). The `?edit` view-selector
+is what makes relative assets resolve for free: because the editor page lives at
+the file's own path, the browser resolves `assets/x.png` to
+`/documents/<dir>/assets/x.png` -- the real asset's static URL -- with no
+`<base>` tag and no link rewriting. (A separate `/edit/...` prefix would move the
+page's base path and break that.) The document id is the tree-relative path
+including `.md`.
+
+Consequences: this is the most resource-oriented shape -- documents and assets
+each have a canonical URL that mirrors the tree, GET reads and POST writes, and
+relative links resolve to the resources they name. It reuses the proven static
+serving (zero-copy, path-safe) for everything but the edit page and save. The
+router's terminal-only `*wildcard` makes a `/documents/<path>/edit` suffix
+impractical, which the `?edit` query sidesteps (and which the relative-asset
+resolution wants anyway). Writes go straight to the user's files; document
+versioning and an undo/safety net are deferred and called out as follow-ups. The
+flat mode and its routes are unchanged.
+
+### ADR-046: Tree Uploads Land In The Page's Peer `assets/` With Meaningful Names
+
+Status: Accepted.
+
+Context: In tree mode (ADR-045) an upload must fit the tree's layout: the file
+belongs in the editing page's peer `assets/` folder and is referenced
+page-relative (`assets/<name>`), not in the central content-addressed store
+(ADR-042) with an absolute `/attachments/<hash>/<name>` URL. The owner wanted
+meaningful filenames with real extensions (the content hash hides the type) while
+keeping the de-duplication the hashed store gave.
+
+Decision: a tree upload is `POST /documents/<path>.md?asset` with the file as the
+raw body and the original name in `X-Attachment-Filename`. The server writes it
+into the document's peer `assets/` folder under a sanitised, meaningful filename
+with its real extension, de-duplicating within that folder (identical bytes reuse
+the existing file) and suffixing on a name clash with different content
+(`diagram.png` -> `diagram-2.png`), gated by the same type allow-list as the
+central store (415 otherwise). It returns `{"url":"assets/<name>"}`, a
+page-relative reference the editor inserts. A `?asset` POST is dispatched to the
+upload; a plain POST still saves the document.
+
+Consequences: assets sit beside their page exactly as the tree expects, with
+human-readable, typed filenames, and dedup is preserved -- now local to each
+folder (cross-page duplication is inherent to the peer-assets layout and
+accepted). Naming meaningfully (rather than by hash) needs collision handling,
+which the within-folder suffix provides; the trade-off versus the central store's
+collision-free hashing is intentional, scoped to tree mode. The flat mode keeps
+the content-addressed `/attachments` store (ADR-042). Reuses the filename
+sanitiser and allow-list from `MicroHttp.Attachment`.
+
+### ADR-047: Frontmatter Is Preserved And Hidden From Editing
+
+Status: Accepted.
+
+Context: Tree documents carry YAML frontmatter (a `name`, sidecar `meta` paths, a
+`cover-image`). The editor had no frontmatter handling: remark parsed a leading
+`---...---` as a thematic break plus literal text, so it rendered wrong and would
+be corrupted on save. The frontmatter is metadata the author should not edit, but
+it must survive a round-trip verbatim.
+
+Decision: split the frontmatter off the document on load (and on `setMarkdown`)
+and stash it verbatim, so the editors only ever receive the body and the author
+can neither see nor edit it (in any mode). Re-attach it unchanged when the
+document is persisted, via a `documentMarkdown()` used for the form value
+(`ElementInternals`) and the htmx autosave parameter; the editor's `toMarkdown()`
+stays body-only, since it drives the preview, pane sync, and mode-switch
+validation. A leading `---` with no closing delimiter is a thematic break, not
+frontmatter.
+
+Consequences: frontmatter round-trips byte-for-byte while the editing surface
+shows only the body, and the body is re-serialised canonically as before. Hiding
+it (rather than showing it read-only) is the simplest faithful option and what
+the owner chose; a read-only display remains a later possibility. The split is at
+the editor boundary, so it is editor-wide, not tree-specific. Consistent with
+ADR-040 (browser-owned rendering): no server-side frontmatter handling is added.
+
+### ADR-048: Raw HTML Is Preserved, Not Rejected, In The Trusted Tree Mode
+
+Status: Accepted.
+
+Context: ADR-040/041 uniformly reject raw HTML at save time, because the editor
+served *untrusted, user-submitted* content (raw HTML = stored XSS). But the
+document tree is the user's *own* first-party files, and ~half of them carry HTML
+-- almost all of it export-metadata comments (`<!-- ... -->`), a few with visible
+markup (MkDocs grid cards). The editor's strict parse throws on an `html` node, so
+those documents could not be loaded or saved without error or loss. The trust
+calculus that motivated the rejection does not hold for first-party files.
+
+Decision: in tree mode only, preserve raw HTML rather than reject it. An opt-in
+`raw-html` content extension carries each `html` node (block or inline) through
+verbatim and renders it *inert* -- shown escaped, never as live HTML -- so editing
+a document neither loses nor executes its HTML; the editor registers it only when
+the server marks tree mode. A tree document that contains raw HTML defaults to the
+lossless source mode (the visual editor does not yet preserve raw HTML across its
+marked round-trip -- a tracked follow-up); clean documents still open visually. The
+tree save path drops the raw-HTML guard (the files are trusted and nothing renders
+the HTML as live). The flat mode is unchanged: it still rejects raw HTML, and its
+parse still throws on an `html` node.
+
+Consequences: first-party documents load, edit, and save without losing or
+executing their HTML, while the untrusted flat mode keeps the ADR-040/041 trust
+boundary intact -- the rejection moves from "always" to "untrusted contexts only",
+matching the actual threat model. Nothing in the editor renders raw HTML as live
+markup in either mode (it is inert when preserved), so no execution surface is
+introduced. The source-mode default for HTML-bearing tree documents is an interim
+until visual-mode preservation lands. Refines ADR-040/041 (raw-HTML rejection is
+now scoped to untrusted content); builds on ADR-041's content-extension registry.
+
 ## ADR Registry Open Review Items
 
 - Verify socket layout assumptions on non-macOS platforms before treating

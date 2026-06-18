@@ -9,10 +9,13 @@ import {
     type CommandInlineEventDetail,
     type CommandStructureEventDetail,
 } from "./command-bar-element.js";
+import { registerExtension } from "./content-extension.js";
 import { INLINE_COMMANDS } from "./editor-toolbar-shared.js";
 import { joinFrontmatter, splitFrontmatter } from "./frontmatter.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
 import { renderMarkdown } from "./markdown-render.js";
+import { rawHtmlExtension } from "./raw-html-extension.js";
+import { markdownHasRawHtml } from "./remark-adapter.js";
 import { SaveStateController, type SaveStateView } from "./save-state-controller.js";
 import { SlashMenuElement, type SlashSelectEventDetail } from "./slash-menu-element.js";
 import {
@@ -265,6 +268,14 @@ export class MarkdownEditorElement extends HTMLElement {
         const loaded = splitFrontmatter(await this.loadMarkdown());
         this.frontmatter = loaded.frontmatter;
         this.markdown = loaded.body;
+
+        if (this.isTreeMode()) {
+            // The trusted document tree may contain raw HTML (export-metadata comments, occasional
+            // markup); preserve it verbatim and inert rather than throwing on it (ADR-040/041 reject raw
+            // HTML only in the untrusted flat mode).
+            registerExtension(rawHtmlExtension);
+        }
+
         this.visualTheme = this.editorVisualTheme();
         this.theme = this.editorTheme();
         this.mode = this.editorMode();
@@ -979,7 +990,18 @@ export class MarkdownEditorElement extends HTMLElement {
             return mode;
         }
 
+        // A tree document containing raw HTML defaults to the lossless source mode: the visual editor does
+        // not yet preserve raw HTML across its Markdown round-trip, so editing it visually could drop it.
+        if (this.isTreeMode() && markdownHasRawHtml(this.markdown)) {
+            return "source";
+        }
+
         return themeDefaultMode(this.visualTheme) ?? "visual";
+    }
+
+    /** Whether the editor is serving a document from the filesystem tree (set by the server). */
+    private isTreeMode(): boolean {
+        return this.getAttribute("data-document-mode") === "tree";
     }
 
     /** Returns the initial colour scheme: stored preference, then attribute, else match-system. */

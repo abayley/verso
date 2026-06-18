@@ -75,6 +75,15 @@ spec = do
                     (TestApp.appWithDocumentTree "paper" root)
                     (BS.pack (getRequest "/documents/sec/../../secret.md"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 404
+        it "given a save containing raw HTML, when routing, then it is written (the tree is trusted, no guard)" $ do
+            root <- setupTreeFixture
+            outcome <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (postRequest "/documents/sec/page.md" "markdown=%3C%21--+note+--%3E%0A%0A%23+H"))
+            saved <- readFile (root ++ "/sec/page.md")
+            fmap (statusCode . responseStatus) outcome `shouldBe` Right 303
+            saved `shouldBe` "<!-- note -->\n\n# H"
 
 getRequest :: String -> String
 getRequest target =

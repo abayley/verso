@@ -133,7 +133,7 @@ treeRoutes editorThemeDefault root =
     [ Router.get "/" index
     , Router.get "/index.html" index
     , Static.static "/static/editor" "static/editor"
-    , Router.post "/documents/*path" (treeSave editorThemeDefault root)
+    , Router.post "/documents/*path" (treeSave root)
     , Router.get "/documents/*path" (treeGet editorThemeDefault root)
     ]
 
@@ -162,7 +162,7 @@ treeEdit editorThemeDefault root path request =
         Just fsPath -> do
             exists <- liftIO (doesFileExist fsPath)
             content <- if exists then liftIO (readFile fsPath) else pure seededMarkdown
-            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content Nothing))
+            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True Nothing))
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
 treeServeFile :: FilePath -> String -> Iter StreamError Http.Response
@@ -186,28 +186,26 @@ treeServeFile root path =
                                 )
 
 {- | Saves a posted Markdown document back to its file in the tree, creating any
-missing parent directories. Shares the raw-HTML guard and htmx/redirect handling
-of the flat 'saveDocument'.
+missing parent directories. Unlike the flat 'saveDocument', the tree mode does
+not apply the raw-HTML guard: the tree holds the user's own trusted documents
+(many carry export-metadata HTML comments and occasional markup), so rejecting
+raw HTML would block legitimate saves -- the editor preserves it verbatim, and
+nothing renders it as live HTML (the trust boundary that guard defends does not
+apply to first-party files).
 -}
-treeSave :: String -> FilePath -> Router.Handler
-treeSave editorThemeDefault root captures request = do
+treeSave :: FilePath -> Router.Handler
+treeSave root captures request = do
     bodyBytes <- readBodyStrict (StreamParseError BodyTooLarge) formBodyLimit
     let markdown = markdownFromBody bodyBytes
         path = capture "path" captures
-    case validateMarkdown markdown of
-        Just err
-            | isHtmxRequest request -> pure (htmlResponseChunks (validationStatusFragment err))
-            | otherwise ->
-                pure (documentResponse (editorPage path Nothing editorThemeDefault markdown (Just err)))
-        Nothing ->
-            case Static.resolveStaticPath root (pathSegments path) of
-                Nothing -> pure treeNotFound
-                Just fsPath -> do
-                    liftIO (createDirectoryIfMissing True (parentDirectory fsPath))
-                    liftIO (writeFile fsPath markdown)
-                    if isHtmxRequest request
-                        then pure (htmlResponseChunks (saveStatusFragment markdown))
-                        else pure (seeOtherResponse ("/documents/" ++ path ++ "?edit"))
+    case Static.resolveStaticPath root (pathSegments path) of
+        Nothing -> pure treeNotFound
+        Just fsPath -> do
+            liftIO (createDirectoryIfMissing True (parentDirectory fsPath))
+            liftIO (writeFile fsPath markdown)
+            if isHtmxRequest request
+                then pure (htmlResponseChunks (saveStatusFragment markdown))
+                else pure (seeOtherResponse ("/documents/" ++ path ++ "?edit"))
 
 -- | Whether a query flag (a key, with or without a value) is present in the request query.
 hasQueryFlag :: String -> Http.RequestHead -> Bool
@@ -250,7 +248,7 @@ editDocument :: String -> DocumentStore -> Router.Handler
 editDocument editorThemeDefault store captures request = do
     let docId = documentId captures
     content <- liftIO (loadDocument store docId)
-    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault content Nothing))
+    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault content False Nothing))
 
 showDocument :: DocumentStore -> Router.Handler
 showDocument store captures _ = do
@@ -272,7 +270,7 @@ saveDocument editorThemeDefault store captures request = do
         Just err
             | isHtmxRequest request -> pure (htmlResponseChunks (validationStatusFragment err))
             | otherwise ->
-                pure (documentResponse (editorPage docId Nothing editorThemeDefault markdown (Just err)))
+                pure (documentResponse (editorPage docId Nothing editorThemeDefault markdown False (Just err)))
         Nothing -> do
             liftIO (saveDocumentContent store docId markdown)
             if isHtmxRequest request
@@ -455,8 +453,8 @@ in form submission through @ElementInternals@, and htmx autosaves; the textarea
 is disabled so it does not double-submit. @maybeError@ re-renders a validation
 message after a failed ordinary post.
 -}
-editorPage :: String -> Maybe String -> String -> String -> Maybe String -> Html.Html ()
-editorPage docId mode themeDefault content maybeError =
+editorPage :: String -> Maybe String -> String -> String -> Bool -> Maybe String -> Html.Html ()
+editorPage docId mode themeDefault content treeMode maybeError =
     Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
@@ -481,6 +479,7 @@ editorPage docId mode themeDefault content maybeError =
                             "markdown-editor"
                             ( [Html.attr "name" "markdown", Html.attr "data-document" docId]
                                 ++ maybe [] (\m -> [Html.attr "mode" m]) mode
+                                ++ [Html.attr "data-document-mode" "tree" | treeMode]
                             )
                             ( Html.custom
                                 "textarea"

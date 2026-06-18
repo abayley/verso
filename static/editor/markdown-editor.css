@@ -620,6 +620,16 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   opacity: 1;
 }
 
+/* Preserved raw HTML (document-tree mode): shown inert and muted, never rendered as live HTML. */
+.markdown-raw-html {
+  background: var(--markdown-editor-pill-background);
+  border-radius: 4px;
+  color: var(--markdown-editor-muted);
+  font: 12px ui-monospace, monospace;
+  padding: 0 0.25rem;
+  white-space: pre-wrap;
+}
+
 /* ===================================================================
    Visual themes (RFC-0015). Each theme overrides the --markdown-editor-*
    tokens for both light and dark, keyed on data-editor-theme, plus an

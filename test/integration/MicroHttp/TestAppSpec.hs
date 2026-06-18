@@ -126,6 +126,45 @@ spec = do
                     (TestApp.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "evil.exe" "MZ"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 415
+        it "given an image upload, when routing, then it is recorded in the page's images.yaml" $ do
+            root <- setupTreeFixture
+            _ <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (uploadRequest "/documents/sec/page.md?asset" "Diagram One.png" "PNGDATA"))
+            recorded <- readFile (root ++ "/sec/meta/page.meta/images.yaml")
+            recorded
+                `shouldBe` "- local_path: assets/Diagram_One.png\n\
+                           \  short_title: 'Diagram One.png'\n\
+                           \  description: ''\n"
+        it "given an attachment upload, when routing, then it is recorded in the page's attachments.yaml omitting id and path" $ do
+            root <- setupTreeFixture
+            _ <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (uploadRequest "/documents/sec/page.md?asset" "My Report.pdf" "PDFDATA"))
+            recorded <- readFile (root ++ "/sec/meta/page.meta/attachments.yaml")
+            recorded
+                `shouldBe` "- name: 'My Report.pdf'\n\
+                           \  local_path: assets/My_Report.pdf\n\
+                           \  extension: pdf\n\
+                           \  external: false\n"
+        it "given an identical re-upload, when routing, then the metadata entry is not duplicated" $ do
+            root <- setupTreeFixture
+            _ <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (uploadRequest "/documents/sec/page.md?asset" "My Report.pdf" "PDFDATA"))
+            _ <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (uploadRequest "/documents/sec/page.md?asset" "My Report.pdf" "PDFDATA"))
+            recorded <- readFile (root ++ "/sec/meta/page.meta/attachments.yaml")
+            recorded
+                `shouldBe` "- name: 'My Report.pdf'\n\
+                           \  local_path: assets/My_Report.pdf\n\
+                           \  extension: pdf\n\
+                           \  external: false\n"
 
 getRequest :: String -> String
 getRequest target =
@@ -170,7 +209,9 @@ setupTreeFixture = do
     let root = "build/tree-fixture"
     createDirectoryIfMissing True (root ++ "/sec/assets")
     -- Clear upload artifacts a previous test may have left, so dedup/collision start from a clean folder.
-    mapM_ (removeIfExists . ((root ++ "/sec/assets/") ++)) ["diagram.png", "diagram-2.png"]
+    mapM_ (removeIfExists . ((root ++ "/sec/assets/") ++)) ["diagram.png", "diagram-2.png", "Diagram_One.png", "My_Report.pdf"]
+    -- Clear sidecar metadata a previous test may have recorded, so the metadata assertions start clean.
+    mapM_ (removeIfExists . ((root ++ "/sec/meta/page.meta/") ++)) ["attachments.yaml", "images.yaml"]
     writeFile (root ++ "/sec/page.md") "# Hello tree\n\nA tree document."
     writeFile (root ++ "/sec/assets/pixel.png") "\137PNG\r\n\SUBpixel"
     return root

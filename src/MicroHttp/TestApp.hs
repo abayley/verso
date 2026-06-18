@@ -17,8 +17,9 @@ module MicroHttp.TestApp (
 import qualified Data.ByteString.Char8 as BS
 import Data.Char (isSpace)
 import Data.List (intercalate, isSuffixOf)
-import MicroHttp.Attachment (allowedExtension, attachmentRoutes, extensionOf, fileAttachmentStore, uploadFilename)
+import MicroHttp.Attachment (allowedExtension, attachmentRoutes, extensionOf, fileAttachmentStore, inlineImageExtension, originalUploadFilename, uploadFilename)
 import MicroHttp.Config (Config, configMounts, configString)
+import qualified MicroHttp.DocumentMeta as DocumentMeta
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http as Http
 import MicroHttp.Http.Parse (ParseError (..))
@@ -215,7 +216,25 @@ treeUpload root captures request = do
             Just assetsDir -> do
                 liftIO (createDirectoryIfMissing True assetsDir)
                 stored <- liftIO (storeAsset assetsDir name bytes)
+                liftIO (recordAssetMetadata root path stored (originalUploadFilename request))
                 pure (jsonResponse ("{\"url\":\"assets/" ++ stored ++ "\"}"))
+
+{- | Record a freshly stored asset in the page's sidecar metadata (ADR-049): an
+inline image in @images.yaml@ (with the original filename as its initial
+@short_title@), anything else in @attachments.yaml@. Classification reuses the
+attachment store's @inlineImageExtension@. A no-op when the document path is
+unsafe (the upload itself has already been path-validated).
+-}
+recordAssetMetadata :: FilePath -> String -> String -> String -> IO ()
+recordAssetMetadata root path stored originalName =
+    case DocumentMeta.metaDirectoryFor root path of
+        Nothing -> pure ()
+        Just metaDir
+            | inlineImageExtension extension -> DocumentMeta.appendImage metaDir localPath originalName
+            | otherwise -> DocumentMeta.appendAttachment metaDir (DocumentMeta.AttachmentEntry originalName localPath extension)
+  where
+    localPath = "assets/" ++ stored
+    extension = extensionOf stored
 
 {- | The peer @assets/@ directory of a tree document, or 'Nothing' if the document
 path is unsafe. The path is validated as a tree-relative file; its directory's

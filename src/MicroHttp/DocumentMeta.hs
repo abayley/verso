@@ -143,7 +143,7 @@ updateImageShortTitle dir localPath shortTitle = do
         then pure ()
         else do
             existing <- readFile file
-            mapM_ (writeFile file) (strictly existing (setImageShortTitle existing localPath shortTitle))
+            maybe (pure ()) (writeFile file) (strictly existing (setImageShortTitle existing localPath shortTitle))
 
 -- | The @(name, local_path)@ of each attachment recorded for the page, or @[]@ when none.
 readAttachmentEntries :: FilePath -> IO [(String, String)]

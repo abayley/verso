@@ -19,6 +19,8 @@ module MicroHttp.Attachment (
     contentHash,
     extensionOf,
     fileAttachmentStore,
+    inlineImageExtension,
+    originalUploadFilename,
     uploadFilename,
 ) where
 
@@ -190,6 +192,20 @@ uploadFilename :: RequestHead -> String
 uploadFilename request =
     case lookup (normaliseHeaderName (BS.pack "x-attachment-filename")) (requestHeaders request) of
         Just raw -> sanitiseFilename (percentDecode (BS.unpack raw))
+        Nothing -> "file"
+
+{- | The percent-decoded upload filename (its last path segment), unsanitised, for
+display and metadata: the human-readable original name with its spaces and case
+intact (e.g. @My Report.pdf@). Unlike 'uploadFilename' (which sanitises for use
+as a stored filename and URL segment), this is never used as a path -- it is the
+@name@/@short_title@ recorded in the sidecar metadata (RFC-0019).
+-}
+originalUploadFilename :: RequestHead -> String
+originalUploadFilename request =
+    case lookup (normaliseHeaderName (BS.pack "x-attachment-filename")) (requestHeaders request) of
+        Just raw -> case lastSegment (percentDecode (BS.unpack raw)) of
+            "" -> "file"
+            name -> name
         Nothing -> "file"
 
 {- | Restricts a filename to a safe URL/path segment: letters, digits, and

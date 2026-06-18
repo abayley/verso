@@ -15,7 +15,6 @@ import { joinFrontmatter, splitFrontmatter } from "./frontmatter.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
 import { renderMarkdown } from "./markdown-render.js";
 import { rawHtmlExtension } from "./raw-html-extension.js";
-import { markdownHasRawHtml } from "./remark-adapter.js";
 import { SaveStateController, type SaveStateView } from "./save-state-controller.js";
 import { SlashMenuElement, type SlashSelectEventDetail } from "./slash-menu-element.js";
 import {
@@ -960,6 +959,7 @@ export class MarkdownEditorElement extends HTMLElement {
                 this.markdown,
                 (): void => this.handleVisualInput(),
                 (): void => this.handleVisualLinkShortcut(),
+                { preserveRawHtml: this.isTreeMode() },
             );
             this.visualEditor.element().addEventListener("focusin", (): void => {
                 this.activePane = "visual";
@@ -988,12 +988,6 @@ export class MarkdownEditorElement extends HTMLElement {
 
         if (mode === "source" || mode === "split" || mode === "visual") {
             return mode;
-        }
-
-        // A tree document containing raw HTML defaults to the lossless source mode: the visual editor does
-        // not yet preserve raw HTML across its Markdown round-trip, so editing it visually could drop it.
-        if (this.isTreeMode() && markdownHasRawHtml(this.markdown)) {
-            return "source";
         }
 
         return themeDefaultMode(this.visualTheme) ?? "visual";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseMarkdownLocally } from "../../src/TestApp/Editor/markdown-parse-local.js";
-import { markdownHasRawHtml, parseMarkdownWithRemark } from "../../src/TestApp/Editor/remark-adapter.js";
+import { parseMarkdownWithRemark, rawHtmlSpans } from "../../src/TestApp/Editor/remark-adapter.js";
 
 describe("parseMarkdownWithRemark", (): void => {
     it("given supported Markdown, when parsed through remark, then it matches the legacy local parser", (): void => {
@@ -28,19 +28,23 @@ describe("parseMarkdownWithRemark", (): void => {
     });
 });
 
-describe("markdownHasRawHtml", (): void => {
-    it.each([
-        ["an HTML comment", "# H\n\n<!-- export note -->"],
-        ["an inline tag", "before <span>x</span> after"],
-        ["a block tag", '<div class="grid">x</div>'],
-    ])("given %s, when checked, then it reports raw HTML", (_name, markdown): void => {
-        expect(markdownHasRawHtml(markdown)).toBe(true);
+describe("rawHtmlSpans", (): void => {
+    it("given inline HTML, when scanned, then each tag's verbatim span is found by source offset", (): void => {
+        const markdown = "a <span>x</span> b";
+        const spans = rawHtmlSpans(markdown);
+
+        expect(spans.map((span): string => span.value)).toEqual(["<span>", "</span>"]);
+        expect(markdown.slice(spans[0]?.start, spans[0]?.end)).toBe("<span>");
+    });
+
+    it("given a block HTML comment, when scanned, then its span is found", (): void => {
+        expect(rawHtmlSpans("# H\n\n<!-- c -->").map((span): string => span.value)).toEqual(["<!-- c -->"]);
     });
 
     it.each([
-        ["plain Markdown", "# Heading\n\nA paragraph with **bold**."],
-        ["an autolink (not raw HTML)", "see <https://example.com> for more"],
-    ])("given %s, when checked, then it reports no raw HTML", (_name, markdown): void => {
-        expect(markdownHasRawHtml(markdown)).toBe(false);
+        ["plain Markdown", "# Heading\n\ntext"],
+        ["an autolink (a link, not raw HTML)", "see <https://example.com>"],
+    ])("given %s, when scanned, then there are no raw-HTML spans", (_name, markdown): void => {
+        expect(rawHtmlSpans(markdown)).toEqual([]);
     });
 });

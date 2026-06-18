@@ -6,21 +6,37 @@ import { blockFromMdast, collectRemarkPlugins } from "./content-extension.js";
 import "./register-extensions.js";
 import type { EditorBlock, EditorDocument } from "./editor-model.js";
 
-/** Whether a document contains raw HTML (an `html` mdast node), via a plain parse independent of the
- * content-extension registry. Used to default a raw-HTML document to the lossless source mode. */
-export function markdownHasRawHtml(markdown: string): boolean {
-    const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown) as Root;
-
-    return nodeHasRawHtml(tree);
+/** A raw `html` node's verbatim text and its source-offset span in the Markdown. */
+export interface RawHtmlSpan {
+    value: string;
+    start: number;
+    end: number;
 }
 
-/** Whether an mdast node or any descendant is a raw `html` node. */
-function nodeHasRawHtml(node: Nodes): boolean {
-    if (node.type === "html") {
-        return true;
-    }
+/** The source spans of every raw `html` node, for pre-extracting raw HTML before the visual editor's
+ * Markdown loader (marked) interprets or drops it. Offsets index the given Markdown string. */
+export function rawHtmlSpans(markdown: string): RawHtmlSpan[] {
+    const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown) as Root;
+    const spans: RawHtmlSpan[] = [];
 
-    return "children" in node && node.children.some((child: Nodes): boolean => nodeHasRawHtml(child));
+    const visit = (node: Nodes): void => {
+        const start = node.position?.start?.offset;
+        const end = node.position?.end?.offset;
+
+        if (node.type === "html" && start !== undefined && end !== undefined) {
+            spans.push({ end, start, value: node.value });
+        }
+
+        if ("children" in node) {
+            for (const child of node.children) {
+                visit(child);
+            }
+        }
+    };
+
+    visit(tree);
+
+    return spans;
 }
 
 /** Parses Markdown with remark and converts the mdast tree through the content-extension registry. */

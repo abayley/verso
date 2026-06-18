@@ -1296,21 +1296,21 @@ Decision: in tree mode only, preserve raw HTML rather than reject it. An opt-in
 `raw-html` content extension carries each `html` node (block or inline) through
 verbatim and renders it *inert* -- shown escaped, never as live HTML -- so editing
 a document neither loses nor executes its HTML; the editor registers it only when
-the server marks tree mode. A tree document that contains raw HTML defaults to the
-lossless source mode (the visual editor does not yet preserve raw HTML across its
-marked round-trip -- a tracked follow-up); clean documents still open visually. The
-tree save path drops the raw-HTML guard (the files are trusted and nothing renders
-the HTML as live). The flat mode is unchanged: it still rejects raw HTML, and its
-parse still throws on an `html` node.
+the server marks tree mode. Both editing surfaces preserve it: source mode is
+verbatim text, and the visual editor pre-extracts raw-HTML spans (by remark source
+position) into sentinels before its Markdown loader (marked) can interpret or drop
+them, then re-inserts them as inert raw-html nodes after load. The tree save path
+drops the raw-HTML guard (the files are trusted and nothing renders the HTML as
+live). The flat mode is unchanged: it still rejects raw HTML, and its parse still
+throws on an `html` node.
 
-Consequences: first-party documents load, edit, and save without losing or
-executing their HTML, while the untrusted flat mode keeps the ADR-040/041 trust
-boundary intact -- the rejection moves from "always" to "untrusted contexts only",
-matching the actual threat model. Nothing in the editor renders raw HTML as live
-markup in either mode (it is inert when preserved), so no execution surface is
-introduced. The source-mode default for HTML-bearing tree documents is an interim
-until visual-mode preservation lands. Refines ADR-040/041 (raw-HTML rejection is
-now scoped to untrusted content); builds on ADR-041's content-extension registry.
+Consequences: first-party documents load, edit, and save -- in visual or source
+mode -- without losing or executing their HTML, while the untrusted flat mode keeps
+the ADR-040/041 trust boundary intact: the rejection moves from "always" to
+"untrusted contexts only", matching the actual threat model. Nothing in the editor
+renders raw HTML as live markup in either mode (it is inert when preserved), so no
+execution surface is introduced. Refines ADR-040/041 (raw-HTML rejection is now
+scoped to untrusted content); builds on ADR-041's content-extension registry.
 
 ## ADR Registry Open Review Items
 

@@ -15,10 +15,12 @@ import { type AdmonitionKind, matchAlertMarker } from "./admonition-extension.js
 import { type CollapsibleKind, matchCollapsibleMarker } from "./collapsible-extension.js";
 import { widthFromAttributes } from "./image-extension.js";
 import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
+import { rawHtmlSpans } from "./remark-adapter.js";
 import { Admonition } from "./tiptap-admonition-node.js";
 import { Collapsible } from "./tiptap-collapsible-node.js";
 import { FootnoteDefinition, FootnoteReference } from "./tiptap-footnote-node.js";
 import { Image } from "./tiptap-image-node.js";
+import { RawHtml } from "./tiptap-raw-html-node.js";
 import { ReferenceDefinition, ReferenceLink } from "./tiptap-reference-link-node.js";
 import { tableExtensions } from "./tiptap-table-extensions.js";
 
@@ -146,6 +148,36 @@ function normaliseReferenceLabel(label: string): string {
     return label.trim().replace(/\s+/gu, " ").toLowerCase();
 }
 
+// Private-use sentinels marking where a raw-HTML fragment was extracted, so marked passes them through as
+// plain text; {@link TiptapVisualEditor.loadRawHtml} swaps them for raw-html nodes after the content loads.
+const RAW_HTML_SENTINEL = /\u{E000}(\d+)\u{E001}/gu;
+
+/**
+ * Replaces each raw-HTML span with an indexed sentinel before marked sees it (marked otherwise interprets
+ * or drops raw HTML), returning the stripped Markdown and the verbatim fragments by index. Spans are
+ * replaced last-to-first so earlier source offsets stay valid.
+ */
+function stripRawHtml(markdown: string): { stripped: string; fragments: string[] } {
+    const spans = rawHtmlSpans(markdown).sort((a, b): number => a.start - b.start);
+
+    if (spans.length === 0) {
+        return { fragments: [], stripped: markdown };
+    }
+
+    const fragments = spans.map((span): string => span.value);
+    let stripped = markdown;
+
+    for (let index = spans.length - 1; index >= 0; index -= 1) {
+        const span = spans[index];
+
+        if (span) {
+            stripped = `${stripped.slice(0, span.start)}\u{E000}${index}\u{E001}${stripped.slice(span.end)}`;
+        }
+    }
+
+    return { fragments, stripped };
+}
+
 const HeadingWithoutInputRules = Heading.extend({
     /** Keeps heading nodes available while preventing typed hash shortcuts. */
     addInputRules() {
@@ -159,18 +191,26 @@ export class TiptapVisualEditor {
     private normalisingSoftBreaks = false;
     private readonly onLinkShortcut: TiptapLinkShortcutHandler;
     private readonly root: HTMLDivElement;
+    private readonly preserveRawHtml: boolean;
 
     /** Creates a Tiptap editor mounted inside a stable root element. */
-    public constructor(markdown: string, onChange: TiptapChangeHandler, onLinkShortcut: TiptapLinkShortcutHandler) {
+    public constructor(
+        markdown: string,
+        onChange: TiptapChangeHandler,
+        onLinkShortcut: TiptapLinkShortcutHandler,
+        options: { preserveRawHtml?: boolean } = {},
+    ) {
         this.root = document.createElement("div");
         this.root.className = "markdown-editor__surface";
         this.onLinkShortcut = onLinkShortcut;
+        this.preserveRawHtml = options.preserveRawHtml ?? false;
 
         const footnotes = extractFootnoteDefinitions(markdown);
         const references = extractReferenceDefinitions(footnotes.stripped);
+        const raw = this.extractRawHtml(references.stripped);
 
         this.editor = new Editor({
-            content: references.stripped,
+            content: raw.stripped,
             contentType: "markdown",
             element: this.root,
             extensions: [
@@ -185,6 +225,7 @@ export class TiptapVisualEditor {
                 ReferenceLink,
                 ReferenceDefinition,
                 Image,
+                RawHtml,
                 ...tableExtensions,
                 Markdown.configure({
                     markedOptions: {
@@ -212,6 +253,7 @@ export class TiptapVisualEditor {
         this.upgradeCollapsibles();
         this.wrapBareImages();
         this.loadImageWidths();
+        this.loadRawHtml(raw.fragments);
         this.loadFootnotes(footnotes.definitions);
         this.loadReferenceLinks(references.definitions);
         this.collapseSoftBreaks();
@@ -238,14 +280,82 @@ export class TiptapVisualEditor {
 
         const footnotes = extractFootnoteDefinitions(markdown);
         const references = extractReferenceDefinitions(footnotes.stripped);
-        this.editor.commands.setContent(references.stripped, options);
+        const raw = this.extractRawHtml(references.stripped);
+        this.editor.commands.setContent(raw.stripped, options);
         this.upgradeAlertBlockquotes();
         this.upgradeCollapsibles();
         this.wrapBareImages();
         this.loadImageWidths();
+        this.loadRawHtml(raw.fragments);
         this.loadFootnotes(footnotes.definitions);
         this.loadReferenceLinks(references.definitions);
         this.collapseSoftBreaks();
+    }
+
+    /** Pre-extracts raw HTML (sentinels for marked) when preservation is on; a no-op passthrough otherwise. */
+    private extractRawHtml(markdown: string): { stripped: string; fragments: string[] } {
+        return this.preserveRawHtml ? stripRawHtml(markdown) : { fragments: [], stripped: markdown };
+    }
+
+    /**
+     * Replaces the raw-HTML sentinels left by {@link extractRawHtml} with raw-html nodes carrying the
+     * verbatim HTML, after the content has loaded. marked passes the sentinels through as text; this swaps
+     * each for an inert node so the HTML survives the round-trip without being interpreted or rendered live.
+     */
+    private loadRawHtml(fragments: string[]): void {
+        if (fragments.length === 0) {
+            return;
+        }
+
+        const rawHtmlType = this.editor.state.schema.nodes["rawHtml"];
+
+        if (!rawHtmlType) {
+            return;
+        }
+
+        const replacements: Array<{ from: number; html: string; marks: readonly ProseMirrorMark[]; to: number }> = [];
+
+        this.editor.state.doc.descendants((node: ProseMirrorNode, position: number): boolean => {
+            if (!node.isText || node.text === undefined) {
+                return true;
+            }
+
+            const pattern = new RegExp(RAW_HTML_SENTINEL.source, "gu");
+            let match = pattern.exec(node.text);
+
+            while (match !== null) {
+                const html = fragments[Number(match[1])];
+
+                if (html !== undefined) {
+                    replacements.push({
+                        from: position + match.index,
+                        html,
+                        marks: node.marks,
+                        to: position + match.index + match[0].length,
+                    });
+                }
+
+                match = pattern.exec(node.text);
+            }
+
+            return true;
+        });
+
+        if (replacements.length === 0) {
+            return;
+        }
+
+        const transaction = this.editor.state.tr;
+
+        for (const replacement of replacements.reverse()) {
+            transaction.replaceWith(
+                replacement.from,
+                replacement.to,
+                rawHtmlType.create({ html: replacement.html }, null, replacement.marks),
+            );
+        }
+
+        this.editor.view.dispatch(transaction.setMeta("addToHistory", false));
     }
 
     /**

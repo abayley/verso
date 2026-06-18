@@ -41,15 +41,40 @@ spec = do
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
             fmap (bodyContains (BS.pack "markdown-editor")) outcome `shouldBe` Right True
             fmap (bodyContains (BS.pack "Hello tree")) outcome `shouldBe` Right True
-        it "given a raw Markdown request, when routing, then the file is served as a sized text/markdown body" $ do
+        it "given a default GET of a page, when routing, then a read-only editor shell is returned with its content" $ do
             root <- setupTreeFixture
             outcome <-
                 respondToRequestBytes
                     (TestApp.appWithDocumentTree "paper" root)
                     (BS.pack (getRequest "/documents/sec/page.md"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
+            fmap (bodyContains (BS.pack "markdown-editor")) outcome `shouldBe` Right True
+            fmap (bodyContains (BS.pack "data-readonly")) outcome `shouldBe` Right True
+            fmap (bodyContains (BS.pack "Hello tree")) outcome `shouldBe` Right True
+        it "given a default GET of a missing page, when routing, then it is a 404 (reading never seeds)" $ do
+            root <- setupTreeFixture
+            outcome <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (getRequest "/documents/sec/missing.md"))
+            fmap (statusCode . responseStatus) outcome `shouldBe` Right 404
+        it "given a ?raw request, when routing, then the file is served verbatim as a sized text/markdown body" $ do
+            root <- setupTreeFixture
+            outcome <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (getRequest "/documents/sec/page.md?raw"))
+            fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
             fmap contentTypeOf outcome `shouldBe` Right (Just (BS.pack "text/markdown"))
             fmap isSizedFileBody outcome `shouldBe` Right True
+        it "given an ?edit request for a missing page, when routing, then it still seeds a starter document" $ do
+            root <- setupTreeFixture
+            outcome <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (getRequest "/documents/sec/missing.md?edit"))
+            fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
+            fmap (bodyContains (BS.pack "markdown-editor")) outcome `shouldBe` Right True
         it "given a peer asset request, when routing, then the image is served from the page's assets folder" $ do
             root <- setupTreeFixture
             outcome <-

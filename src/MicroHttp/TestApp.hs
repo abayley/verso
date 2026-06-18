@@ -150,12 +150,16 @@ otherwise the file served statically (raw Markdown, images, attachments).
 -}
 treeGet :: String -> FilePath -> Router.Handler
 treeGet editorThemeDefault root captures request
-    | hasQueryFlag "edit" request && isMarkdownPath path = treeEdit editorThemeDefault root path request
-    | otherwise = treeServeFile root path
+    | not (isMarkdownPath path) = treeServeFile root path
+    | hasQueryFlag "edit" request = treeEdit editorThemeDefault root path request
+    | hasQueryFlag "raw" request = treeServeFile root path
+    | otherwise = treeRead editorThemeDefault root path request
   where
     path = capture "path" captures
 
--- | Renders the editor for a tree document, loading its current content (or a seed if absent).
+{- | Renders the editable editor for a tree document, loading its current content
+(or a seed if the file is absent, so a missing page can be created by editing).
+-}
 treeEdit :: String -> FilePath -> String -> Http.RequestHead -> Iter StreamError Http.Response
 treeEdit editorThemeDefault root path request =
     case Static.resolveStaticPath root (pathSegments path) of
@@ -164,7 +168,24 @@ treeEdit editorThemeDefault root path request =
             exists <- liftIO (doesFileExist fsPath)
             content <- if exists then liftIO (readFile fsPath) else pure seededMarkdown
             attachments <- liftIO (loadPageAttachments root path)
-            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True attachments Nothing))
+            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True True attachments Nothing))
+
+{- | Renders the read-only view for a tree document (the default @GET@, RFC-0020):
+the editor shell with editing disabled. A missing page is a @404@ -- reading never
+seeds (that stays an @?edit@ affordance).
+-}
+treeRead :: String -> FilePath -> String -> Http.RequestHead -> Iter StreamError Http.Response
+treeRead editorThemeDefault root path request =
+    case Static.resolveStaticPath root (pathSegments path) of
+        Nothing -> pure treeNotFound
+        Just fsPath -> do
+            exists <- liftIO (doesFileExist fsPath)
+            if not exists
+                then pure treeNotFound
+                else do
+                    content <- liftIO (readFile fsPath)
+                    attachments <- liftIO (loadPageAttachments root path)
+                    pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True False attachments Nothing))
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
 treeServeFile :: FilePath -> String -> Iter StreamError Http.Response
@@ -422,7 +443,7 @@ editDocument :: String -> DocumentStore -> Router.Handler
 editDocument editorThemeDefault store captures request = do
     let docId = documentId captures
     content <- liftIO (loadDocument store docId)
-    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault content False [] Nothing))
+    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault content False True [] Nothing))
 
 showDocument :: DocumentStore -> Router.Handler
 showDocument store captures _ = do
@@ -444,7 +465,7 @@ saveDocument editorThemeDefault store captures request = do
         Just err
             | isHtmxRequest request -> pure (htmlResponseChunks (validationStatusFragment err))
             | otherwise ->
-                pure (documentResponse (editorPage docId Nothing editorThemeDefault markdown False [] (Just err)))
+                pure (documentResponse (editorPage docId Nothing editorThemeDefault markdown False True [] (Just err)))
         Nothing -> do
             liftIO (saveDocumentContent store docId markdown)
             if isHtmxRequest request
@@ -627,8 +648,8 @@ in form submission through @ElementInternals@, and htmx autosaves; the textarea
 is disabled so it does not double-submit. @maybeError@ re-renders a validation
 message after a failed ordinary post.
 -}
-editorPage :: String -> Maybe String -> String -> String -> Bool -> [(String, String)] -> Maybe String -> Html.Html ()
-editorPage docId mode themeDefault content treeMode attachments maybeError =
+editorPage :: String -> Maybe String -> String -> String -> Bool -> Bool -> [(String, String)] -> Maybe String -> Html.Html ()
+editorPage docId mode themeDefault content treeMode editable attachments maybeError =
     Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
@@ -638,31 +659,44 @@ editorPage docId mode themeDefault content treeMode attachments maybeError =
             Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
             Html.rawTrusted "<script src=\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js\"></script>"
             Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\"></script>"
-        Html.body [Html.class_ "markdown-editor-page"] $ do
-            Html.main [] $ do
-                Html.form_
-                    [ Html.attr "action" ("/documents/" ++ docId)
-                    , Html.attr "method" "post"
-                    , Html.hxPost ("/documents/" ++ docId)
-                    , Html.hxSwap "none"
-                    , Html.attr "hx-trigger" "submit, editor:changed delay:2s from:markdown-editor"
-                    ]
-                    $ do
-                        maybe (return ()) validationStatusFragment maybeError
-                        Html.custom
-                            "markdown-editor"
-                            ( [Html.attr "name" "markdown", Html.attr "data-document" docId]
-                                ++ maybe [] (\m -> [Html.attr "mode" m]) mode
-                                ++ [Html.attr "data-document-mode" "tree" | treeMode]
-                                ++ [Html.attr "data-attachments" (attachmentsJson attachments) | treeMode, not (null attachments)]
-                            )
-                            ( Html.custom
-                                "textarea"
-                                [Html.attr "name" "markdown", Html.attr "aria-label" "Markdown source", Html.class_ "markdown-editor__fallback"]
-                                (Html.text content)
-                            )
-                        Html.custom "noscript" [] $
-                            Html.button_ [Html.attr "type" "submit"] (Html.text "Save")
+        Html.body [Html.class_ "markdown-editor-page"] $
+            Html.main [] $
+                -- The read view (RFC-0020) has no write path: the element is rendered without the
+                -- surrounding autosave form, and marked read-only so the editors and chrome disable editing.
+                if editable
+                    then Html.form_
+                        [ Html.attr "action" ("/documents/" ++ docId)
+                        , Html.attr "method" "post"
+                        , Html.hxPost ("/documents/" ++ docId)
+                        , Html.hxSwap "none"
+                        , Html.attr "hx-trigger" "submit, editor:changed delay:2s from:markdown-editor"
+                        ]
+                        $ do
+                            maybe (return ()) validationStatusFragment maybeError
+                            editorElement docId mode treeMode editable attachments content
+                            Html.custom "noscript" [] $
+                                Html.button_ [Html.attr "type" "submit"] (Html.text "Save")
+                    else editorElement docId mode treeMode editable attachments content
+
+{- | The @\<markdown-editor\>@ custom element with its server-set attributes and the
+no-script @\<textarea\>@ fallback holding the document. @data-readonly@ is set in the
+read view (RFC-0020); the element disables editing and hides the editing chrome.
+-}
+editorElement :: String -> Maybe String -> Bool -> Bool -> [(String, String)] -> String -> Html.Html ()
+editorElement docId mode treeMode editable attachments content =
+    Html.custom
+        "markdown-editor"
+        ( [Html.attr "name" "markdown", Html.attr "data-document" docId]
+            ++ maybe [] (\m -> [Html.attr "mode" m]) mode
+            ++ [Html.attr "data-document-mode" "tree" | treeMode]
+            ++ [Html.attr "data-attachments" (attachmentsJson attachments) | treeMode, not (null attachments)]
+            ++ [Html.attr "data-readonly" "" | not editable]
+        )
+        ( Html.custom
+            "textarea"
+            [Html.attr "name" "markdown", Html.attr "aria-label" "Markdown source", Html.class_ "markdown-editor__fallback"]
+            (Html.text content)
+        )
 
 seededMarkdown :: String
 seededMarkdown =

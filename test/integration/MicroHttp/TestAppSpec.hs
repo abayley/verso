@@ -149,6 +149,26 @@ spec = do
                            \  local_path: assets/My_Report.pdf\n\
                            \  extension: pdf\n\
                            \  external: false\n"
+        it "given a save carrying image titles, when routing, then it syncs the page's images.yaml short_title" $ do
+            root <- setupTreeFixture
+            _ <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (uploadRequest "/documents/sec/page.md?asset" "Diagram One.png" "PNGDATA"))
+            _ <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    ( BS.pack
+                        ( postRequest
+                            "/documents/sec/page.md"
+                            "markdown=%23+H&image_count=1&image_path_0=assets%2FDiagram_One.png&image_title_0=Edited+Caption"
+                        )
+                    )
+            recorded <- readFile (root ++ "/sec/meta/page.meta/images.yaml")
+            recorded
+                `shouldBe` "- local_path: assets/Diagram_One.png\n\
+                           \  short_title: 'Edited Caption'\n\
+                           \  description: ''\n"
         it "given an identical re-upload, when routing, then the metadata entry is not duplicated" $ do
             root <- setupTreeFixture
             _ <-

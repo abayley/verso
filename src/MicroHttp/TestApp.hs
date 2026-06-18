@@ -15,7 +15,7 @@ module MicroHttp.TestApp (
 ) where
 
 import qualified Data.ByteString.Char8 as BS
-import Data.Char (isSpace)
+import Data.Char (digitToInt, isDigit, isSpace)
 import Data.List (intercalate, isSuffixOf)
 import MicroHttp.Attachment (allowedExtension, attachmentRoutes, extensionOf, fileAttachmentStore, inlineImageExtension, originalUploadFilename, uploadFilename)
 import MicroHttp.Config (Config, configMounts, configString)
@@ -305,16 +305,54 @@ apply to first-party files).
 treeSave :: FilePath -> Router.Handler
 treeSave root captures request = do
     bodyBytes <- readBodyStrict (StreamParseError BodyTooLarge) formBodyLimit
-    let markdown = markdownFromBody bodyBytes
+    let fields = formFields (BS.unpack bodyBytes)
+        markdown = normaliseNewlines (capture "markdown" fields)
         path = capture "path" captures
     case Static.resolveStaticPath root (pathSegments path) of
         Nothing -> pure treeNotFound
         Just fsPath -> do
             liftIO (createDirectoryIfMissing True (parentDirectory fsPath))
             liftIO (writeFile fsPath markdown)
+            liftIO (syncImageTitles root path fields)
             if isHtmxRequest request
                 then pure (htmlResponseChunks (saveStatusFragment markdown))
                 else pure (seeOtherResponse ("/documents/" ++ path ++ "?edit"))
+
+{- | Sync the page's @images.yaml@ @short_title@s to the alt-derived values the
+editor sends with a tree save (RFC-0019, ADR-049): @image_count@ indexed
+@image_path_<i>@/@image_title_<i>@ form fields. Each update is surgical and
+update-only -- an unmatched @local_path@ or an unchanged value writes nothing
+(and a save without the fields, e.g. a no-JavaScript post, is a no-op). The count
+is capped so a crafted value cannot drive an unbounded loop.
+-}
+syncImageTitles :: FilePath -> String -> [(String, String)] -> IO ()
+syncImageTitles root path fields =
+    case DocumentMeta.metaDirectoryFor root path of
+        Nothing -> pure ()
+        Just metaDir -> mapM_ (applyImageTitle metaDir fields) [0 .. imageCount fields - 1]
+
+-- | Apply one indexed image-title field to the page's @images.yaml@ (no-op when its path is blank).
+applyImageTitle :: FilePath -> [(String, String)] -> Int -> IO ()
+applyImageTitle metaDir fields index =
+    if null localPath
+        then pure ()
+        else DocumentMeta.updateImageShortTitle metaDir localPath (capture ("image_title_" ++ show index) fields)
+  where
+    localPath = capture ("image_path_" ++ show index) fields
+
+-- | The number of image-title entries the save carries, parsed from @image_count@ and capped.
+imageCount :: [(String, String)] -> Int
+imageCount fields = min maxImageTitleEntries (parseNonNegativeInt (capture "image_count" fields))
+
+-- | An upper bound on synced image titles per save, so a crafted @image_count@ cannot loop unbounded.
+maxImageTitleEntries :: Int
+maxImageTitleEntries = 1000
+
+-- | Parse a non-negative decimal integer, or @0@ for anything else.
+parseNonNegativeInt :: String -> Int
+parseNonNegativeInt s
+    | not (null s) && all isDigit s = foldl (\acc c -> acc * 10 + digitToInt c) 0 s
+    | otherwise = 0
 
 -- | Whether a query flag (a key, with or without a value) is present in the request query.
 hasQueryFlag :: String -> Http.RequestHead -> Bool

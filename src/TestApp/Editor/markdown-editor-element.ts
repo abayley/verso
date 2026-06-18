@@ -12,6 +12,7 @@ import {
 import { registerExtension } from "./content-extension.js";
 import { INLINE_COMMANDS } from "./editor-toolbar-shared.js";
 import { joinFrontmatter, splitFrontmatter } from "./frontmatter.js";
+import { imageShortTitles } from "./image-metadata.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
 import { renderMarkdown } from "./markdown-render.js";
 import { rawHtmlExtension } from "./raw-html-extension.js";
@@ -1438,6 +1439,25 @@ export class MarkdownEditorElement extends HTMLElement {
         }
     }
 
+    /**
+     * In tree mode, carries each page-relative image's short_title (its alt text, else its filename) into
+     * the save as indexed form fields, so the server syncs the page's `images.yaml` (RFC-0019, ADR-049).
+     * The server reads `image_count` and the `image_path_<i>`/`image_title_<i>` pairs. A no-op outside tree
+     * mode (the flat store has no sidecar metadata) and when the document has no page-relative images.
+     */
+    private attachImageMetadata(parameters: Record<string, string>): void {
+        if (!this.isTreeMode()) {
+            return;
+        }
+
+        const titles = imageShortTitles(this.toMarkdown());
+        parameters["image_count"] = String(titles.length);
+        titles.forEach((entry, index): void => {
+            parameters[`image_path_${index}`] = entry.localPath;
+            parameters[`image_title_${index}`] = entry.shortTitle;
+        });
+    }
+
     /** Hooks the editor value into the surrounding htmx form submission. */
     private configureFormSubmission(): void {
         const form = this.closest("form");
@@ -1456,6 +1476,7 @@ export class MarkdownEditorElement extends HTMLElement {
             // Persist the full document (frontmatter re-attached); track save state against the editor body,
             // which is what the save controller's baseline getter returns.
             htmxEvent.detail.parameters["markdown"] = this.documentMarkdown();
+            this.attachImageMetadata(htmxEvent.detail.parameters);
             this.saveController?.markSubmitted(this.toMarkdown());
         });
         form.addEventListener("htmx:beforeRequest", (): void => {

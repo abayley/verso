@@ -17,7 +17,7 @@ module MicroHttp.TestApp (
 import qualified Data.ByteString.Char8 as BS
 import Data.Char (isSpace)
 import Data.List (intercalate, isSuffixOf)
-import MicroHttp.Attachment (attachmentRoutes, fileAttachmentStore)
+import MicroHttp.Attachment (allowedExtension, attachmentRoutes, extensionOf, fileAttachmentStore, uploadFilename)
 import MicroHttp.Config (Config, configMounts, configString)
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http as Http
@@ -133,7 +133,7 @@ treeRoutes editorThemeDefault root =
     [ Router.get "/" index
     , Router.get "/index.html" index
     , Static.static "/static/editor" "static/editor"
-    , Router.post "/documents/*path" (treeSave root)
+    , Router.post "/documents/*path" (treePost root)
     , Router.get "/documents/*path" (treeGet editorThemeDefault root)
     ]
 
@@ -184,6 +184,96 @@ treeServeFile root path =
                                     [contentTypeHeader (Static.contentTypeFor fsPath)]
                                     (Http.FileBody fsPath size)
                                 )
+
+{- | A POST under the tree: an asset upload (@?asset@, a raw-body file) into the
+document's peer @assets/@ folder, or otherwise a document save.
+-}
+treePost :: FilePath -> Router.Handler
+treePost root captures request
+    | hasQueryFlag "asset" request = treeUpload root captures request
+    | otherwise = treeSave root captures request
+
+-- | The maximum accepted tree asset upload size in bytes.
+treeAssetMaxBytes :: Int
+treeAssetMaxBytes = 10485760
+
+{- | Receives a raw-body file upload and stores it in the editing document's peer
+@assets/@ folder under a meaningful, sanitised filename (from the
+@X-Attachment-Filename@ header), de-duplicating within the folder and suffixing on
+a name collision with different content. Returns @{"url":"assets/<name>"}@ -- a
+page-relative reference the editor inserts, matching the tree's layout.
+-}
+treeUpload :: FilePath -> Router.Handler
+treeUpload root captures request = do
+    bytes <- readBodyStrict (StreamParseError BodyTooLarge) treeAssetMaxBytes
+    let path = capture "path" captures
+        name = uploadFilename request
+    if not (allowedExtension (extensionOf name))
+        then pure (statusResponse 415 "Unsupported Media Type" "attachment type is not allowed\n")
+        else case assetsDirectoryFor root path of
+            Nothing -> pure treeNotFound
+            Just assetsDir -> do
+                liftIO (createDirectoryIfMissing True assetsDir)
+                stored <- liftIO (storeAsset assetsDir name bytes)
+                pure (jsonResponse ("{\"url\":\"assets/" ++ stored ++ "\"}"))
+
+{- | The peer @assets/@ directory of a tree document, or 'Nothing' if the document
+path is unsafe. The path is validated as a tree-relative file; its directory's
+@assets/@ sibling is where the page's images and attachments live.
+-}
+assetsDirectoryFor :: FilePath -> String -> Maybe FilePath
+assetsDirectoryFor root path =
+    fmap (\fsPath -> parentDirectory fsPath ++ "/assets") (Static.resolveStaticPath root (pathSegments path))
+
+{- | Stores bytes in an assets folder under a meaningful name, returning the name
+actually used. An identical file already present is reused (dedup); a name taken
+by different content is suffixed (@diagram.png@ -> @diagram-2.png@ -> ...).
+-}
+storeAsset :: FilePath -> String -> BS.ByteString -> IO String
+storeAsset assetsDir name bytes =
+    tryCandidate (candidateNames name)
+  where
+    tryCandidate [] = do
+        BS.writeFile (assetsDir ++ "/" ++ name) bytes
+        pure name
+    tryCandidate (candidate : rest) = do
+        let target = assetsDir ++ "/" ++ candidate
+        exists <- doesFileExist target
+        if not exists
+            then do
+                BS.writeFile target bytes
+                pure candidate
+            else do
+                existing <- BS.readFile target
+                if existing == bytes
+                    then pure candidate
+                    else tryCandidate rest
+
+{- | A filename and its collision-suffixed alternatives: @x.png@, @x-2.png@,
+@x-3.png@, ... (the suffix goes before the extension).
+-}
+candidateNames :: String -> [String]
+candidateNames name =
+    name : [base ++ "-" ++ show n ++ ext | n <- [(2 :: Int) ..]]
+  where
+    (base, ext) = splitExtension name
+
+{- | Splits a filename into its base and extension (the last @.@ onward), or an
+empty extension when there is none.
+-}
+splitExtension :: String -> (String, String)
+splitExtension name =
+    case break (== '.') (reverse name) of
+        (revExt, '.' : revBase) -> (reverse revBase, '.' : reverse revExt)
+        (_, _) -> (name, "")
+
+jsonResponse :: String -> Http.Response
+jsonResponse body =
+    Http.Response Http.okStatus [contentTypeHeader "application/json"] (Http.StrictBody (BS.pack body))
+
+statusResponse :: Int -> String -> String -> Http.Response
+statusResponse code reason body =
+    Http.Response (Http.Status code reason) [contentTypeHeader "text/plain"] (Http.StrictBody (BS.pack body))
 
 {- | Saves a posted Markdown document back to its file in the tree, creating any
 missing parent directories. Unlike the flat 'saveDocument', the tree mode does

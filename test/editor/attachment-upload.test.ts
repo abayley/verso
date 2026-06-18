@@ -68,6 +68,18 @@ describe("uploadAttachment", (): void => {
         });
     });
 
+    it("posts to a given endpoint (tree mode) and returns its relative URL", async (): Promise<void> => {
+        const fetchMock = vi.fn(
+            async (): Promise<Response> => new Response(JSON.stringify({ url: "assets/cat.png" }), { status: 200 }),
+        );
+        vi.stubGlobal("fetch", fetchMock);
+
+        const url = await uploadAttachment(fileLike("cat.png", "image/png"), "/documents/sec/page.md?asset");
+
+        expect(url).toBe("assets/cat.png");
+        expect(fetchMock).toHaveBeenCalledWith("/documents/sec/page.md?asset", expect.any(Object));
+    });
+
     it.each([
         [413, "too large"],
         [415, "type"],

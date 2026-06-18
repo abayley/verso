@@ -1,10 +1,11 @@
 module MicroHttp.TestAppSpec (spec) where
 
+import Control.Monad (when)
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http
 import MicroHttp.Server (respondToRequestBytes)
 import qualified MicroHttp.TestApp as TestApp
-import System.Directory (createDirectoryIfMissing, removeFile)
+import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
 import Test.Hspec
 
 spec :: Spec
@@ -84,6 +85,47 @@ spec = do
             saved <- readFile (root ++ "/sec/page.md")
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 303
             saved `shouldBe` "<!-- note -->\n\n# H"
+        it "given an asset upload, when routing, then it is stored in the page's assets folder and a relative URL is returned" $ do
+            root <- setupTreeFixture
+            outcome <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "PNGDATA"))
+            stored <- readFile (root ++ "/sec/assets/diagram.png")
+            fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
+            fmap (bodyContains (BS.pack "{\"url\":\"assets/diagram.png\"}")) outcome `shouldBe` Right True
+            stored `shouldBe` "PNGDATA"
+        it "given an identical re-upload, when routing, then it is de-duplicated to the same file" $ do
+            root <- setupTreeFixture
+            _ <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "SAME"))
+            outcome <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "SAME"))
+            fmap (bodyContains (BS.pack "{\"url\":\"assets/diagram.png\"}")) outcome `shouldBe` Right True
+        it "given a name collision with different content, when routing, then the upload is suffixed" $ do
+            root <- setupTreeFixture
+            _ <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "FIRST"))
+            outcome <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "SECOND"))
+            suffixed <- readFile (root ++ "/sec/assets/diagram-2.png")
+            fmap (bodyContains (BS.pack "{\"url\":\"assets/diagram-2.png\"}")) outcome `shouldBe` Right True
+            suffixed `shouldBe` "SECOND"
+        it "given an upload of a disallowed type, when routing, then it is rejected with a 415" $ do
+            root <- setupTreeFixture
+            outcome <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (uploadRequest "/documents/sec/page.md?asset" "evil.exe" "MZ"))
+            fmap (statusCode . responseStatus) outcome `shouldBe` Right 415
 
 getRequest :: String -> String
 getRequest target =
@@ -112,13 +154,31 @@ isSizedFileBody response =
         FileBody _ size -> size > 0
         _ -> False
 
+uploadRequest :: String -> String -> String -> String
+uploadRequest target filename body =
+    "POST "
+        ++ target
+        ++ " HTTP/1.1\r\nX-Attachment-Filename: "
+        ++ filename
+        ++ "\r\nContent-Length: "
+        ++ show (length body)
+        ++ "\r\n\r\n"
+        ++ body
+
 setupTreeFixture :: IO FilePath
 setupTreeFixture = do
     let root = "build/tree-fixture"
     createDirectoryIfMissing True (root ++ "/sec/assets")
+    -- Clear upload artifacts a previous test may have left, so dedup/collision start from a clean folder.
+    mapM_ (removeIfExists . ((root ++ "/sec/assets/") ++)) ["diagram.png", "diagram-2.png"]
     writeFile (root ++ "/sec/page.md") "# Hello tree\n\nA tree document."
     writeFile (root ++ "/sec/assets/pixel.png") "\137PNG\r\n\SUBpixel"
     return root
+
+removeIfExists :: FilePath -> IO ()
+removeIfExists path = do
+    exists <- doesFileExist path
+    when exists (removeFile path)
 
 bodyContains :: BS.ByteString -> Response -> Bool
 bodyContains needle response =

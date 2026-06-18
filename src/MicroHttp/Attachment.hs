@@ -14,9 +14,12 @@ deduplication and a collision-free-in-practice address, not a security primitive
 -}
 module MicroHttp.Attachment (
     AttachmentStore (..),
+    allowedExtension,
     attachmentRoutes,
     contentHash,
+    extensionOf,
     fileAttachmentStore,
+    uploadFilename,
 ) where
 
 import Data.Bits (xor)

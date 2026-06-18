@@ -1257,17 +1257,31 @@ export class MarkdownEditorElement extends HTMLElement {
      * dismissable message (inserting nothing) on failure. An "Uploading…" status shows while in flight.
      */
     private async uploadFiles(files: File[]): Promise<void> {
+        const endpoint = this.uploadEndpoint();
+
         for (const file of files) {
             this.showUploadNotice(`Uploading ${file.name}…`, false);
 
             try {
-                const url = await uploadAttachment(file);
+                const url = await uploadAttachment(file, endpoint);
                 this.insertUpload(file, url);
                 this.hideUploadNotice();
             } catch (error: unknown) {
                 this.showUploadNotice(`${file.name}: ${errorMessage(error)}`, true);
             }
         }
+    }
+
+    /**
+     * The upload endpoint: in tree mode the editing document's peer-`assets/` endpoint (which returns a
+     * page-relative URL the editor inserts as `assets/<name>`); otherwise the content-addressed store.
+     */
+    private uploadEndpoint(): string {
+        if (this.isTreeMode()) {
+            return `/documents/${this.getAttribute("data-document") ?? ""}?asset`;
+        }
+
+        return "/attachments";
     }
 
     /** Inserts an uploaded file's Markdown at the caret: an inline image, or a download link otherwise. */

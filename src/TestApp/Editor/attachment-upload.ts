@@ -61,12 +61,14 @@ interface UploadResponse {
 }
 
 /**
- * Uploads a file to the attachment store as a raw-body POST, returning the stored URL. Throws an error
- * with a user-facing message on a non-OK status (e.g. 413 too large, 415 disallowed type) or a malformed
- * response, so the editor can surface it and insert nothing.
+ * Uploads a file to an attachment endpoint as a raw-body POST, returning the stored URL. The endpoint is
+ * the content-addressed `/attachments` store by default, or a document's peer-`assets/` endpoint in the
+ * tree-editing mode (which returns a page-relative URL). Throws an error with a user-facing message on a
+ * non-OK status (e.g. 413 too large, 415 disallowed type) or a malformed response, so the editor can
+ * surface it and insert nothing.
  */
-export async function uploadAttachment(file: File): Promise<string> {
-    const response = await fetch("/attachments", {
+export async function uploadAttachment(file: File, endpoint = "/attachments"): Promise<string> {
+    const response = await fetch(endpoint, {
         body: file,
         headers: { "X-Attachment-Filename": encodeURIComponent(file.name) },
         method: "POST",

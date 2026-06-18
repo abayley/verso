@@ -1,7 +1,7 @@
 ---
 id: RFC-0017
 name: Editor Content Extensions
-status: Completed
+status: Implemented
 owners:
     - alistair
 created: 2026-06-16

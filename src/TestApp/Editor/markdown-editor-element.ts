@@ -404,6 +404,10 @@ export class MarkdownEditorElement extends HTMLElement {
         toolbar.className = "markdown-editor__toolbar markdown-editor__toolbar--top";
         this.documentName = this.createDocumentName();
         toolbar.append(this.documentName);
+        const readEditLink = this.createReadEditLink();
+        if (readEditLink) {
+            toolbar.append(readEditLink);
+        }
         this.modeGroup = this.createModeGroup();
         toolbar.append(this.modeGroup);
         this.widthGroup = this.createWidthGroup();
@@ -414,6 +418,30 @@ export class MarkdownEditorElement extends HTMLElement {
         toolbar.append(this.themeGroup);
 
         return toolbar;
+    }
+
+    /**
+     * The read/edit navigation link for tree documents (RFC-0020): "Edit" in the read view (-> `?edit`) and
+     * "View" in the edit view (-> the plain read URL). Plain navigation, so it works without JavaScript.
+     * Returns null outside tree mode, where the read/edit selectors do not apply.
+     */
+    private createReadEditLink(): HTMLAnchorElement | null {
+        if (!this.isTreeMode()) {
+            return null;
+        }
+
+        const document = this.getAttribute("data-document") ?? "";
+        const link = window.document.createElement("a");
+        link.className = "markdown-editor__view-toggle";
+        if (this.isReadonly()) {
+            link.href = `/documents/${document}?edit`;
+            link.textContent = "Edit";
+        } else {
+            link.href = `/documents/${document}`;
+            link.textContent = "View";
+        }
+
+        return link;
     }
 
     /** Creates the floating Lit command bar and routes its command events to the active editor. */

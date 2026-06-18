@@ -82,6 +82,15 @@ markdown-editor {
   margin-right: auto;
 }
 
+.markdown-editor__view-toggle {
+  color: var(--markdown-editor-muted);
+  text-decoration: none;
+}
+
+.markdown-editor__view-toggle:hover {
+  color: var(--markdown-editor-text);
+}
+
 .markdown-editor__mode-group,
 .markdown-editor__width-group,
 .markdown-editor__theme-group {

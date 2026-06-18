@@ -18,6 +18,22 @@ A single Markdown document in the tree, identified by its tree-relative path
 including `.md`. The unit a reader views and an author edits.
 _Avoid_: file (too generic), article.
 
+**Read view**:
+The default rendered, read-only presentation of a **page** (a plain `GET` of its
+URL). It is the **edit view**'s shell with editing switched off (RFC-0020,
+ADR-050).
+_Avoid_: preview (that is the editor's split pane), view mode.
+
+**Edit view**:
+The editable presentation of a **page** (`?edit`): the full editor with the
+editing controls and autosave.
+_Avoid_: editor mode.
+
+**Raw Markdown**:
+A **page**'s verbatim Markdown bytes, including **frontmatter** (`?raw`), for
+tooling and diffs.
+_Avoid_: source (that is the editor's Markdown view).
+
 **Peer assets**:
 A page's sibling `assets/` folder, holding the images and attachments that page
 references page-relative (`assets/x.png`). Each page directory has its own.

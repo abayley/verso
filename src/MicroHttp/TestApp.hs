@@ -6,29 +6,32 @@ module MicroHttp.TestApp (
     appFromConfig,
     appWith,
     appWithDocumentRoot,
+    appWithDocumentTree,
     appWithStore,
     documentRoutes,
     fileStore,
     routes,
+    treeRoutes,
 ) where
 
 import qualified Data.ByteString.Char8 as BS
 import Data.Char (isSpace)
-import Data.List (intercalate)
+import Data.List (intercalate, isSuffixOf)
 import MicroHttp.Attachment (attachmentRoutes, fileAttachmentStore)
 import MicroHttp.Config (Config, configMounts, configString)
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http as Http
 import MicroHttp.Http.Parse (ParseError (..))
 import MicroHttp.Http.PercentEncoding (decodeFormValue)
-import MicroHttp.Iteratee (liftIO, readBodyStrict)
+import MicroHttp.Iteratee (Iter, liftIO, readBodyStrict)
 import MicroHttp.Log (Logger, fileLogfmtLogger)
 import MicroHttp.Middleware (logRequests, withErrorResponses)
+import MicroHttp.Network.Socket (fileSizeBytes)
 import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
 import MicroHttp.Stream (StreamError (..))
-import System.Directory (doesFileExist)
+import System.Directory (createDirectoryIfMissing, doesFileExist)
 
 data DocumentStore = DocumentStore
     { loadDocument :: String -> IO String
@@ -60,14 +63,26 @@ appFromConfig settings cfg =
         ( withErrorResponses
             ( Router.serveRoutes
                 (Server.parseLimits settings)
-                ( documentRoutes
-                    (configString "editor_theme" "paper" cfg)
-                    (configString "document_root" "data/documents" cfg)
-                    ++ attachmentRoutes (fileAttachmentStore (configString "attachment_root" "data/attachments" cfg))
-                    ++ [Static.static prefix root | (prefix, root) <- configMounts "static_mounts" cfg]
-                )
+                (configuredRoutes cfg)
             )
         )
+
+{- | The route set chosen by configuration. Setting @document_tree_root@ selects
+the filesystem-tree mode (a MkDocs-style tree served and edited in place, with
+per-page peer @assets/@); otherwise the flat single-document store is used.
+-}
+configuredRoutes :: Config -> [Router.Route]
+configuredRoutes cfg =
+    case configString "document_tree_root" "" cfg of
+        "" ->
+            documentRoutes editorTheme (configString "document_root" "data/documents" cfg)
+                ++ attachmentRoutes (fileAttachmentStore (configString "attachment_root" "data/attachments" cfg))
+                ++ mounts
+        treeRoot ->
+            treeRoutes editorTheme treeRoot ++ mounts
+  where
+    editorTheme = configString "editor_theme" "paper" cfg
+    mounts = [Static.static prefix root | (prefix, root) <- configMounts "static_mounts" cfg]
 
 appWithDocumentRoot :: FilePath -> Server.Application
 appWithDocumentRoot root =
@@ -104,6 +119,128 @@ routes editorThemeDefault store =
     , Router.post "/documents/:id" (saveDocument editorThemeDefault store)
     , Static.static "/static/editor" "static/editor"
     ]
+
+{- | Routes that serve and edit a documentation tree on the filesystem. The whole
+tree is reachable under @/documents/@; the editor opens at a document's own URL
+with @?edit@ (so the page's base path is the file's directory and relative
+@assets/...@ links resolve to the real files); a @POST@ writes the @.md@ back;
+and every other tree file (images, attachments, raw Markdown) is served
+statically and path-safely (reusing 'Static.resolveStaticPath'). The document id
+is the tree-relative path including the @.md@ extension.
+-}
+treeRoutes :: String -> FilePath -> [Router.Route]
+treeRoutes editorThemeDefault root =
+    [ Router.get "/" index
+    , Router.get "/index.html" index
+    , Static.static "/static/editor" "static/editor"
+    , Router.post "/documents/*path" (treeSave editorThemeDefault root)
+    , Router.get "/documents/*path" (treeGet editorThemeDefault root)
+    ]
+
+-- | The bare tree-serving application (no middleware), for tests and embedding.
+appWithDocumentTree :: String -> FilePath -> Server.Application
+appWithDocumentTree editorThemeDefault root =
+    Router.serveRoutes
+        (Server.parseLimits Server.defaultSettings)
+        (treeRoutes editorThemeDefault root)
+
+{- | A GET under the tree: the editor page for @?edit@ on a Markdown file,
+otherwise the file served statically (raw Markdown, images, attachments).
+-}
+treeGet :: String -> FilePath -> Router.Handler
+treeGet editorThemeDefault root captures request
+    | hasQueryFlag "edit" request && isMarkdownPath path = treeEdit editorThemeDefault root path request
+    | otherwise = treeServeFile root path
+  where
+    path = capture "path" captures
+
+-- | Renders the editor for a tree document, loading its current content (or a seed if absent).
+treeEdit :: String -> FilePath -> String -> Http.RequestHead -> Iter StreamError Http.Response
+treeEdit editorThemeDefault root path request =
+    case Static.resolveStaticPath root (pathSegments path) of
+        Nothing -> pure treeNotFound
+        Just fsPath -> do
+            exists <- liftIO (doesFileExist fsPath)
+            content <- if exists then liftIO (readFile fsPath) else pure seededMarkdown
+            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content Nothing))
+
+-- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
+treeServeFile :: FilePath -> String -> Iter StreamError Http.Response
+treeServeFile root path =
+    case Static.resolveStaticPath root (pathSegments path) of
+        Nothing -> pure treeNotFound
+        Just fsPath -> do
+            exists <- liftIO (doesFileExist fsPath)
+            if not exists
+                then pure treeNotFound
+                else do
+                    sized <- liftIO (fileSizeBytes fsPath)
+                    case sized of
+                        Nothing -> pure treeNotFound
+                        Just size ->
+                            pure
+                                ( Http.Response
+                                    Http.okStatus
+                                    [contentTypeHeader (Static.contentTypeFor fsPath)]
+                                    (Http.FileBody fsPath size)
+                                )
+
+{- | Saves a posted Markdown document back to its file in the tree, creating any
+missing parent directories. Shares the raw-HTML guard and htmx/redirect handling
+of the flat 'saveDocument'.
+-}
+treeSave :: String -> FilePath -> Router.Handler
+treeSave editorThemeDefault root captures request = do
+    bodyBytes <- readBodyStrict (StreamParseError BodyTooLarge) formBodyLimit
+    let markdown = markdownFromBody bodyBytes
+        path = capture "path" captures
+    case validateMarkdown markdown of
+        Just err
+            | isHtmxRequest request -> pure (htmlResponseChunks (validationStatusFragment err))
+            | otherwise ->
+                pure (documentResponse (editorPage path Nothing editorThemeDefault markdown (Just err)))
+        Nothing ->
+            case Static.resolveStaticPath root (pathSegments path) of
+                Nothing -> pure treeNotFound
+                Just fsPath -> do
+                    liftIO (createDirectoryIfMissing True (parentDirectory fsPath))
+                    liftIO (writeFile fsPath markdown)
+                    if isHtmxRequest request
+                        then pure (htmlResponseChunks (saveStatusFragment markdown))
+                        else pure (seeOtherResponse ("/documents/" ++ path ++ "?edit"))
+
+-- | Whether a query flag (a key, with or without a value) is present in the request query.
+hasQueryFlag :: String -> Http.RequestHead -> Bool
+hasQueryFlag name request =
+    any (\(key, _) -> key == name) (Http.requestQuery request)
+
+-- | Whether a tree path names a Markdown document.
+isMarkdownPath :: String -> Bool
+isMarkdownPath path =
+    ".md" `isSuffixOf` path
+
+-- | The non-empty @/@-separated segments of a tree path (the input to 'Static.resolveStaticPath').
+pathSegments :: String -> [String]
+pathSegments path =
+    filter (not . null) (splitOn '/' path)
+
+-- | The parent directory of a filesystem path (everything up to the last @/@), or @"."@ if none.
+parentDirectory :: FilePath -> FilePath
+parentDirectory fsPath =
+    case break (== '/') (reverse fsPath) of
+        (_, '/' : rest) -> reverse rest
+        (_, _) -> "."
+
+contentTypeHeader :: String -> Http.Header
+contentTypeHeader value =
+    (Http.normaliseHeaderName (BS.pack "Content-Type"), BS.pack value)
+
+treeNotFound :: Http.Response
+treeNotFound =
+    Http.Response
+        (Http.Status 404 "Not Found")
+        [contentTypeHeader "text/plain"]
+        (Http.StrictBody (BS.pack "not found\n"))
 
 index :: Router.Handler
 index _ _ =

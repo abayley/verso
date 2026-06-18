@@ -1,4 +1,5 @@
 import { markdown } from "@codemirror/lang-markdown";
+import { EditorState } from "@codemirror/state";
 import { basicSetup, EditorView } from "codemirror";
 import type { VisualBlockStyle } from "./tiptap-visual-editor.js";
 
@@ -24,10 +25,12 @@ export class CodeMirrorSourceEditor {
         markdownText: string,
         onChange: CodeMirrorChangeHandler,
         onLinkShortcut: CodeMirrorLinkShortcutHandler,
+        options: { editable?: boolean } = {},
     ) {
         this.root = document.createElement("div");
         this.root.className = "markdown-editor__source";
         this.onLinkShortcut = onLinkShortcut;
+        const editable = options.editable ?? true;
 
         this.view = new EditorView({
             doc: markdownText,
@@ -35,6 +38,9 @@ export class CodeMirrorSourceEditor {
                 basicSetup,
                 markdown(),
                 EditorView.lineWrapping,
+                // Read-only source view (RFC-0020): block edits and the editing affordance.
+                EditorState.readOnly.of(!editable),
+                EditorView.editable.of(editable),
                 EditorView.domEventHandlers({
                     keydown: (event: KeyboardEvent): boolean => this.handleKeyDown(event),
                 }),

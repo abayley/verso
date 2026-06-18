@@ -337,12 +337,15 @@ export class MarkdownEditorElement extends HTMLElement {
         workspace.className = "markdown-editor__workspace";
         workspace.append(this.body);
         if (this.isTreeMode()) {
-            this.attachmentPanel = new AttachmentPanel((attachment: PanelAttachment): void =>
-                this.insertAttachmentLink(attachment),
+            this.attachmentPanel = new AttachmentPanel(
+                (attachment: PanelAttachment): void => this.insertAttachmentLink(attachment),
+                this.isReadonly(),
             );
             this.attachmentPanel.setAttachments(parseEmbeddedAttachments(this.getAttribute("data-attachments")));
             workspace.append(this.attachmentPanel.element());
-            this.enableAttachmentDrop(this.body);
+            if (!this.isReadonly()) {
+                this.enableAttachmentDrop(this.body);
+            }
         }
 
         this.append(
@@ -357,19 +360,24 @@ export class MarkdownEditorElement extends HTMLElement {
             footer,
             this.wordCount,
         );
-        this.fileInput = this.createFileInput();
-        this.append(this.fileInput);
         this.applyBodyWidth();
         this.renderMode();
         this.updateToolbarState();
         this.updatePreview();
         this.updateWordCount();
-        this.configureFormSubmission();
         this.systemThemeQuery()?.addEventListener("change", this.handleSystemThemeChange);
         document.addEventListener("selectionchange", this.handleSelectionChange);
-        this.body.addEventListener("dragover", this.handleDragOver);
-        this.body.addEventListener("drop", this.handleDrop);
-        this.body.addEventListener("paste", this.handlePaste, true);
+
+        // The read view (RFC-0020) has no write path: no upload, no autosave form. Wire those only when
+        // editable. (The bottom bar and floating editing affordances are hidden by CSS keyed on data-readonly.)
+        if (!this.isReadonly()) {
+            this.fileInput = this.createFileInput();
+            this.append(this.fileInput);
+            this.configureFormSubmission();
+            this.body.addEventListener("dragover", this.handleDragOver);
+            this.body.addEventListener("drop", this.handleDrop);
+            this.body.addEventListener("paste", this.handlePaste, true);
+        }
     }
 
     /** Creates the hidden file input the toolbar and slash commands trigger for uploads. */
@@ -968,6 +976,7 @@ export class MarkdownEditorElement extends HTMLElement {
                 this.markdown,
                 (): void => this.handleSourceInput(),
                 (): void => this.handleSourceLinkShortcut(),
+                { editable: !this.isReadonly() },
             );
             this.sourceEditor.element().addEventListener("focusin", (): void => {
                 this.activePane = "source";
@@ -979,7 +988,7 @@ export class MarkdownEditorElement extends HTMLElement {
                 this.markdown,
                 (): void => this.handleVisualInput(),
                 (): void => this.handleVisualLinkShortcut(),
-                { preserveRawHtml: this.isTreeMode() },
+                { preserveRawHtml: this.isTreeMode(), editable: !this.isReadonly() },
             );
             this.visualEditor.element().addEventListener("focusin", (): void => {
                 this.activePane = "visual";
@@ -1016,6 +1025,11 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Whether the editor is serving a document from the filesystem tree (set by the server). */
     private isTreeMode(): boolean {
         return this.getAttribute("data-document-mode") === "tree";
+    }
+
+    /** Whether the document is shown read-only (the rendered reading view, RFC-0020); set by the server. */
+    private isReadonly(): boolean {
+        return this.hasAttribute("data-readonly");
     }
 
     /** Returns the initial colour scheme: stored preference, then attribute, else match-system. */

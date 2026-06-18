@@ -1073,3 +1073,15 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 .markdown-editor__slash-item--active {
   background: var(--markdown-editor-code-background);
 }
+
+/* The rendered reading view (RFC-0020, ADR-050) keeps the presentation top bar but removes every editing
+   surface: the bottom bar (formatting toolbar + Save) and the floating editing affordances. Content is made
+   non-editable independently, in the editors themselves. */
+markdown-editor[data-readonly] .markdown-editor__footer,
+markdown-editor[data-readonly] .markdown-editor__bubble,
+markdown-editor[data-readonly] .markdown-editor__slash-menu,
+markdown-editor[data-readonly] .markdown-editor__table-controls,
+markdown-editor[data-readonly] .markdown-editor__link-editor,
+markdown-editor[data-readonly] .markdown-editor__link-actions {
+  display: none !important;
+}

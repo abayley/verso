@@ -82,4 +82,16 @@ describe("AttachmentPanel", (): void => {
         expect(rows.length).toBe(1);
         expect(panel.element().dataset["empty"]).toBe("false");
     });
+
+    it("in read-only mode lists open links but omits the insert action and dragging", (): void => {
+        const panel = new AttachmentPanel(() => {}, true);
+        panel.setAttachments(sample);
+
+        const links = panel.element().querySelectorAll<HTMLAnchorElement>(".markdown-editor__attachment-link");
+        expect(Array.from(links).map((link) => link.getAttribute("href"))).toEqual(["assets/A.pdf", "assets/B.pdf"]);
+
+        expect(panel.element().querySelectorAll(".markdown-editor__attachment-insert").length).toBe(0);
+        const rows = panel.element().querySelectorAll<HTMLLIElement>(".markdown-editor__attachment");
+        expect(Array.from(rows).every((row) => !row.hasAttribute("draggable"))).toBe(true);
+    });
 });

@@ -199,7 +199,7 @@ export class TiptapVisualEditor {
         markdown: string,
         onChange: TiptapChangeHandler,
         onLinkShortcut: TiptapLinkShortcutHandler,
-        options: { preserveRawHtml?: boolean } = {},
+        options: { preserveRawHtml?: boolean; editable?: boolean } = {},
     ) {
         this.root = document.createElement("div");
         this.root.className = "markdown-editor__surface";
@@ -213,6 +213,7 @@ export class TiptapVisualEditor {
         this.editor = new Editor({
             content: raw.stripped,
             contentType: "markdown",
+            editable: options.editable ?? true,
             element: this.root,
             extensions: [
                 StarterKit.configure({

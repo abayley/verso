@@ -58,7 +58,10 @@ export class AttachmentPanel {
     private readonly list: HTMLUListElement;
     private readonly seen = new Set<string>();
 
-    constructor(private readonly onInsert: (attachment: PanelAttachment) => void) {
+    constructor(
+        private readonly onInsert: (attachment: PanelAttachment) => void,
+        private readonly readonly = false,
+    ) {
         this.panel = document.createElement("aside");
         this.panel.className = "markdown-editor__metadata-panel";
         this.panel.setAttribute("aria-label", "Page metadata");
@@ -106,11 +109,6 @@ export class AttachmentPanel {
     private createRow(attachment: PanelAttachment): HTMLLIElement {
         const row = document.createElement("li");
         row.className = "markdown-editor__attachment";
-        row.draggable = true;
-        row.addEventListener("dragstart", (event: DragEvent): void => {
-            event.dataTransfer?.setData(ATTACHMENT_DRAG_TYPE, JSON.stringify(attachment));
-            event.dataTransfer?.setData("text/plain", attachmentLinkMarkdown(attachment));
-        });
 
         const link = document.createElement("a");
         link.className = "markdown-editor__attachment-link";
@@ -118,14 +116,27 @@ export class AttachmentPanel {
         link.target = "_blank";
         link.rel = "noopener";
         link.textContent = attachment.name;
+        row.append(link);
+
+        // In the read view the panel is a plain list of files to open; the insert action and drag-to-insert
+        // both mutate the document, so they are omitted there (RFC-0020).
+        if (this.readonly) {
+            return row;
+        }
+
+        row.draggable = true;
+        row.addEventListener("dragstart", (event: DragEvent): void => {
+            event.dataTransfer?.setData(ATTACHMENT_DRAG_TYPE, JSON.stringify(attachment));
+            event.dataTransfer?.setData("text/plain", attachmentLinkMarkdown(attachment));
+        });
 
         const insert = document.createElement("button");
         insert.type = "button";
         insert.className = "markdown-editor__attachment-insert";
         insert.textContent = "Insert";
         insert.addEventListener("click", (): void => this.onInsert(attachment));
+        row.append(insert);
 
-        row.append(link, insert);
         return row;
     }
 }

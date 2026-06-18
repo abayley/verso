@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseMarkdown } from "../../src/TestApp/Editor/markdown-parse.js";
 import { documentFromElements, documentToMarkdown } from "../../src/TestApp/Editor/markdown-serialise.js";
 
 describe("documentFromElements", (): void => {
@@ -365,5 +366,15 @@ describe("documentToMarkdown", (): void => {
                 ],
             }),
         ).toBe(["First line\\", "second line."].join("\n"));
+    });
+});
+
+describe("Markdown round-trip", (): void => {
+    it.each([
+        ["a MkDocs Material icon shortcode", ":material-book-open-page-variant: Reference material"],
+        ["a shortcode among text", "See :material-cog: settings and :material-home: home."],
+    ])("given %s, when parsed and serialised, then it round-trips verbatim as text", (_name, markdown): void => {
+        // Icon shortcodes are not CommonMark; the editor treats them as plain text and preserves them.
+        expect(documentToMarkdown(parseMarkdown(markdown))).toBe(markdown);
     });
 });

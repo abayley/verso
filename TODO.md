@@ -2,6 +2,7 @@
 
 backend:
 
+- organise code - separate MicroHttp framework from TestApp, rename TestApp to something meaningfull.
 - generated ToC
 - plan where images and attachments should go
 - would like to notify user when page they are viewing or editing has been modified by someone else; how?
@@ -20,7 +21,6 @@ backend:
 
 frontend:
 
-- upload images and attachments
 - add navtree on LHS that supports drag + drop and renaming
   needs to handle when other users update too - what is the notification mechanism? websockets?
 - themes: Roy Lichtenstein (pop-art, line style, solid colour), patrick caulfield, simple (b+w) line art style

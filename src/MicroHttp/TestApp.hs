@@ -131,12 +131,16 @@ is the tree-relative path including the @.md@ extension.
 -}
 treeRoutes :: String -> FilePath -> [Router.Route]
 treeRoutes editorThemeDefault root =
-    [ Router.get "/" index
-    , Router.get "/index.html" index
+    [ Router.get "/" (redirectTo "/documents/")
+    , Router.get "/index.html" (redirectTo "/documents/")
     , Static.static "/static/editor" "static/editor"
     , Router.post "/documents/*path" (treePost root)
     , Router.get "/documents/*path" (treeGet editorThemeDefault root)
     ]
+
+-- | A handler that redirects to a fixed location (a @303 See Other@ to a GET target).
+redirectTo :: String -> Router.Handler
+redirectTo location _ _ = pure (seeOtherResponse location)
 
 -- | The bare tree-serving application (no middleware), for tests and embedding.
 appWithDocumentTree :: String -> FilePath -> Server.Application
@@ -155,7 +159,10 @@ treeGet editorThemeDefault root captures request
     | hasQueryFlag "raw" request = treeServeFile root path
     | otherwise = treeRead editorThemeDefault root path request
   where
-    path = capture "path" captures
+    -- The tree root (@/documents@ or @/documents/@) resolves to its @index.md@ page.
+    path = case capture "path" captures of
+        "" -> "index.md"
+        captured -> captured
 
 {- | Renders the editable editor for a tree document, loading its current content
 (or a seed if the file is absent, so a missing page can be created by editing).

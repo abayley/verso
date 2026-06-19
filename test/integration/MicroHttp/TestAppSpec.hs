@@ -67,6 +67,31 @@ spec = do
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
             fmap contentTypeOf outcome `shouldBe` Right (Just (BS.pack "text/markdown"))
             fmap isSizedFileBody outcome `shouldBe` Right True
+        it "given a GET of /, when routing, then it redirects to /documents/" $ do
+            root <- setupTreeFixture
+            outcome <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (getRequest "/"))
+            fmap (statusCode . responseStatus) outcome `shouldBe` Right 303
+            fmap locationOf outcome `shouldBe` Right (Just (BS.pack "/documents/"))
+        it "given a GET of /index.html, when routing, then it redirects to /documents/" $ do
+            root <- setupTreeFixture
+            outcome <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (getRequest "/index.html"))
+            fmap (statusCode . responseStatus) outcome `shouldBe` Right 303
+            fmap locationOf outcome `shouldBe` Right (Just (BS.pack "/documents/"))
+        it "given a GET of /documents/, when routing, then the tree root index.md renders read-only" $ do
+            root <- setupTreeFixture
+            outcome <-
+                respondToRequestBytes
+                    (TestApp.appWithDocumentTree "paper" root)
+                    (BS.pack (getRequest "/documents/"))
+            fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
+            fmap (bodyContains (BS.pack "data-readonly")) outcome `shouldBe` Right True
+            fmap (bodyContains (BS.pack "Tree Home")) outcome `shouldBe` Right True
         it "given an ?edit request for a missing page, when routing, then it still seeds a starter document" $ do
             root <- setupTreeFixture
             outcome <-
@@ -270,6 +295,7 @@ setupTreeFixture = do
     mapM_ (removeIfExists . ((root ++ "/sec/assets/") ++)) ["diagram.png", "diagram-2.png", "Diagram_One.png", "My_Report.pdf"]
     -- Clear sidecar metadata a previous test may have recorded, so the metadata assertions start clean.
     mapM_ (removeIfExists . ((root ++ "/sec/meta/page.meta/") ++)) ["attachments.yaml", "images.yaml"]
+    writeFile (root ++ "/index.md") "# Tree Home\n\nWelcome to the tree."
     writeFile (root ++ "/sec/page.md") "# Hello tree\n\nA tree document."
     writeFile (root ++ "/sec/assets/pixel.png") "\137PNG\r\n\SUBpixel"
     return root

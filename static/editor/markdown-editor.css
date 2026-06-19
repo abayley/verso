@@ -75,7 +75,12 @@ markdown-editor {
   font: 13px system-ui, sans-serif;
   gap: 1.25rem;
   letter-spacing: 0.04em;
+  /* Capped at the "wide" column width and centred, so the controls sit at the right edge of the wide pane
+     rather than the far edge of the viewport; they only move inward once the viewport is narrower than this. */
+  margin: 0 auto;
+  max-width: 76rem;
   padding: 1rem 0.25rem;
+  width: 100%;
 }
 
 .markdown-editor__document-name {
@@ -161,14 +166,11 @@ markdown-editor[data-body-width="full"] .markdown-editor__workspace {
   max-width: none;
 }
 
-/* Split is always full width regardless of the chosen single-column preset; declared after the presets so
-   it wins at equal specificity. The width control has no effect in split, so it is hidden there. */
-markdown-editor[mode="split"] .markdown-editor__workspace {
-  max-width: none;
-}
-
+/* Split always uses the full width (effectiveBodyWidth forces data-body-width="full"). The width control
+   stays visible -- showing Full selected -- so the toolbar does not reflow, but it is locked there. */
 markdown-editor[mode="split"] .markdown-editor__width-group {
-  display: none;
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 .markdown-editor__metadata-panel {
@@ -451,6 +453,20 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
 .markdown-editor__preview table {
   border-collapse: collapse;
   margin: 0;
+}
+
+/* Wide tables stay inside the pane and scroll horizontally rather than overflowing it. The visual surface
+   wraps tables in .tableWrapper (Tiptap); the preview renders a bare table, so it scrolls as a block. */
+.markdown-editor__surface .tableWrapper {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.markdown-editor__preview table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  width: max-content;
 }
 
 .markdown-editor__surface th,
@@ -1091,6 +1107,7 @@ markdown-editor[data-readonly] .markdown-editor__bubble,
 markdown-editor[data-readonly] .markdown-editor__slash-menu,
 markdown-editor[data-readonly] .markdown-editor__table-controls,
 markdown-editor[data-readonly] .markdown-editor__link-editor,
-markdown-editor[data-readonly] .markdown-editor__link-actions {
+markdown-editor[data-readonly] .markdown-editor__link-actions,
+markdown-editor[data-readonly] .markdown-image__resize-handle {
   display: none !important;
 }

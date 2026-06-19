@@ -526,6 +526,11 @@ export class MarkdownEditorElement extends HTMLElement {
         group.setAttribute("size", "small");
         group.append(...bodyWidths.map((width): HTMLElement => this.createWidthOption(width.value, width.label)));
         group.addEventListener("change", (): void => {
+            // The width is locked to Full in split (the control is shown but inert there), so ignore changes.
+            if (this.mode === "split") {
+                return;
+            }
+
             const value = elementValue(group);
 
             if (isBodyWidth(value) && value !== this.bodyWidth) {
@@ -559,13 +564,21 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /**
-     * Applies the chosen editing-column width as a `data-body-width` attribute the stylesheet keys off. The
-     * top toolbar always spans the page, so changing the width (including "full") resizes only the editing
-     * column and never shifts the toolbar controls. The width is a client preference (localStorage), like
-     * the colour scheme and visual theme.
+     * Applies the editing-column width as a `data-body-width` attribute the stylesheet keys off. Changing
+     * the width resizes only the editing column; the top bar is capped at the "wide" width independently, so
+     * its controls never shift. The width is a client preference (localStorage), like the colour scheme.
      */
     private applyBodyWidth(): void {
-        this.setAttribute("data-body-width", this.bodyWidth);
+        this.setAttribute("data-body-width", this.effectiveBodyWidth());
+    }
+
+    /**
+     * The width preset actually applied. Split always uses the full width (the two panes need the room), so
+     * the control shows "Full" and is locked there; the chosen single-column preset is remembered for the
+     * visual and Markdown views.
+     */
+    private effectiveBodyWidth(): BodyWidth {
+        return this.mode === "split" ? "full" : this.bodyWidth;
     }
 
     /** Creates the editor theme radio group. */
@@ -1438,6 +1451,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.markdown = markdown;
         this.mode = mode;
         this.setAttribute("mode", mode);
+        this.applyBodyWidth();
         this.renderMode();
         this.updateToolbarState();
         this.updatePreview();
@@ -1677,11 +1691,12 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         if (this.widthGroup) {
-            setElementValue(this.widthGroup, this.bodyWidth);
-            this.widthGroup.setAttribute("value", this.bodyWidth);
+            const width = this.effectiveBodyWidth();
+            setElementValue(this.widthGroup, width);
+            this.widthGroup.setAttribute("value", width);
 
             for (const option of this.widthGroup.querySelectorAll("wa-radio")) {
-                if (option.getAttribute("value") === this.bodyWidth) {
+                if (option.getAttribute("value") === width) {
                     option.setAttribute("checked", "");
                 } else {
                     option.removeAttribute("checked");

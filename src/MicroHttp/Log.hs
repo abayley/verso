@@ -20,13 +20,13 @@ module MicroHttp.Log (
     fileLogfmtLogger,
 ) where
 
+import qualified Data.ByteString.Char8 as BS
 import Foreign.C.String (CString, peekCStringLen, withCString)
 import Foreign.Marshal.Alloc (alloca, allocaBytes)
 import Foreign.Ptr (Ptr)
 import Foreign.Storable (poke)
 import MicroHttp.Http (Status (..))
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), Port (..))
-import System.IO (appendFile)
 import System.IO.TimeMilli (getTimeMilli)
 
 -- localtime converts epoch seconds to a broken-down local time (applying the
@@ -110,10 +110,12 @@ timestampBufferBytes = 64
 
 {- | A logfmt logger that appends each line to a file at the given path. It
 opens the file in append mode for each line, so writes go to the end without a
-shared handle; adequate for low to moderate request volume.
+shared handle; adequate for low to moderate request volume. The line is written
+as bytes (the request target is byte-valued UTF-8); 'appendFile' would re-encode
+it as UTF-8 and double-encode a non-ASCII target (see MicroHttp.TestApp).
 -}
 fileLogfmtLogger :: FilePath -> Logger
-fileLogfmtLogger path = logfmtTo (\line -> appendFile path (line ++ "\n"))
+fileLogfmtLogger path = logfmtTo (\line -> BS.appendFile path (BS.pack (line ++ "\n")))
 
 -- | Renders an access event as a single logfmt line, stamped with @ts@ first.
 formatLogfmt :: String -> AccessEvent -> String

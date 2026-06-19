@@ -1,7 +1,26 @@
 import { markdown } from "@codemirror/lang-markdown";
-import { EditorState } from "@codemirror/state";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { EditorState, Prec } from "@codemirror/state";
+import { tags } from "@lezer/highlight";
 import { basicSetup, EditorView } from "codemirror";
 import type { VisualBlockStyle } from "./tiptap-visual-editor.js";
+
+// Syntax highlighting driven by the editor's palette CSS variables, so the Markdown source reads correctly
+// in both light and dark mode (the variables flip under :root.wa-dark). It overrides CodeMirror's default
+// light-oriented highlight style -- which was unreadable on the dark background -- via Prec.highest.
+const paletteHighlightStyle = HighlightStyle.define([
+    { tag: tags.heading, color: "var(--markdown-editor-accent)", fontWeight: "600" },
+    { tag: tags.strong, color: "var(--markdown-editor-text)", fontWeight: "600" },
+    { tag: tags.emphasis, color: "var(--markdown-editor-text)", fontStyle: "italic" },
+    { tag: tags.strikethrough, textDecoration: "line-through" },
+    { tag: [tags.link, tags.url], color: "var(--markdown-editor-accent)" },
+    { tag: [tags.monospace, tags.literal], color: "var(--markdown-editor-info)" },
+    { tag: tags.quote, color: "var(--markdown-editor-muted)", fontStyle: "italic" },
+    {
+        tag: [tags.list, tags.meta, tags.processingInstruction, tags.contentSeparator],
+        color: "var(--markdown-editor-muted)",
+    },
+]);
 
 /** Callback fired when the source editor content changes. */
 export type CodeMirrorChangeHandler = () => void;
@@ -36,6 +55,7 @@ export class CodeMirrorSourceEditor {
             doc: markdownText,
             extensions: [
                 basicSetup,
+                Prec.highest(syntaxHighlighting(paletteHighlightStyle)),
                 markdown(),
                 EditorView.lineWrapping,
                 // Read-only source view (RFC-0020): block edits and the editing affordance.

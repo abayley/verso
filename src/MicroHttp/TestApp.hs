@@ -173,7 +173,7 @@ treeEdit editorThemeDefault root path request =
         Nothing -> pure treeNotFound
         Just fsPath -> do
             exists <- liftIO (doesFileExist fsPath)
-            content <- if exists then liftIO (readFile fsPath) else pure seededMarkdown
+            content <- if exists then liftIO (readDocumentText fsPath) else pure seededMarkdown
             attachments <- liftIO (loadPageAttachments root path)
             pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True True attachments Nothing))
 
@@ -190,7 +190,7 @@ treeRead editorThemeDefault root path request =
             if not exists
                 then pure treeNotFound
                 else do
-                    content <- liftIO (readFile fsPath)
+                    content <- liftIO (readDocumentText fsPath)
                     attachments <- liftIO (loadPageAttachments root path)
                     pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True False attachments Nothing))
 
@@ -367,7 +367,7 @@ treeSave root captures request = do
         Nothing -> pure treeNotFound
         Just fsPath -> do
             liftIO (createDirectoryIfMissing True (parentDirectory fsPath))
-            liftIO (writeFile fsPath markdown)
+            liftIO (writeDocumentText fsPath markdown)
             liftIO (syncImageTitles root path fields)
             if isHtmxRequest request
                 then pure (htmlResponseChunks (saveStatusFragment markdown))
@@ -539,12 +539,25 @@ loadFileDocument root name = do
     let path = documentPath root name
     exists <- doesFileExist path
     if exists
-        then readFile path
+        then readDocumentText path
         else return seededMarkdown
 
 saveFileDocument :: FilePath -> String -> String -> IO ()
 saveFileDocument root name =
-    writeFile (documentPath root name)
+    writeDocumentText (documentPath root name)
+
+{- | Read a document's bytes as an opaque (UTF-8) string and write them back
+verbatim. The document is handled as bytes, never decoded: MicroHs's 'readFile'
+decodes UTF-8 to Unicode characters which the @Char8@ HTML builder then truncates
+to one byte each, corrupting every multibyte character (and 'writeFile' would
+re-encode on save). Reading and writing the raw bytes keeps the file byte-exact
+end to end -- the same property the static @?raw@/asset serving already has.
+-}
+readDocumentText :: FilePath -> IO String
+readDocumentText path = fmap BS.unpack (BS.readFile path)
+
+writeDocumentText :: FilePath -> String -> IO ()
+writeDocumentText path content = BS.writeFile path (BS.pack content)
 
 documentPath :: FilePath -> String -> FilePath
 documentPath root name =

@@ -27,6 +27,7 @@ module MicroHttp.DocumentMeta (
     readAttachmentEntries,
 ) where
 
+import qualified Data.ByteString.Char8 as BS
 import Data.Char (isSpace)
 import Data.List (isPrefixOf, isSuffixOf)
 import Data.Maybe (fromMaybe, mapMaybe)
@@ -142,8 +143,8 @@ updateImageShortTitle dir localPath shortTitle = do
     if not exists
         then pure ()
         else do
-            existing <- readFile file
-            maybe (pure ()) (writeFile file) (strictly existing (setImageShortTitle existing localPath shortTitle))
+            existing <- readMetaFile file
+            maybe (pure ()) (writeMetaFile file) (setImageShortTitle existing localPath shortTitle)
 
 -- | The @(name, local_path)@ of each attachment recorded for the page, or @[]@ when none.
 readAttachmentEntries :: FilePath -> IO [(String, String)]
@@ -153,8 +154,8 @@ readAttachmentEntries dir = do
     if not exists
         then pure []
         else do
-            contents <- readFile file
-            pure (length contents `seq` parseAttachments contents)
+            contents <- readMetaFile file
+            pure (parseAttachments contents)
 
 -- Internal -----------------------------------------------------------------
 
@@ -165,24 +166,27 @@ imagesFile :: FilePath -> FilePath
 imagesFile dir = dir ++ "/images.yaml"
 
 {- | Read a list file (or treat an absent one as empty), apply the dedup append,
-and write it back, creating the meta directory on demand. The read is forced
-before the write so the lazy read of the same file completes first.
+and write it back, creating the meta directory on demand.
 -}
 appendEntryFile :: FilePath -> String -> String -> IO ()
 appendEntryFile file localPath block = do
     exists <- doesFileExist file
-    existing <- if exists then readFile file else pure "[]\n"
-    case strictly existing (addEntryDedup existing localPath block) of
+    existing <- if exists then readMetaFile file else pure "[]\n"
+    case addEntryDedup existing localPath block of
         Nothing -> pure ()
         Just revised -> do
             createDirectoryIfMissing True (dirName file)
-            writeFile file revised
+            writeMetaFile file revised
 
-{- | Force the spine of a string before yielding a value, so a lazy 'readFile' of a
-file is fully consumed before that same file is overwritten.
+{- | Read and write a @.meta@ file as opaque (UTF-8) bytes -- never decoding, so multibyte characters in
+attachment names survive verbatim (see 'MicroHttp.TestApp' for the same rationale on document bodies). The
+@BS.readFile@ is strict, so reading then overwriting the same file is safe.
 -}
-strictly :: String -> a -> a
-strictly s value = length s `seq` value
+readMetaFile :: FilePath -> IO String
+readMetaFile file = fmap BS.unpack (BS.readFile file)
+
+writeMetaFile :: FilePath -> String -> IO ()
+writeMetaFile file contents = BS.writeFile file (BS.pack contents)
 
 -- | Whether the contents are the empty list (@[]@) or only whitespace.
 isEmptyList :: String -> Bool

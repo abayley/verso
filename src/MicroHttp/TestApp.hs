@@ -173,7 +173,7 @@ treeEdit editorThemeDefault root path request =
         Nothing -> pure treeNotFound
         Just fsPath -> do
             exists <- liftIO (doesFileExist fsPath)
-            content <- if exists then liftIO (readDocumentText fsPath) else pure seededMarkdown
+            content <- if exists then liftIO (BS.readFile fsPath) else pure (BS.pack seededMarkdown)
             attachments <- liftIO (loadPageAttachments root path)
             pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True True attachments Nothing))
 
@@ -190,7 +190,7 @@ treeRead editorThemeDefault root path request =
             if not exists
                 then pure treeNotFound
                 else do
-                    content <- liftIO (readDocumentText fsPath)
+                    content <- liftIO (BS.readFile fsPath)
                     attachments <- liftIO (loadPageAttachments root path)
                     pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True False attachments Nothing))
 
@@ -450,7 +450,7 @@ editDocument :: String -> DocumentStore -> Router.Handler
 editDocument editorThemeDefault store captures request = do
     let docId = documentId captures
     content <- liftIO (loadDocument store docId)
-    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault content False True [] Nothing))
+    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault (BS.pack content) False True [] Nothing))
 
 showDocument :: DocumentStore -> Router.Handler
 showDocument store captures _ = do
@@ -472,7 +472,7 @@ saveDocument editorThemeDefault store captures request = do
         Just err
             | isHtmxRequest request -> pure (htmlResponseChunks (validationStatusFragment err))
             | otherwise ->
-                pure (documentResponse (editorPage docId Nothing editorThemeDefault markdown False True [] (Just err)))
+                pure (documentResponse (editorPage docId Nothing editorThemeDefault (BS.pack markdown) False True [] (Just err)))
         Nothing -> do
             liftIO (saveDocumentContent store docId markdown)
             if isHtmxRequest request
@@ -668,7 +668,7 @@ in form submission through @ElementInternals@, and htmx autosaves; the textarea
 is disabled so it does not double-submit. @maybeError@ re-renders a validation
 message after a failed ordinary post.
 -}
-editorPage :: String -> Maybe String -> String -> String -> Bool -> Bool -> [(String, String)] -> Maybe String -> Html.Html ()
+editorPage :: String -> Maybe String -> String -> BS.ByteString -> Bool -> Bool -> [(String, String)] -> Maybe String -> Html.Html ()
 editorPage docId mode themeDefault content treeMode editable attachments maybeError =
     Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
@@ -702,7 +702,7 @@ editorPage docId mode themeDefault content treeMode editable attachments maybeEr
 no-script @\<textarea\>@ fallback holding the document. @data-readonly@ is set in the
 read view (RFC-0020); the element disables editing and hides the editing chrome.
 -}
-editorElement :: String -> Maybe String -> Bool -> Bool -> [(String, String)] -> String -> Html.Html ()
+editorElement :: String -> Maybe String -> Bool -> Bool -> [(String, String)] -> BS.ByteString -> Html.Html ()
 editorElement docId mode treeMode editable attachments content =
     Html.custom
         "markdown-editor"
@@ -715,7 +715,7 @@ editorElement docId mode treeMode editable attachments content =
         ( Html.custom
             "textarea"
             [Html.attr "name" "markdown", Html.attr "aria-label" "Markdown source", Html.class_ "markdown-editor__fallback"]
-            (Html.text content)
+            (Html.bytesText content)
         )
 
 seededMarkdown :: String

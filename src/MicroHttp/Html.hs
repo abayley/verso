@@ -7,6 +7,7 @@ module MicroHttp.Html (
     button_,
     body,
     body_,
+    bytesText,
     class_,
     custom,
     div,
@@ -142,6 +143,17 @@ coalesce bufSize = finish . foldl step ([], [], 0)
 
 text :: String -> Html ()
 text = emit . escapeText
+
+{- | Emit text from a 'ByteString' that is already UTF-8 (e.g. a document read
+straight off disk). The five HTML-significant characters are escaped at the byte
+level and every other byte -- including all UTF-8 continuation bytes -- passes
+through verbatim. Unlike 'text' there is no 'String' round-trip and no
+encoding/decoding: the bytes flow through untouched, which is the only correct
+marshalling given MicroHs decodes 'String' I/O as UTF-8 but treats
+'Data.ByteString.Char8' as raw bytes.
+-}
+bytesText :: ByteString -> Html ()
+bytesText = emit . escapeBytes
 
 rawTrusted :: String -> Html ()
 rawTrusted = emit . chunk . BS.pack
@@ -355,6 +367,21 @@ escapeChars input =
   where
     packSafe [] = mempty
     packSafe safe = chunk (BS.pack safe)
+
+{- | The 'ByteString' analogue of 'escapeChars': escapes the HTML-significant
+characters in place, emitting safe runs as zero-copy slices. The specials are all
+ASCII and UTF-8 never places an ASCII byte inside a multibyte sequence, so byte-
+level escaping is correct for UTF-8 content.
+-}
+escapeBytes :: ByteString -> Builder
+escapeBytes input =
+    case BS.break isSpecial input of
+        (safe, rest) -> safeChunk safe <> escapeRest rest
+  where
+    safeChunk safe = if BS.null safe then mempty else chunk safe
+    escapeRest rest = case BS.uncons rest of
+        Nothing -> mempty
+        Just (c, more) -> replacement c <> escapeBytes more
 
 isSpecial :: Char -> Bool
 isSpecial c = c == '<' || c == '>' || c == '&' || c == '"' || c == '\''

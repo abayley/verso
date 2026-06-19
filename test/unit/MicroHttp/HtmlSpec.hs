@@ -17,6 +17,9 @@ spec =
             H.renderHtml blazeStyleDocument `shouldBe` blazeStyleExpected
         it "given a rendered document, when chunked, then the concatenated chunks equal the string render" $
             BS.unpack (BS.concat (H.renderChunks todoItem)) `shouldBe` H.renderHtml todoItem
+        it "given UTF-8 bytes, when rendering bytesText, then specials are escaped and other bytes pass through verbatim" $
+            BS.concat (H.renderChunks (H.bytesText (BS.pack "caf\xc3\xa9 <b> & \xf0\x9f\x98\x80")))
+                `shouldBe` BS.pack "caf\xc3\xa9 &lt;b&gt; &amp; \xf0\x9f\x98\x80"
         it "given a small page, when chunked, then it coalesces to a single segment" $
             length (H.renderChunks document) `shouldBe` 1
         it "given a page larger than the coalescing buffer, when chunked, then it splits into bounded segments" $ do

@@ -209,11 +209,12 @@ export class TiptapVisualEditor {
         const footnotes = extractFootnoteDefinitions(markdown);
         const references = extractReferenceDefinitions(footnotes.stripped);
         const raw = this.extractRawHtml(references.stripped);
+        const editable = options.editable ?? true;
 
         this.editor = new Editor({
             content: raw.stripped,
             contentType: "markdown",
-            editable: options.editable ?? true,
+            editable,
             element: this.root,
             extensions: [
                 StarterKit.configure({
@@ -221,11 +222,17 @@ export class TiptapVisualEditor {
                     // Page-relative links (`assets/x.pdf`, RFC-0019) have no URI scheme; Tiptap's default
                     // href sanitisation drops them to an empty href. `isAllowedLinkUri` permits scheme-less
                     // relative URLs while keeping the default validation for absolute ones.
+                    //
+                    // Links open in a new tab while editing (so the editor is not navigated away from), but
+                    // in the read view (RFC-0020) they navigate in place for normal browsing.
                     link: {
                         isAllowedUri: (
                             url: string,
                             ctx: { defaultValidate: (candidate: string) => boolean },
                         ): boolean => isAllowedLinkUri(url, ctx.defaultValidate),
+                        HTMLAttributes: editable
+                            ? { target: "_blank", rel: "noopener noreferrer nofollow" }
+                            : { target: null, rel: null },
                     },
                 }),
                 HeadingWithoutInputRules,

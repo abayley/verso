@@ -86,6 +86,28 @@ Resolved with the owner (2026-06-20):
 - **Tolerant parsing.** Accept both `{.badge.<colour>}` and the spaced
   `{ .badge .colour }` forms.
 
+Grilled (2026-06-20), the contracts these imply:
+
+- **Strict recogniser.** A badge is an inline code span *immediately* followed
+  (no space, `attr_list` semantics) by an attribute list that is *exactly* the
+  `badge` class and one colour class (`[A-Za-z][\w-]*`). Every other shape -- a space
+  before the brace, a missing colour, a colour-only list, extra classes, ids,
+  `key=value` -- stays literal text. The corpus is uniform (~560 files, all the
+  strict form), so this loses nothing.
+- **Literal content; mark excludes other inline marks.** The badge wraps literal
+  text (it is a code span), so no bold/italic/link can sit inside it; the model
+  cannot drift from what `` `…` `` can encode. Serialise widens the backtick fence
+  if the text contains backticks (CommonMark).
+- **Colour is injection-safe by construction.** The validated `[A-Za-z][\w-]*`
+  token is placed in an inline `background-color`; no CSS metacharacter can survive
+  the recogniser. An unknown colour name the browser rejects falls back to a
+  neutral pill (the `.badge` class).
+- **Canonicalising serialise.** Output is always the strict
+  `` `text`{.badge.<colour>} `` form; a tolerant spaced variant normalises to it.
+- **No ADR.** This is a routine RFC-0017 content-extension instance (like image
+  and raw-html), registered in tree mode; it introduces no new architectural or
+  trust-boundary decision. RFC-0021 is the record.
+
 ## Proposal
 
 ### A `badge` content extension (RFC-0017)
@@ -148,9 +170,11 @@ colour name even though the picker lists only the common ones.)
 
 - `make editor-check`.
 - Editor data-seam tests (vitest): parse `` `text`{.badge.<colour>} `` to a badge
-  node; render to `code.badge.<colour>`; DOM serialise-in from `code.badge`;
-  serialise-out verbatim; round-trip for each colour; an unknown colour
-  round-trips; a bare code span (no attr list) stays plain code.
+  node; render to `span.badge` with the colour as `data-badge-colour` and
+  `background-color`; DOM serialise-in from `span.badge`; serialise-out
+  canonical; round-trip for each common colour and an arbitrary colour; a bare
+  code span and every non-conforming attr-list shape (space before brace, missing
+  colour, extra classes, id/attr) stay literal; backtick-in-text widens the fence.
 - Browser-first (preview): a badge renders as a pill in the read view and the
   visual editor, and round-trips through a visual edit.
 

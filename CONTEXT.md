@@ -72,6 +72,13 @@ The page's own leading `---...---` YAML block, in the page body. Preserved and
 hidden from editing (ADR-047). Distinct from **sidecar metadata**.
 _Avoid_: header, metadata.
 
+**Badge**:
+An inline lozenge written as an inline code span with a `{.badge.<colour>}`
+attribute list, e.g. `` `TODO`{.badge.yellow} ``; rendered as a coloured pill
+(RFC-0021). The text is literal (a code span) and carries no other inline
+formatting.
+_Avoid_: label, tag, pill (pill is the rendered shape, not the construct).
+
 **Metadata panel**:
 The editor chrome panel that surfaces a page's **sidecar metadata** -- for now,
 the list of **attachments** (including unlinked ones). One of three planned

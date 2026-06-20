@@ -66,8 +66,13 @@ function blockFromMdast(node: RootContent, ctx: ParseContext): EditorBlock | nul
 
 /** Converts a built-in mdast list item into editor item blocks. */
 function listItemFromMdast(item: ListItem, ctx: ParseContext): ListItemBlock {
+    // A bare marker (e.g. `1.` on its own line) is a valid, empty CommonMark list item. The visual
+    // editor (marked) accepts it, and the visual->Markdown round-trip can produce one, so the subset
+    // must too: model it as a single empty paragraph rather than rejecting the whole document.
     if (item.children.length === 0) {
-        throw ctx.unsupportedNode("listItem:empty");
+        return {
+            blocks: [{ children: [], type: "paragraph" }],
+        };
     }
 
     return {

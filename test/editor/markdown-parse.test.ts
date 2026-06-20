@@ -138,6 +138,33 @@ describe("parseMarkdown", (): void => {
         });
     });
 
+    it("given an empty list item, when parsed, then it returns a list item with an empty paragraph", (): void => {
+        // An ordered marker on its own line is valid CommonMark: an empty list item. The visual
+        // editor (marked) accepts it, so the remark editor subset must too, or switching to the
+        // Markdown and Split views silently fails (the round-trip can produce such items).
+        expect(parseMarkdown(["1.", "2. second"].join("\n"))).toEqual({
+            blocks: [
+                {
+                    items: [
+                        {
+                            blocks: [{ children: [], type: "paragraph" }],
+                        },
+                        {
+                            blocks: [
+                                {
+                                    children: [{ text: "second", type: "text" }],
+                                    type: "paragraph",
+                                },
+                            ],
+                        },
+                    ],
+                    ordered: true,
+                    type: "list",
+                },
+            ],
+        });
+    });
+
     it("given a hard line break, when parsed, then it returns a break inline node", (): void => {
         expect(parseMarkdown(["First line\\", "second line."].join("\n"))).toEqual({
             blocks: [

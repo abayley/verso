@@ -22,17 +22,34 @@ _Avoid_: file (too generic), article.
 The default rendered, read-only presentation of a **page** (a plain `GET` of its
 URL). It is the **edit view**'s shell with editing switched off (RFC-0020,
 ADR-050).
-_Avoid_: preview (that is the editor's split pane), view mode.
+_Avoid_: preview (no such pane exists -- see **Split view**), view mode.
 
 **Edit view**:
 The editable presentation of a **page** (`?edit`): the full editor with the
-editing controls and autosave.
+editing controls and autosave. Shown in one of three **view modes**.
 _Avoid_: editor mode.
+
+**Visual view**:
+The WYSIWYG **view mode**: the Tiptap editing surface. The default, and the
+surface the **read view** also uses (with editing off). The only surface that
+renders the page's formatting.
+_Avoid_: rich text, preview.
+
+**Markdown view**:
+The raw-text **view mode**: a CodeMirror editor over the page's **raw Markdown**
+body. Plain text, no rendering.
+_Avoid_: source view, code view.
+
+**Split view**:
+The **view mode** showing the **Markdown view** and **Visual view** side by
+side, kept in sync. The right-hand pane is the live **Visual view**, not a
+rendered preview.
+_Avoid_: preview pane, side-by-side.
 
 **Raw Markdown**:
 A **page**'s verbatim Markdown bytes, including **frontmatter** (`?raw`), for
 tooling and diffs.
-_Avoid_: source (that is the editor's Markdown view).
+_Avoid_: source (that is the **Markdown view**).
 
 **Peer assets**:
 A page's sibling `assets/` folder, holding the images and attachments that page
@@ -85,6 +102,16 @@ the list of **attachments** (including unlinked ones). One of three planned
 panels (the others being a navigation tree and a table of contents).
 _Avoid_: sidebar (ambiguous; there are several), attachments panel.
 
+**Round-trip stability**:
+The editor's saved-page contract: reopening a saved **page** shows the author
+what they last saw. Saving then loading is stable -- the **edit view** renders
+saved **raw Markdown** identically to the state it was saved from. Measured
+through the real editing pipeline (load -> edit -> serialise -> save -> load),
+not against any external grammar. The property a `?raw` diff or a downstream
+renderer may still differ on; this contract is about the editor with itself.
+_Avoid_: round-trippable subset (conflates the contract with one past mechanism),
+representable, valid Markdown.
+
 ## Flagged ambiguities
 
 - **Metadata**: unqualified, it is ambiguous. Use **frontmatter** for the
@@ -94,6 +121,10 @@ _Avoid_: sidebar (ambiguous; there are several), attachments panel.
   canonical filename; an **inline image** entry's `short_title` mirrors the
   body image's **alt text** (falling back to the filename). They are not
   interchangeable, and `name` is not synced from body link text.
+- **Preview**: there is no rendered-preview pane anywhere in the editor. The
+  **read view** and **Visual view** render via Tiptap; the **Split view**'s
+  right pane is the live **Visual view**. "Preview" denotes nothing -- do not
+  reach for it (RFC-0022 removed the last vestige, an always-null preview slot).
 
 ## Example dialogue
 

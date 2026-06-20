@@ -1,11 +1,11 @@
 ---
 id: RFC-0022
 name: Retire the client validation gate
-status: Draft
+status: Implemented
 owners:
     - alistairbayley
 created: 2026-06-20
-updated: 2026-06-20
+updated: 2026-06-21
 supersedes: []
 superseded_by: null
 ---
@@ -17,8 +17,8 @@ superseded_by: null
 | Stage     | Timestamp        |
 |-----------|------------------|
 | Authored  | 2026-06-20       |
-| Started   |                  |
-| Completed |                  |
+| Started   | 2026-06-21       |
+| Completed | 2026-06-21       |
 
 ## Summary
 
@@ -73,42 +73,46 @@ Three independently shippable slices; `make check` green after each.
 
 ### Phase 1 -- Retire the runtime gate
 
-- [ ] Remove the `renderMarkdown` validation call from `switchMode`
+- [x] Remove the `renderMarkdown` validation call from `switchMode`
       (`markdown-editor-element.ts`): switching becomes serialise -> set mode ->
       `renderMode`, with no representability check.
-- [ ] In `handleSourceInput`/`handleVisualInput`, stop gating on
+- [x] In `handleSourceInput`/`handleVisualInput`, stop gating on
       `updatePreview`; always `dispatchMarkdownChange` so edits are recorded.
-- [ ] Remove `updatePreview`/`updatePreviewFromMarkdown` and the always-null
+- [x] Remove `updatePreview`/`updatePreviewFromMarkdown` and the always-null
       `preview` field.
-- [ ] Remove the parse-error UI: the `parseError` element, `showParseError`/
+- [x] Remove the parse-error UI: the `parseError` element, `showParseError`/
       `hideParseError`, the footer wiring for it, and the
       `.markdown-editor__error` CSS. Keep the save-error and upload notices.
-- [ ] Verify in Chrome (`preview_*`): the `noc-procedure-lnms-11.md` page
+- [x] Verify in Chrome (`preview_*`): the `noc-procedure-lnms-11.md` page
       switches to Markdown and Split; edits in each mode persist on save.
 
 ### Phase 2 -- Delete the Markdown-to-HTML render half
 
-- [ ] Delete `markdown-render.ts` (`renderMarkdown`).
-- [ ] Remove `renderDocument` and the `RenderContext` from
+- [x] Delete `markdown-render.ts` (`renderMarkdown`).
+- [x] Remove `renderDocument` and the `RenderContext` from
       `content-extension.ts`, and `renderBlock`/`renderInline`/`renderDocument`
       from the `ContentExtension` interface.
-- [ ] Remove the render seams from each extension (base, footnote, badge,
+- [x] Remove the render seams from each extension (base, footnote, badge,
       admonition, collapsible, image, reference-link, raw-html, table, ...).
-- [ ] Delete the "X rendering" test blocks; keep every `parseMarkdown` +
+- [x] Delete the "X rendering" test blocks; keep every `parseMarkdown` +
       `documentToMarkdown` round-trip and DOM-serialisation test.
-- [ ] Remove dependencies `knip` now reports unused (expected:
-      `remark-rehype`, `rehype-stringify`; check `remark-stringify`). Let
-      `make editor-check` (knip) drive this; remove only what it flags.
+- [x] Remove dependencies `knip` now reports unused. Outcome: none. The
+      `remark-rehype`/`rehype-stringify`/`remark-stringify` packages belong to
+      `scripts/remark-ast-spike.mjs` (and are knip-ignored), not the render half,
+      so no dependency changed.
 
 ### Phase 3 -- Global client error boundary (companion)
 
-- [ ] Add a top-level boundary in `<markdown-editor>`: `window` `error` and
+- [x] Add a top-level boundary in `<markdown-editor>`: `window` `error` and
       `unhandledrejection` listeners (scoped to editor-originated failures) plus
       the existing `initialise().catch`.
-- [ ] Surface a dismissible banner in the vacated footer-notice slot
-      ("Something went wrong; your last saved version is safe"), and
-      `console.error` the underlying error.
-- [ ] Tests: a thrown error in an editor code path shows the banner and does not
+- [x] Surface a dismissible banner ("Something went wrong in the editor. Your
+      last saved version is safe.") and `console.error` the underlying error.
+      Deviation from the original plan: the banner is a **top-level** child, not a
+      footer notice -- the footer is `display:none` in the read view, where a
+      render-time crash is exactly the case that must surface. It is attached
+      after the inline content is read (or on demand if a failure occurs first).
+- [x] Tests: a thrown error in an editor code path shows the banner and does not
       wedge the editor.
 
 ## Alternatives Considered
@@ -168,9 +172,12 @@ Three independently shippable slices; `make check` green after each.
 
 ## Open Questions
 
-- Phase 3 scope of "editor-originated": filter `window` errors by the editor
-  bundle filename, or treat the whole TestApp page as the editor's? (Leaning:
-  whole page, since the editor is the page in the TestApp.)
-- Does any extension's `renderDocument` (e.g. footnotes' collected list) encode
-  logic the serialiser path also needs? (Expected no -- the serialiser is
-  DOM/model-driven -- but confirm per extension during Phase 2.)
+Both resolved during implementation:
+
+- Phase 3 scope of "editor-originated": resolved to **whole page** -- the editor
+  is the page in the TestApp, so page-level `window` errors and rejections raise
+  the banner (no bundle-filename filtering).
+- Does any extension's `renderDocument` encode logic the serialiser also needs?
+  Resolved **no**. The footnote `renderDocument` (numbering + collected list) was
+  HTML-only; serialise-out is DOM/model-driven and independent. All render seams
+  were removed with no serialiser impact (round-trip tests stayed green).

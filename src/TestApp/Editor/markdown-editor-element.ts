@@ -12,6 +12,7 @@ import { BubbleToolbarElement } from "./bubble-toolbar-element.js";
 import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
 import type { CollapsibleKind } from "./collapsible-extension.js";
 import {
+    type CommandBadgeEventDetail,
     CommandBarElement,
     type CommandBlockStyleEventDetail,
     type CommandInlineEventDetail,
@@ -474,8 +475,32 @@ export class MarkdownEditorElement extends HTMLElement {
         bar.addEventListener("command-insert-structure", (event: Event): void => {
             this.insertStructure((event as CustomEvent<CommandInsertStructureEventDetail>).detail.kind);
         });
+        bar.addEventListener("command-badge", (event: Event): void => {
+            this.applyBadge((event as CustomEvent<CommandBadgeEventDetail>).detail.value);
+        });
 
         return bar;
+    }
+
+    /**
+     * Applies, recolours, or removes the badge on the selection (RFC-0021). In the visual editor it sets or
+     * unsets the badge mark; in source mode it wraps the selection as `` `selection`{.badge.<colour>} ``
+     * (removal is visual-only, since stripping the source form is ambiguous).
+     */
+    private applyBadge(value: string): void {
+        if (this.shouldUseSourceCommands()) {
+            if (value !== "remove" && this.sourceEditor?.applyBadge(value)) {
+                this.handleSourceInput();
+            }
+
+            return;
+        }
+
+        const applied = value === "remove" ? this.visualEditor?.removeBadge() : this.visualEditor?.applyBadge(value);
+
+        if (applied) {
+            this.handleVisualInput();
+        }
     }
 
     /**

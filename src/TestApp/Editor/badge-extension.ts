@@ -1,6 +1,6 @@
 import type { Nodes, PhrasingContent, Root } from "mdast";
 import type { Plugin } from "unified";
-import { BADGE_ATTR, COLOUR_TOKEN } from "./badge-syntax.js";
+import { BADGE_ATTR, badgeStyle, COLOUR_TOKEN } from "./badge-syntax.js";
 import type { ContentExtension, RenderContext } from "./content-extension.js";
 import type { InlineNode } from "./editor-model.js";
 
@@ -85,7 +85,7 @@ function renderInline(node: InlineNode, ctx: RenderContext): string | null {
     }
 
     const { text, colour } = node.data;
-    const style = COLOUR_TOKEN.test(colour) ? ` style="background-color: ${colour}"` : "";
+    const style = COLOUR_TOKEN.test(colour) ? ` style="${ctx.escapeHtml(badgeStyle(colour))}"` : "";
 
     return `<span class="badge" data-badge-colour="${ctx.escapeHtml(colour)}"${style}>${ctx.escapeHtml(text)}</span>`;
 }

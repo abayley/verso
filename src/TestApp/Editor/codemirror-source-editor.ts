@@ -138,6 +138,11 @@ export class CodeMirrorSourceEditor {
         return this.wrapSelection("~~", "~~");
     }
 
+    /** Wraps the current source selection as a badge lozenge: `` `selection`{.badge.<colour>} `` (RFC-0021). */
+    public applyBadge(colour: string): boolean {
+        return this.wrapSelection("`", `\`{.badge.${colour}}`);
+    }
+
     /** Toggles Markdown link markers around the current source selection. */
     public toggleLink(href: string): boolean {
         return this.wrapSelection("[", `](${href})`);

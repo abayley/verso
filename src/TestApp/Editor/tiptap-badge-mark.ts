@@ -1,5 +1,5 @@
 import { Mark, mergeAttributes } from "@tiptap/core";
-import { COLOUR_TOKEN } from "./badge-syntax.js";
+import { badgeStyle, COLOUR_TOKEN } from "./badge-syntax.js";
 
 /**
  * The editor-side badge (document-tree mode, RFC-0021): a mark over editable text carrying a `colour`,
@@ -29,7 +29,7 @@ export const Badge = Mark.create({
 
     renderHTML({ mark, HTMLAttributes }) {
         const colour = String(mark.attrs["colour"] ?? "");
-        const style = COLOUR_TOKEN.test(colour) ? { style: `background-color: ${colour}` } : {};
+        const style = COLOUR_TOKEN.test(colour) ? { style: badgeStyle(colour) } : {};
 
         return ["span", mergeAttributes(HTMLAttributes, { class: "badge" }, style), 0];
     },

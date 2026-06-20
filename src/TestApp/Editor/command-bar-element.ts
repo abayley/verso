@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { badgeStyle, COMMON_BADGE_COLOURS } from "./badge-syntax.js";
 import {
     BLOCK_STYLES,
     blockLabel,
@@ -24,6 +25,11 @@ export interface CommandInlineEventDetail {
 /** Detail of the `command-structure` event: the structural style to toggle. */
 export interface CommandStructureEventDetail {
     style: VisualStructureStyle;
+}
+
+/** Detail of the `command-badge` event: a colour to apply, or "remove" to clear the badge. */
+export interface CommandBadgeEventDetail {
+    value: string;
 }
 
 /** A block construct the command bar can insert (table / callout / collapsible). */
@@ -131,6 +137,12 @@ export class CommandBarElement extends LitElement {
             }
         }
 
+        const badge = this.querySelector<HTMLElement>(".markdown-editor__badge-trigger");
+
+        if (badge) {
+            this.tooltipController?.register(badge, "Badge colour");
+        }
+
         const attachment = this.querySelector<HTMLElement>(".markdown-editor__attachment-button");
 
         if (attachment) {
@@ -182,6 +194,23 @@ export class CommandBarElement extends LitElement {
             }),
         );
     }
+
+    /** Dispatches the chosen badge colour (or "remove") for the host to apply to the selection. */
+    private readonly handleBadgeSelect = (event: Event): void => {
+        const item = (event as WaDropdownSelectEvent).detail.item;
+
+        if (!(item instanceof HTMLElement)) {
+            return;
+        }
+
+        this.dispatchEvent(
+            new CustomEvent<CommandBadgeEventDetail>("command-badge", {
+                bubbles: true,
+                composed: true,
+                detail: { value: elementValue(item) },
+            }),
+        );
+    };
 
     /** Dispatches a request to insert a block construct (table, callout, collapsible) for the host to run. */
     private emitInsertStructure(kind: InsertStructureKind): void {
@@ -278,6 +307,32 @@ export class CommandBarElement extends LitElement {
                     `,
                 )}
             </wa-button-group>
+            <wa-dropdown
+                class="markdown-editor__badge-dropdown"
+                aria-label="Badge colour"
+                size="small"
+                @wa-select=${this.handleBadgeSelect}
+            >
+                <wa-button
+                    slot="trigger"
+                    class="markdown-editor__button markdown-editor__badge-trigger"
+                    appearance="plain"
+                    size="small"
+                    type="button"
+                    aria-label="Badge"
+                    with-caret
+                    ?disabled=${this.commandsDisabled}
+                    @mousedown=${preventDefault}
+                >Badge</wa-button>
+                ${COMMON_BADGE_COLOURS.map(
+                    (colour) => html`
+                        <wa-dropdown-item value=${colour}>
+                            <span class="badge" style=${badgeStyle(colour)}>${colour}</span>
+                        </wa-dropdown-item>
+                    `,
+                )}
+                <wa-dropdown-item value="remove">Remove badge</wa-dropdown-item>
+            </wa-dropdown>
             <wa-button-group class="markdown-editor__button-group">
                 ${INSERT_COMMANDS.map(
                     (command) => html`

@@ -972,6 +972,16 @@ export class TiptapVisualEditor {
             .run();
     }
 
+    /** Applies (or recolours) the badge mark on the selection (RFC-0021). */
+    public applyBadge(colour: string): boolean {
+        return this.editor.chain().focus().setMark("badge", { colour }).run();
+    }
+
+    /** Removes the badge mark from the selection. */
+    public removeBadge(): boolean {
+        return this.editor.chain().focus().unsetMark("badge").run();
+    }
+
     /** Reports whether the selection is inside a table (for showing the table controls). */
     public isInTable(): boolean {
         return this.editor.isActive("table");

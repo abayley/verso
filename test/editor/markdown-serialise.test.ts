@@ -101,6 +101,25 @@ describe("documentFromElements", (): void => {
         });
     });
 
+    it("serialises heading elements of every level into editor headings", (): void => {
+        const root = document.createElement("div");
+        root.innerHTML = ["<h4>Four</h4>", "<h5>Five</h5>", "<h6>Six</h6>"].join("");
+
+        expect(documentFromElements(root.children)).toEqual({
+            blocks: [
+                { children: [{ text: "Four", type: "text" }], level: 4, type: "heading" },
+                { children: [{ text: "Five", type: "text" }], level: 5, type: "heading" },
+                { children: [{ text: "Six", type: "text" }], level: 6, type: "heading" },
+            ],
+        });
+    });
+
+    it("given headings of every level, when round-tripped, then the heading depth is preserved", (): void => {
+        const markdown = ["#### Four", "", "##### Five", "", "###### Six"].join("\n");
+
+        expect(documentToMarkdown(parseMarkdown(markdown))).toBe(markdown);
+    });
+
     it("serialises preformatted code elements into editor code blocks", (): void => {
         const root = document.createElement("div");
         root.innerHTML = '<pre><code class="language-typescript">const value = 1;</code></pre>';

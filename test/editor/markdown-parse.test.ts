@@ -138,6 +138,18 @@ describe("parseMarkdown", (): void => {
         });
     });
 
+    it("given headings of every level, when parsed, then it returns headings of levels one to six", (): void => {
+        const markdown = ["#### Four", "", "##### Five", "", "###### Six"].join("\n");
+
+        expect(parseMarkdown(markdown)).toEqual({
+            blocks: [
+                { children: [{ text: "Four", type: "text" }], level: 4, type: "heading" },
+                { children: [{ text: "Five", type: "text" }], level: 5, type: "heading" },
+                { children: [{ text: "Six", type: "text" }], level: 6, type: "heading" },
+            ],
+        });
+    });
+
     it("given an empty list item, when parsed, then it returns a list item with an empty paragraph", (): void => {
         // An ordered marker on its own line is valid CommonMark: an empty list item. The visual
         // editor (marked) accepts it, so the remark editor subset must too, or switching to the

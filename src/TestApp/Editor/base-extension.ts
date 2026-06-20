@@ -7,17 +7,13 @@ import {
     registerExtension,
     type ToMarkdownContext,
 } from "./content-extension.js";
-import type { EditorBlock, InlineNode, ListItemBlock } from "./editor-model.js";
+import type { EditorBlock, HeadingLevel, InlineNode, ListItemBlock } from "./editor-model.js";
 
 // Parse: mdast -> editor block.
 
 /** Converts a built-in mdast block node into an editor block, or declines an unrecognised node. */
 function blockFromMdast(node: RootContent, ctx: ParseContext): EditorBlock | null {
     if (node.type === "heading") {
-        if (node.depth !== 1 && node.depth !== 2 && node.depth !== 3) {
-            throw ctx.unsupportedNode(`heading:${node.depth}`);
-        }
-
         return {
             children: ctx.inlinesFromMdast(node.children),
             level: node.depth,
@@ -237,26 +233,12 @@ function blockFromElement(block: Element, ctx: FromElementContext): EditorBlock 
         };
     }
 
-    if (block.tagName === "H1") {
-        return {
-            children: ctx.inlinesFromElement(block),
-            level: 1,
-            type: "heading",
-        };
-    }
+    const headingLevel = headingLevelFromTag(block.tagName);
 
-    if (block.tagName === "H2") {
+    if (headingLevel !== null) {
         return {
             children: ctx.inlinesFromElement(block),
-            level: 2,
-            type: "heading",
-        };
-    }
-
-    if (block.tagName === "H3") {
-        return {
-            children: ctx.inlinesFromElement(block),
-            level: 3,
+            level: headingLevel,
             type: "heading",
         };
     }
@@ -308,7 +290,14 @@ function hasBlockChildren(element: Element): boolean {
 
 /** Checks whether an element is a supported Markdown block element. */
 function isBlockElement(element: Element): boolean {
-    return ["BLOCKQUOTE", "H1", "H2", "H3", "HR", "OL", "P", "PRE", "UL"].includes(element.tagName);
+    return ["BLOCKQUOTE", "H1", "H2", "H3", "H4", "H5", "H6", "HR", "OL", "P", "PRE", "UL"].includes(element.tagName);
+}
+
+/** The heading level for an `H1`..`H6` tag name, or null for any other element. */
+function headingLevelFromTag(tagName: string): HeadingLevel | null {
+    const match = /^H([1-6])$/.exec(tagName);
+
+    return match ? (Number(match[1]) as HeadingLevel) : null;
 }
 
 /** Converts one inline DOM node to built-in editor inline nodes (the base extension's inline serialise-in). */

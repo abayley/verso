@@ -1,5 +1,6 @@
 import type { Nodes, PhrasingContent, Root } from "mdast";
 import type { Plugin } from "unified";
+import { BADGE_ATTR, COLOUR_TOKEN } from "./badge-syntax.js";
 import type { ContentExtension, RenderContext } from "./content-extension.js";
 import type { InlineNode } from "./editor-model.js";
 
@@ -13,14 +14,6 @@ interface BadgeData {
     text: string;
     colour: string;
 }
-
-// A leading badge attribute list: exactly `.badge` plus one colour class, tight (`{.badge.red}`) or spaced
-// (`{ .badge .red }`). Extra classes, a missing colour, ids or key=value attributes do not match, so they
-// stay literal. The colour is any name token (`[A-Za-z][\w-]*`), used verbatim.
-const BADGE_ATTR = /^\{\s*\.badge\s*\.([A-Za-z][\w-]*)\s*\}/;
-
-/** A safe colour token (no CSS metacharacters), gating the inline background-color. */
-const COLOUR_TOKEN = /^[A-Za-z][\w-]*$/;
 
 /** Whether an editor inline node is a badge. */
 function isBadge(node: InlineNode): node is InlineNode & { data: BadgeData } {

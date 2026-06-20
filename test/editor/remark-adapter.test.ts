@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseMarkdownLocally } from "../../src/TestApp/Editor/markdown-parse-local.js";
-import { parseMarkdownWithRemark, rawHtmlSpans } from "../../src/TestApp/Editor/remark-adapter.js";
+import { badgeSpans, parseMarkdownWithRemark, rawHtmlSpans } from "../../src/TestApp/Editor/remark-adapter.js";
 
 describe("parseMarkdownWithRemark", (): void => {
     it("given supported Markdown, when parsed through remark, then it matches the legacy local parser", (): void => {
@@ -58,5 +58,23 @@ describe("rawHtmlSpans", (): void => {
         ["an autolink (a link, not raw HTML)", "see <https://example.com>"],
     ])("given %s, when scanned, then there are no raw-HTML spans", (_name, markdown): void => {
         expect(rawHtmlSpans(markdown)).toEqual([]);
+    });
+});
+
+describe("badgeSpans", (): void => {
+    it("finds a badge's text, colour and source span", (): void => {
+        const markdown = "x `TODO`{.badge.yellow} y";
+        const spans = badgeSpans(markdown);
+
+        expect(spans).toEqual([{ colour: "yellow", end: 23, start: 2, text: "TODO" }]);
+        expect(markdown.slice(spans[0]?.start, spans[0]?.end)).toBe("`TODO`{.badge.yellow}");
+    });
+
+    it.each([
+        ["a plain code span", "`code`"],
+        ["a non-badge attribute list", "`code`{.other}"],
+        ["a space before the brace", "`code` {.badge.red}"],
+    ])("given %s, when scanned, then there are no badge spans", (_name, markdown): void => {
+        expect(badgeSpans(markdown)).toEqual([]);
     });
 });

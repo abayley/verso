@@ -16,8 +16,9 @@ import { type CollapsibleKind, matchCollapsibleMarker } from "./collapsible-exte
 import { widthFromAttributes } from "./image-extension.js";
 import { isAllowedLinkUri } from "./link-uri.js";
 import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
-import { rawHtmlSpans } from "./remark-adapter.js";
+import { badgeSpans, rawHtmlSpans } from "./remark-adapter.js";
 import { Admonition } from "./tiptap-admonition-node.js";
+import { Badge } from "./tiptap-badge-mark.js";
 import { Collapsible } from "./tiptap-collapsible-node.js";
 import { FootnoteDefinition, FootnoteReference } from "./tiptap-footnote-node.js";
 import { Image } from "./tiptap-image-node.js";
@@ -159,6 +160,43 @@ interface RawHtmlFragment {
     block: boolean;
 }
 
+// Private-use sentinels marking where a badge lozenge was extracted (distinct from the raw-HTML pair), so
+// marked passes them through as plain text; {@link TiptapVisualEditor.loadBadges} swaps each for its text
+// carrying the badge mark.
+const BADGE_SENTINEL = /\u{E002}(\d+)\u{E003}/gu;
+
+/** A badge lozenge pulled out before marked: its literal text and colour. */
+interface BadgeFragment {
+    text: string;
+    colour: string;
+}
+
+/**
+ * Replaces each badge lozenge (`` `text`{.badge.<colour>} ``) with an indexed sentinel before marked sees
+ * it (marked would split the code span from its attribute list), returning the stripped Markdown and the
+ * fragments by index. Spans are replaced last-to-first so earlier source offsets stay valid.
+ */
+function stripBadges(markdown: string): { stripped: string; fragments: BadgeFragment[] } {
+    const spans = badgeSpans(markdown).sort((a, b): number => a.start - b.start);
+
+    if (spans.length === 0) {
+        return { fragments: [], stripped: markdown };
+    }
+
+    const fragments = spans.map((span): BadgeFragment => ({ colour: span.colour, text: span.text }));
+    let stripped = markdown;
+
+    for (let index = spans.length - 1; index >= 0; index -= 1) {
+        const span = spans[index];
+
+        if (span) {
+            stripped = `${stripped.slice(0, span.start)}\u{E002}${index}\u{E003}${stripped.slice(span.end)}`;
+        }
+    }
+
+    return { fragments, stripped };
+}
+
 /**
  * Replaces each raw-HTML span with an indexed sentinel before marked sees it (marked otherwise interprets
  * or drops raw HTML), returning the stripped Markdown and the verbatim fragments by index. Spans are
@@ -220,10 +258,11 @@ export class TiptapVisualEditor {
         const footnotes = extractFootnoteDefinitions(markdown);
         const references = extractReferenceDefinitions(footnotes.stripped);
         const raw = this.extractRawHtml(references.stripped);
+        const badges = this.extractBadges(raw.stripped);
         const editable = options.editable ?? true;
 
         this.editor = new Editor({
-            content: raw.stripped,
+            content: badges.stripped,
             contentType: "markdown",
             editable,
             element: this.root,
@@ -256,6 +295,7 @@ export class TiptapVisualEditor {
                 Image,
                 RawHtml,
                 RawHtmlBlock,
+                Badge,
                 ...tableExtensions,
                 Markdown.configure({
                     markedOptions: {
@@ -284,6 +324,7 @@ export class TiptapVisualEditor {
         this.wrapBareImages();
         this.loadImageWidths();
         this.loadRawHtml(raw.fragments);
+        this.loadBadges(badges.fragments);
         this.loadFootnotes(footnotes.definitions);
         this.loadReferenceLinks(references.definitions);
         this.collapseSoftBreaks();
@@ -311,12 +352,14 @@ export class TiptapVisualEditor {
         const footnotes = extractFootnoteDefinitions(markdown);
         const references = extractReferenceDefinitions(footnotes.stripped);
         const raw = this.extractRawHtml(references.stripped);
-        this.editor.commands.setContent(raw.stripped, options);
+        const badges = this.extractBadges(raw.stripped);
+        this.editor.commands.setContent(badges.stripped, options);
         this.upgradeAlertBlockquotes();
         this.upgradeCollapsibles();
         this.wrapBareImages();
         this.loadImageWidths();
         this.loadRawHtml(raw.fragments);
+        this.loadBadges(badges.fragments);
         this.loadFootnotes(footnotes.definitions);
         this.loadReferenceLinks(references.definitions);
         this.collapseSoftBreaks();
@@ -325,6 +368,72 @@ export class TiptapVisualEditor {
     /** Pre-extracts raw HTML (sentinels for marked) when preservation is on; a no-op passthrough otherwise. */
     private extractRawHtml(markdown: string): { stripped: string; fragments: RawHtmlFragment[] } {
         return this.preserveRawHtml ? stripRawHtml(markdown) : { fragments: [], stripped: markdown };
+    }
+
+    /** Pre-extracts badge lozenges (sentinels for marked) when preservation is on; a no-op otherwise. */
+    private extractBadges(markdown: string): { stripped: string; fragments: BadgeFragment[] } {
+        return this.preserveRawHtml ? stripBadges(markdown) : { fragments: [], stripped: markdown };
+    }
+
+    /**
+     * Replaces the badge sentinels left by {@link extractBadges} with the badge text carrying the `badge`
+     * mark (with its colour), after the content has loaded. marked passes the sentinels through as text;
+     * this swaps each for the lozenge's text so it renders as a pill and round-trips.
+     */
+    private loadBadges(fragments: BadgeFragment[]): void {
+        if (fragments.length === 0) {
+            return;
+        }
+
+        const badgeMark = this.editor.state.schema.marks["badge"];
+
+        if (!badgeMark) {
+            return;
+        }
+
+        const replacements: Array<{ from: number; to: number; text: string; colour: string }> = [];
+
+        this.editor.state.doc.descendants((node: ProseMirrorNode, position: number): boolean => {
+            if (!node.isText || node.text === undefined) {
+                return true;
+            }
+
+            const pattern = new RegExp(BADGE_SENTINEL.source, "gu");
+            let match = pattern.exec(node.text);
+
+            while (match !== null) {
+                const fragment = fragments[Number(match[1])];
+
+                if (fragment !== undefined && fragment.text !== "") {
+                    replacements.push({
+                        colour: fragment.colour,
+                        from: position + match.index,
+                        text: fragment.text,
+                        to: position + match.index + match[0].length,
+                    });
+                }
+
+                match = pattern.exec(node.text);
+            }
+
+            return true;
+        });
+
+        if (replacements.length === 0) {
+            return;
+        }
+
+        const transaction = this.editor.state.tr;
+
+        for (const replacement of replacements.sort((a, b): number => b.from - a.from)) {
+            transaction.replaceWith(
+                replacement.from,
+                replacement.to,
+                this.editor.state.schema.text(replacement.text, [badgeMark.create({ colour: replacement.colour })]),
+            );
+        }
+
+        this.editor.view.dispatch(transaction.setMeta("addToHistory", false));
     }
 
     /**

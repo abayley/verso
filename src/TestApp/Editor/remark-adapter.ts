@@ -2,6 +2,7 @@ import type { Nodes, Root, RootContent } from "mdast";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
+import { BADGE_ATTR } from "./badge-syntax.js";
 import { blockFromMdast, collectRemarkPlugins } from "./content-extension.js";
 import "./register-extensions.js";
 import type { EditorBlock, EditorDocument } from "./editor-model.js";
@@ -41,6 +42,54 @@ export function rawHtmlSpans(markdown: string): RawHtmlSpan[] {
     };
 
     visit(tree, "root");
+
+    return spans;
+}
+
+/** A badge lozenge's text, colour, and source-offset span (the code span plus its `{.badge.<colour>}`). */
+export interface BadgeSpan {
+    text: string;
+    colour: string;
+    start: number;
+    end: number;
+}
+
+/** The source spans of every badge lozenge, for pre-extracting them before the visual editor's marked
+ * loader splits the code span from its attribute list. Offsets index the given Markdown string. */
+export function badgeSpans(markdown: string): BadgeSpan[] {
+    const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown) as Root;
+    const spans: BadgeSpan[] = [];
+
+    const visit = (node: Nodes): void => {
+        if (!("children" in node)) {
+            return;
+        }
+
+        const children = node.children;
+
+        for (let index = 0; index < children.length; index += 1) {
+            const code = children[index];
+            const next = children[index + 1];
+
+            if (code?.type !== "inlineCode" || next?.type !== "text") {
+                continue;
+            }
+
+            const match = BADGE_ATTR.exec(next.value);
+            const start = code.position?.start?.offset;
+            const attrStart = next.position?.start?.offset;
+
+            if (match && start !== undefined && attrStart !== undefined) {
+                spans.push({ colour: match[1] ?? "", end: attrStart + match[0].length, start, text: code.value });
+            }
+        }
+
+        for (const child of children) {
+            visit(child);
+        }
+    };
+
+    visit(tree);
 
     return spans;
 }

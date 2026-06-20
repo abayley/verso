@@ -4,8 +4,8 @@ name: Client-error telemetry sink
 status: Draft
 owners:
     - alistairbayley
-created: 2026-06-20
-updated: 2026-06-20
+created: 2026-06-20T23:40+12:00
+updated: 2026-06-20T23:40+12:00
 supersedes: []
 superseded_by: null
 ---
@@ -16,11 +16,11 @@ forgotten. Do not implement from this document; it needs a design pass first. --
 
 # Client-error telemetry sink
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-20       |
-| Started   |                  |
-| Completed |                  |
+| Stage     | Timestamp          |
+|-----------|--------------------|
+| Authored  | 2026-06-20 23:40   |
+| Started   |                    |
+| Completed |                    |
 
 ## Summary
 

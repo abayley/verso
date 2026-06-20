@@ -4,8 +4,8 @@ name: Retire the client validation gate
 status: Implemented
 owners:
     - alistairbayley
-created: 2026-06-20
-updated: 2026-06-21
+created: 2026-06-20T23:40+12:00
+updated: 2026-06-21T00:30+12:00
 supersedes: []
 superseded_by: null
 ---
@@ -14,11 +14,11 @@ superseded_by: null
 
 # Retire the client validation gate
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-20       |
-| Started   | 2026-06-21       |
-| Completed | 2026-06-21       |
+| Stage     | Timestamp          |
+|-----------|--------------------|
+| Authored  | 2026-06-20 23:40   |
+| Started   | 2026-06-21 00:12   |
+| Completed | 2026-06-21 00:30   |
 
 ## Summary
 

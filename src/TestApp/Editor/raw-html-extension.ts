@@ -14,6 +14,22 @@ interface RawHtmlData {
     html: string;
 }
 
+/**
+ * Whether a preserved raw-HTML fragment is wholly an HTML comment (`<!-- ... -->`). Comments are export
+ * metadata, so they are preserved verbatim for the round-trip but hidden from view (RFC-0019 follow-up),
+ * unlike other raw HTML which stays inert-but-visible.
+ */
+export function isHtmlComment(html: string): boolean {
+    const trimmed = html.trim();
+
+    return trimmed.startsWith("<!--") && trimmed.endsWith("-->");
+}
+
+/** The class for a preserved raw-HTML placeholder: a hidden modifier is added for comments. */
+function rawHtmlClass(html: string): string {
+    return isHtmlComment(html) ? "markdown-raw-html markdown-raw-html--comment" : "markdown-raw-html";
+}
+
 /** Whether an editor block is preserved raw HTML. */
 function isRawHtmlBlock(block: EditorBlock): block is EditorBlock & { data: RawHtmlData } {
     return block.type === "custom" && block.extension === "raw-html";
@@ -45,7 +61,7 @@ function renderBlock(block: EditorBlock, ctx: RenderContext): string | null {
         return null;
     }
 
-    return `<div class="markdown-raw-html">${ctx.escapeHtml(block.data.html)}</div>`;
+    return `<div class="${rawHtmlClass(block.data.html)}">${ctx.escapeHtml(block.data.html)}</div>`;
 }
 
 /** Renders a preserved raw-html inline as an inert, escaped placeholder, declining any other inline. */
@@ -54,7 +70,7 @@ function renderInline(node: InlineNode, ctx: RenderContext): string | null {
         return null;
     }
 
-    return `<span class="markdown-raw-html">${ctx.escapeHtml(node.data.html)}</span>`;
+    return `<span class="${rawHtmlClass(node.data.html)}">${ctx.escapeHtml(node.data.html)}</span>`;
 }
 
 // Serialise-in: a `.markdown-raw-html` placeholder element -> a preserved raw-html node. The element's text

@@ -1,4 +1,5 @@
 import { mergeAttributes, Node } from "@tiptap/core";
+import { isHtmlComment } from "./raw-html-extension.js";
 
 /**
  * The editor-side raw-HTML node (document-tree mode): an inline atom carrying a verbatim HTML string,
@@ -29,10 +30,9 @@ export const RawHtml = Node.create({
     },
 
     renderHTML({ node }) {
-        return [
-            "span",
-            mergeAttributes({ class: "markdown-raw-html", contenteditable: "false" }),
-            String(node.attrs["html"] ?? ""),
-        ];
+        const html = String(node.attrs["html"] ?? "");
+        const className = isHtmlComment(html) ? "markdown-raw-html markdown-raw-html--comment" : "markdown-raw-html";
+
+        return ["span", mergeAttributes({ class: className, contenteditable: "false" }), html];
     },
 });

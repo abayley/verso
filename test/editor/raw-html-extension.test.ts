@@ -32,8 +32,14 @@ describe("raw HTML parsing", (): void => {
 });
 
 describe("raw HTML rendering", (): void => {
-    it("given raw HTML, when rendered, then it is shown inert (escaped), never as live HTML", (): void => {
-        expect(renderMarkdown("<!-- note -->")).toBe('<div class="markdown-raw-html">&lt;!-- note --&gt;</div>');
+    it("given non-comment raw HTML, when rendered, then it is shown inert (escaped) and visible", (): void => {
+        expect(renderMarkdown("<div>x</div>")).toBe('<div class="markdown-raw-html">&lt;div&gt;x&lt;/div&gt;</div>');
+    });
+
+    it("given an HTML comment, when rendered, then it carries the hidden modifier class but keeps its text", (): void => {
+        expect(renderMarkdown("<!-- note -->")).toBe(
+            '<div class="markdown-raw-html markdown-raw-html--comment">&lt;!-- note --&gt;</div>',
+        );
     });
 });
 

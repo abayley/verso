@@ -721,6 +721,12 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   white-space: pre-wrap;
 }
 
+/* HTML comments are preserved verbatim for the round-trip but hidden from view (RFC-0019 follow-up); only
+   other raw HTML stays inert-but-visible. The element remains in the DOM so the serialise seam reads it. */
+.markdown-raw-html--comment {
+  display: none;
+}
+
 /* ===================================================================
    Visual themes (RFC-0015). Each theme overrides the --markdown-editor-*
    tokens for both light and dark, keyed on data-editor-theme, plus an

@@ -155,6 +155,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private panes: HTMLDivElement | null = null;
     private linkController: LinkPopoverController | null = null;
     private saveError: HTMLSpanElement | null = null;
+    private errorBanner: HTMLDivElement | null = null;
     private saveController: SaveStateController | null = null;
     private sourceEditor: CodeMirrorSourceEditor | null = null;
     private syncingEditors = false;
@@ -168,6 +169,15 @@ export class MarkdownEditorElement extends HTMLElement {
         if (this.theme === "match-system") {
             this.applyDocumentTheme();
         }
+    };
+    // Catch-all error surfacing (RFC-0022): an uncaught error or rejection anywhere on the editor page
+    // raises the dismissible banner rather than leaving a silently broken editor. The editor is the whole
+    // page in this app, so page-level errors are treated as editor-originated.
+    private readonly handleGlobalError = (event: ErrorEvent): void => {
+        this.showErrorBanner(event.error ?? event.message);
+    };
+    private readonly handleUnhandledRejection = (event: PromiseRejectionEvent): void => {
+        this.showErrorBanner(event.reason);
     };
     private readonly handleSelectionChange = (): void => {
         this.updateBubbleToolbar();
@@ -240,15 +250,25 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
+        // Create the error banner before initialising so an initialisation failure (e.g. a document the
+        // renderer chokes on) can surface in the UI instead of leaving a blank editor. It is attached during
+        // initialise (after the inline content is read), or on demand by showErrorBanner if a failure occurs
+        // first; it is a top-level child, not a footer notice, so it stays visible in the read view.
+        this.errorBanner = this.createErrorBanner();
+        window.addEventListener("error", this.handleGlobalError);
+        window.addEventListener("unhandledrejection", this.handleUnhandledRejection);
+
         window.setTimeout((): void => {
             this.initialise().catch((error: unknown): void => {
-                console.error(error);
+                this.showErrorBanner(error);
             });
         }, 0);
     }
 
     /** Cleans up editor resources when the element leaves the document. */
     disconnectedCallback(): void {
+        window.removeEventListener("error", this.handleGlobalError);
+        window.removeEventListener("unhandledrejection", this.handleUnhandledRejection);
         this.systemThemeQuery()?.removeEventListener("change", this.handleSystemThemeChange);
         document.removeEventListener("selectionchange", this.handleSelectionChange);
         this.body?.removeEventListener("dragover", this.handleDragOver);
@@ -290,6 +310,12 @@ export class MarkdownEditorElement extends HTMLElement {
         this.mode = this.editorMode();
         this.bodyWidth = this.editorBodyWidth();
         this.replaceChildren();
+
+        // Re-attach the error banner cleared by replaceChildren so it stays present for the rest of
+        // initialisation (and visible if a later step here throws).
+        if (this.errorBanner) {
+            this.append(this.errorBanner);
+        }
 
         if (fallback) {
             // Adopt the server-rendered textarea but keep it inert: disabled so it
@@ -767,6 +793,47 @@ export class MarkdownEditorElement extends HTMLElement {
         this.saveError = error;
 
         return error;
+    }
+
+    /** Creates the dismissible catch-all error banner (RFC-0022); hidden until a failure surfaces. */
+    private createErrorBanner(): HTMLDivElement {
+        const banner = document.createElement("div");
+        banner.className = "markdown-editor__error-banner";
+        banner.setAttribute("role", "alert");
+        banner.hidden = true;
+
+        const message = document.createElement("span");
+        message.className = "markdown-editor__error-banner-message";
+        message.textContent = "Something went wrong in the editor. Your last saved version is safe.";
+
+        const dismiss = document.createElement("button");
+        dismiss.type = "button";
+        dismiss.className = "markdown-editor__error-banner-dismiss";
+        dismiss.textContent = "Dismiss";
+        dismiss.setAttribute("aria-label", "Dismiss error");
+        dismiss.addEventListener("click", (): void => {
+            banner.hidden = true;
+        });
+
+        banner.append(message, dismiss);
+
+        return banner;
+    }
+
+    /** Surfaces an unexpected failure to the user and logs the underlying error to the console. */
+    private showErrorBanner(error: unknown): void {
+        console.error(error);
+
+        if (!this.errorBanner) {
+            return;
+        }
+
+        // Attach on demand if a failure happens before initialise attaches it (e.g. loadMarkdown rejecting).
+        if (!this.errorBanner.isConnected) {
+            this.append(this.errorBanner);
+        }
+
+        this.errorBanner.hidden = false;
     }
 
     /** Creates the link popover controller, wiring its host dependencies (RFC-0002). */

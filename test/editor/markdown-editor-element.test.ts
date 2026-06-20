@@ -32,6 +32,26 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__error")).toBeNull();
     });
 
+    it("given an uncaught error on the page, when it fires, then a dismissible error banner appears", async (): Promise<void> => {
+        const consoleError = vi.spyOn(console, "error").mockImplementation((): void => {});
+        const editor = document.createElement(elementName);
+        editor.textContent = "# Heading";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        const banner = editor.querySelector(".markdown-editor__error-banner") as HTMLElement | null;
+        expect(banner?.hidden).toBe(true);
+
+        window.dispatchEvent(new ErrorEvent("error", { error: new Error("boom"), message: "boom" }));
+        expect(banner?.hidden).toBe(false);
+
+        (editor.querySelector(".markdown-editor__error-banner-dismiss") as HTMLElement).click();
+        expect(banner?.hidden).toBe(true);
+
+        consoleError.mockRestore();
+    });
+
     it("given source mode, when initialised, then it uses CodeMirror and serialises Markdown", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.setAttribute("mode", "source");

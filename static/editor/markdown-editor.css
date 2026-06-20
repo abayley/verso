@@ -507,6 +507,40 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   }
 }
 
+/* Catch-all error banner (RFC-0022). A top-level child, not a footer notice, so it stays visible in the
+   read view (where the footer is hidden). Sticks to the top of the viewport above all editor surfaces. */
+.markdown-editor__error-banner {
+  align-items: center;
+  background: var(--markdown-editor-pill-background);
+  border: 1px solid var(--markdown-editor-pill-border);
+  border-left: 3px solid var(--markdown-editor-error-accent);
+  border-radius: 8px;
+  color: var(--markdown-editor-error-text);
+  display: flex;
+  font: 13px system-ui, sans-serif;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  position: sticky;
+  top: 0.5rem;
+  z-index: 20;
+}
+
+.markdown-editor__error-banner[hidden] {
+  display: none;
+}
+
+.markdown-editor__error-banner-dismiss {
+  background: transparent;
+  border: 1px solid var(--markdown-editor-pill-border);
+  border-radius: 6px;
+  color: inherit;
+  cursor: pointer;
+  font: 12px system-ui, sans-serif;
+  padding: 0.2rem 0.5rem;
+}
+
 .markdown-editor__footer {
   align-items: center;
   bottom: 1.25rem;

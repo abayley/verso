@@ -14,7 +14,9 @@ import {
     CommandBarElement,
     type CommandBlockStyleEventDetail,
     type CommandInlineEventDetail,
+    type CommandInsertStructureEventDetail,
     type CommandStructureEventDetail,
+    type InsertStructureKind,
 } from "./command-bar-element.js";
 import { registerExtension } from "./content-extension.js";
 import { INLINE_COMMANDS } from "./editor-toolbar-shared.js";
@@ -467,8 +469,37 @@ export class MarkdownEditorElement extends HTMLElement {
         bar.addEventListener("command-structure", (event: Event): void => {
             this.toggleStructure((event as CustomEvent<CommandStructureEventDetail>).detail.style);
         });
+        bar.addEventListener("command-insert-structure", (event: Event): void => {
+            this.insertStructure((event as CustomEvent<CommandInsertStructureEventDetail>).detail.kind);
+        });
 
         return bar;
+    }
+
+    /**
+     * Inserts a block construct (table, callout, collapsible). In the visual editor it uses the dedicated
+     * Tiptap commands; in the source editor it inserts the equivalent Markdown (a GFM table skeleton, a
+     * `> [!NOTE]` alert, or an mkdocs `??? note` collapsible) at the caret.
+     */
+    private insertStructure(kind: InsertStructureKind): void {
+        if (this.shouldUseSourceCommands()) {
+            if (this.sourceEditor?.insertMarkdown(structureMarkdown(kind))) {
+                this.handleSourceInput();
+            }
+
+            return;
+        }
+
+        const inserted =
+            kind === "table"
+                ? this.visualEditor?.insertTable()
+                : kind === "admonition"
+                  ? this.visualEditor?.insertAdmonition("note")
+                  : this.visualEditor?.insertCollapsible("note");
+
+        if (inserted) {
+            this.handleVisualInput();
+        }
     }
 
     /** Creates the document name label shown in the editor top bar. */
@@ -1915,6 +1946,19 @@ function wordCountLabel(markdown: string): string {
 /** Counts Markdown source words: whitespace-separated tokens containing a letter or digit. */
 function countDocumentWords(markdown: string): number {
     return markdown.split(/\s+/u).filter((token: string): boolean => /[\p{L}\p{N}]/u.test(token)).length;
+}
+
+/** The Markdown a block-insert command writes in source mode: a GFM table, a GFM alert, or an mkdocs collapsible. */
+function structureMarkdown(kind: InsertStructureKind): string {
+    if (kind === "table") {
+        return "| Column | Column |\n| --- | --- |\n| Cell | Cell |\n";
+    }
+
+    if (kind === "admonition") {
+        return "> [!NOTE]\n> Text\n";
+    }
+
+    return '??? note "Title"\n    Text\n';
 }
 
 function createToolbarIcon(name: string, label: string, family?: string): HTMLElement {

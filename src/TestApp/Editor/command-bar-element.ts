@@ -26,6 +26,14 @@ export interface CommandStructureEventDetail {
     style: VisualStructureStyle;
 }
 
+/** A block construct the command bar can insert (table / callout / collapsible). */
+export type InsertStructureKind = "table" | "admonition" | "collapsible";
+
+/** Detail of the `command-insert-structure` event: the block construct to insert. */
+export interface CommandInsertStructureEventDetail {
+    kind: InsertStructureKind;
+}
+
 /** The structural command buttons, in toolbar order (specific to the persistent command bar). */
 const STRUCTURE_COMMANDS: { style: VisualStructureStyle; label: string; icon: string }[] = [
     { style: "bullet-list", label: "Bullet List", icon: "list" },
@@ -33,6 +41,13 @@ const STRUCTURE_COMMANDS: { style: VisualStructureStyle; label: string; icon: st
     { style: "blockquote", label: "Blockquote", icon: "quote-left" },
     { style: "code-block", label: "Code Block", icon: "file-code" },
     { style: "thematic-break", label: "Horizontal rule", icon: "window-minimize" },
+];
+
+/** The block-insert command buttons (table, callout, collapsible), in toolbar order. */
+const INSERT_COMMANDS: { kind: InsertStructureKind; label: string; icon: string }[] = [
+    { kind: "table", label: "Insert table", icon: "table" },
+    { kind: "admonition", label: "Insert callout", icon: "circle-info" },
+    { kind: "collapsible", label: "Insert collapsible", icon: "chevron-down" },
 ];
 
 /**
@@ -106,6 +121,16 @@ export class CommandBarElement extends LitElement {
             }
         }
 
+        for (const command of INSERT_COMMANDS) {
+            const button = this.querySelector<HTMLElement>(
+                `.markdown-editor__insert-button[data-insert-kind="${command.kind}"]`,
+            );
+
+            if (button) {
+                this.tooltipController?.register(button, command.label);
+            }
+        }
+
         const attachment = this.querySelector<HTMLElement>(".markdown-editor__attachment-button");
 
         if (attachment) {
@@ -154,6 +179,17 @@ export class CommandBarElement extends LitElement {
                 bubbles: true,
                 composed: true,
                 detail: { style },
+            }),
+        );
+    }
+
+    /** Dispatches a request to insert a block construct (table, callout, collapsible) for the host to run. */
+    private emitInsertStructure(kind: InsertStructureKind): void {
+        this.dispatchEvent(
+            new CustomEvent<CommandInsertStructureEventDetail>("command-insert-structure", {
+                bubbles: true,
+                composed: true,
+                detail: { kind },
             }),
         );
     }
@@ -231,6 +267,29 @@ export class CommandBarElement extends LitElement {
                             data-structure-style=${command.style}
                             @mousedown=${preventDefault}
                             @click=${(): void => this.emitStructure(command.style)}
+                        >
+                            <wa-icon
+                                class="markdown-editor__button-icon"
+                                name=${command.icon}
+                                variant="solid"
+                                label=${command.label}
+                            ></wa-icon>
+                        </wa-button>
+                    `,
+                )}
+            </wa-button-group>
+            <wa-button-group class="markdown-editor__button-group">
+                ${INSERT_COMMANDS.map(
+                    (command) => html`
+                        <wa-button
+                            class="markdown-editor__button markdown-editor__insert-button"
+                            appearance="plain"
+                            size="small"
+                            type="button"
+                            aria-label=${command.label}
+                            data-insert-kind=${command.kind}
+                            @mousedown=${preventDefault}
+                            @click=${(): void => this.emitInsertStructure(command.kind)}
                         >
                             <wa-icon
                                 class="markdown-editor__button-icon"

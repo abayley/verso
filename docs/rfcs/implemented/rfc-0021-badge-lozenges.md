@@ -1,7 +1,7 @@
 ---
 id: RFC-0021
 name: Badge Lozenges As A Content Extension
-status: Draft
+status: Implemented
 owners:
     - alistair
 created: 2026-06-20
@@ -17,8 +17,8 @@ superseded_by: null
 | Stage     | Timestamp        |
 |-----------|------------------|
 | Authored  | 2026-06-20 13:01 |
-| Started   |                  |
-| Completed |                  |
+| Started   | 2026-06-20 14:30 |
+| Completed | 2026-06-20 16:15 |
 
 ## Summary
 

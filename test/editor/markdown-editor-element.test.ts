@@ -118,6 +118,23 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain("![cat](/cat.png)");
     });
 
+    it("given a callout followed by a bare image, when loaded in the visual editor, then it renders without a schema error", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        // The bare image makes the freshly-loaded document schema-invalid; the callout upgrade then
+        // dispatches a transaction over that invalid document and throws "Called contentMatchAt on a node
+        // with invalid content", so the visual surface never mounts. Bare images must be wrapped first.
+        editor.textContent = "> [!WARNING]\n\n![cat](/cat.png)";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        const surface = editor.querySelector(".markdown-editor__surface .ProseMirror");
+
+        expect(surface).toBeInstanceOf(HTMLElement);
+        expect(surface?.querySelector(".markdown-alert, [data-kind]")).toBeInstanceOf(HTMLElement);
+        expect(surface?.querySelector("p img")).toBeInstanceOf(HTMLElement);
+    });
+
     it("given visual mode, when mode radio options are selected, then it changes modes without losing Markdown", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = "# Heading\n\nParagraph with **strong** text.";

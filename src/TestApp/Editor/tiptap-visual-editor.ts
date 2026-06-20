@@ -319,9 +319,12 @@ export class TiptapVisualEditor {
                 onChange();
             },
         });
+        // Wrap bare top-level images first: a standalone image loads as a schema-invalid document, and the
+        // upgrade passes below dispatch transactions that throw "Called contentMatchAt on a node with invalid
+        // content" over such a document (see wrapBareImages). Validity must be restored before any transaction.
+        this.wrapBareImages();
         this.upgradeAlertBlockquotes();
         this.upgradeCollapsibles();
-        this.wrapBareImages();
         this.loadImageWidths();
         this.loadRawHtml(raw.fragments);
         this.loadBadges(badges.fragments);
@@ -354,9 +357,12 @@ export class TiptapVisualEditor {
         const raw = this.extractRawHtml(references.stripped);
         const badges = this.extractBadges(raw.stripped);
         this.editor.commands.setContent(badges.stripped, options);
+        // Wrap bare top-level images first: a standalone image loads as a schema-invalid document, and the
+        // upgrade passes below dispatch transactions that throw "Called contentMatchAt on a node with invalid
+        // content" over such a document (see wrapBareImages). Validity must be restored before any transaction.
+        this.wrapBareImages();
         this.upgradeAlertBlockquotes();
         this.upgradeCollapsibles();
-        this.wrapBareImages();
         this.loadImageWidths();
         this.loadRawHtml(raw.fragments);
         this.loadBadges(badges.fragments);

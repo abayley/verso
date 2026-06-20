@@ -727,6 +727,18 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   display: none;
 }
 
+/* Badge lozenges (RFC-0021): `text`{.badge.<colour>} renders as a coloured pill. The colour is the
+   background (set inline from the validated colour token); these rules give the pill its shape. The text
+   colour is a translucent-dark overlay that stays legible on the common bright backgrounds. */
+.badge {
+  border-radius: 0.4em;
+  color: rgb(0 0 0 / 80%);
+  font-size: 0.85em;
+  font-weight: 600;
+  padding: 0.1em 0.45em;
+  white-space: nowrap;
+}
+
 /* ===================================================================
    Visual themes (RFC-0015). Each theme overrides the --markdown-editor-*
    tokens for both light and dark, keyed on data-editor-theme, plus an

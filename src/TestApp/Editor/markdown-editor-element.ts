@@ -7,6 +7,7 @@ import {
     parseEmbeddedAttachments,
 } from "./attachment-panel.js";
 import { attachmentMarkdown, isInlineImage, uploadAttachment } from "./attachment-upload.js";
+import { badgeExtension } from "./badge-extension.js";
 import { BubbleToolbarElement } from "./bubble-toolbar-element.js";
 import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
 import type { CollapsibleKind } from "./collapsible-extension.js";
@@ -281,8 +282,9 @@ export class MarkdownEditorElement extends HTMLElement {
         if (this.isTreeMode()) {
             // The trusted document tree may contain raw HTML (export-metadata comments, occasional
             // markup); preserve it verbatim and inert rather than throwing on it (ADR-040/041 reject raw
-            // HTML only in the untrusted flat mode).
+            // HTML only in the untrusted flat mode). Badge lozenges (RFC-0021) are likewise tree-only.
             registerExtension(rawHtmlExtension);
+            registerExtension(badgeExtension);
         }
 
         this.visualTheme = this.editorVisualTheme();

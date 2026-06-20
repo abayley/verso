@@ -410,17 +410,9 @@ export class CodeMirrorSourceEditor {
     }
 }
 
-/** Converts a toolbar style identifier into a Markdown heading prefix. */
+/** Converts a `heading-N` toolbar style identifier into its Markdown heading prefix. */
 function headingPrefix(style: Exclude<VisualBlockStyle, "paragraph">): string {
-    if (style === "heading-1") {
-        return "#";
-    }
-
-    if (style === "heading-2") {
-        return "##";
-    }
-
-    return "###";
+    return "#".repeat(Number(style.slice("heading-".length)));
 }
 
 interface PrimaryModifierShortcutOptions {

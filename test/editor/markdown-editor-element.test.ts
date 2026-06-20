@@ -284,6 +284,19 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown().trim()).toBe("## Plain paragraph");
     });
 
+    it("given visual mode, when a level-4 heading style is selected, then the block becomes an h4", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        selectBlockStyle(editor, "heading-4");
+
+        expect(editor.querySelector(".markdown-editor__surface h4")?.textContent).toBe("Plain paragraph");
+        expect(editor.toMarkdown().trim()).toBe("#### Plain paragraph");
+    });
+
     it("given visual mode, when bold is selected, then the selected text becomes strong", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = "Plain paragraph";
@@ -1047,6 +1060,20 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
     });
 
+    it("given source mode, when a level-5 heading style is selected, then the line gets five hashes", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.setAttribute("mode", "source");
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        placeSourceCursor(editor, "Plain");
+
+        selectBlockStyle(editor, "heading-5");
+
+        expect(editor.toMarkdown()).toBe("##### Plain paragraph");
+    });
+
     it("given source mode, when tab and shift-tab are pressed, then the current Markdown line indents and outdents", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.setAttribute("mode", "source");
@@ -1317,7 +1344,7 @@ describe("MarkdownEditorElement studio surfaces", (): void => {
         dispatchSelectionChange();
 
         expect(slashMenu(editor).hidden).toBe(false);
-        expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(12);
+        expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(15);
     });
 
     it("given the studio slash menu, when Heading 1 is chosen, then the block becomes a heading", async (): Promise<void> => {

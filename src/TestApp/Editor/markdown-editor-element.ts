@@ -914,6 +914,9 @@ export class MarkdownEditorElement extends HTMLElement {
             { label: "Heading 1", run: (): void => this.applyBlockStyle("heading-1") },
             { label: "Heading 2", run: (): void => this.applyBlockStyle("heading-2") },
             { label: "Heading 3", run: (): void => this.applyBlockStyle("heading-3") },
+            { label: "Heading 4", run: (): void => this.applyBlockStyle("heading-4") },
+            { label: "Heading 5", run: (): void => this.applyBlockStyle("heading-5") },
+            { label: "Heading 6", run: (): void => this.applyBlockStyle("heading-6") },
             { label: "Bullet list", run: (): void => this.toggleStructure("bullet-list") },
             { label: "Numbered list", run: (): void => this.toggleStructure("ordered-list") },
             { label: "Quote", run: (): void => this.toggleStructure("blockquote") },
@@ -1861,7 +1864,7 @@ function filesFromDataTransfer(transfer: DataTransfer | null): File[] {
 
 /** Checks that a toolbar value is a supported visual block style. */
 function isVisualBlockStyle(style: string): style is VisualBlockStyle {
-    return style === "paragraph" || style === "heading-1" || style === "heading-2" || style === "heading-3";
+    return style === "paragraph" || /^heading-[1-6]$/.test(style);
 }
 
 /** Checks whether a value is an editor mode. */

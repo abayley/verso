@@ -33,7 +33,14 @@ export type TiptapChangeHandler = () => void;
 export type TiptapLinkShortcutHandler = () => void;
 
 /** Supported visual block styles exposed by the editor toolbar. */
-export type VisualBlockStyle = "paragraph" | "heading-1" | "heading-2" | "heading-3";
+export type VisualBlockStyle =
+    | "paragraph"
+    | "heading-1"
+    | "heading-2"
+    | "heading-3"
+    | "heading-4"
+    | "heading-5"
+    | "heading-6";
 
 /** Supported visual inline styles exposed by the editor toolbar. */
 export type VisualInlineStyle = "strong" | "emphasis" | "code" | "strikethrough" | "link";
@@ -1144,16 +1151,10 @@ export class TiptapVisualEditor {
 
     /** Returns the block style at the current selection (for the bubble toolbar's block selector). */
     public currentBlockStyle(): VisualBlockStyle {
-        if (this.editor.isActive("heading", { level: 1 })) {
-            return "heading-1";
-        }
-
-        if (this.editor.isActive("heading", { level: 2 })) {
-            return "heading-2";
-        }
-
-        if (this.editor.isActive("heading", { level: 3 })) {
-            return "heading-3";
+        for (const level of [1, 2, 3, 4, 5, 6] as const) {
+            if (this.editor.isActive("heading", { level })) {
+                return `heading-${level}`;
+            }
         }
 
         return "paragraph";
@@ -1483,17 +1484,9 @@ function lastTextDescendant(node: Node): Text | null {
     return null;
 }
 
-/** Converts toolbar style identifiers into Tiptap heading levels. */
-function headingLevel(style: Exclude<VisualBlockStyle, "paragraph">): 1 | 2 | 3 {
-    if (style === "heading-1") {
-        return 1;
-    }
-
-    if (style === "heading-2") {
-        return 2;
-    }
-
-    return 3;
+/** Converts a `heading-N` toolbar style identifier into its Tiptap heading level. */
+function headingLevel(style: Exclude<VisualBlockStyle, "paragraph">): 1 | 2 | 3 | 4 | 5 | 6 {
+    return Number(style.slice("heading-".length)) as 1 | 2 | 3 | 4 | 5 | 6;
 }
 
 /** Escapes paragraph text that would otherwise be parsed back as Markdown block syntax. */

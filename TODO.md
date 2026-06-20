@@ -31,8 +31,6 @@ frontend:
   workbench does not look much like the mockup.
 - markdown editor colour scheme in dark mode is terrible
 - review code structure
-- notification area
-- floating popup toolbar for selections
 - can we bundle as desktop app?
 - all typescript code has tsdocs
 - <https://performance.dev/how-is-linear-so-fast-a-technical-breakdown>

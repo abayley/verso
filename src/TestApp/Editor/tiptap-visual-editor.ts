@@ -21,7 +21,7 @@ import { Admonition } from "./tiptap-admonition-node.js";
 import { Collapsible } from "./tiptap-collapsible-node.js";
 import { FootnoteDefinition, FootnoteReference } from "./tiptap-footnote-node.js";
 import { Image } from "./tiptap-image-node.js";
-import { RawHtml } from "./tiptap-raw-html-node.js";
+import { RawHtml, RawHtmlBlock } from "./tiptap-raw-html-node.js";
 import { ReferenceDefinition, ReferenceLink } from "./tiptap-reference-link-node.js";
 import { tableExtensions } from "./tiptap-table-extensions.js";
 
@@ -153,26 +153,37 @@ function normaliseReferenceLabel(label: string): string {
 // plain text; {@link TiptapVisualEditor.loadRawHtml} swaps them for raw-html nodes after the content loads.
 const RAW_HTML_SENTINEL = /\u{E000}(\d+)\u{E001}/gu;
 
+/** A raw-HTML fragment pulled out before marked: the verbatim HTML and whether it was block-level. */
+interface RawHtmlFragment {
+    html: string;
+    block: boolean;
+}
+
 /**
  * Replaces each raw-HTML span with an indexed sentinel before marked sees it (marked otherwise interprets
  * or drops raw HTML), returning the stripped Markdown and the verbatim fragments by index. Spans are
- * replaced last-to-first so earlier source offsets stay valid.
+ * replaced last-to-first so earlier source offsets stay valid. A block-level span's sentinel is wrapped in
+ * blank lines so marked keeps it as its own paragraph -- otherwise an export comment on the line after an
+ * image would be merged onto the image's line ({@link TiptapVisualEditor.loadRawHtml} then promotes such a
+ * sentinel paragraph to a block node).
  */
-function stripRawHtml(markdown: string): { stripped: string; fragments: string[] } {
+function stripRawHtml(markdown: string): { stripped: string; fragments: RawHtmlFragment[] } {
     const spans = rawHtmlSpans(markdown).sort((a, b): number => a.start - b.start);
 
     if (spans.length === 0) {
         return { fragments: [], stripped: markdown };
     }
 
-    const fragments = spans.map((span): string => span.value);
+    const fragments = spans.map((span): RawHtmlFragment => ({ block: span.block, html: span.value }));
     let stripped = markdown;
 
     for (let index = spans.length - 1; index >= 0; index -= 1) {
         const span = spans[index];
 
         if (span) {
-            stripped = `${stripped.slice(0, span.start)}\u{E000}${index}\u{E001}${stripped.slice(span.end)}`;
+            const sentinel = `\u{E000}${index}\u{E001}`;
+            const replacement = span.block ? `\n\n${sentinel}\n\n` : sentinel;
+            stripped = `${stripped.slice(0, span.start)}${replacement}${stripped.slice(span.end)}`;
         }
     }
 
@@ -244,6 +255,7 @@ export class TiptapVisualEditor {
                 ReferenceDefinition,
                 Image,
                 RawHtml,
+                RawHtmlBlock,
                 ...tableExtensions,
                 Markdown.configure({
                     markedOptions: {
@@ -311,29 +323,48 @@ export class TiptapVisualEditor {
     }
 
     /** Pre-extracts raw HTML (sentinels for marked) when preservation is on; a no-op passthrough otherwise. */
-    private extractRawHtml(markdown: string): { stripped: string; fragments: string[] } {
+    private extractRawHtml(markdown: string): { stripped: string; fragments: RawHtmlFragment[] } {
         return this.preserveRawHtml ? stripRawHtml(markdown) : { fragments: [], stripped: markdown };
     }
 
     /**
-     * Replaces the raw-HTML sentinels left by {@link extractRawHtml} with raw-html nodes carrying the
-     * verbatim HTML, after the content has loaded. marked passes the sentinels through as text; this swaps
-     * each for an inert node so the HTML survives the round-trip without being interpreted or rendered live.
+     * Replaces the raw-HTML sentinels left by {@link extractRawHtml} with raw-html nodes after the content
+     * has loaded. A block fragment's sentinel sits alone in its own paragraph (stripRawHtml wrapped it in
+     * blank lines), which is promoted whole to a block raw-html node so it keeps its own line; an inline
+     * fragment's sentinel is swapped in place for an inline raw-html node. Either way the HTML survives the
+     * round-trip inert, never interpreted or rendered live.
      */
-    private loadRawHtml(fragments: string[]): void {
+    private loadRawHtml(fragments: RawHtmlFragment[]): void {
         if (fragments.length === 0) {
             return;
         }
 
         const rawHtmlType = this.editor.state.schema.nodes["rawHtml"];
+        const rawHtmlBlockType = this.editor.state.schema.nodes["rawHtmlBlock"];
 
-        if (!rawHtmlType) {
+        if (!rawHtmlType || !rawHtmlBlockType) {
             return;
         }
 
-        const replacements: Array<{ from: number; html: string; marks: readonly ProseMirrorMark[]; to: number }> = [];
+        const replacements: Array<{ from: number; node: ProseMirrorNode; to: number }> = [];
 
         this.editor.state.doc.descendants((node: ProseMirrorNode, position: number): boolean => {
+            // A paragraph whose sole content is a block fragment's sentinel becomes a block raw-html node.
+            if (node.type.name === "paragraph") {
+                const wholeMatch = /^\u{E000}(\d+)\u{E001}$/u.exec(node.textContent);
+                const fragment = wholeMatch ? fragments[Number(wholeMatch[1])] : undefined;
+
+                if (wholeMatch && fragment?.block) {
+                    replacements.push({
+                        from: position,
+                        node: rawHtmlBlockType.create({ html: fragment.html }),
+                        to: position + node.nodeSize,
+                    });
+
+                    return false;
+                }
+            }
+
             if (!node.isText || node.text === undefined) {
                 return true;
             }
@@ -342,13 +373,12 @@ export class TiptapVisualEditor {
             let match = pattern.exec(node.text);
 
             while (match !== null) {
-                const html = fragments[Number(match[1])];
+                const fragment = fragments[Number(match[1])];
 
-                if (html !== undefined) {
+                if (fragment !== undefined) {
                     replacements.push({
                         from: position + match.index,
-                        html,
-                        marks: node.marks,
+                        node: rawHtmlType.create({ html: fragment.html }, null, node.marks),
                         to: position + match.index + match[0].length,
                     });
                 }
@@ -365,12 +395,8 @@ export class TiptapVisualEditor {
 
         const transaction = this.editor.state.tr;
 
-        for (const replacement of replacements.reverse()) {
-            transaction.replaceWith(
-                replacement.from,
-                replacement.to,
-                rawHtmlType.create({ html: replacement.html }, null, replacement.marks),
-            );
+        for (const replacement of replacements.sort((a, b): number => b.from - a.from)) {
+            transaction.replaceWith(replacement.from, replacement.to, replacement.node);
         }
 
         this.editor.view.dispatch(transaction.setMeta("addToHistory", false));

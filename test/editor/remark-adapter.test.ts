@@ -41,6 +41,18 @@ describe("rawHtmlSpans", (): void => {
         expect(rawHtmlSpans("# H\n\n<!-- c -->").map((span): string => span.value)).toEqual(["<!-- c -->"]);
     });
 
+    it("classifies block-level HTML (own line) as block and inline tags as inline", (): void => {
+        const spans = rawHtmlSpans("![a](x.png)\n<!-- c -->\n\nsome <strong>x</strong> text");
+
+        expect(
+            spans.map((span): { value: string; block: boolean } => ({ block: span.block, value: span.value })),
+        ).toEqual([
+            { block: true, value: "<!-- c -->" },
+            { block: false, value: "<strong>" },
+            { block: false, value: "</strong>" },
+        ]);
+    });
+
     it.each([
         ["plain Markdown", "# Heading\n\ntext"],
         ["an autolink (a link, not raw HTML)", "see <https://example.com>"],

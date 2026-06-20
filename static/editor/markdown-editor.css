@@ -599,8 +599,7 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   background: var(--markdown-editor-save-retry);
 }
 
-.markdown-editor__save-error,
-.markdown-editor__error {
+.markdown-editor__save-error {
   background: var(--markdown-editor-pill-background);
   border: 1px solid var(--markdown-editor-pill-border);
   border-left: 3px solid var(--markdown-editor-error-accent);
@@ -647,8 +646,7 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   padding: 0.35rem 0.5rem;
 }
 
-.markdown-editor__save-error[hidden],
-.markdown-editor__error[hidden] {
+.markdown-editor__save-error[hidden] {
   display: none;
 }
 

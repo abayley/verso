@@ -25,7 +25,6 @@ import { INLINE_COMMANDS } from "./editor-toolbar-shared.js";
 import { joinFrontmatter, splitFrontmatter } from "./frontmatter.js";
 import { imageShortTitles } from "./image-metadata.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
-import { renderMarkdown } from "./markdown-render.js";
 import { rawHtmlExtension } from "./raw-html-extension.js";
 import { SaveStateController, type SaveStateView } from "./save-state-controller.js";
 import { SlashMenuElement, type SlashSelectEventDetail } from "./slash-menu-element.js";
@@ -154,8 +153,6 @@ export class MarkdownEditorElement extends HTMLElement {
     private attachmentPanel: AttachmentPanel | null = null;
     private mode: EditorMode = "visual";
     private panes: HTMLDivElement | null = null;
-    private parseError: HTMLDivElement | null = null;
-    private preview: HTMLDivElement | null = null;
     private linkController: LinkPopoverController | null = null;
     private saveError: HTMLSpanElement | null = null;
     private saveController: SaveStateController | null = null;
@@ -318,10 +315,6 @@ export class MarkdownEditorElement extends HTMLElement {
         this.tableControls = this.createTableControls();
         this.body = document.createElement("div");
         this.body.className = "markdown-editor__body";
-        this.parseError = document.createElement("div");
-        this.parseError.className = "markdown-editor__error";
-        this.parseError.setAttribute("role", "alert");
-        this.parseError.hidden = true;
         this.wordCount = document.createElement("span");
         this.wordCount.className = "markdown-editor__word-count";
 
@@ -332,7 +325,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
         const notices = document.createElement("div");
         notices.className = "markdown-editor__notices";
-        notices.append(this.parseError, this.uploadNotice, this.createSaveError());
+        notices.append(this.uploadNotice, this.createSaveError());
 
         const footer = document.createElement("div");
         footer.className = "markdown-editor__footer";
@@ -368,7 +361,6 @@ export class MarkdownEditorElement extends HTMLElement {
         this.applyBodyWidth();
         this.renderMode();
         this.updateToolbarState();
-        this.updatePreview();
         this.updateWordCount();
         this.systemThemeQuery()?.addEventListener("change", this.handleSystemThemeChange);
         document.addEventListener("selectionchange", this.handleSelectionChange);
@@ -1230,8 +1222,6 @@ export class MarkdownEditorElement extends HTMLElement {
         if (this.visualEditor) {
             this.visualEditor.setMarkdown(this.markdown);
         }
-
-        this.updatePreview();
     }
 
     /** Applies a visual block style through the active visual editor. */
@@ -1498,29 +1488,14 @@ export class MarkdownEditorElement extends HTMLElement {
         return Boolean(this.sourceEditor && (!this.visualEditor || this.activePane === "source"));
     }
 
-    /** Switches the active editor mode after validating the current Markdown. */
+    /** Switches the active editor mode, carrying the current Markdown across. */
     private switchMode(mode: EditorMode): void {
-        const markdown = this.toMarkdown();
-
-        try {
-            renderMarkdown(markdown);
-        } catch (error: unknown) {
-            this.showParseError(errorMessage(error));
-            return;
-        }
-
-        this.markdown = markdown;
+        this.markdown = this.toMarkdown();
         this.mode = mode;
         this.setAttribute("mode", mode);
         this.applyBodyWidth();
         this.renderMode();
         this.updateToolbarState();
-        this.updatePreview();
-    }
-
-    /** Refreshes the preview pane from the current Markdown value. */
-    private updatePreview(): boolean {
-        return this.updatePreviewFromMarkdown(this.toMarkdown());
     }
 
     /** Handles source editor edits and synchronises any visual split pane. */
@@ -1530,10 +1505,6 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         const markdown = this.toMarkdown();
-
-        if (!this.updatePreview()) {
-            return;
-        }
 
         this.syncVisualEditor(markdown);
         this.dispatchMarkdownChange(markdown);
@@ -1546,10 +1517,6 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         const markdown = this.visualEditor?.toMarkdown() ?? this.markdown;
-
-        if (!this.updatePreviewFromMarkdown(markdown)) {
-            return;
-        }
 
         this.visualEditorChanged = true;
         this.syncSourceEditor(markdown);
@@ -1593,25 +1560,6 @@ export class MarkdownEditorElement extends HTMLElement {
         this.syncingEditors = true;
         this.visualEditor.setMarkdown(markdown);
         this.syncingEditors = false;
-    }
-
-    /** Refreshes the preview pane from a known Markdown value. */
-    private updatePreviewFromMarkdown(markdown: string): boolean {
-        try {
-            if (this.preview) {
-                this.preview.innerHTML = renderMarkdown(markdown);
-            } else {
-                renderMarkdown(markdown);
-            }
-            this.hideParseError();
-            return true;
-        } catch (error: unknown) {
-            if (this.preview) {
-                this.preview.innerHTML = "";
-            }
-            this.showParseError(errorMessage(error));
-            return false;
-        }
     }
 
     /**
@@ -1692,26 +1640,6 @@ export class MarkdownEditorElement extends HTMLElement {
             this.saveError.textContent = view.error ?? "";
             this.saveError.hidden = view.error === null;
         }
-    }
-
-    /** Shows the latest Markdown parse error in the editor chrome. */
-    private showParseError(message: string): void {
-        if (!this.parseError) {
-            return;
-        }
-
-        this.parseError.textContent = message;
-        this.parseError.hidden = false;
-    }
-
-    /** Clears any visible Markdown parse error. */
-    private hideParseError(): void {
-        if (!this.parseError) {
-            return;
-        }
-
-        this.parseError.textContent = "";
-        this.parseError.hidden = true;
     }
 
     /** Returns the visual editor element after construction. */

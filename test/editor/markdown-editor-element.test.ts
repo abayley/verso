@@ -17,7 +17,7 @@ describe("MarkdownEditorElement", (): void => {
         vi.restoreAllMocks();
     });
 
-    it("given unsupported source Markdown, when initialised, then it shows a parse error and keeps the source", async (): Promise<void> => {
+    it("given raw HTML in source mode, when initialised, then it keeps the source without a client validation error", async (): Promise<void> => {
         const editor = document.createElement(elementName);
         editor.setAttribute("mode", "source");
         editor.textContent = "<script>alert(1)</script>";
@@ -25,11 +25,11 @@ describe("MarkdownEditorElement", (): void => {
         document.body.append(editor);
         await waitForInitialisation();
 
+        // The client no longer validates the editor subset (ADR-051); raw HTML is kept verbatim, and the
+        // server stays the trust boundary that rejects it on save (ADR-041).
         expect(editor.querySelector(".markdown-editor__source .cm-editor")).toBeInstanceOf(HTMLElement);
         expect((editor as MarkdownEditorElement).toMarkdown()).toBe("<script>alert(1)</script>");
-        expect(editor.querySelector(".markdown-editor__error")?.textContent).toBe(
-            "Unsupported Markdown node for editor subset: html",
-        );
+        expect(editor.querySelector(".markdown-editor__error")).toBeNull();
     });
 
     it("given source mode, when initialised, then it uses CodeMirror and serialises Markdown", async (): Promise<void> => {
@@ -77,9 +77,7 @@ describe("MarkdownEditorElement", (): void => {
         document.body.append(editor);
         await waitForInitialisation();
 
-        expect((editor.querySelector(".markdown-editor__error") as HTMLElement | null)?.hidden).toBe(true);
         expect(editor.toMarkdown()).toContain("export type EditorBlock");
-        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
     });
 
     it("given visual mode, when initialised, then it uses Tiptap and serialises Markdown", async (): Promise<void> => {
@@ -1088,38 +1086,6 @@ describe("MarkdownEditorElement", (): void => {
 
         dispatchSourceKey(editor, "Tab", true);
         expect(editor.toMarkdown()).toBe("Indented paragraph");
-    });
-
-    it("given unsupported source Markdown, when edited, then it does not dispatch a changed event", async (): Promise<void> => {
-        const editor = document.createElement(elementName);
-        editor.setAttribute("mode", "source");
-        editor.textContent = "# Heading";
-        let changedEvents = 0;
-        editor.addEventListener("editor:changed", (): void => {
-            changedEvents += 1;
-        });
-
-        document.body.append(editor);
-        await waitForInitialisation();
-        (editor as MarkdownEditorElement).setMarkdown("<script>alert(1)</script>");
-
-        expect(changedEvents).toBe(0);
-        expect(editor.querySelector(".markdown-editor__error")?.textContent).toBe(
-            "Unsupported Markdown node for editor subset: html",
-        );
-    });
-
-    it("given a source parse error, when edited to supported Markdown, then it clears the error", async (): Promise<void> => {
-        const editor = document.createElement(elementName);
-        editor.setAttribute("mode", "source");
-        editor.textContent = "<script>alert(1)</script>";
-
-        document.body.append(editor);
-        await waitForInitialisation();
-        (editor as MarkdownEditorElement).setMarkdown("# Recovered");
-
-        expect((editor.querySelector(".markdown-editor__error") as HTMLElement | null)?.hidden).toBe(true);
-        expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
     });
 });
 

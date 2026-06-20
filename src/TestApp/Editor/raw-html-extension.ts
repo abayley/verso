@@ -1,5 +1,5 @@
 import type { PhrasingContent, RootContent } from "mdast";
-import type { ContentExtension, RenderContext } from "./content-extension.js";
+import type { ContentExtension } from "./content-extension.js";
 import type { EditorBlock, InlineNode } from "./editor-model.js";
 
 // Raw-HTML passthrough (opt-in, for the trusted document-tree editing mode). The editor's strict parse
@@ -25,11 +25,6 @@ export function isHtmlComment(html: string): boolean {
     return trimmed.startsWith("<!--") && trimmed.endsWith("-->");
 }
 
-/** The class for a preserved raw-HTML placeholder: a hidden modifier is added for comments. */
-function rawHtmlClass(html: string): string {
-    return isHtmlComment(html) ? "markdown-raw-html markdown-raw-html--comment" : "markdown-raw-html";
-}
-
 /** Whether an editor block is preserved raw HTML. */
 function isRawHtmlBlock(block: EditorBlock): block is EditorBlock & { data: RawHtmlData } {
     return block.type === "custom" && block.extension === "raw-html";
@@ -50,27 +45,6 @@ function blockFromMdast(node: RootContent): EditorBlock | null {
 /** Converts an inline mdast `html` node to a preserved raw-html inline, declining any other node. */
 function inlineFromMdast(node: PhrasingContent): InlineNode | null {
     return node.type === "html" ? { data: { html: node.value }, extension: "raw-html", type: "custom" } : null;
-}
-
-// Render: inert. The verbatim HTML is shown escaped (so it is visible-but-not-rendered) and carried as the
-// element's text content, which the DOM serialise seam reads straight back.
-
-/** Renders a preserved raw-html block as an inert, escaped placeholder, declining any other block. */
-function renderBlock(block: EditorBlock, ctx: RenderContext): string | null {
-    if (!isRawHtmlBlock(block)) {
-        return null;
-    }
-
-    return `<div class="${rawHtmlClass(block.data.html)}">${ctx.escapeHtml(block.data.html)}</div>`;
-}
-
-/** Renders a preserved raw-html inline as an inert, escaped placeholder, declining any other inline. */
-function renderInline(node: InlineNode, ctx: RenderContext): string | null {
-    if (!isRawHtmlInline(node)) {
-        return null;
-    }
-
-    return `<span class="${rawHtmlClass(node.data.html)}">${ctx.escapeHtml(node.data.html)}</span>`;
 }
 
 // Serialise-in: a `.markdown-raw-html` placeholder element -> a preserved raw-html node. The element's text
@@ -121,6 +95,4 @@ export const rawHtmlExtension: ContentExtension = {
     inlineFromMdast,
     inlineToMarkdown,
     name: "raw-html",
-    renderBlock,
-    renderInline,
 };

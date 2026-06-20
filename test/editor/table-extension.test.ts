@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { parseMarkdown } from "../../src/TestApp/Editor/markdown-parse.js";
-import { renderMarkdown } from "../../src/TestApp/Editor/markdown-render.js";
 import { documentFromElements, documentToMarkdown } from "../../src/TestApp/Editor/markdown-serialise.js";
 
 const TWO_COLUMN = ["| H1 | H2 |", "| :--- | ---: |", "| a | **b** |"].join("\n");
@@ -34,23 +33,6 @@ describe("table parsing", (): void => {
         const block = document.blocks[0];
 
         expect(block).toMatchObject({ data: { align: ["left", "center", "right", null] } });
-    });
-});
-
-describe("table rendering", (): void => {
-    it("given a GFM table, when rendered, then it produces a table with header, body, and column alignment", (): void => {
-        expect(renderMarkdown(TWO_COLUMN)).toBe(
-            "<table>" +
-                '<thead><tr><th style="text-align: left">H1</th><th style="text-align: right">H2</th></tr></thead>' +
-                '<tbody><tr><td style="text-align: left">a</td><td style="text-align: right"><strong>b</strong></td></tr></tbody>' +
-                "</table>",
-        );
-    });
-
-    it("given an unaligned column, when rendered, then the cell carries no text-align style", (): void => {
-        expect(renderMarkdown(["| H |", "| --- |", "| v |"].join("\n"))).toBe(
-            "<table><thead><tr><th>H</th></tr></thead><tbody><tr><td>v</td></tr></tbody></table>",
-        );
     });
 });
 

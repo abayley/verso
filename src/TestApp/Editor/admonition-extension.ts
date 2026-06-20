@@ -3,7 +3,6 @@ import {
     type ContentExtension,
     type FromElementContext,
     type ParseContext,
-    type RenderContext,
     registerExtension,
     type ToMarkdownContext,
 } from "./content-extension.js";
@@ -102,21 +101,6 @@ function bodyAfterMarker(node: Blockquote, markerLength: number): RootContent[] 
     return [{ children: leadingInline, type: "paragraph" }, ...rest];
 }
 
-// Render: a custom admonition block becomes a callout with a title bar and the body blocks.
-
-/** Renders a custom admonition block to callout HTML, declining any other block. */
-function renderBlock(block: EditorBlock, ctx: RenderContext): string | null {
-    if (block.type !== "custom" || block.extension !== "admonition") {
-        return null;
-    }
-
-    const { kind } = block.data as AdmonitionData;
-    const title = ctx.escapeHtml(admonitionTitle(kind));
-    const body = ctx.renderBlocks(block.children ?? []);
-
-    return `<div class="markdown-alert markdown-alert-${kind}"><p class="markdown-alert-title">${title}</p><div class="markdown-alert-body">${body}</div></div>`;
-}
-
 // Serialise-in: a rendered callout element (the Tiptap node's DOM) becomes a custom admonition block.
 
 /** Recognises a `.markdown-alert` callout element and rebuilds the custom admonition block, declining otherwise. */
@@ -175,7 +159,6 @@ const admonitionExtension: ContentExtension = {
     blockFromMdast,
     blockToMarkdown,
     name: "admonition",
-    renderBlock,
 };
 
 registerExtension(admonitionExtension);

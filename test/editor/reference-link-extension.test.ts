@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { parseMarkdown } from "../../src/TestApp/Editor/markdown-parse.js";
-import { renderMarkdown } from "../../src/TestApp/Editor/markdown-render.js";
 import { documentFromElements, documentToMarkdown } from "../../src/TestApp/Editor/markdown-serialise.js";
 
 describe("reference link parsing", (): void => {
@@ -50,14 +49,6 @@ describe("reference link parsing", (): void => {
             extension: "reference-link",
             type: "custom",
         });
-    });
-});
-
-describe("reference link rendering", (): void => {
-    it("given a full reference, when rendered, then it resolves to a link and the definition renders nothing", (): void => {
-        expect(renderMarkdown(["See [the docs][d].", "", '[d]: https://example.com "Docs"'].join("\n"))).toBe(
-            '<p>See <a href="https://example.com" title="Docs">the docs</a>.</p>',
-        );
     });
 });
 

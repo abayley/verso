@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { parseMarkdown } from "../../src/TestApp/Editor/markdown-parse.js";
-import { renderMarkdown } from "../../src/TestApp/Editor/markdown-render.js";
 import { documentFromElements, documentToMarkdown } from "../../src/TestApp/Editor/markdown-serialise.js";
 
 describe("image parsing", (): void => {
@@ -63,12 +62,6 @@ describe("image width attribute", (): void => {
         });
     });
 
-    it("given a width, when rendered, then a width attribute is emitted", (): void => {
-        expect(renderMarkdown("![a cat](/cat.png){width=300}")).toBe(
-            '<p><img src="/cat.png" alt="a cat" width="300"></p>',
-        );
-    });
-
     it.each([
         ["plain width", "![a cat](/cat.png){width=300}"],
         ["titled width", '![a cat](/cat.png "Tabby"){width=300}'],
@@ -81,24 +74,6 @@ describe("image width attribute", (): void => {
         root.innerHTML = '<p><img src="/cat.png" alt="a cat" width="300"></p>';
 
         expect(documentToMarkdown(documentFromElements(root.children))).toBe("![a cat](/cat.png){width=300}");
-    });
-});
-
-describe("image rendering", (): void => {
-    it("given an image, when rendered, then it becomes an img element", (): void => {
-        expect(renderMarkdown("![a cat](/cat.png)")).toBe('<p><img src="/cat.png" alt="a cat"></p>');
-    });
-
-    it("given an image with a title, when rendered, then the title attribute is present", (): void => {
-        expect(renderMarkdown('![a cat](/cat.png "Tabby")')).toBe(
-            '<p><img src="/cat.png" alt="a cat" title="Tabby"></p>',
-        );
-    });
-
-    it("given an image with HTML-special attributes, when rendered, then they are escaped", (): void => {
-        expect(renderMarkdown('![a "b" <c>](/cat.png?x=1&y=2 "t<i>tle")')).toBe(
-            '<p><img src="/cat.png?x=1&amp;y=2" alt="a &quot;b&quot; &lt;c&gt;" title="t&lt;i&gt;tle"></p>',
-        );
     });
 });
 

@@ -11,15 +11,6 @@ export interface ParseContext {
     unsupportedNode(type: string): Error;
 }
 
-/** Recursion helpers handed to an extension while rendering the editor model to HTML. */
-export interface RenderContext {
-    escapeHtml(value: string): string;
-    renderBlock(block: EditorBlock): string;
-    renderBlocks(blocks: EditorBlock[]): string;
-    renderInline(node: InlineNode): string;
-    renderInlines(nodes: InlineNode[]): string;
-}
-
 /** Recursion helpers handed to an extension while reading rendered DOM into the editor model. */
 export interface FromElementContext {
     blockFromElement(element: Element): EditorBlock;
@@ -48,10 +39,6 @@ export interface ContentExtension {
     inlineFromElement?(node: ChildNode, ctx: FromElementContext): InlineNode[] | null;
     inlineFromMdast?(node: PhrasingContent, ctx: ParseContext): InlineNode | null;
     inlineToMarkdown?(node: InlineNode, ctx: ToMarkdownContext): string | null;
-    renderBlock?(block: EditorBlock, ctx: RenderContext): string | null;
-    renderInline?(node: InlineNode, ctx: RenderContext): string | null;
-    /** A document-level render that an extension may take over (e.g. footnotes' collected list). */
-    renderDocument?(document: EditorDocument, ctx: RenderContext): string | null;
     /** remark/unified plugins this extension installs in the parse processor (e.g. a custom syntax). */
     remarkPlugins?: PluggableList;
 }
@@ -88,16 +75,6 @@ export function collectRemarkPlugins(): PluggableList {
 /** Builds an unsupported-node error for the current editor subset. */
 function unsupportedNode(type: string): Error {
     return new Error(`Unsupported Markdown node for editor subset: ${type}`);
-}
-
-/** Escapes text for HTML text or attribute contexts. */
-function escapeHtml(value: string): string {
-    return value
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#39;");
 }
 
 // Parse seams: strict. An mdast node no extension recognises is outside the editor subset and throws.
@@ -145,69 +122,6 @@ const parseContext: ParseContext = {
     inlinesFromMdast,
     unsupportedNode,
 };
-
-// Render seams: fail soft. A node no extension renders is skipped rather than throwing.
-
-/** Renders one editor block to HTML, or an empty string if no extension handles it. */
-function renderBlock(block: EditorBlock): string {
-    for (const extension of orderedExtensions()) {
-        const html = extension.renderBlock?.(block, renderContext);
-
-        if (html != null) {
-            return html;
-        }
-    }
-
-    return "";
-}
-
-/** Renders editor blocks to HTML. */
-function renderBlocks(blocks: EditorBlock[]): string {
-    return blocks.map((block: EditorBlock): string => renderBlock(block)).join("");
-}
-
-/** Renders one editor inline node to HTML, or an empty string if no extension handles it. */
-function renderInline(node: InlineNode): string {
-    for (const extension of orderedExtensions()) {
-        const html = extension.renderInline?.(node, renderContext);
-
-        if (html != null) {
-            return html;
-        }
-    }
-
-    return "";
-}
-
-/** Renders editor inline nodes to HTML. */
-function renderInlines(nodes: InlineNode[]): string {
-    return nodes.map((node: InlineNode): string => renderInline(node)).join("");
-}
-
-const renderContext: RenderContext = {
-    escapeHtml,
-    renderBlock,
-    renderBlocks,
-    renderInline,
-    renderInlines,
-};
-
-/**
- * Renders an editor document to HTML. An extension may take over the whole document (returning HTML)
- * for document-level layout such as footnotes' numbered references and collected definitions list;
- * otherwise the default per-block rendering applies.
- */
-export function renderDocument(document: EditorDocument): string {
-    for (const extension of orderedExtensions()) {
-        const html = extension.renderDocument?.(document, renderContext);
-
-        if (html != null) {
-            return html;
-        }
-    }
-
-    return renderBlocks(document.blocks);
-}
 
 // Serialise-in seam: fail soft. The base extension treats any unrecognised element as a paragraph.
 

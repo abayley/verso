@@ -1,7 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { registerExtension } from "../../src/TestApp/Editor/content-extension.js";
 import { parseMarkdown } from "../../src/TestApp/Editor/markdown-parse.js";
-import { renderMarkdown } from "../../src/TestApp/Editor/markdown-render.js";
 import { documentFromElements, documentToMarkdown } from "../../src/TestApp/Editor/markdown-serialise.js";
 import { rawHtmlExtension } from "../../src/TestApp/Editor/raw-html-extension.js";
 
@@ -28,18 +27,6 @@ describe("raw HTML parsing", (): void => {
             { data: { html: "</strong>" }, extension: "raw-html", type: "custom" },
             { text: " after", type: "text" },
         ]);
-    });
-});
-
-describe("raw HTML rendering", (): void => {
-    it("given non-comment raw HTML, when rendered, then it is shown inert (escaped) and visible", (): void => {
-        expect(renderMarkdown("<div>x</div>")).toBe('<div class="markdown-raw-html">&lt;div&gt;x&lt;/div&gt;</div>');
-    });
-
-    it("given an HTML comment, when rendered, then it carries the hidden modifier class but keeps its text", (): void => {
-        expect(renderMarkdown("<!-- note -->")).toBe(
-            '<div class="markdown-raw-html markdown-raw-html--comment">&lt;!-- note --&gt;</div>',
-        );
     });
 });
 

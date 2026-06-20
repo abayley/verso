@@ -1,7 +1,7 @@
 import type { Nodes, PhrasingContent, Root } from "mdast";
 import type { Plugin } from "unified";
-import { BADGE_ATTR, badgeStyle, COLOUR_TOKEN } from "./badge-syntax.js";
-import type { ContentExtension, RenderContext } from "./content-extension.js";
+import { BADGE_ATTR } from "./badge-syntax.js";
+import type { ContentExtension } from "./content-extension.js";
 import type { InlineNode } from "./editor-model.js";
 
 // Badge lozenges (RFC-0021), an opt-in tree-mode content extension. The corpus writes a badge as an inline
@@ -74,22 +74,6 @@ function inlineFromMdast(node: PhrasingContent): InlineNode | null {
     return { data: { colour: badge.colour ?? "", text: badge.value ?? "" }, extension: "badge", type: "custom" };
 }
 
-// Render: a coloured pill. The colour sets the background inline (it is a validated colour token, so there
-// is no CSS-injection surface); an unknown colour the browser rejects falls back to the neutral `.badge`
-// pill. `data-badge-colour` is the source of truth the DOM serialise reads back.
-
-/** Renders a badge to a `span.badge` pill, declining any other inline node. */
-function renderInline(node: InlineNode, ctx: RenderContext): string | null {
-    if (!isBadge(node)) {
-        return null;
-    }
-
-    const { text, colour } = node.data;
-    const style = COLOUR_TOKEN.test(colour) ? ` style="${ctx.escapeHtml(badgeStyle(colour))}"` : "";
-
-    return `<span class="badge" data-badge-colour="${ctx.escapeHtml(colour)}"${style}>${ctx.escapeHtml(text)}</span>`;
-}
-
 // Serialise-in: a `span.badge` placeholder becomes a badge node, reading the colour from data-badge-colour
 // and the literal text from the element's text content.
 
@@ -144,5 +128,4 @@ export const badgeExtension: ContentExtension = {
     inlineToMarkdown,
     name: "badge",
     remarkPlugins: [remarkBadges],
-    renderInline,
 };

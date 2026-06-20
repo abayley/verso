@@ -4,7 +4,6 @@ import {
     type ContentExtension,
     type FromElementContext,
     type ParseContext,
-    type RenderContext,
     registerExtension,
     type ToMarkdownContext,
 } from "./content-extension.js";
@@ -136,21 +135,6 @@ function inlineFromMdast(node: PhrasingContent, _ctx: ParseContext): InlineNode 
     };
 }
 
-// Render: an image -> an <img> element with escaped attributes.
-
-/** Renders an image to an `<img>` element, declining any other inline node. */
-function renderInline(node: InlineNode, ctx: RenderContext): string | null {
-    if (!isImage(node)) {
-        return null;
-    }
-
-    const { alt, src, title, width } = node.data as ImageData;
-    const titleAttr = title !== null ? ` title="${ctx.escapeHtml(title)}"` : "";
-    const widthAttr = width !== null ? ` width="${width}"` : "";
-
-    return `<img src="${ctx.escapeHtml(src)}" alt="${ctx.escapeHtml(alt)}"${titleAttr}${widthAttr}>`;
-}
-
 // Serialise-in: an <img> element -> a custom image inline.
 
 /** Builds a custom image inline node from an `<img>` element. */
@@ -233,7 +217,6 @@ const imageExtension: ContentExtension = {
     inlineToMarkdown,
     name: "image",
     remarkPlugins: [remarkImageWidth],
-    renderInline,
 };
 
 registerExtension(imageExtension);

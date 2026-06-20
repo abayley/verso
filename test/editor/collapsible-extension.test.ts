@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { parseMarkdown } from "../../src/TestApp/Editor/markdown-parse.js";
-import { renderMarkdown } from "../../src/TestApp/Editor/markdown-render.js";
 import { documentFromElements, documentToMarkdown } from "../../src/TestApp/Editor/markdown-serialise.js";
 
 describe("collapsible parsing", (): void => {
@@ -87,26 +86,6 @@ describe("collapsible parsing", (): void => {
         const document = parseMarkdown(['??? note "Title" extra', "", "    Body."].join("\n"));
 
         expect(document.blocks[0]?.type).toBe("paragraph");
-    });
-});
-
-describe("collapsible rendering", (): void => {
-    it("given a collapsed note with a title, when rendered, then it produces a collapsible callout", (): void => {
-        expect(renderMarkdown(['??? note "Title"', "", "    Body **text**."].join("\n"))).toBe(
-            '<div class="markdown-collapsible markdown-collapsible-note" data-open="false" data-title="Title">' +
-                '<p class="markdown-collapsible-title">Title</p>' +
-                '<div class="markdown-collapsible-body"><p>Body <strong>text</strong>.</p></div>' +
-                "</div>",
-        );
-    });
-
-    it("given an open collapsible without a title, when rendered, then it uses the type label and no title attribute", (): void => {
-        expect(renderMarkdown(["???+ warning", "", "    Careful."].join("\n"))).toBe(
-            '<div class="markdown-collapsible markdown-collapsible-warning" data-open="true">' +
-                '<p class="markdown-collapsible-title">Warning</p>' +
-                '<div class="markdown-collapsible-body"><p>Careful.</p></div>' +
-                "</div>",
-        );
     });
 });
 

@@ -6,7 +6,6 @@ import {
     type ContentExtension,
     type FromElementContext,
     type ParseContext,
-    type RenderContext,
     registerExtension,
     type ToMarkdownContext,
 } from "./content-extension.js";
@@ -157,22 +156,6 @@ function blockFromMdast(node: RootContent, ctx: ParseContext): EditorBlock | nul
     };
 }
 
-// Render: a custom collapsible block becomes a callout carrying its type, open state, and title.
-
-/** Renders a custom collapsible block to callout HTML, declining any other block. */
-function renderBlock(block: EditorBlock, ctx: RenderContext): string | null {
-    if (block.type !== "custom" || block.extension !== "collapsible") {
-        return null;
-    }
-
-    const { collapsibleType, title, open } = block.data as CollapsibleData;
-    const titleText = ctx.escapeHtml(title ?? collapsibleTitle(collapsibleType));
-    const titleAttr = title !== null ? ` data-title="${ctx.escapeHtml(title)}"` : "";
-    const body = ctx.renderBlocks(block.children ?? []);
-
-    return `<div class="markdown-collapsible markdown-collapsible-${collapsibleType}" data-open="${open}"${titleAttr}><p class="markdown-collapsible-title">${titleText}</p><div class="markdown-collapsible-body">${body}</div></div>`;
-}
-
 // Serialise-in: a rendered collapsible element (the Tiptap node's DOM) becomes a custom collapsible block.
 
 /** Recognises a `.markdown-collapsible` callout element and rebuilds the custom block, declining otherwise. */
@@ -228,7 +211,6 @@ const collapsibleExtension: ContentExtension = {
     blockToMarkdown,
     name: "collapsible",
     remarkPlugins: [remarkCollapsible],
-    renderBlock,
 };
 
 registerExtension(collapsibleExtension);

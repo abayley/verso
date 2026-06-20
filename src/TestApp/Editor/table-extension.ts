@@ -3,7 +3,6 @@ import {
     type ContentExtension,
     type FromElementContext,
     type ParseContext,
-    type RenderContext,
     registerExtension,
     type ToMarkdownContext,
 } from "./content-extension.js";
@@ -51,28 +50,6 @@ function blockFromMdast(node: RootContent, ctx: ParseContext): EditorBlock | nul
 /** Converts one mdast table row into editor cells. */
 function rowCellsFromMdast(row: TableRow, ctx: ParseContext): TableCellContent[] {
     return row.children.map((cell: TableCell): TableCellContent => ctx.inlinesFromMdast(cell.children));
-}
-
-// Render: a custom table block becomes an HTML table with a header, body, and per-column alignment.
-
-/** Renders a custom table block to HTML, declining any other block. */
-function renderBlock(block: EditorBlock, ctx: RenderContext): string | null {
-    if (block.type !== "custom" || block.extension !== "table") {
-        return null;
-    }
-
-    const data = block.data as TableData;
-    const head = `<thead><tr>${data.header.map((cell, column) => cellHtml("th", cell, data.align[column], ctx)).join("")}</tr></thead>`;
-    const body = `<tbody>${data.rows.map((row) => `<tr>${row.map((cell, column) => cellHtml("td", cell, data.align[column], ctx)).join("")}</tr>`).join("")}</tbody>`;
-
-    return `<table>${head}${body}</table>`;
-}
-
-/** Renders one table cell, applying its column alignment when set. */
-function cellHtml(tag: "td" | "th", cell: TableCellContent, align: TableAlign | undefined, ctx: RenderContext): string {
-    const style = align ? ` style="text-align: ${align}"` : "";
-
-    return `<${tag}${style}>${ctx.renderInlines(cell)}</${tag}>`;
 }
 
 // Serialise-out: a custom table block becomes a GFM pipe table.
@@ -173,7 +150,6 @@ const tableExtension: ContentExtension = {
     blockFromMdast,
     blockToMarkdown,
     name: "table",
-    renderBlock,
 };
 
 registerExtension(tableExtension);

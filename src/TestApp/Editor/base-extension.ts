@@ -3,7 +3,6 @@ import {
     type ContentExtension,
     type FromElementContext,
     type ParseContext,
-    type RenderContext,
     registerExtension,
     type ToMarkdownContext,
 } from "./content-extension.js";
@@ -127,85 +126,6 @@ function inlineFromMdast(node: PhrasingContent, ctx: ParseContext): InlineNode |
         return {
             type: "break",
         };
-    }
-
-    return null;
-}
-
-// Render: editor block -> HTML.
-
-/** Renders a built-in editor block to HTML, or declines an unrecognised block. */
-function renderBlock(block: EditorBlock, ctx: RenderContext): string | null {
-    if (block.type === "heading") {
-        return `<h${block.level}>${ctx.renderInlines(block.children)}</h${block.level}>`;
-    }
-
-    if (block.type === "list") {
-        const tag = block.ordered ? "ol" : "ul";
-
-        return `<${tag}>${block.items.map((item: ListItemBlock): string => renderListItem(item, ctx)).join("")}</${tag}>`;
-    }
-
-    if (block.type === "horizontalRule") {
-        return "<hr>";
-    }
-
-    if (block.type === "codeBlock") {
-        const languageClass = block.language ? ` class="language-${ctx.escapeHtml(block.language)}"` : "";
-
-        return `<pre><code${languageClass}>${ctx.escapeHtml(block.text)}</code></pre>`;
-    }
-
-    if (block.type === "blockquote") {
-        return `<blockquote>${ctx.renderBlocks(block.blocks)}</blockquote>`;
-    }
-
-    if (block.type === "paragraph") {
-        return `<p>${ctx.renderInlines(block.children)}</p>`;
-    }
-
-    return null;
-}
-
-/** Renders one list item, keeping tight single-paragraph items compact. */
-function renderListItem(item: ListItemBlock, ctx: RenderContext): string {
-    if (item.blocks.length === 1 && item.blocks[0]?.type === "paragraph") {
-        return `<li>${ctx.renderInlines(item.blocks[0].children)}</li>`;
-    }
-
-    return `<li>${ctx.renderBlocks(item.blocks)}</li>`;
-}
-
-// Render: editor inline -> HTML.
-
-/** Renders a built-in editor inline node to HTML, or declines an unrecognised node. */
-function renderInline(node: InlineNode, ctx: RenderContext): string | null {
-    if (node.type === "strong") {
-        return `<strong>${ctx.renderInlines(node.children)}</strong>`;
-    }
-
-    if (node.type === "emphasis") {
-        return `<em>${ctx.renderInlines(node.children)}</em>`;
-    }
-
-    if (node.type === "strikethrough") {
-        return `<del>${ctx.renderInlines(node.children)}</del>`;
-    }
-
-    if (node.type === "code") {
-        return `<code>${ctx.escapeHtml(node.text)}</code>`;
-    }
-
-    if (node.type === "link") {
-        return `<a href="${ctx.escapeHtml(node.url)}">${ctx.renderInlines(node.children)}</a>`;
-    }
-
-    if (node.type === "break") {
-        return "<br>";
-    }
-
-    if (node.type === "text") {
-        return ctx.escapeHtml(node.text);
     }
 
     return null;
@@ -562,8 +482,6 @@ const baseExtension: ContentExtension = {
     inlineFromMdast,
     inlineToMarkdown,
     name: "base",
-    renderBlock,
-    renderInline,
 };
 
 registerExtension(baseExtension, { fallback: true });

@@ -4,7 +4,6 @@ import {
     type ContentExtension,
     type FromElementContext,
     type ParseContext,
-    type RenderContext,
     registerExtension,
     type ToMarkdownContext,
 } from "./content-extension.js";
@@ -121,25 +120,6 @@ function blockFromMdast(node: RootContent): EditorBlock | null {
     };
 }
 
-// Render: a reference link resolves to an anchor; a definition renders nothing (it is invisible markup).
-
-/** Renders a reference link to a resolved anchor, declining any other inline node. */
-function renderInline(node: InlineNode, ctx: RenderContext): string | null {
-    if (!isReferenceLink(node)) {
-        return null;
-    }
-
-    const { url, title } = node.data as ReferenceLinkData;
-    const titleAttr = title !== null ? ` title="${ctx.escapeHtml(title)}"` : "";
-
-    return `<a href="${ctx.escapeHtml(url)}"${titleAttr}>${ctx.renderInlines(node.children ?? [])}</a>`;
-}
-
-/** A reference-link definition produces no rendered output, declining any other block. */
-function renderBlock(block: EditorBlock): string | null {
-    return isReferenceDefinition(block) ? "" : null;
-}
-
 // Serialise-in: a reference-link anchor -> custom inline; a definition element -> custom block.
 
 /** Recognises a reference-link anchor and rebuilds the custom inline node, declining otherwise. */
@@ -246,8 +226,6 @@ const referenceLinkExtension: ContentExtension = {
     inlineToMarkdown,
     name: "reference-link",
     remarkPlugins: [remarkResolveReferenceLinks],
-    renderBlock,
-    renderInline,
 };
 
 registerExtension(referenceLinkExtension);

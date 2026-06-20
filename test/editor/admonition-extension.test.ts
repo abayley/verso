@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { parseMarkdown } from "../../src/TestApp/Editor/markdown-parse.js";
-import { renderMarkdown } from "../../src/TestApp/Editor/markdown-render.js";
 import { documentFromElements, documentToMarkdown } from "../../src/TestApp/Editor/markdown-serialise.js";
 
 describe("admonition parsing", (): void => {
@@ -70,21 +69,6 @@ describe("admonition parsing", (): void => {
                 },
             ],
         });
-    });
-});
-
-describe("admonition rendering", (): void => {
-    it("given a NOTE alert, when rendered, then it produces a callout with a title and body", (): void => {
-        expect(renderMarkdown(["> [!NOTE]", "> Body **text**."].join("\n"))).toBe(
-            '<div class="markdown-alert markdown-alert-note">' +
-                '<p class="markdown-alert-title">Note</p>' +
-                '<div class="markdown-alert-body"><p>Body <strong>text</strong>.</p></div>' +
-                "</div>",
-        );
-    });
-
-    it("given a plain blockquote, when rendered, then it stays a blockquote", (): void => {
-        expect(renderMarkdown("> Just a quote.")).toBe("<blockquote><p>Just a quote.</p></blockquote>");
     });
 });
 

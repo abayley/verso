@@ -67,7 +67,7 @@ export class TableControlsElement extends LitElement {
                     (button) => html`
                         <wa-button
                             appearance="plain"
-                            size="small"
+                            size="s"
                             title=${button.label}
                             @click=${(): void => this.emitCommand(button.command)}
                         >
@@ -81,7 +81,7 @@ export class TableControlsElement extends LitElement {
                     (button) => html`
                         <wa-button
                             appearance="plain"
-                            size="small"
+                            size="s"
                             title=${button.label}
                             @click=${(): void => this.emitAlign(button.align)}
                         >
@@ -92,7 +92,7 @@ export class TableControlsElement extends LitElement {
             </wa-button-group>
             <wa-button
                 appearance="plain"
-                size="small"
+                size="s"
                 title="Delete table"
                 @click=${(): void => this.emitCommand("delete")}
             >

@@ -80,7 +80,7 @@ export class LinkEditorElement extends LitElement {
             <wa-button
                 class="markdown-editor__button markdown-editor__link-apply"
                 appearance="plain"
-                size="small"
+                size="s"
                 type="button"
                 aria-label="Apply"
                 @click=${(): void => this.emit("link-apply")}
@@ -88,7 +88,7 @@ export class LinkEditorElement extends LitElement {
             <wa-button
                 class="markdown-editor__button markdown-editor__link-cancel"
                 appearance="plain"
-                size="small"
+                size="s"
                 type="button"
                 aria-label="Cancel"
                 @click=${(): void => this.emit("link-cancel")}
@@ -134,7 +134,7 @@ export class LinkActionsElement extends LitElement {
             <wa-button
                 class="markdown-editor__button markdown-editor__link-edit"
                 appearance="plain"
-                size="small"
+                size="s"
                 type="button"
                 aria-label="Edit link"
                 @mousedown=${preventDefault}
@@ -145,7 +145,7 @@ export class LinkActionsElement extends LitElement {
             <wa-button
                 class="markdown-editor__button markdown-editor__link-remove"
                 appearance="plain"
-                size="small"
+                size="s"
                 type="button"
                 aria-label="Remove link"
                 @mousedown=${preventDefault}

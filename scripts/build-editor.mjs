@@ -2,8 +2,14 @@ const outfile = "static/editor/markdown-editor.js";
 const webAwesomeCssEntry = "node_modules/@awesome.me/webawesome/dist/styles/themes/default.css";
 const webAwesomeCssOutfile = "static/editor/webawesome.css";
 
+// Build for production: Bun resolves the "development" export condition (Lit's dev build, which
+// emits "Lit is in dev mode" console warnings) unless NODE_ENV is "production". Set it before the
+// build so the leaner production builds are bundled and the dev-mode warnings are dropped.
+process.env.NODE_ENV = "production";
+
 const result = await Bun.build({
     entrypoints: ["src/TestApp/Editor/index.ts"],
+    define: { "process.env.NODE_ENV": '"production"' },
     format: "iife",
     minify: true,
     target: "browser",

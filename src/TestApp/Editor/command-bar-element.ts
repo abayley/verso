@@ -239,14 +239,14 @@ export class CommandBarElement extends LitElement {
             <wa-dropdown
                 class="markdown-editor__style-dropdown"
                 aria-label="Block style"
-                size="small"
+                size="s"
                 @wa-select=${this.handleStyleSelect}
             >
                 <wa-button
                     slot="trigger"
                     class="markdown-editor__button markdown-editor__style-trigger"
                     appearance="plain"
-                    size="small"
+                    size="s"
                     type="button"
                     aria-label="Paragraph"
                     with-caret
@@ -266,7 +266,7 @@ export class CommandBarElement extends LitElement {
                         <wa-button
                             class="markdown-editor__button markdown-editor__inline-button"
                             appearance="plain"
-                            size="small"
+                            size="s"
                             type="button"
                             aria-label=${command.label}
                             data-inline-style=${command.style}
@@ -290,7 +290,7 @@ export class CommandBarElement extends LitElement {
                         <wa-button
                             class="markdown-editor__button markdown-editor__structure-button"
                             appearance="plain"
-                            size="small"
+                            size="s"
                             type="button"
                             aria-label=${command.label}
                             data-structure-style=${command.style}
@@ -310,14 +310,14 @@ export class CommandBarElement extends LitElement {
             <wa-dropdown
                 class="markdown-editor__badge-dropdown"
                 aria-label="Badge colour"
-                size="small"
+                size="s"
                 @wa-select=${this.handleBadgeSelect}
             >
                 <wa-button
                     slot="trigger"
                     class="markdown-editor__button markdown-editor__badge-trigger"
                     appearance="plain"
-                    size="small"
+                    size="s"
                     type="button"
                     aria-label="Badge"
                     with-caret
@@ -339,7 +339,7 @@ export class CommandBarElement extends LitElement {
                         <wa-button
                             class="markdown-editor__button markdown-editor__insert-button"
                             appearance="plain"
-                            size="small"
+                            size="s"
                             type="button"
                             aria-label=${command.label}
                             data-insert-kind=${command.kind}
@@ -360,7 +360,7 @@ export class CommandBarElement extends LitElement {
                 <wa-button
                     class="markdown-editor__button markdown-editor__attachment-button"
                     appearance="plain"
-                    size="small"
+                    size="s"
                     type="button"
                     aria-label="Insert image or file"
                     @mousedown=${preventDefault}
@@ -378,7 +378,7 @@ export class CommandBarElement extends LitElement {
                 class="markdown-editor__button markdown-editor__save-button"
                 type="submit"
                 appearance="plain"
-                size="small"
+                size="s"
                 aria-label="Save"
                 ?disabled=${this.saveDisabled}
             >${this.saveLabel}</wa-button>

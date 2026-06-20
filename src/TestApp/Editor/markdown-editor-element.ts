@@ -546,7 +546,7 @@ export class MarkdownEditorElement extends HTMLElement {
         group.className = "markdown-editor__mode-group";
         group.setAttribute("aria-label", "Editor view mode");
         group.setAttribute("orientation", "horizontal");
-        group.setAttribute("size", "small");
+        group.setAttribute("size", "s");
         group.append(
             this.createModeOption("visual", "Visual"),
             this.createModeOption("source", "Markdown"),
@@ -581,7 +581,7 @@ export class MarkdownEditorElement extends HTMLElement {
         group.className = "markdown-editor__width-group";
         group.setAttribute("aria-label", "Editor width");
         group.setAttribute("orientation", "horizontal");
-        group.setAttribute("size", "small");
+        group.setAttribute("size", "s");
         group.append(...bodyWidths.map((width): HTMLElement => this.createWidthOption(width.value, width.label)));
         group.addEventListener("change", (): void => {
             // The width is locked to Full in split (the control is shown but inert there), so ignore changes.
@@ -645,7 +645,7 @@ export class MarkdownEditorElement extends HTMLElement {
         group.className = "markdown-editor__theme-group";
         group.setAttribute("aria-label", "Editor colour theme");
         group.setAttribute("orientation", "horizontal");
-        group.setAttribute("size", "small");
+        group.setAttribute("size", "s");
         group.append(
             this.createThemeOption("light", "Light", "sun"),
             this.createThemeOption("dark", "Dark", "moon"),
@@ -682,7 +682,7 @@ export class MarkdownEditorElement extends HTMLElement {
         const dropdown = document.createElement("wa-dropdown");
         dropdown.className = "markdown-editor__theme-dropdown";
         dropdown.setAttribute("aria-label", "Visual theme");
-        dropdown.setAttribute("size", "small");
+        dropdown.setAttribute("size", "s");
 
         this.themeDropdownTrigger = this.createToolbarButton(
             "markdown-editor__theme-trigger",
@@ -1048,7 +1048,7 @@ export class MarkdownEditorElement extends HTMLElement {
         button.className = `markdown-editor__button ${className}`;
         button.textContent = label;
         button.setAttribute("appearance", "plain");
-        button.setAttribute("size", "small");
+        button.setAttribute("size", "s");
         button.setAttribute("type", "button");
         button.setAttribute("aria-label", label);
         this.tooltipController?.register(button, label, shortcut);

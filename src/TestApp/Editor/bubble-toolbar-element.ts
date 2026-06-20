@@ -99,14 +99,14 @@ export class BubbleToolbarElement extends LitElement {
             <wa-dropdown
                 class="markdown-editor__bubble-style"
                 aria-label="Block style"
-                size="small"
+                size="s"
                 @wa-select=${this.handleStyleSelect}
             >
                 <wa-button
                     slot="trigger"
                     class="markdown-editor__button markdown-editor__bubble-style-trigger"
                     appearance="plain"
-                    size="small"
+                    size="s"
                     type="button"
                     aria-label="Paragraph"
                     with-caret
@@ -126,7 +126,7 @@ export class BubbleToolbarElement extends LitElement {
                             this.activeStyles.includes(command.style) ? "markdown-editor__bubble-button--active" : ""
                         }"
                         appearance="plain"
-                        size="small"
+                        size="s"
                         type="button"
                         aria-label=${command.label}
                         data-inline-style=${command.style}

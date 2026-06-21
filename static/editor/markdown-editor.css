@@ -848,9 +848,10 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   --markdown-editor-save-dirty: #b07d2a;
   --markdown-editor-save-retry: #a84545;
   --markdown-editor-text: #2a2d38;
-  --aurora-wash-1: rgba(120, 150, 200, 0.28);
-  --aurora-wash-2: rgba(150, 135, 190, 0.24);
-  --aurora-wash-3: rgba(120, 185, 180, 0.22);
+  /* Monochrome frosted highlights: neutral white glows, no hue. */
+  --aurora-wash-1: rgba(255, 255, 255, 0.45);
+  --aurora-wash-2: rgba(255, 255, 255, 0.34);
+  --aurora-wash-3: rgba(140, 146, 158, 0.20);
 }
 
 :root[data-editor-theme="aurora"].wa-dark {
@@ -869,9 +870,10 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   --markdown-editor-save-dirty: #e8c07d;
   --markdown-editor-save-retry: #f0a5a5;
   --markdown-editor-text: #eceef4;
-  --aurora-wash-1: rgba(90, 120, 180, 0.30);
-  --aurora-wash-2: rgba(120, 100, 165, 0.26);
-  --aurora-wash-3: rgba(70, 140, 140, 0.22);
+  /* Monochrome frosted highlights: subtle neutral light glows, no hue. */
+  --aurora-wash-1: rgba(255, 255, 255, 0.09);
+  --aurora-wash-2: rgba(255, 255, 255, 0.06);
+  --aurora-wash-3: rgba(255, 255, 255, 0.05);
 }
 
 :root[data-editor-theme="aurora"] body.markdown-editor-page {
@@ -1057,7 +1059,19 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   margin: 0;
   max-width: none;
   min-width: 0;
-  padding: 1rem 0.75rem;
+  padding: 1rem 0.5rem;
+}
+
+/* Tighten the theme dropdown's trigger so its caret stays inside the rail rather
+   than spilling into the centre column. */
+:root[data-editor-theme="workbench"] .markdown-editor__theme-dropdown wa-button::part(base) {
+  font-size: 12px;
+  gap: 0.15rem;
+  padding-inline: 0.2rem;
+}
+
+:root[data-editor-theme="workbench"] .markdown-editor__theme-dropdown wa-button::part(caret) {
+  margin-inline-start: 0.2rem;
 }
 
 /* Each control group stacks vertically, with the groups spaced apart (the radio

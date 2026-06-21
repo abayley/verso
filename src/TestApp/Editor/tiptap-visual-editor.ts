@@ -1,4 +1,4 @@
-import { Editor, type JSONContent, type SetContentOptions } from "@tiptap/core";
+import { Editor, Extension, type JSONContent, type SetContentOptions } from "@tiptap/core";
 import Heading from "@tiptap/extension-heading";
 import { Markdown } from "@tiptap/markdown";
 import {
@@ -10,7 +10,9 @@ import {
     type ResolvedPos,
     type Schema,
 } from "@tiptap/pm/model";
+import { Plugin } from "@tiptap/pm/state";
 import { CellSelection, selectionCell } from "@tiptap/pm/tables";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import StarterKit from "@tiptap/starter-kit";
 import { type AdmonitionKind, matchAlertMarker } from "./admonition-extension.js";
 import { type CollapsibleKind, matchCollapsibleMarker } from "./collapsible-extension.js";
@@ -331,6 +333,44 @@ const HeadingWithoutInputRules = Heading.extend({
     },
 });
 
+/**
+ * Marks the empty paragraph holding the collapsed caret with `is-empty` and a `data-placeholder` of
+ * "Type / for commands" -- the slash-menu hint. A decoration computed from state (no dispatched transaction,
+ * unlike `@tiptap/extensions`' Placeholder, whose viewport plugin dispatches during construction and would
+ * fire `onUpdate` before the editor is assigned). The hint is only *shown* under the Studio theme, gated in
+ * CSS on `data-editor-theme`; under the toolbar-driven themes the attribute is present but never rendered, so
+ * a runtime theme switch (which only toggles the root attribute) needs no editor rebuild.
+ */
+const SlashHint = Extension.create({
+    name: "slashHint",
+
+    addProseMirrorPlugins() {
+        return [
+            new Plugin({
+                props: {
+                    decorations: (state) => {
+                        const { $from, empty } = state.selection;
+                        const node = $from.parent;
+
+                        if (!empty || node.type.name !== "paragraph" || node.content.size > 0) {
+                            return null;
+                        }
+
+                        const pos = $from.before();
+
+                        return DecorationSet.create(state.doc, [
+                            Decoration.node(pos, pos + node.nodeSize, {
+                                class: "is-empty",
+                                "data-placeholder": "Type / for commands",
+                            }),
+                        ]);
+                    },
+                },
+            }),
+        ];
+    },
+});
+
 /** Markdown-in/Markdown-out adapter around Tiptap's visual editor. */
 export class TiptapVisualEditor {
     private readonly editor: Editor;
@@ -393,6 +433,7 @@ export class TiptapVisualEditor {
                 RawHtml,
                 RawHtmlBlock,
                 Badge,
+                SlashHint,
                 ...tableExtensions,
                 Markdown.configure({
                     markedOptions: {

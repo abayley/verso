@@ -1046,6 +1046,24 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   display: none;
 }
 
+/* Studio drops the shared serif for a sans-serif stack, matching its Notion
+   lineage; the other themes keep the Georgia surface set globally above. */
+:root[data-editor-theme="studio"] .markdown-editor__surface,
+:root[data-editor-theme="studio"] .markdown-editor__preview {
+  font: 16px/1.7 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* The slash-command hint. The Placeholder extension sets data-placeholder on the
+   focused empty paragraph for every theme; it is only rendered under Studio,
+   where the slash menu replaces the persistent toolbar. */
+:root[data-editor-theme="studio"] .markdown-editor__surface .ProseMirror p.is-empty::before {
+  color: var(--markdown-editor-muted);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
 /* The selection bubble toolbar floats over a non-empty visual selection. It is
    positioned by the editor element (the same overlay helper as the link
    popovers) and shown only under Studio. */

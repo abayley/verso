@@ -79,6 +79,14 @@ export class CodeMirrorSourceEditor {
         return this.root;
     }
 
+    /** The 1-based line and column of the caret (the selection head), for the status bar. */
+    public cursorPosition(): { line: number; column: number } {
+        const head = this.view.state.selection.main.head;
+        const line = this.view.state.doc.lineAt(head);
+
+        return { column: head - line.from + 1, line: line.number };
+    }
+
     /** Replaces the current source document. */
     public setMarkdown(markdownText: string): void {
         this.view.dispatch({

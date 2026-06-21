@@ -183,6 +183,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.updateBubbleToolbar();
         this.updateSlashMenu();
         this.updateTableControls();
+        this.updateCursorPosition();
     };
     private readonly handleSlashKeydown = (event: KeyboardEvent): void => {
         if (!this.slashMenu || this.slashMenu.hidden) {
@@ -243,6 +244,10 @@ export class MarkdownEditorElement extends HTMLElement {
     private visualEditor: TiptapVisualEditor | null = null;
     private visualEditorChanged = false;
     private wordCount: HTMLSpanElement | null = null;
+    /** The status-bar caret-position readout (Workbench chrome); empty when no source pane is shown. */
+    private cursorReadout: HTMLSpanElement | null = null;
+    /** The status-bar word-count readout. */
+    private wordReadout: HTMLSpanElement | null = null;
 
     /** Starts asynchronous element initialisation after connection. */
     connectedCallback(): void {
@@ -343,6 +348,20 @@ export class MarkdownEditorElement extends HTMLElement {
         this.body.className = "markdown-editor__body";
         this.wordCount = document.createElement("span");
         this.wordCount.className = "markdown-editor__word-count";
+        // A status line carrying a document-format label (left), and the caret position and word count
+        // (right). The format label and caret position only surface under the Workbench theme's status-bar
+        // chrome (CSS-gated); the other themes show the word count alone, as before.
+        const statusInfo = document.createElement("span");
+        statusInfo.className = "markdown-editor__status-info";
+        statusInfo.textContent = "markdown";
+        const statusMeta = document.createElement("span");
+        statusMeta.className = "markdown-editor__status-meta";
+        this.cursorReadout = document.createElement("span");
+        this.cursorReadout.className = "markdown-editor__status-cursor";
+        this.wordReadout = document.createElement("span");
+        this.wordReadout.className = "markdown-editor__status-words";
+        statusMeta.append(this.cursorReadout, this.wordReadout);
+        this.wordCount.append(statusInfo, statusMeta);
 
         this.uploadNotice = document.createElement("div");
         this.uploadNotice.className = "markdown-editor__upload-notice";
@@ -388,6 +407,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.renderMode();
         this.updateToolbarState();
         this.updateWordCount();
+        this.updateCursorPosition();
         this.systemThemeQuery()?.addEventListener("change", this.handleSystemThemeChange);
         document.addEventListener("selectionchange", this.handleSelectionChange);
 
@@ -1573,6 +1593,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.applyBodyWidth();
         this.renderMode();
         this.updateToolbarState();
+        this.updateCursorPosition();
     }
 
     /** Handles source editor edits and synchronises any visual split pane. */
@@ -1801,11 +1822,22 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Updates the word count from the current Markdown document. */
     private updateWordCount(): void {
-        if (!this.wordCount) {
+        if (this.wordReadout) {
+            this.wordReadout.textContent = wordCountLabel(this.markdown);
+        }
+    }
+
+    /**
+     * Updates the status-bar caret-position readout from the source editor (the only pane with a line/column
+     * notion). Cleared when no source pane is shown, so visual-only mode carries the word count alone.
+     */
+    private updateCursorPosition(): void {
+        if (!this.cursorReadout) {
             return;
         }
 
-        this.wordCount.textContent = wordCountLabel(this.markdown);
+        const position = this.sourceEditor?.cursorPosition() ?? null;
+        this.cursorReadout.textContent = position ? `ln ${position.line}, col ${position.column}` : "";
     }
 
     /** Applies the editor theme selection to Web Awesome's document-level colour scheme classes. */

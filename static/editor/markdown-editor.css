@@ -676,6 +676,18 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   text-align: right;
 }
 
+/* The format label and caret readout are Workbench status-bar chrome; the other
+   themes show the word count alone (the caret readout is also empty whenever no
+   source pane is shown). */
+.markdown-editor__status-info,
+.markdown-editor__status-cursor:empty {
+  display: none;
+}
+
+.markdown-editor__status-cursor {
+  margin-right: 1rem;
+}
+
 .markdown-editor__link-editor,
 .markdown-editor__link-actions {
   align-items: center;
@@ -932,9 +944,12 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   padding: 1.5rem 2rem;
 }
 
-/* --- Workbench: an IDE look, dark (primary) and light, with status-bar chrome.
-   Opens in Split by default (a layout preset, not a lock); the source pane's
-   line numbers come from CodeMirror's basicSetup. --- */
+/* --- Workbench: an IDE look, dark (primary, a Tokyo Night palette) and light,
+   with monospace chrome, a file-tab document name carrying the modified-state
+   dot, and a full-width accent status bar carrying caret position and word
+   count. Opens in Split by default (a layout preset, not a lock); the source
+   pane's line numbers come from CodeMirror's basicSetup, and the source syntax
+   colours follow the palette tokens below (the highlight style reads them). --- */
 :root[data-editor-theme="workbench"] {
   --markdown-editor-accent: #2b6cb0;
   --markdown-editor-background: #f4f5f7;
@@ -951,30 +966,35 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   --markdown-editor-save-dirty: #9a6b1f;
   --markdown-editor-save-retry: #b03a48;
   --markdown-editor-text: #24292f;
+  --markdown-editor-info: #0b7285;
+  --markdown-editor-emphasis: #6f42c1;
 }
 
 :root[data-editor-theme="workbench"].wa-dark {
-  --markdown-editor-accent: #6cb6ff;
-  --markdown-editor-background: #1e2127;
-  --markdown-editor-code-background: #262b33;
-  --markdown-editor-code-border: #353b45;
-  --markdown-editor-divider: #353b45;
-  --markdown-editor-error-accent: #e5707e;
-  --markdown-editor-error-text: #f0a0a8;
-  --markdown-editor-muted: #8b92a0;
-  --markdown-editor-pill-background: #262a31;
-  --markdown-editor-pill-border: #353b45;
-  --markdown-editor-quote-border: #4a5160;
-  --markdown-editor-save-clean: #57ab5a;
-  --markdown-editor-save-dirty: #daaa3f;
-  --markdown-editor-save-retry: #e5707e;
-  --markdown-editor-text: #d4d7dd;
+  --markdown-editor-accent: #7aa2f7;
+  --markdown-editor-background: #1a1b26;
+  --markdown-editor-code-background: #1f2335;
+  --markdown-editor-code-border: #2a2e42;
+  --markdown-editor-divider: #2a2e42;
+  --markdown-editor-error-accent: #f7768e;
+  --markdown-editor-error-text: #ff9aa8;
+  --markdown-editor-muted: #565f89;
+  --markdown-editor-pill-background: #1f2335;
+  --markdown-editor-pill-border: #2a2e42;
+  --markdown-editor-quote-border: #3b4261;
+  --markdown-editor-save-clean: #9ece6a;
+  --markdown-editor-save-dirty: #e0af68;
+  --markdown-editor-save-retry: #f7768e;
+  --markdown-editor-text: #c0caf5;
+  --markdown-editor-info: #7dcfff;
+  --markdown-editor-emphasis: #bb9af7;
 }
 
-/* Chrome: a title strip on top, a squarer command toolbar, and the word count
-   rendered as a full-width bottom status bar. */
+/* Chrome: a monospace title strip, a squarer command toolbar, the document name
+   as a file tab, and the word count as a full-width accent status bar. */
 :root[data-editor-theme="workbench"] .markdown-editor__toolbar--top {
   border-bottom: 1px solid var(--markdown-editor-divider);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
   margin-bottom: 0.5rem;
   padding-bottom: 0.6rem;
 }
@@ -983,14 +1003,60 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   border-radius: 6px;
 }
 
+/* The document name reads as an editor file tab sitting on the divider line. */
+:root[data-editor-theme="workbench"] .markdown-editor__document-name {
+  align-self: flex-start;
+  background: var(--markdown-editor-code-background);
+  border: 1px solid var(--markdown-editor-divider);
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  color: var(--markdown-editor-text);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 12px;
+  margin-bottom: -0.6rem;
+  padding: 0.35rem 0.7rem;
+}
+
+/* The modified-state dot rides on the file tab, mirroring data-save-state (set on
+   the markdown-editor element; the theme attribute is on the document root). */
+:root[data-editor-theme="workbench"] markdown-editor[data-save-state="dirty"] .markdown-editor__document-name::after,
+:root[data-editor-theme="workbench"] markdown-editor[data-save-state="retry"] .markdown-editor__document-name::after {
+  background: var(--markdown-editor-save-dirty);
+  border-radius: 50%;
+  content: "";
+  display: inline-block;
+  height: 7px;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+  width: 7px;
+}
+
+:root[data-editor-theme="workbench"] markdown-editor[data-save-state="retry"] .markdown-editor__document-name::after {
+  background: var(--markdown-editor-save-retry);
+}
+
 :root[data-editor-theme="workbench"] .markdown-editor__word-count {
-  border-top: 1px solid var(--markdown-editor-divider);
-  display: block;
+  background: var(--markdown-editor-accent);
+  bottom: 0;
+  color: var(--markdown-editor-background);
+  display: flex;
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
   font-size: 11px;
+  justify-content: space-between;
   margin-top: 0.75rem;
-  padding: 0.4rem 0.25rem;
-  text-align: right;
+  padding: 0.4rem 0.75rem;
+  position: sticky;
+  z-index: 4;
+}
+
+/* The floating command pill lifts clear of the pinned status bar. */
+:root[data-editor-theme="workbench"] .markdown-editor__footer {
+  bottom: 2.75rem;
+}
+
+/* Surface the format label and (when a source pane is shown) the caret readout. */
+:root[data-editor-theme="workbench"] .markdown-editor__status-info {
+  display: inline;
 }
 
 /* Studio (RFC-0016): a calm Notion-style paper look that replaces the persistent

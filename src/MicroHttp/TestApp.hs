@@ -726,7 +726,7 @@ the pre-paint bootstrap validate against this set, so an unknown configured or
 stored value falls back to Paper.
 -}
 knownEditorThemes :: [String]
-knownEditorThemes = ["paper", "aurora", "blueprint", "herbarium", "workbench", "studio"]
+knownEditorThemes = ["paper", "aurora", "blueprint", "workbench", "studio"]
 
 -- | Validates a configured default theme name, falling back to @paper@.
 safeEditorTheme :: String -> String

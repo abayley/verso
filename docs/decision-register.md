@@ -1570,6 +1570,46 @@ editor's DOM contract for a collapsible changes from `<div>` to `<details>`
 only); the `???` source syntax, the raw-HTML ban, and the no-Pro-dependency
 constraint all stand. Implemented by RFC-0025.
 
+### ADR-055: Theme Set Revision -- Retire Herbarium, Differentiate Studio And Workbench
+
+Status: Accepted.
+
+Context: ADR-036/RFC-0015 shipped the visual themes as a mostly-CSS axis: each
+theme is a block of `--markdown-editor-*` token overrides, and the content
+surface typography (`Georgia ... serif`) and page layout are shared by every
+theme. In practice the colour-only themes read as near-identical -- Paper,
+Herbarium, and Workbench differ only in palette plus minor chrome. Herbarium (a
+ruled-paper journal) added a decorative background but no distinct interaction or
+type, so it earned its keep the least. Studio (ADR-037) and Workbench were meant
+to be structurally distinct (a Notion-style slash/bubble surface; an IDE
+workbench) but both inherited the shared serif and most of the shared layout, so
+neither resembled its source mockup
+(`docs/mockups/markdown-editor-redesign-c-workspace-studio.html`,
+`...-b-dark-workbench.html`).
+
+Decision: (1) retire Herbarium entirely -- remove its token blocks, the ruled
+background, and its entry from the three registration points (the CSS, the editor
+dropdown, the server allowlist `knownEditorThemes`); a stored or configured
+`herbarium` now falls back to Paper through the existing validation. (2) Let a
+theme override the surface typography, not only colour: Studio switches the
+content font to a sans-serif stack to match its Notion lineage, and gains a
+caret placeholder hint ("Type / for commands") on empty blocks so the slash menu
+is discoverable without a persistent toolbar. (3) Give Workbench the IDE chrome
+its mockup implies -- dark palette, monospace chrome, the filename as a file tab
+with a modified-state dot, and an accent status bar carrying cursor position and
+word count -- as bounded CSS-plus-small-JS over the existing controls. The
+decorative left icon rail and caret-tracked preview from the mockup are
+deliberately excluded: the rail's icons map to no real feature (it would be dead
+chrome) and caret-sync is feature work, not styling.
+
+Consequences: the theme set is Paper, Aurora, Blueprint, Workbench, Studio.
+Typography joins colour and bounded layout presets as a themable axis, so themes
+can now diverge in look as well as palette without becoming separate editors.
+Workbench resembles its mockup's signature without inventing non-functional
+controls. Refines ADR-036 and ADR-037 (the theme set and Studio's surfaces); the
+registration-in-three-places contract and the pre-paint allowlist bootstrap
+stand.
+
 ## ADR Registry Open Review Items
 
 - Verify socket layout assumptions on non-macOS platforms before treating

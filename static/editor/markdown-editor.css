@@ -932,54 +932,6 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   padding: 1.5rem 2rem;
 }
 
-/* --- Herbarium: a naturalist journal on ruled paper, light and dark. --- */
-:root[data-editor-theme="herbarium"] {
-  --markdown-editor-accent: #a8693d;
-  --markdown-editor-background: #f3efe2;
-  --markdown-editor-code-background: #ece5d3;
-  --markdown-editor-code-border: #d8d0ba;
-  --markdown-editor-divider: #d8d0ba;
-  --markdown-editor-error-accent: #9a3b3b;
-  --markdown-editor-error-text: #8a3434;
-  --markdown-editor-muted: #8a8268;
-  --markdown-editor-pill-background: #fbf8ef;
-  --markdown-editor-pill-border: #ccc3a8;
-  --markdown-editor-quote-border: #c9bfa0;
-  --markdown-editor-save-clean: #5f7a4a;
-  --markdown-editor-save-dirty: #a8693d;
-  --markdown-editor-save-retry: #9a3b3b;
-  --markdown-editor-text: #4a4334;
-  --herbarium-rule: #ddd5bf;
-}
-
-:root[data-editor-theme="herbarium"].wa-dark {
-  --markdown-editor-accent: #d09a63;
-  --markdown-editor-background: #221f18;
-  --markdown-editor-code-background: #2b2719;
-  --markdown-editor-code-border: #4a4334;
-  --markdown-editor-divider: #4a4334;
-  --markdown-editor-error-accent: #e08a8a;
-  --markdown-editor-error-text: #f0b0b0;
-  --markdown-editor-muted: #9a917b;
-  --markdown-editor-pill-background: #2b2719;
-  --markdown-editor-pill-border: #4a4334;
-  --markdown-editor-quote-border: #57503a;
-  --markdown-editor-save-clean: #9bb07a;
-  --markdown-editor-save-dirty: #d8a35a;
-  --markdown-editor-save-retry: #e08a8a;
-  --markdown-editor-text: #e6e0cf;
-  --herbarium-rule: #3a3527;
-}
-
-:root[data-editor-theme="herbarium"] .markdown-editor__body {
-  background-image: repeating-linear-gradient(
-    var(--markdown-editor-background),
-    var(--markdown-editor-background) 27px,
-    var(--herbarium-rule) 27px,
-    var(--herbarium-rule) 28px
-  );
-}
-
 /* --- Workbench: an IDE look, dark (primary) and light, with status-bar chrome.
    Opens in Split by default (a layout preset, not a lock); the source pane's
    line numbers come from CodeMirror's basicSetup. --- */

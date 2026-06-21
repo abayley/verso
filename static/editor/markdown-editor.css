@@ -1015,13 +1015,35 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 :root[data-editor-theme="workbench"] markdown-editor {
   display: grid;
   grid-template-areas:
-    "rail tab"
     "rail format"
+    "rail tab"
     "rail main"
     "status status";
-  grid-template-columns: 13rem 1fr;
+  grid-template-columns: 7rem 1fr;
   grid-template-rows: auto auto 1fr auto;
   height: 100vh;
+}
+
+/* The colour-scheme icons tighten up so their row fits the narrow rail. */
+:root[data-editor-theme="workbench"] .markdown-editor__theme-option {
+  --wa-form-control-padding-inline: 0.25rem;
+}
+
+/* The radio groups size to their content rather than stretching to the rail (a
+   Web Awesome radio-group otherwise reserves a wide form-control label box,
+   which would overflow the narrow rail). */
+:root[data-editor-theme="workbench"] .markdown-editor__mode-group,
+:root[data-editor-theme="workbench"] .markdown-editor__width-group,
+:root[data-editor-theme="workbench"] .markdown-editor__theme-group {
+  width: max-content;
+}
+
+/* In the read view the formatting toolbar is hidden, but it keeps its space
+   (invisible, not removed) so the panes sit at the same height as in edit mode --
+   toggling edit/view does not shift the content. */
+:root[data-editor-theme="workbench"] markdown-editor[data-readonly] .markdown-editor__footer {
+  display: flex !important;
+  visibility: hidden;
 }
 
 /* The presentation controls become the left rail, stacked vertically. box-sizing
@@ -1035,20 +1057,19 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   margin: 0;
   max-width: none;
   min-width: 0;
-  overflow: auto;
   padding: 1rem 0.75rem;
 }
 
 /* Each control group stacks vertically, with the groups spaced apart (the radio
    groups themselves are switched to vertical orientation in the element). */
 :root[data-editor-theme="workbench"] .markdown-editor__toolbar-controls {
-  align-items: stretch;
+  align-items: flex-start;
   flex-direction: column;
   gap: 1.5rem;
   justify-content: flex-start;
 }
 
-/* The document name is the file tab on the top row. */
+/* The document name is the file tab below the toolbar, attached to the pane. */
 :root[data-editor-theme="workbench"] .markdown-editor__document-name {
   align-self: end;
   background: var(--markdown-editor-code-background);
@@ -1059,9 +1080,9 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   font: 12px ui-monospace, "SFMono-Regular", Menlo, monospace;
   grid-area: tab;
   letter-spacing: normal;
-  margin: 0.6rem 0 0 0.75rem;
+  margin: 0 0 0 0.75rem;
   max-width: max-content;
-  padding: 0.35rem 0.7rem;
+  padding: 0.3rem 0.7rem;
   width: auto;
 }
 
@@ -1092,10 +1113,11 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 
 :root[data-editor-theme="workbench"] .markdown-editor__toolbar--commands {
   border-radius: 0;
-  border-width: 1px 0;
+  border-width: 0 0 1px;
   box-sizing: border-box;
   justify-content: flex-start;
   max-width: none;
+  padding-block: 0.1rem;
   width: 100%;
 }
 

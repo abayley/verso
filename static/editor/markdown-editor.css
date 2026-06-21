@@ -68,23 +68,32 @@ markdown-editor {
 }
 
 .markdown-editor__toolbar--top {
-  align-items: center;
   color: var(--markdown-editor-muted);
   display: flex;
-  flex-wrap: wrap;
+  /* The controls sit on the first line; the document name drops onto its own line below, so a long page
+     name never wraps a control onto a second line. */
+  flex-direction: column;
   font: 13px system-ui, sans-serif;
-  gap: 1.25rem;
+  gap: 0.4rem;
   letter-spacing: 0.04em;
-  /* Capped at the "wide" column width and centred, so the controls sit at the right edge of the wide pane
-     rather than the far edge of the viewport; they only move inward once the viewport is narrower than this. */
+  /* Capped at the "medium" column width and centred, so the controls sit at the right edge of the medium
+     pane rather than the far edge of the viewport; they only move inward once the viewport is narrower. */
   margin: 0 auto;
   max-width: 76rem;
   padding: 1rem 0.25rem;
   width: 100%;
 }
 
+.markdown-editor__toolbar-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  justify-content: flex-end;
+}
+
 .markdown-editor__document-name {
-  margin-right: auto;
+  text-align: left;
 }
 
 .markdown-editor__view-toggle {
@@ -151,14 +160,10 @@ markdown-editor {
 }
 
 markdown-editor[data-body-width="narrow"] .markdown-editor__workspace {
-  max-width: 46rem;
-}
-
-markdown-editor[data-body-width="medium"] .markdown-editor__workspace {
   max-width: 60rem;
 }
 
-markdown-editor[data-body-width="wide"] .markdown-editor__workspace {
+markdown-editor[data-body-width="medium"] .markdown-editor__workspace {
   max-width: 76rem;
 }
 

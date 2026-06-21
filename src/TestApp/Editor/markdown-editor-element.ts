@@ -46,7 +46,7 @@ import { ToolbarTooltipController } from "./toolbar-tooltip-controller.js";
 
 type EditorMode = "visual" | "source" | "split";
 type EditorTheme = "light" | "dark" | "match-system";
-type BodyWidth = "narrow" | "medium" | "wide" | "full";
+type BodyWidth = "narrow" | "medium" | "full";
 type VisualTheme = "paper" | "aurora" | "blueprint" | "herbarium" | "workbench" | "studio";
 type ActivePane = "source" | "visual";
 type ToolbarButtonElement = HTMLElement;
@@ -55,11 +55,10 @@ const visualThemeStorageKey = "editor-theme";
 const colorSchemeStorageKey = "editor-color-scheme";
 const bodyWidthStorageKey = "editor-body-width";
 
-/** The selectable editing-column widths, in toolbar order; "medium" is the default. */
+/** The selectable editing-column widths, in toolbar order; "narrow" is the default. */
 const bodyWidths: { value: BodyWidth; label: string }[] = [
     { value: "narrow", label: "Narrow" },
     { value: "medium", label: "Medium" },
-    { value: "wide", label: "Wide" },
     { value: "full", label: "Full" },
 ];
 
@@ -150,7 +149,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private frontmatter: string | null = null;
     private modeGroup: HTMLElement | null = null;
     private widthGroup: HTMLElement | null = null;
-    private bodyWidth: BodyWidth = "medium";
+    private bodyWidth: BodyWidth = "narrow";
     private attachmentPanel: AttachmentPanel | null = null;
     private mode: EditorMode = "visual";
     private panes: HTMLDivElement | null = null;
@@ -423,24 +422,31 @@ export class MarkdownEditorElement extends HTMLElement {
         return input;
     }
 
-    /** Creates the top editor bar with the document name and view controls. */
+    /** Creates the top editor bar: the view controls on one line, the document name on its own line below. */
     private createToolbar(): HTMLDivElement {
         const toolbar = document.createElement("div");
         toolbar.className = "markdown-editor__toolbar markdown-editor__toolbar--top";
-        this.documentName = this.createDocumentName();
-        toolbar.append(this.documentName);
+
+        const controls = document.createElement("div");
+        controls.className = "markdown-editor__toolbar-controls";
         const readEditLink = this.createReadEditLink();
         if (readEditLink) {
-            toolbar.append(readEditLink);
+            controls.append(readEditLink);
         }
         this.modeGroup = this.createModeGroup();
-        toolbar.append(this.modeGroup);
+        controls.append(this.modeGroup);
         this.widthGroup = this.createWidthGroup();
-        toolbar.append(this.widthGroup);
+        controls.append(this.widthGroup);
         this.themeDropdown = this.createThemeDropdown();
-        toolbar.append(this.themeDropdown);
+        controls.append(this.themeDropdown);
         this.themeGroup = this.createThemeGroup();
-        toolbar.append(this.themeGroup);
+        controls.append(this.themeGroup);
+
+        this.documentName = this.createDocumentName();
+
+        // Controls first (top line), then the document name on its own line below, so a long page name
+        // never pushes a control onto a second line.
+        toolbar.append(controls, this.documentName);
 
         return toolbar;
     }
@@ -634,16 +640,16 @@ export class MarkdownEditorElement extends HTMLElement {
         return option;
     }
 
-    /** Resolves the initial editing-column width: stored preference, else the medium default. */
+    /** Resolves the initial editing-column width: stored preference, else the narrow default. */
     private editorBodyWidth(): BodyWidth {
         const stored = readStoredPreference(bodyWidthStorageKey);
 
-        return isBodyWidth(stored) ? stored : "medium";
+        return isBodyWidth(stored) ? stored : "narrow";
     }
 
     /**
      * Applies the editing-column width as a `data-body-width` attribute the stylesheet keys off. Changing
-     * the width resizes only the editing column; the top bar is capped at the "wide" width independently, so
+     * the width resizes only the editing column; the top bar is capped at the "medium" width independently, so
      * its controls never shift. The width is a client preference (localStorage), like the colour scheme.
      */
     private applyBodyWidth(): void {

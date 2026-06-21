@@ -1,11 +1,11 @@
 ---
 id: RFC-0024
 name: Log rotation
-status: Draft
+status: Implemented
 owners:
     - alistairbayley
 created: 2026-06-21T15:48+12:00
-updated: 2026-06-21T15:48+12:00
+updated: 2026-06-21T16:02+12:00
 supersedes: []
 superseded_by: null
 ---
@@ -17,8 +17,8 @@ superseded_by: null
 | Stage     | Timestamp          |
 |-----------|--------------------|
 | Authored  | 2026-06-21 15:48   |
-| Started   |                    |
-| Completed |                    |
+| Started   | 2026-06-21 15:50   |
+| Completed | 2026-06-21 16:02   |
 
 ## Summary
 

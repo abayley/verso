@@ -1,11 +1,11 @@
 ---
 id: RFC-0023
 name: Client-error telemetry sink
-status: Draft
+status: Implemented
 owners:
     - alistairbayley
 created: 2026-06-20T23:40+12:00
-updated: 2026-06-21T15:48+12:00
+updated: 2026-06-21T16:16+12:00
 supersedes: []
 superseded_by: null
 ---
@@ -17,8 +17,8 @@ superseded_by: null
 | Stage     | Timestamp          |
 |-----------|--------------------|
 | Authored  | 2026-06-20 23:40   |
-| Started   |                    |
-| Completed |                    |
+| Started   | 2026-06-21 16:02   |
+| Completed | 2026-06-21 16:16   |
 
 ## Summary
 

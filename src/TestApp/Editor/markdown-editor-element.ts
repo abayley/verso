@@ -96,6 +96,11 @@ function themeUsesStudioSurfaces(theme: VisualTheme): boolean {
     return theme === "studio";
 }
 
+/** Whether a theme arranges the presentation controls as a vertical left rail (the Workbench IDE frame). */
+function themeUsesWorkbenchRail(theme: VisualTheme): boolean {
+    return theme === "workbench";
+}
+
 /** Reads a stored preference, tolerating an unavailable or throwing localStorage. */
 function readStoredPreference(key: string): string | null {
     try {
@@ -780,6 +785,12 @@ export class MarkdownEditorElement extends HTMLElement {
         // bar is suppressed only in visual mode; source and split keep it usable.
         const surfacesActive = themeUsesStudioSurfaces(this.visualTheme) && this.mode === "visual";
         this.classList.toggle("markdown-editor--studio-surfaces", surfacesActive);
+        // Workbench stacks the mode and width radio groups vertically for its left rail; the other themes
+        // keep them horizontal in the top toolbar. Orientation is a Web Awesome attribute, so it is toggled
+        // here (on theme change, no rebuild) rather than in CSS.
+        const orientation = themeUsesWorkbenchRail(this.visualTheme) ? "vertical" : "horizontal";
+        this.modeGroup?.setAttribute("orientation", orientation);
+        this.widthGroup?.setAttribute("orientation", orientation);
         this.updateBubbleToolbar();
     }
 

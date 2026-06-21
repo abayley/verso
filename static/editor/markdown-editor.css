@@ -1024,21 +1024,27 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   height: 100vh;
 }
 
-/* The presentation controls become the left rail, stacked vertically. */
+/* The presentation controls become the left rail, stacked vertically. box-sizing
+   keeps the rail (with its padding and right border) inside its grid track rather
+   than spilling its padding into the centre column. */
 :root[data-editor-theme="workbench"] .markdown-editor__toolbar--top {
   border-right: 1px solid var(--markdown-editor-divider);
+  box-sizing: border-box;
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
   grid-area: rail;
   margin: 0;
   max-width: none;
+  min-width: 0;
   overflow: auto;
   padding: 1rem 0.75rem;
 }
 
+/* Each control group stacks vertically, with the groups spaced apart (the radio
+   groups themselves are switched to vertical orientation in the element). */
 :root[data-editor-theme="workbench"] .markdown-editor__toolbar-controls {
-  align-items: flex-start;
+  align-items: stretch;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.5rem;
   justify-content: flex-start;
 }
 
@@ -1087,6 +1093,7 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 :root[data-editor-theme="workbench"] .markdown-editor__toolbar--commands {
   border-radius: 0;
   border-width: 1px 0;
+  box-sizing: border-box;
   justify-content: flex-start;
   max-width: none;
   width: 100%;

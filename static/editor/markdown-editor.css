@@ -92,8 +92,19 @@ markdown-editor {
   justify-content: flex-end;
 }
 
+/* The document name sits below the controls in a matching centred column (it is a
+   sibling of the controls now, not nested, so it carries the toolbar's type and
+   alignment itself). Workbench overrides this to a file tab in the top bar. */
 .markdown-editor__document-name {
+  box-sizing: border-box;
+  color: var(--markdown-editor-muted);
+  font: 13px system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  margin: -0.6rem auto 0;
+  max-width: 76rem;
+  padding: 0 0.25rem 0.5rem;
   text-align: left;
+  width: 100%;
 }
 
 .markdown-editor__view-toggle {
@@ -990,31 +1001,62 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   --markdown-editor-emphasis: #bb9af7;
 }
 
-/* Chrome: a monospace title strip, a squarer command toolbar, the document name
-   as a file tab, and the word count as a full-width accent status bar. */
+/* Chrome: an IDE frame flush to the viewport edges. The host becomes a grid --
+   a presentation rail down the left, a file tab and the formatting toolbar
+   stacked across the top, the editor panes filling the centre, and a full-width
+   accent status bar along the bottom. The grid is exactly viewport-tall and only
+   the centre scrolls, so the rail, toolbar, and status bar stay put. */
+/* The IDE frame is flush to the viewport, so drop the page's content gutters
+   (the editor page's main wraps only the editor form). */
+:root[data-editor-theme="workbench"] body.markdown-editor-page > main {
+  padding: 0;
+}
+
+:root[data-editor-theme="workbench"] markdown-editor {
+  display: grid;
+  grid-template-areas:
+    "rail tab"
+    "rail format"
+    "rail main"
+    "status status";
+  grid-template-columns: 13rem 1fr;
+  grid-template-rows: auto auto 1fr auto;
+  height: 100vh;
+}
+
+/* The presentation controls become the left rail, stacked vertically. */
 :root[data-editor-theme="workbench"] .markdown-editor__toolbar--top {
-  border-bottom: 1px solid var(--markdown-editor-divider);
+  border-right: 1px solid var(--markdown-editor-divider);
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-  margin-bottom: 0.5rem;
-  padding-bottom: 0.6rem;
+  grid-area: rail;
+  margin: 0;
+  max-width: none;
+  overflow: auto;
+  padding: 1rem 0.75rem;
 }
 
-:root[data-editor-theme="workbench"] .markdown-editor__toolbar--commands {
-  border-radius: 6px;
+:root[data-editor-theme="workbench"] .markdown-editor__toolbar-controls {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 1rem;
+  justify-content: flex-start;
 }
 
-/* The document name reads as an editor file tab sitting on the divider line. */
+/* The document name is the file tab on the top row. */
 :root[data-editor-theme="workbench"] .markdown-editor__document-name {
-  align-self: flex-start;
+  align-self: end;
   background: var(--markdown-editor-code-background);
   border: 1px solid var(--markdown-editor-divider);
   border-bottom: none;
   border-radius: 6px 6px 0 0;
   color: var(--markdown-editor-text);
-  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-  font-size: 12px;
-  margin-bottom: -0.6rem;
+  font: 12px ui-monospace, "SFMono-Regular", Menlo, monospace;
+  grid-area: tab;
+  letter-spacing: normal;
+  margin: 0.6rem 0 0 0.75rem;
+  max-width: max-content;
   padding: 0.35rem 0.7rem;
+  width: auto;
 }
 
 /* The modified-state dot rides on the file tab, mirroring data-save-state (set on
@@ -1035,23 +1077,37 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   background: var(--markdown-editor-save-retry);
 }
 
+/* The formatting command bar becomes a flat top toolbar on the row below the tab. */
+:root[data-editor-theme="workbench"] .markdown-editor__footer {
+  bottom: auto;
+  grid-area: format;
+  position: static;
+}
+
+:root[data-editor-theme="workbench"] .markdown-editor__toolbar--commands {
+  border-radius: 0;
+  border-width: 1px 0;
+  justify-content: flex-start;
+  max-width: none;
+  width: 100%;
+}
+
+:root[data-editor-theme="workbench"] .markdown-editor__workspace {
+  grid-area: main;
+  min-height: 0;
+  overflow: auto;
+}
+
 :root[data-editor-theme="workbench"] .markdown-editor__word-count {
   background: var(--markdown-editor-accent);
-  bottom: 0;
   color: var(--markdown-editor-background);
   display: flex;
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
   font-size: 11px;
+  grid-area: status;
   justify-content: space-between;
-  margin-top: 0.75rem;
+  margin: 0;
   padding: 0.4rem 0.75rem;
-  position: sticky;
-  z-index: 4;
-}
-
-/* The floating command pill lifts clear of the pinned status bar. */
-:root[data-editor-theme="workbench"] .markdown-editor__footer {
-  bottom: 2.75rem;
 }
 
 /* Surface the format label and (when a source pane is shown) the caret readout. */

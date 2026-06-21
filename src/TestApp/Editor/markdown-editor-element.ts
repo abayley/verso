@@ -339,6 +339,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
         this.tooltipController = new ToolbarTooltipController();
         this.toolbar = this.createToolbar();
+        this.documentName = this.createDocumentName();
         this.commandBar = this.createCommandBar();
         this.linkController = this.createLinkController();
         this.bubbleToolbar = this.createBubbleToolbar();
@@ -393,6 +394,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
         this.append(
             this.toolbar,
+            this.documentName,
             this.linkController.editorElement(),
             this.linkController.actionsElement(),
             this.bubbleToolbar,
@@ -461,11 +463,11 @@ export class MarkdownEditorElement extends HTMLElement {
         this.themeGroup = this.createThemeGroup();
         controls.append(this.themeGroup);
 
-        this.documentName = this.createDocumentName();
-
-        // Controls first (top line), then the document name on its own line below, so a long page name
-        // never pushes a control onto a second line.
-        toolbar.append(controls, this.documentName);
+        // The document name is a sibling of the controls (not nested), so the layout can place the two
+        // independently: stacked below the controls under the default themes (controls, then the name on its
+        // own line, so a long page name never pushes a control onto a second line), but split apart under
+        // Workbench -- the controls become the left rail while the name rides in the top bar as a file tab.
+        toolbar.append(controls);
 
         return toolbar;
     }

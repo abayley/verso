@@ -1594,19 +1594,29 @@ dropdown, the server allowlist `knownEditorThemes`); a stored or configured
 theme override the surface typography, not only colour: Studio switches the
 content font to a sans-serif stack to match its Notion lineage, and gains a
 caret placeholder hint ("Type / for commands") on empty blocks so the slash menu
-is discoverable without a persistent toolbar. (3) Give Workbench the IDE chrome
-its mockup implies -- dark palette, monospace chrome, the filename as a file tab
-with a modified-state dot, and an accent status bar carrying cursor position and
-word count -- as bounded CSS-plus-small-JS over the existing controls. The
-decorative left icon rail and caret-tracked preview from the mockup are
-deliberately excluded: the rail's icons map to no real feature (it would be dead
-chrome) and caret-sync is feature work, not styling.
+is discoverable without a persistent toolbar. (3) Give Workbench the IDE layout
+its mockup implies. The editor's shared DOM is regrouped so the document name is
+a sibling of the presentation controls (not nested), and each region -- controls,
+name, formatting bar, panes, status -- can be placed independently. Workbench
+then makes the host a CSS grid forming a viewport-flush app frame: a presentation
+rail down the left (view mode, width, theme, colour scheme -- the existing
+controls stacked, a wider text rail, not the mockup's decorative icon strip), the
+file tab and the formatting toolbar across the top, the panes filling the centre
+(the only region that scrolls), and a full-width accent status bar along the
+bottom carrying a format label, caret position, and word count. Content drops the
+shared serif for a sans stack. The default themes keep the shared vertical-stack
+layout unchanged (the grid is gated on the theme). The mockup's decorative
+icon-only rail and caret-tracked preview are still excluded: the rail holds real
+controls rather than feature-less icons, and caret-sync is feature work, not
+styling.
 
 Consequences: the theme set is Paper, Aurora, Blueprint, Workbench, Studio.
-Typography joins colour and bounded layout presets as a themable axis, so themes
-can now diverge in look as well as palette without becoming separate editors.
-Workbench resembles its mockup's signature without inventing non-functional
-controls. Refines ADR-036 and ADR-037 (the theme set and Studio's surfaces); the
+Typography and full layout join colour and bounded presets as themable axes: a
+theme may now reflow the shared regions into a different frame (Workbench's IDE
+grid) without forking the editor, because the regions are addressable DOM placed
+by CSS per theme. The caret readout comes from the source pane (the only pane
+with a line/column notion) and is hidden when no source pane is shown. Refines
+ADR-036 and ADR-037 (the theme set and Studio's surfaces); the
 registration-in-three-places contract and the pre-paint allowlist bootstrap
 stand.
 

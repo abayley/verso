@@ -10,6 +10,7 @@ import {
     type ResolvedPos,
     type Schema,
 } from "@tiptap/pm/model";
+import { CellSelection, selectionCell } from "@tiptap/pm/tables";
 import StarterKit from "@tiptap/starter-kit";
 import { type AdmonitionKind, matchAlertMarker } from "./admonition-extension.js";
 import { type CollapsibleKind, matchCollapsibleMarker } from "./collapsible-extension.js";
@@ -1148,11 +1149,22 @@ export class TiptapVisualEditor {
 
     /** Reports whether the selection is inside a table (for showing the table controls). */
     public isInTable(): boolean {
-        return this.editor.isActive("table");
+        return this.selectedTable() !== null;
     }
 
     /** Returns the bounding rectangle of the table containing the selection, for anchoring the controls. */
     public tableRect(): DOMRect | null {
+        const table = this.selectedTable();
+
+        return table ? table.getBoundingClientRect() : null;
+    }
+
+    /**
+     * The table element containing the current DOM selection, or null. Read from the DOM selection (not
+     * `editor.isActive`, which lags the click on first focus) so the controls appear on the first click in a
+     * cell, not only after a second selection change.
+     */
+    private selectedTable(): HTMLElement | null {
         const node = window.getSelection()?.anchorNode;
 
         if (!node || !this.root.contains(node)) {
@@ -1160,9 +1172,8 @@ export class TiptapVisualEditor {
         }
 
         const element = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
-        const table = element?.closest("table");
 
-        return table ? table.getBoundingClientRect() : null;
+        return element?.closest("table") ?? null;
     }
 
     /** Runs one table-editing command at the current selection. */
@@ -1183,9 +1194,34 @@ export class TiptapVisualEditor {
         }
     }
 
-    /** Sets the GFM column alignment on the selected table cells. */
+    /**
+     * Sets the GFM column alignment for the whole column containing the selection -- header and data cells
+     * alike. Column alignment is a property of the column (the header cell drives the serialised delimiter),
+     * so aligning only the selected cell changed nothing in the Markdown and reverted on reload. Selecting
+     * the column first makes setCellAttribute apply to every cell, so the column aligns immediately and the
+     * delimiter round-trips.
+     */
     public setColumnAlignment(align: "left" | "center" | "right" | null): boolean {
-        return this.editor.chain().focus().setCellAttribute("textAlign", align).run();
+        return this.editor
+            .chain()
+            .focus()
+            .command(({ state, tr, dispatch }): boolean => {
+                let cell: ResolvedPos;
+
+                try {
+                    cell = selectionCell(state);
+                } catch {
+                    return false;
+                }
+
+                if (dispatch) {
+                    tr.setSelection(CellSelection.colSelection(cell));
+                }
+
+                return true;
+            })
+            .setCellAttribute("textAlign", align)
+            .run();
     }
 
     /** Replaces soft line breaks in non-code text with spaces, matching CommonMark rendering. */

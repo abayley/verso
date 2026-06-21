@@ -1059,6 +1059,13 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   display: inline;
 }
 
+/* The rendered content drops the shared serif for a sans-serif stack, so the
+   preview reads as an IDE preview pane rather than a manuscript. */
+:root[data-editor-theme="workbench"] .markdown-editor__surface,
+:root[data-editor-theme="workbench"] .markdown-editor__preview {
+  font: 16px/1.7 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
 /* Studio (RFC-0016): a calm Notion-style paper look that replaces the persistent
    command bar with a selection bubble toolbar and a slash command menu. The
    surfaces are activated by the editor element only under this theme; the chrome

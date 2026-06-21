@@ -54,6 +54,7 @@ type ToolbarButtonElement = HTMLElement;
 const visualThemeStorageKey = "editor-theme";
 const colorSchemeStorageKey = "editor-color-scheme";
 const bodyWidthStorageKey = "editor-body-width";
+const modeStorageKey = "editor-mode";
 
 /** The selectable editing-column widths, in toolbar order; "narrow" is the default. */
 const bodyWidths: { value: BodyWidth; label: string }[] = [
@@ -1217,10 +1218,19 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Returns the selected editor mode, defaulting unknown values to visual. */
     private editorMode(): EditorMode {
+        // An explicit ?mode= (reflected onto the attribute) always wins. Otherwise the last mode the user
+        // chose is restored (so toggling edit/view -- a full navigation -- keeps the selected mode rather
+        // than snapping back to the theme's default), then the theme's first-visit default, then visual.
         const mode = this.getAttribute("mode");
 
         if (mode === "source" || mode === "split" || mode === "visual") {
             return mode;
+        }
+
+        const stored = readStoredPreference(modeStorageKey);
+
+        if (stored !== null && isEditorMode(stored)) {
+            return stored;
         }
 
         return themeDefaultMode(this.visualTheme) ?? "visual";
@@ -1603,6 +1613,8 @@ export class MarkdownEditorElement extends HTMLElement {
         this.markdown = this.toMarkdown();
         this.mode = mode;
         this.setAttribute("mode", mode);
+        // Persist the choice so the next load (e.g. after an edit/view toggle) restores it.
+        writeStoredPreference(modeStorageKey, mode);
         this.applyBodyWidth();
         this.renderMode();
         this.updateToolbarState();

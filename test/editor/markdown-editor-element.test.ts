@@ -10,6 +10,9 @@ if (!customElements.get(elementName)) {
 describe("MarkdownEditorElement", (): void => {
     beforeEach((): void => {
         document.body.textContent = "";
+        // A fresh in-memory localStorage per test, so a persisted preference (e.g. the editor mode, now
+        // remembered across loads) from one test never leaks into the next.
+        installLocalStorageStub();
         // The error boundary reports client errors via sendBeacon; stub it so reports never hit the
         // network (happy-dom has no sendBeacon, so the reporter would otherwise fall back to a real fetch).
         Object.defineProperty(navigator, "sendBeacon", {
@@ -1277,6 +1280,30 @@ describe("MarkdownEditorElement visual themes", (): void => {
 
         expect(editor.querySelector(".markdown-editor__split")).toBeNull();
         expect(editor.querySelector(".markdown-editor__surface")).toBeInstanceOf(HTMLElement);
+    });
+
+    it("given a stored mode under workbench and no requested mode, when initialised, then the stored mode wins over the split default", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "workbench");
+        window.localStorage.setItem("editor-mode", "visual");
+
+        const editor = document.createElement(elementName);
+        editor.textContent = "# Heading";
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        expect(editor.querySelector(".markdown-editor__split")).toBeNull();
+        expect(editor.querySelector(".markdown-editor__surface")).toBeInstanceOf(HTMLElement);
+    });
+
+    it("given a mode chosen at runtime, when selected, then it persists for the next load", async (): Promise<void> => {
+        const editor = document.createElement(elementName);
+        editor.textContent = "# Heading";
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        selectMode(editor, "source");
+
+        expect(window.localStorage.getItem("editor-mode")).toBe("source");
     });
 });
 

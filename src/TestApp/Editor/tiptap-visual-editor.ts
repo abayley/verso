@@ -178,6 +178,94 @@ interface BadgeFragment {
     colour: string;
 }
 
+// Private-use sentinels (\u{E004}..\u{E005}, distinct from the raw-HTML and badge pairs) mark where a fenced
+// code block was extracted. @tiptap/markdown mangles a fenced code block inside a list item whose content
+// has a blank line (it truncates at the blank line -- marked tokenises it correctly, the bug is the
+// token->ProseMirror conversion), so the fence is pulled out before loading and
+// {@link TiptapVisualEditor.loadFencedCode} swaps the sentinel paragraph back for a code-block node (RFC-0025).
+
+/** A fenced code block pulled out before marked: its language (info string) and verbatim content. */
+interface FencedCodeFragment {
+    language: string | null;
+    content: string;
+}
+
+/**
+ * Replaces every fenced code block (``` or `~~~`) with an indexed sentinel on its own line at the fence's
+ * indentation, returning the stripped Markdown and the fragments by index. Run before the other extractors
+ * so fence *content* (which may contain footnote/badge/raw-HTML syntax, or list-like lines) is protected.
+ * Content is de-indented by the opening fence's indent, as CommonMark fenced code is. An unclosed fence is
+ * left untouched (not a code block).
+ */
+function stripFencedCode(markdown: string): { stripped: string; fragments: FencedCodeFragment[] } {
+    const lines = markdown.split("\n");
+    const fragments: FencedCodeFragment[] = [];
+    const output: string[] = [];
+    const opener = /^(\s*)(`{3,}|~{3,})([^`]*)$/u;
+    let index = 0;
+
+    while (index < lines.length) {
+        const line = lines[index] ?? "";
+        const match = opener.exec(line);
+
+        if (!match) {
+            output.push(line);
+            index += 1;
+            continue;
+        }
+
+        const indent = match[1] ?? "";
+        const fence = match[2] ?? "";
+        const language = (match[3] ?? "").trim() || null;
+        const closer = new RegExp(`^\\s*${fence[0] === "~" ? "~" : "`"}{${fence.length},}\\s*$`, "u");
+        const content: string[] = [];
+        let scan = index + 1;
+
+        while (scan < lines.length && !closer.test(lines[scan] ?? "")) {
+            content.push(stripLeadingSpaces(lines[scan] ?? "", indent.length));
+            scan += 1;
+        }
+
+        if (scan >= lines.length) {
+            // No closing fence: not a code block. Emit the opener verbatim and carry on past it.
+            output.push(line);
+            index += 1;
+            continue;
+        }
+
+        // Separate the sentinel paragraph from its neighbours with a single blank line each side, without
+        // creating a double blank (two blank lines would end the enclosing list item and strand later
+        // sentinels). The leading blank is added only if the previous output line is not already blank; the
+        // trailing blank only if the next source line is not already blank.
+        if (output.length > 0 && output[output.length - 1] !== "") {
+            output.push("");
+        }
+
+        output.push(`${indent}\u{E004}${fragments.length}\u{E005}`);
+
+        const next = lines[scan + 1];
+        if (next !== undefined && next.trim() !== "") {
+            output.push("");
+        }
+
+        fragments.push({ content: content.join("\n"), language });
+        index = scan + 1;
+    }
+
+    return { fragments, stripped: output.join("\n") };
+}
+
+/** Removes up to `count` leading space characters from a line (the fenced-code de-indent). */
+function stripLeadingSpaces(line: string, count: number): string {
+    let removed = 0;
+
+    while (removed < count && line[removed] === " ") {
+        removed += 1;
+    }
+
+    return line.slice(removed);
+}
+
 /**
  * Replaces each badge lozenge (`` `text`{.badge.<colour>} ``) with an indexed sentinel before marked sees
  * it (marked would split the code span from its attribute list), returning the stripped Markdown and the
@@ -262,7 +350,8 @@ export class TiptapVisualEditor {
         this.onLinkShortcut = onLinkShortcut;
         this.preserveRawHtml = options.preserveRawHtml ?? false;
 
-        const footnotes = extractFootnoteDefinitions(markdown);
+        const fences = stripFencedCode(markdown);
+        const footnotes = extractFootnoteDefinitions(fences.stripped);
         const references = extractReferenceDefinitions(footnotes.stripped);
         const raw = this.extractRawHtml(references.stripped);
         const badges = this.extractBadges(raw.stripped);
@@ -332,6 +421,9 @@ export class TiptapVisualEditor {
         this.wrapBareImages();
         this.upgradeAlertBlockquotes();
         this.upgradeCollapsibles();
+        // After upgradeCollapsibles: a fence inside a collapsible rides through the body re-parse as a
+        // sentinel paragraph, so this one pass restores fences both top-level and inside collapsibles.
+        this.loadFencedCode(fences.fragments);
         this.loadImageWidths();
         this.loadRawHtml(raw.fragments);
         this.loadBadges(badges.fragments);
@@ -359,7 +451,8 @@ export class TiptapVisualEditor {
             emitUpdate: false,
         };
 
-        const footnotes = extractFootnoteDefinitions(markdown);
+        const fences = stripFencedCode(markdown);
+        const footnotes = extractFootnoteDefinitions(fences.stripped);
         const references = extractReferenceDefinitions(footnotes.stripped);
         const raw = this.extractRawHtml(references.stripped);
         const badges = this.extractBadges(raw.stripped);
@@ -370,6 +463,7 @@ export class TiptapVisualEditor {
         this.wrapBareImages();
         this.upgradeAlertBlockquotes();
         this.upgradeCollapsibles();
+        this.loadFencedCode(fences.fragments);
         this.loadImageWidths();
         this.loadRawHtml(raw.fragments);
         this.loadBadges(badges.fragments);
@@ -506,6 +600,63 @@ export class TiptapVisualEditor {
                 }
 
                 match = pattern.exec(node.text);
+            }
+
+            return true;
+        });
+
+        if (replacements.length === 0) {
+            return;
+        }
+
+        const transaction = this.editor.state.tr;
+
+        for (const replacement of replacements.sort((a, b): number => b.from - a.from)) {
+            transaction.replaceWith(replacement.from, replacement.to, replacement.node);
+        }
+
+        this.editor.view.dispatch(transaction.setMeta("addToHistory", false));
+    }
+
+    /**
+     * Replaces the fenced-code sentinels left by {@link stripFencedCode} with code-block nodes after the
+     * content has loaded. Each sentinel sits alone in its own paragraph (in the correct list item or
+     * collapsible, since a plain paragraph survives the loader's nesting), and is promoted whole to a
+     * code-block node carrying the verbatim content and language (RFC-0025).
+     */
+    private loadFencedCode(fragments: FencedCodeFragment[]): void {
+        if (fragments.length === 0) {
+            return;
+        }
+
+        const codeBlockType = this.editor.state.schema.nodes["codeBlock"];
+
+        if (!codeBlockType) {
+            return;
+        }
+
+        const replacements: Array<{ from: number; node: ProseMirrorNode; to: number }> = [];
+
+        this.editor.state.doc.descendants((node: ProseMirrorNode, position: number): boolean => {
+            if (node.type.name !== "paragraph") {
+                return true;
+            }
+
+            // Tolerate surrounding whitespace: @tiptap/markdown indents continuation paragraphs inside a
+            // loose list item, so a later sentinel comes back as e.g. "  <sentinel>" rather than bare.
+            const match = /^\s*\u{E004}(\d+)\u{E005}\s*$/u.exec(node.textContent);
+            const fragment = match ? fragments[Number(match[1])] : undefined;
+
+            if (match && fragment) {
+                const attrs = fragment.language === null ? {} : { language: fragment.language };
+                const content = fragment.content.length > 0 ? this.editor.state.schema.text(fragment.content) : null;
+                replacements.push({
+                    from: position,
+                    node: codeBlockType.create(attrs, content),
+                    to: position + node.nodeSize,
+                });
+
+                return false;
             }
 
             return true;

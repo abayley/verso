@@ -160,6 +160,72 @@ describe("MarkdownEditorElement", (): void => {
         expect(surface?.querySelector("p img")).toBeInstanceOf(HTMLElement);
     });
 
+    it("given a list item with a fenced code block containing blank lines, when loaded, then the fence stays one code block", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = [
+            "1. First item",
+            "",
+            "    ```sh",
+            "    SVOS> boot",
+            "",
+            "    Boot Profiles:",
+            "",
+            "    0. Console",
+            "    more output",
+            "    ```",
+        ].join("\n");
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        // @tiptap/markdown alone truncates this fence at the first blank line; pre-extraction keeps it whole.
+        const surface = editor.querySelector(".markdown-editor__surface");
+        const codeBlocks = surface?.querySelectorAll("pre") ?? [];
+        expect(codeBlocks.length).toBe(1);
+        const code = codeBlocks[0]?.textContent ?? "";
+        expect(code).toContain("SVOS> boot");
+        expect(code).toContain("Boot Profiles:");
+        expect(code).toContain("0. Console");
+        expect(code).toContain("more output");
+
+        // The fence content round-trips rather than escaping into list items.
+        const out = editor.toMarkdown();
+        expect(out).toContain("```sh");
+        expect(out).toContain("0. Console");
+        expect(out).toContain("more output");
+    });
+
+    it("given a list item with several fenced code blocks, when loaded, then each is restored", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = [
+            "1. step:",
+            "",
+            "    ```sh",
+            "    first",
+            "    ```",
+            "",
+            "    then:",
+            "",
+            "    ```sh",
+            "    second",
+            "    ```",
+            "",
+            "    finally:",
+            "",
+            "    ```sh",
+            "    third",
+            "    ```",
+        ].join("\n");
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        // Continuation sentinels in a loose list item come back indented; all three fences must still restore.
+        const codeBlocks = [...(editor.querySelectorAll(".markdown-editor__surface pre") ?? [])];
+        expect(codeBlocks.length).toBe(3);
+        expect(codeBlocks.map((p) => (p.textContent ?? "").trim())).toEqual(["first", "second", "third"]);
+    });
+
     it("given visual mode, when mode radio options are selected, then it changes modes without losing Markdown", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = "# Heading\n\nParagraph with **strong** text.";

@@ -499,7 +499,8 @@ export class MarkdownEditorElement extends HTMLElement {
             this.toggleStructure((event as CustomEvent<CommandStructureEventDetail>).detail.style);
         });
         bar.addEventListener("command-insert-structure", (event: Event): void => {
-            this.insertStructure((event as CustomEvent<CommandInsertStructureEventDetail>).detail.kind);
+            const detail = (event as CustomEvent<CommandInsertStructureEventDetail>).detail;
+            this.insertStructure(detail.kind, detail.admonitionKind);
         });
         bar.addEventListener("command-badge", (event: Event): void => {
             this.applyBadge((event as CustomEvent<CommandBadgeEventDetail>).detail.value);
@@ -534,20 +535,21 @@ export class MarkdownEditorElement extends HTMLElement {
      * Tiptap commands; in the source editor it inserts the equivalent Markdown (a GFM table skeleton, a
      * `> [!NOTE]` alert, or an mkdocs `??? note` collapsible) at the caret.
      */
-    private insertStructure(kind: InsertStructureKind): void {
+    private insertStructure(kind: InsertStructureKind, admonitionKind?: string): void {
         if (this.shouldUseSourceCommands()) {
-            if (this.sourceEditor?.insertMarkdown(structureMarkdown(kind))) {
+            if (this.sourceEditor?.insertMarkdown(structureMarkdown(kind, admonitionKind))) {
                 this.handleSourceInput();
             }
 
             return;
         }
 
+        const callout = (admonitionKind ?? "note") as AdmonitionKind;
         const inserted =
             kind === "table"
                 ? this.visualEditor?.insertTable()
                 : kind === "admonition"
-                  ? this.visualEditor?.insertAdmonition("note")
+                  ? this.visualEditor?.insertAdmonition(callout)
                   : this.visualEditor?.insertCollapsible("note");
 
         if (inserted) {
@@ -1983,13 +1985,13 @@ function countDocumentWords(markdown: string): number {
 }
 
 /** The Markdown a block-insert command writes in source mode: a GFM table, a GFM alert, or an mkdocs collapsible. */
-function structureMarkdown(kind: InsertStructureKind): string {
+function structureMarkdown(kind: InsertStructureKind, admonitionKind?: string): string {
     if (kind === "table") {
         return "| Column | Column |\n| --- | --- |\n| Cell | Cell |\n";
     }
 
     if (kind === "admonition") {
-        return "> [!NOTE]\n> Text\n";
+        return `> [!${(admonitionKind ?? "note").toUpperCase()}]\n> Text\n`;
     }
 
     return '??? note "Title"\n    Text\n';

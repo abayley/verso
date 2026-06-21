@@ -1455,6 +1455,26 @@ export class TiptapVisualEditor {
             return true;
         }
 
+        // Home/End move to the start/end of the visual line, matching the Markdown (CodeMirror) editor. The
+        // contenteditable default on macOS is to scroll the viewport instead, so bind them explicitly; the
+        // browser's "lineboundary" granularity respects soft wrapping, and ProseMirror syncs from the DOM
+        // selection. Shift extends the selection.
+        if (event.key === "Home" || event.key === "End") {
+            const selection = window.getSelection();
+
+            if (selection && selection.rangeCount > 0) {
+                event.preventDefault();
+                selection.modify(
+                    event.shiftKey ? "extend" : "move",
+                    event.key === "Home" ? "backward" : "forward",
+                    "lineboundary",
+                );
+                return true;
+            }
+
+            return false;
+        }
+
         if (event.key !== "Tab") {
             return false;
         }

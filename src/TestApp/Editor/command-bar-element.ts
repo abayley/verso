@@ -35,10 +35,21 @@ export interface CommandBadgeEventDetail {
 /** A block construct the command bar can insert (table / callout / collapsible). */
 export type InsertStructureKind = "table" | "admonition" | "collapsible";
 
-/** Detail of the `command-insert-structure` event: the block construct to insert. */
+/** Detail of the `command-insert-structure` event: the block construct to insert, plus the callout kind. */
 export interface CommandInsertStructureEventDetail {
     kind: InsertStructureKind;
+    /** For `kind: "admonition"`, which callout type to insert (note/warning/important/tip/caution). */
+    admonitionKind?: string | undefined;
 }
+
+/** The callout types offered by the command bar's callout dropdown, in menu order. */
+const CALLOUT_KINDS: { value: string; label: string }[] = [
+    { value: "note", label: "Note" },
+    { value: "warning", label: "Warning" },
+    { value: "important", label: "Important" },
+    { value: "tip", label: "Tip" },
+    { value: "caution", label: "Caution" },
+];
 
 /** The structural command buttons, in toolbar order (specific to the persistent command bar). */
 const STRUCTURE_COMMANDS: { style: VisualStructureStyle; label: string; icon: string }[] = [
@@ -52,7 +63,6 @@ const STRUCTURE_COMMANDS: { style: VisualStructureStyle; label: string; icon: st
 /** The block-insert command buttons (table, callout, collapsible), in toolbar order. */
 const INSERT_COMMANDS: { kind: InsertStructureKind; label: string; icon: string }[] = [
     { kind: "table", label: "Insert table", icon: "table" },
-    { kind: "admonition", label: "Insert callout", icon: "circle-info" },
     { kind: "collapsible", label: "Insert collapsible", icon: "chevron-down" },
 ];
 
@@ -212,13 +222,22 @@ export class CommandBarElement extends LitElement {
         );
     };
 
+    /** Dispatches the chosen callout type for the host to insert. */
+    private readonly handleCalloutSelect = (event: Event): void => {
+        const item = (event as WaDropdownSelectEvent).detail.item;
+
+        if (item instanceof HTMLElement) {
+            this.emitInsertStructure("admonition", elementValue(item));
+        }
+    };
+
     /** Dispatches a request to insert a block construct (table, callout, collapsible) for the host to run. */
-    private emitInsertStructure(kind: InsertStructureKind): void {
+    private emitInsertStructure(kind: InsertStructureKind, admonitionKind?: string): void {
         this.dispatchEvent(
             new CustomEvent<CommandInsertStructureEventDetail>("command-insert-structure", {
                 bubbles: true,
                 composed: true,
-                detail: { kind },
+                detail: { admonitionKind, kind },
             }),
         );
     }
@@ -332,6 +351,29 @@ export class CommandBarElement extends LitElement {
                     `,
                 )}
                 <wa-dropdown-item value="remove">Remove badge</wa-dropdown-item>
+            </wa-dropdown>
+            <wa-dropdown
+                class="markdown-editor__callout-dropdown"
+                aria-label="Insert callout"
+                size="s"
+                @wa-select=${this.handleCalloutSelect}
+            >
+                <wa-button
+                    slot="trigger"
+                    class="markdown-editor__button markdown-editor__callout-trigger"
+                    appearance="plain"
+                    size="s"
+                    type="button"
+                    aria-label="Insert callout"
+                    with-caret
+                    ?disabled=${this.commandsDisabled}
+                    @mousedown=${preventDefault}
+                >
+                    <wa-icon class="markdown-editor__button-icon" name="circle-info" variant="solid" label="Insert callout"></wa-icon>
+                </wa-button>
+                ${CALLOUT_KINDS.map(
+                    (callout) => html`<wa-dropdown-item value=${callout.value}>${callout.label}</wa-dropdown-item>`,
+                )}
             </wa-dropdown>
             <wa-button-group class="markdown-editor__button-group">
                 ${INSERT_COMMANDS.map(

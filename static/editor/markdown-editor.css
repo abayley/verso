@@ -316,7 +316,8 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   background: color-mix(in srgb, var(--markdown-alert-accent, var(--markdown-editor-quote-border)) 8%, transparent);
   border-inline-start: 3px solid var(--markdown-alert-accent, var(--markdown-editor-quote-border));
   border-radius: 6px;
-  margin-left: 0;
+  /* Vertical margin so adjacent callouts (and neighbouring blocks) do not run together. */
+  margin: 1rem 0;
   padding: 0.5rem 1rem;
 }
 

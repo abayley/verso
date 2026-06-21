@@ -300,6 +300,24 @@ describe("MarkdownEditorElement", (): void => {
         expect(tooltip.hasAttribute("open")).toBe(false);
     });
 
+    it("given the command bar callout dropdown picks a kind, when applied, then that callout type is inserted", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        const commandBar = editor.querySelector(".markdown-editor__toolbar--commands");
+        commandBar?.dispatchEvent(
+            new CustomEvent("command-insert-structure", {
+                bubbles: true,
+                detail: { admonitionKind: "warning", kind: "admonition" },
+            }),
+        );
+
+        expect(editor.toMarkdown()).toContain("> [!WARNING]");
+    });
+
     it("given source mode with a list item containing a blockquote, when cycled through split to visual, then Markdown nesting is preserved", async (): Promise<void> => {
         const markdown = ["- > # blockquote heading 1", "  >", "  > paragraph 1"].join("\n");
         const editor = document.createElement(elementName) as MarkdownEditorElement;

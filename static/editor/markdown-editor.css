@@ -761,14 +761,20 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 
 /* Badge lozenges (RFC-0021): `text`{.badge.<colour>} renders as a coloured pill. The colour is the
    background (set inline from the validated colour token); these rules give the pill its shape. The text
-   colour is a translucent-dark overlay that stays legible on the common bright backgrounds. */
+   colour is a translucent-dark overlay that stays legible on the common bright backgrounds.
+   A badge may wrap whole sentences (the corpus badges long runs of text), so it wraps like normal text and
+   box-decoration-break keeps the pill shape (padding and rounded corners) on each line fragment rather than
+   forcing one non-wrapping pill that overflows the pane. `filter: saturate()` tones the vivid named colours
+   down without touching the (black/white, zero-chroma) text -- tweak it to taste. */
 .badge {
+  -webkit-box-decoration-break: clone;
   border-radius: 0.4em;
+  box-decoration-break: clone;
   color: rgb(0 0 0 / 80%);
+  filter: saturate(0.7) brightness(0.95);
   font-size: 0.85em;
   font-weight: 600;
-  padding: 0.1em 0.45em;
-  white-space: nowrap;
+  padding: 0.15em 0.5em;
 }
 
 /* ===================================================================

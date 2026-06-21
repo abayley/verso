@@ -1,11 +1,11 @@
 ---
 id: RFC-0025
 name: Editor load-rendering fixes (fenced code in lists; native-details collapsibles)
-status: Draft
+status: Implemented
 owners:
     - alistairbayley
 created: 2026-06-21T18:53+12:00
-updated: 2026-06-21T18:53+12:00
+updated: 2026-06-21T19:14+12:00
 supersedes: []
 superseded_by: null
 ---
@@ -17,8 +17,8 @@ superseded_by: null
 | Stage     | Timestamp          |
 |-----------|--------------------|
 | Authored  | 2026-06-21 18:53   |
-| Started   |                    |
-| Completed |                    |
+| Started   | 2026-06-21 18:55   |
+| Completed | 2026-06-21 19:14   |
 
 ## Summary
 

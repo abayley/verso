@@ -18,14 +18,14 @@ import qualified Data.ByteString.Char8 as BS
 import Data.Char (digitToInt, isDigit, isSpace)
 import Data.List (intercalate, isSuffixOf)
 import MicroHttp.Attachment (allowedExtension, attachmentRoutes, extensionOf, fileAttachmentStore, inlineImageExtension, originalUploadFilename, uploadFilename)
-import MicroHttp.Config (Config, configMounts, configString)
+import MicroHttp.Config (Config, configInt, configMounts, configString)
 import qualified MicroHttp.DocumentMeta as DocumentMeta
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http as Http
 import MicroHttp.Http.Parse (ParseError (..))
 import MicroHttp.Http.PercentEncoding (decodeFormValue)
 import MicroHttp.Iteratee (Iter, liftIO, readBodyStrict)
-import MicroHttp.Log (Logger, fileLogfmtLogger)
+import MicroHttp.Log (Logger, rotatingFileLogfmtLogger)
 import MicroHttp.Middleware (logRequests, withErrorResponses)
 import MicroHttp.Network.Socket (fileSizeBytes)
 import qualified MicroHttp.Router as Router
@@ -57,16 +57,36 @@ appWith logger =
 path, document root, and static mounts come from the config, and the parse
 limits from the (config-derived) settings. Logging is the outermost middleware.
 -}
-appFromConfig :: Server.Settings -> Config -> Server.Application
-appFromConfig settings cfg =
-    logRequests
-        (fileLogfmtLogger (configString "access_log" "build/access.log" cfg))
-        ( withErrorResponses
-            ( Router.serveRoutes
-                (Server.parseLimits settings)
-                (configuredRoutes cfg)
+appFromConfig :: Server.Settings -> Config -> IO Server.Application
+appFromConfig settings cfg = do
+    accessLogger <- rotatingFileLogfmtLogger logMaxBytes logKeep accessLogPath
+    pure
+        ( logRequests
+            accessLogger
+            ( withErrorResponses
+                ( Router.serveRoutes
+                    (Server.parseLimits settings)
+                    (configuredRoutes cfg)
+                )
             )
         )
+  where
+    accessLogPath = configString "access_log" "build/access.log" cfg
+    logMaxBytes = configIntOr "log_max_bytes" defaultLogMaxBytes cfg
+    logKeep = configIntOr "log_keep" defaultLogKeep cfg
+
+-- | The default log-rotation threshold in bytes (10 MiB) and retained-file count (RFC-0024).
+defaultLogMaxBytes :: Int
+defaultLogMaxBytes = 10485760
+
+defaultLogKeep :: Int
+defaultLogKeep = 5
+
+-- | A total config-int read: the default on an absent or malformed value.
+configIntOr :: String -> Int -> Config -> Int
+configIntOr key def cfg = case configInt key def cfg of
+    Right value -> value
+    Left _ -> def
 
 {- | The route set chosen by configuration. Setting @document_tree_root@ selects
 the filesystem-tree mode (a MkDocs-style tree served and edited in place, with

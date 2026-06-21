@@ -18,8 +18,12 @@ module MicroHttp.Log (
     localTimestamp,
     logfmtTo,
     fileLogfmtLogger,
+    rotatingAppender,
+    rotatingFileLogfmtLogger,
 ) where
 
+import Control.Concurrent.MVar (modifyMVar_, newMVar)
+import Control.Monad (forM_, void, when)
 import qualified Data.ByteString.Char8 as BS
 import Foreign.C.String (CString, peekCStringLen, withCString)
 import Foreign.Marshal.Alloc (alloca, allocaBytes)
@@ -27,7 +31,16 @@ import Foreign.Ptr (Ptr)
 import Foreign.Storable (poke)
 import MicroHttp.Http (Status (..))
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), Port (..))
+import System.Directory (doesFileExist)
 import System.IO.TimeMilli (getTimeMilli)
+
+-- rename(2)/unlink(2) directly: MicroHs has no atomic renameFile/removeFile in
+-- System.Directory (see MicroHttp.Attachment), so log rotation drives libc, the
+-- same escape hatch this module already uses for localtime/strftime. Return
+-- codes are discarded: a failed rename/unlink leaves the files as-is and the
+-- caller falls back to appending (best-effort rotation, ADR-053).
+foreign import ccall "stdio.h rename" c_rename :: CString -> CString -> IO Int
+foreign import ccall "unistd.h unlink" c_unlink :: CString -> IO Int
 
 -- localtime converts epoch seconds to a broken-down local time (applying the
 -- zone and DST); strftime renders it. The struct tm is opaque here -- localtime
@@ -116,6 +129,61 @@ it as UTF-8 and double-encode a non-ASCII target (see MicroHttp.TestApp).
 -}
 fileLogfmtLogger :: FilePath -> Logger
 fileLogfmtLogger path = logfmtTo (\line -> BS.appendFile path (BS.pack (line ++ "\n")))
+
+{- | A line sink that appends to a file, rotating it by size first (RFC-0024,
+ADR-053). When the active file reaches @maxBytes@ it is rotated by a
+rename-cascade -- @path -> path.1 -> ... -> path.\<keep\>@, oldest dropped -- and
+the next append recreates @path@. The active file's byte size is tracked in an
+'MVar' (seeded from the file on disk once), so there is no @stat@ per line; the
+same 'MVar' serialises the check-rotate-append against concurrent connections, so
+no line is lost or misfiled. @keep@ is expected to be at least 1.
+-}
+rotatingAppender :: Int -> Int -> FilePath -> IO (String -> IO ())
+rotatingAppender maxBytes keep path = do
+    initial <- currentFileSize path
+    sizeVar <- newMVar initial
+    pure $ \line -> do
+        let chunk = BS.pack (line ++ "\n")
+        modifyMVar_ sizeVar $ \size -> do
+            rotated <- if size >= maxBytes then rotateLog path keep >> pure 0 else pure size
+            BS.appendFile path chunk
+            pure (rotated + BS.length chunk)
+
+-- | A rotating-file logfmt logger: 'fileLogfmtLogger' that rotates by size.
+rotatingFileLogfmtLogger :: Int -> Int -> FilePath -> IO Logger
+rotatingFileLogfmtLogger maxBytes keep path = fmap logfmtTo (rotatingAppender maxBytes keep path)
+
+-- | The current size of a file in bytes, or 0 if it does not exist.
+currentFileSize :: FilePath -> IO Int
+currentFileSize path = do
+    exists <- doesFileExist path
+    if exists then fmap BS.length (BS.readFile path) else pure 0
+
+{- | The rename-cascade: drop @path.\<keep\>@, shift each @path.\<n\>@ up to
+@path.\<n+1\>@ from the top down, then move the active @path@ to @path.1@. Each
+step is guarded by existence so a missing archive is simply skipped.
+-}
+rotateLog :: FilePath -> Int -> IO ()
+rotateLog path keep = do
+    dropIfExists (archivePath path keep)
+    forM_ (reverse [1 .. keep - 1]) $ \n -> renameIfExists (archivePath path n) (archivePath path (n + 1))
+    renameIfExists path (archivePath path 1)
+
+-- | The nth rotated-archive path for a log file: @path.\<n\>@.
+archivePath :: FilePath -> Int -> FilePath
+archivePath path n = path ++ "." ++ show n
+
+-- | Renames a file via libc when it exists, discarding the result (best-effort).
+renameIfExists :: FilePath -> FilePath -> IO ()
+renameIfExists from to = do
+    exists <- doesFileExist from
+    when exists (withCString from (\f -> withCString to (void . c_rename f)))
+
+-- | Unlinks a file via libc when it exists, discarding the result (best-effort).
+dropIfExists :: FilePath -> IO ()
+dropIfExists path = do
+    exists <- doesFileExist path
+    when exists (withCString path (void . c_unlink))
 
 -- | Renders an access event as a single logfmt line, stamped with @ts@ first.
 formatLogfmt :: String -> AccessEvent -> String

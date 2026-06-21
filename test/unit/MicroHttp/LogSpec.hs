@@ -1,9 +1,13 @@
 module MicroHttp.LogSpec (spec) where
 
+import Control.Monad (filterM)
+import qualified Data.ByteString.Char8 as BS
 import Data.List (isInfixOf)
 import MicroHttp.Http (Status (..))
-import MicroHttp.Log (AccessEvent (..), RequestLine (..), formatLogfmt, localTimestamp)
+import MicroHttp.Log (AccessEvent (..), RequestLine (..), formatLogfmt, localTimestamp, rotatingAppender)
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), Port (..))
+import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.IO.TimeMilli (getTimeMilli)
 import Test.Hspec
 
 spec :: Spec
@@ -33,6 +37,39 @@ spec =
             ("." `isInfixOf` stamp) `shouldBe` True
             any (`elem` "+-") (drop 11 stamp) `shouldBe` True
 
+        describe "log rotation (RFC-0024)" $ do
+            it "given the active file past the threshold, when appending, then it rotates to .1 and keeps writing" $ do
+                path <- freshLogPath "threshold"
+                append <- rotatingAppender 30 3 path
+                append "first-line-aaaa"
+                append "second-line-bbbb"
+                -- The third append sees the file already past 30 bytes, so it rotates first.
+                append "third-line-cccc"
+                archived <- BS.unpack <$> BS.readFile (path ++ ".1")
+                active <- BS.unpack <$> BS.readFile path
+                ("first-line-aaaa" `isInfixOf` archived) `shouldBe` True
+                ("second-line-bbbb" `isInfixOf` archived) `shouldBe` True
+                active `shouldBe` "third-line-cccc\n"
+
+            it "given repeated rotations, when they exceed keep, then the cascade shifts archives and drops the oldest" $ do
+                path <- freshLogPath "cascade"
+                append <- rotatingAppender 10 2 path
+                -- Each line is over the 10-byte threshold, so every append after the first rotates.
+                mapM_ append ["rotation-001", "rotation-002", "rotation-003", "rotation-004"]
+                e1 <- doesFileExist (path ++ ".1")
+                e2 <- doesFileExist (path ++ ".2")
+                e3 <- doesFileExist (path ++ ".3")
+                (e1, e2, e3) `shouldBe` (True, True, False)
+
+            it "given many appends across rotations within keep, when read back, then no line is lost" $ do
+                path <- freshLogPath "noloss"
+                append <- rotatingAppender 12 20 path
+                let messages = map (\n -> "line-" ++ show n) [1 .. 15 :: Int]
+                mapM_ append messages
+                logged <- readAllLogs path 20
+                length logged `shouldBe` length messages
+                logged `shouldBe` messages
+
 ts :: String
 ts = "2026-06-15T14:30:00.123+1200"
 
@@ -41,3 +78,24 @@ peer = ConnectionInfo (HostIPv4 127 0 0 1) (Port 54321)
 
 anyPeer :: ConnectionInfo
 anyPeer = ConnectionInfo HostAny (Port 0)
+
+{- | A unique log path under build/ per run (millisecond-stamped), so rotation
+tests never see stale archives from a previous run.
+-}
+freshLogPath :: String -> IO FilePath
+freshLogPath name = do
+    stamp <- getTimeMilli
+    let dir = "build/log-rotation-spec/" ++ show stamp ++ "-" ++ name
+    createDirectoryIfMissing True dir
+    pure (dir ++ "/server.log")
+
+{- | The logged lines across the active file and its archives, in chronological
+order: the highest-numbered (oldest) archive first, down to @.1@, then the active
+file last.
+-}
+readAllLogs :: FilePath -> Int -> IO [String]
+readAllLogs path keep = do
+    let candidates = [path ++ "." ++ show n | n <- reverse [1 .. keep]] ++ [path]
+    existing <- filterM doesFileExist candidates
+    contents <- mapM (fmap BS.unpack . BS.readFile) existing
+    pure (concatMap lines contents)

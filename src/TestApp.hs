@@ -22,7 +22,8 @@ main = do
         Left err -> failWith err
         Right (settings, cfg) -> do
             putStrLn ("listening on " ++ listenAddress settings)
-            result <- Server.serve settings (TestApp.appFromConfig settings cfg)
+            application <- TestApp.appFromConfig settings cfg
+            result <- Server.serve settings application
             case result of
                 Left err -> putStrLn ("server failed: " ++ show err)
                 Right () -> return ()

@@ -1,4 +1,4 @@
-import { Node } from "@tiptap/core";
+import { mergeAttributes, Node } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
     COLLAPSIBLE_KINDS,
@@ -46,33 +46,33 @@ export const Collapsible = Node.create({
             },
             open: {
                 default: false,
-                parseHTML: (element: HTMLElement): boolean => element.getAttribute("data-open") === "true",
-                renderHTML: (attributes: Record<string, unknown>): Record<string, string> => ({
-                    "data-open": String(Boolean(attributes["open"])),
-                }),
+                // Native <details open>: the boolean attribute is the open state.
+                parseHTML: (element: HTMLElement): boolean => element.hasAttribute("open"),
+                renderHTML: (attributes: Record<string, unknown>): Record<string, string> =>
+                    attributes["open"] ? { open: "" } : {},
             },
         };
     },
 
     parseHTML() {
-        return [{ tag: "div.markdown-collapsible" }];
+        return [{ tag: "details.markdown-collapsible" }];
     },
 
-    renderHTML({ node }) {
+    renderHTML({ node, HTMLAttributes }) {
         const kind = asKind(node.attrs["collapsibleType"]);
 
         return [
-            "div",
-            { class: `markdown-collapsible markdown-collapsible-${kind}` },
-            ["p", { class: "markdown-collapsible-title", contenteditable: "false" }, barTitle(node)],
+            "details",
+            mergeAttributes(HTMLAttributes, { class: `markdown-collapsible markdown-collapsible-${kind}` }),
+            ["summary", { class: "markdown-collapsible-title", contenteditable: "false" }, barTitle(node)],
             ["div", { class: "markdown-collapsible-body" }, 0],
         ];
     },
 
     addNodeView() {
         return ({ node, editor, getPos }) => {
-            const dom = document.createElement("div");
-            const titleBar = document.createElement("p");
+            const dom = document.createElement("details");
+            const titleBar = document.createElement("summary");
             titleBar.className = "markdown-collapsible-title";
             titleBar.contentEditable = "false";
             const body = document.createElement("div");
@@ -82,7 +82,9 @@ export const Collapsible = Node.create({
             const reflect = (current: ProseMirrorNode): void => {
                 const kind = asKind(current.attrs["collapsibleType"]);
                 dom.className = `markdown-collapsible markdown-collapsible-${kind}`;
-                dom.dataset["open"] = String(Boolean(current.attrs["open"]));
+                // The open state lives in the document model (round-trips to ??? / ???+, undoable); drive the
+                // native <details open> from it rather than letting the browser toggle it directly (ADR-054).
+                dom.open = Boolean(current.attrs["open"]);
 
                 if (typeof current.attrs["title"] === "string") {
                     dom.dataset["title"] = current.attrs["title"];
@@ -94,7 +96,10 @@ export const Collapsible = Node.create({
             };
 
             titleBar.addEventListener("mousedown", (event: MouseEvent): void => event.preventDefault());
-            titleBar.addEventListener("click", (): void => {
+            titleBar.addEventListener("click", (event: MouseEvent): void => {
+                // Cancel the browser's native toggle; the model drives the open state (and reflect() applies
+                // it back to dom.open). This also covers keyboard Enter/Space, which dispatch a click.
+                event.preventDefault();
                 const position = getPos();
 
                 if (typeof position !== "number") {

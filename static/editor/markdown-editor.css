@@ -394,8 +394,16 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   color: var(--markdown-collapsible-accent, var(--markdown-editor-quote-border));
   cursor: pointer;
   font-weight: 600;
+  list-style: none;
   margin: 0;
   user-select: none;
+}
+
+/* The collapsible is a native <details>/<summary> (ADR-054): the browser hides the closed body and would
+   show its own disclosure marker, which we hide in favour of the custom rotating arrow below. */
+.markdown-collapsible-title::-webkit-details-marker,
+.markdown-collapsible-title::marker {
+  display: none;
 }
 
 .markdown-collapsible-title::before {
@@ -405,12 +413,8 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   transition: transform 0.15s ease;
 }
 
-.markdown-collapsible[data-open="true"] > .markdown-collapsible-title::before {
+.markdown-collapsible[open] > .markdown-collapsible-title::before {
   transform: rotate(90deg);
-}
-
-.markdown-collapsible[data-open="false"] > .markdown-collapsible-body {
-  display: none;
 }
 
 .markdown-collapsible-body > :last-child {

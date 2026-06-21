@@ -107,10 +107,10 @@ describe("collapsible DOM serialisation", (): void => {
     it("given a rendered collapsible element, when serialised, then it becomes mkdocs source", (): void => {
         const root = document.createElement("div");
         root.innerHTML =
-            '<div class="markdown-collapsible markdown-collapsible-warning" data-open="true" data-title="Heads up">' +
-            '<p class="markdown-collapsible-title" contenteditable="false">Heads up</p>' +
+            '<details class="markdown-collapsible markdown-collapsible-warning" open data-title="Heads up">' +
+            '<summary class="markdown-collapsible-title" contenteditable="false">Heads up</summary>' +
             '<div class="markdown-collapsible-body"><p>Be <strong>careful</strong>.</p></div>' +
-            "</div>";
+            "</details>";
 
         expect(documentToMarkdown(documentFromElements(root.children))).toBe(
             ['???+ warning "Heads up"', "", "    Be **careful**."].join("\n"),
@@ -120,10 +120,10 @@ describe("collapsible DOM serialisation", (): void => {
     it("given a collapsible element without a title attribute, when serialised, then no title is emitted", (): void => {
         const root = document.createElement("div");
         root.innerHTML =
-            '<div class="markdown-collapsible markdown-collapsible-note" data-open="false">' +
-            '<p class="markdown-collapsible-title" contenteditable="false">Note</p>' +
+            '<details class="markdown-collapsible markdown-collapsible-note">' +
+            '<summary class="markdown-collapsible-title" contenteditable="false">Note</summary>' +
             '<div class="markdown-collapsible-body"><p>Body.</p></div>' +
-            "</div>";
+            "</details>";
 
         expect(documentToMarkdown(documentFromElements(root.children))).toBe(["??? note", "", "    Body."].join("\n"));
     });

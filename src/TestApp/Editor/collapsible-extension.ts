@@ -158,9 +158,9 @@ function blockFromMdast(node: RootContent, ctx: ParseContext): EditorBlock | nul
 
 // Serialise-in: a rendered collapsible element (the Tiptap node's DOM) becomes a custom collapsible block.
 
-/** Recognises a `.markdown-collapsible` callout element and rebuilds the custom block, declining otherwise. */
+/** Recognises a `<details.markdown-collapsible>` callout element and rebuilds the custom block, else declines. */
 function blockFromElement(element: Element, ctx: FromElementContext): EditorBlock | null {
-    if (element.tagName !== "DIV" || !element.classList.contains("markdown-collapsible")) {
+    if (element.tagName !== "DETAILS" || !element.classList.contains("markdown-collapsible")) {
         return null;
     }
 
@@ -176,7 +176,7 @@ function blockFromElement(element: Element, ctx: FromElementContext): EditorBloc
         children: body ? ctx.documentFromElements(body.children).blocks : [],
         data: {
             collapsibleType,
-            open: element.getAttribute("data-open") === "true",
+            open: element.hasAttribute("open"),
             title: element.getAttribute("data-title"),
         },
         extension: "collapsible",

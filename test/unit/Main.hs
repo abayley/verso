@@ -1,6 +1,7 @@
 module Main (main) where
 
 import qualified MicroHttp.AttachmentSpec as AttachmentSpec
+import qualified MicroHttp.ClientErrorSpec as ClientErrorSpec
 import qualified MicroHttp.ConfigSpec as ConfigSpec
 import qualified MicroHttp.DocumentMetaSpec as DocumentMetaSpec
 import qualified MicroHttp.HtmlSpec as HtmlSpec
@@ -23,6 +24,7 @@ main :: IO ()
 main = hspec $ do
     FacadeSpec.spec
     AttachmentSpec.spec
+    ClientErrorSpec.spec
     ConfigSpec.spec
     DocumentMetaSpec.spec
     FramingSpec.spec

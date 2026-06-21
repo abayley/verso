@@ -8,6 +8,7 @@ module MicroHttp.TestApp (
     appWithDocumentRoot,
     appWithDocumentTree,
     appWithStore,
+    clientErrorRoute,
     documentRoutes,
     fileStore,
     routes,
@@ -25,9 +26,9 @@ import qualified MicroHttp.Http as Http
 import MicroHttp.Http.Parse (ParseError (..))
 import MicroHttp.Http.PercentEncoding (decodeFormValue)
 import MicroHttp.Iteratee (Iter, liftIO, readBodyStrict)
-import MicroHttp.Log (Logger, rotatingFileLogfmtLogger)
+import MicroHttp.Log (Logger, localTimestamp, rotatingAppender, rotatingFileLogfmtLogger)
 import MicroHttp.Middleware (logRequests, withErrorResponses)
-import MicroHttp.Network.Socket (fileSizeBytes)
+import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), fileSizeBytes)
 import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
@@ -60,18 +61,20 @@ limits from the (config-derived) settings. Logging is the outermost middleware.
 appFromConfig :: Server.Settings -> Config -> IO Server.Application
 appFromConfig settings cfg = do
     accessLogger <- rotatingFileLogfmtLogger logMaxBytes logKeep accessLogPath
+    clientErrorSink <- rotatingAppender logMaxBytes logKeep clientErrorLogPath
     pure
         ( logRequests
             accessLogger
             ( withErrorResponses
                 ( Router.serveRoutes
                     (Server.parseLimits settings)
-                    (configuredRoutes cfg)
+                    (configuredRoutes cfg clientErrorSink)
                 )
             )
         )
   where
     accessLogPath = configString "access_log" "build/access.log" cfg
+    clientErrorLogPath = configString "client_error_log" "build/client-errors.log" cfg
     logMaxBytes = configIntOr "log_max_bytes" defaultLogMaxBytes cfg
     logKeep = configIntOr "log_keep" defaultLogKeep cfg
 
@@ -92,15 +95,16 @@ configIntOr key def cfg = case configInt key def cfg of
 the filesystem-tree mode (a MkDocs-style tree served and edited in place, with
 per-page peer @assets/@); otherwise the flat single-document store is used.
 -}
-configuredRoutes :: Config -> [Router.Route]
-configuredRoutes cfg =
-    case configString "document_tree_root" "" cfg of
-        "" ->
-            documentRoutes editorTheme (configString "document_root" "data/documents" cfg)
-                ++ attachmentRoutes (fileAttachmentStore (configString "attachment_root" "data/attachments" cfg))
-                ++ mounts
-        treeRoot ->
-            treeRoutes editorTheme treeRoot ++ mounts
+configuredRoutes :: Config -> (String -> IO ()) -> [Router.Route]
+configuredRoutes cfg clientErrorSink =
+    clientErrorRoute clientErrorSink
+        : case configString "document_tree_root" "" cfg of
+            "" ->
+                documentRoutes editorTheme (configString "document_root" "data/documents" cfg)
+                    ++ attachmentRoutes (fileAttachmentStore (configString "attachment_root" "data/attachments" cfg))
+                    ++ mounts
+            treeRoot ->
+                treeRoutes editorTheme treeRoot ++ mounts
   where
     editorTheme = configString "editor_theme" "paper" cfg
     mounts = [Static.static prefix root | (prefix, root) <- configMounts "static_mounts" cfg]
@@ -368,6 +372,82 @@ jsonResponse body =
 statusResponse :: Int -> String -> String -> Http.Response
 statusResponse code reason body =
     Http.Response (Http.Status code reason) [contentTypeHeader "text/plain"] (Http.StrictBody (BS.pack body))
+
+-- | The maximum accepted client-error report size in bytes (RFC-0023).
+clientErrorMaxBytes :: Int
+clientErrorMaxBytes = 8192
+
+{- | The client-error telemetry endpoint (RFC-0023, ADR-052): a fire-and-forget
+@POST /client-errors@ that records one bounded, escaped logfmt line via the given
+sink (the rotating client-error log) and returns @204@. A deliberate, write-only
+exception to the store-and-serve server (ADR-019); the report carries no document
+content and no user identity.
+-}
+clientErrorRoute :: (String -> IO ()) -> Router.Route
+clientErrorRoute sink = Router.post "/client-errors" (clientErrorHandler sink)
+
+clientErrorHandler :: (String -> IO ()) -> Router.Handler
+clientErrorHandler sink _ request = do
+    bytes <- readBodyStrict (StreamParseError BodyTooLarge) clientErrorMaxBytes
+    let fields = formFields (BS.unpack bytes)
+    liftIO $ do
+        ts <- localTimestamp
+        sink (clientErrorLine ts request fields)
+    pure (Http.Response (Http.Status 204 "No Content") [] (Http.StrictBody (BS.pack "")))
+
+{- | One logfmt line for a client-error report: the server-stamped timestamp,
+peer, and user-agent, plus the bounded, escaped client fields. Client values are
+quoted and escaped (unlike the access log's server-controlled values) so a
+crafted message or stack cannot break the line or inject fields.
+-}
+clientErrorLine :: String -> Http.RequestHead -> [(String, String)] -> String
+clientErrorLine ts request fields =
+    "ts="
+        ++ ts
+        ++ " event=CLERR peer="
+        ++ clientPeerHost (Http.requestPeer request)
+        ++ " kind="
+        ++ clientErrorKind (capture "kind" fields)
+        ++ " path="
+        ++ logfmtValue (take 300 (capture "path" fields))
+        ++ " ua="
+        ++ logfmtValue (take 300 (requestUserAgent request))
+        ++ " message="
+        ++ logfmtValue (take 500 (capture "message" fields))
+        ++ " stack="
+        ++ logfmtValue (boundStack (capture "stack" fields))
+
+-- | Constrains the reported kind to the known values, mapping anything else to @unknown@.
+clientErrorKind :: String -> String
+clientErrorKind kind
+    | kind == "error" || kind == "unhandledrejection" = kind
+    | otherwise = "unknown"
+
+-- | Bounds a stack trace to its first 20 frames and 2000 characters.
+boundStack :: String -> String
+boundStack = take 2000 . unlines . take 20 . lines
+
+-- | A quoted, escaped logfmt value: untrusted client text cannot break the line.
+logfmtValue :: String -> String
+logfmtValue value = "\"" ++ concatMap escapeLogfmt value ++ "\""
+  where
+    escapeLogfmt '"' = "\\\""
+    escapeLogfmt '\\' = "\\\\"
+    escapeLogfmt '\n' = "\\n"
+    escapeLogfmt '\r' = "\\r"
+    escapeLogfmt '\t' = "\\t"
+    escapeLogfmt c = [c]
+
+-- | The request's User-Agent header value, or empty when absent.
+requestUserAgent :: Http.RequestHead -> String
+requestUserAgent request =
+    maybe "" BS.unpack (lookup (Http.normaliseHeaderName (BS.pack "user-agent")) (Http.requestHeaders request))
+
+-- | Renders a connection's peer host as a dotted IPv4 string (as the access log does).
+clientPeerHost :: ConnectionInfo -> String
+clientPeerHost conn = case connPeerHost conn of
+    HostAny -> "0.0.0.0"
+    HostIPv4 a b c d -> show a ++ "." ++ show b ++ "." ++ show c ++ "." ++ show d
 
 {- | Saves a posted Markdown document back to its file in the tree, creating any
 missing parent directories. Unlike the flat 'saveDocument', the tree mode does

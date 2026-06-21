@@ -9,6 +9,7 @@ import {
 import { attachmentMarkdown, isInlineImage, uploadAttachment } from "./attachment-upload.js";
 import { badgeExtension } from "./badge-extension.js";
 import { BubbleToolbarElement } from "./bubble-toolbar-element.js";
+import { type ClientErrorKind, ClientErrorReporter } from "./client-error-reporter.js";
 import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
 import type { CollapsibleKind } from "./collapsible-extension.js";
 import {
@@ -156,6 +157,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private linkController: LinkPopoverController | null = null;
     private saveError: HTMLSpanElement | null = null;
     private errorBanner: HTMLDivElement | null = null;
+    private readonly clientErrorReporter = new ClientErrorReporter();
     private saveController: SaveStateController | null = null;
     private sourceEditor: CodeMirrorSourceEditor | null = null;
     private syncingEditors = false;
@@ -174,10 +176,10 @@ export class MarkdownEditorElement extends HTMLElement {
     // raises the dismissible banner rather than leaving a silently broken editor. The editor is the whole
     // page in this app, so page-level errors are treated as editor-originated.
     private readonly handleGlobalError = (event: ErrorEvent): void => {
-        this.showErrorBanner(event.error ?? event.message);
+        this.showErrorBanner(event.error ?? event.message, "error");
     };
     private readonly handleUnhandledRejection = (event: PromiseRejectionEvent): void => {
-        this.showErrorBanner(event.reason);
+        this.showErrorBanner(event.reason, "unhandledrejection");
     };
     private readonly handleSelectionChange = (): void => {
         this.updateBubbleToolbar();
@@ -821,8 +823,9 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /** Surfaces an unexpected failure to the user and logs the underlying error to the console. */
-    private showErrorBanner(error: unknown): void {
+    private showErrorBanner(error: unknown, kind: ClientErrorKind = "error"): void {
         console.error(error);
+        this.clientErrorReporter.report(error, kind);
 
         if (!this.errorBanner) {
             return;

@@ -10,6 +10,13 @@ if (!customElements.get(elementName)) {
 describe("MarkdownEditorElement", (): void => {
     beforeEach((): void => {
         document.body.textContent = "";
+        // The error boundary reports client errors via sendBeacon; stub it so reports never hit the
+        // network (happy-dom has no sendBeacon, so the reporter would otherwise fall back to a real fetch).
+        Object.defineProperty(navigator, "sendBeacon", {
+            configurable: true,
+            value: (): boolean => true,
+            writable: true,
+        });
     });
 
     afterEach((): void => {

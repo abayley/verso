@@ -1461,6 +1461,80 @@ reproduce that DOM); offline trust does not close that gap, it stops the `remark
 gate from appearing to. Builds on ADR-019 (server stores/serves), ADR-020
 (`remark` as reference fixture), and ADR-041 (golden tests as the net).
 
+### ADR-052: The Server Accepts Client-Error Telemetry (A Bounded Exception To Store-And-Serve)
+
+Status: Accepted.
+
+Context: ADR-019 keeps the server minimal -- it stores and serves Markdown
+documents and static assets, and does not process application events. The editor
+gained a global error boundary (RFC-0022) that surfaces unexpected client
+failures to the user as a banner, but once the tab closes there is no record an
+operator can inspect: failures are invisible in aggregate. The blank-page class
+of bug (e.g. the bare-image/callout crash) is exactly the kind that needs
+after-the-fact visibility once the editor points at the live documentation tree
+with real authors. Capturing that requires the server to receive something other
+than a document.
+
+Decision: add a single write-only telemetry endpoint, `POST /client-errors`, as
+a deliberate, bounded exception to ADR-019. It accepts a small
+form-urlencoded **client-error report** (message, bounded stack, page path,
+kind), stamps it server-side (timestamp, peer, user-agent), escapes every value
+logfmt-safely, and appends one line to a dedicated **client-error log**
+(`client_error_log`), separate from the access log. It returns `204` and is
+fire-and-forget. "Sentry-like" means the operational outcome -- queryable error
+visibility -- not the Sentry protocol or any outbound integration; the server
+gains no network egress and no new external dependency. The report carries no
+page body content and no user identity (privacy). The endpoint is unauthenticated
+and assumes a trusted/internal deployment, matching the editor's context; the
+body is size-capped and the client de-duplicates and caps reports per session,
+but there is no server-side per-IP rate limiting (the growth path -- an
+`MVar` token bucket created at startup and shared via closure capture -- is
+recorded but not built). The flat and tree modes both expose the route.
+
+Consequences: the server now has exactly one endpoint that is neither a document
+nor a static asset, and it writes application-supplied data to disk -- a real
+departure from ADR-019, scoped to a single bounded, write-only, no-read endpoint
+so the store-and-serve thesis otherwise holds. Operators gain a greppable
+client-error log; the no-JavaScript reader produces none (telemetry is a client
+concern). Refines ADR-019 (the exception) and builds on RFC-0022 (the boundary
+that feeds it) and ADR-053 (the log it writes to rotates). The endpoint is
+unauthenticated by design; if the deployment ever faces untrusted networks, the
+recorded server-side rate-limiting path must be built. RFC-0023 implements this.
+
+### ADR-053: Built-In Log Rotation By Size, Rename-Cascade Via Libc FFI
+
+Status: Accepted.
+
+Context: The server's logs (the access log, and now the client-error log of
+ADR-052) are append-only files that grow without bound; an unauthenticated
+telemetry endpoint makes unbounded growth a disk-fill concern. The natural fix is
+rotation, but two runtime facts constrain it. MicroHs has no atomic `renameFile`
+(noted in `MicroHttp.Attachment`), so the classic logrotate rename cannot use
+`System.Directory`. And the current logger (`fileLogfmtLogger`) is stateless --
+it opens the file per line in append mode -- while connections are `forkIO`'d, so
+a rotate interleaved with concurrent appends would lose lines or write to a
+rotated file.
+
+Decision: add built-in rotation to the file logger, applied uniformly to both
+logs. Trigger on **size**: when the active file exceeds `log_max_bytes`
+(default 10 MB), rotate. Strategy is a **rename-cascade**: `x.log` -> `x.log.1`
+-> ... -> `x.log.<log_keep>`, dropping the oldest (`log_keep` default 5).
+Renaming, size measurement, and unlinking use **libc FFI** (`rename`, `stat`,
+`unlink`), the project's established escape hatch for `System.Directory`/`Data.Time`
+gaps (`MicroHttp.Log` already FFIs `localtime`/`strftime`). The check-rotate-append
+sequence is serialised by a **per-file `MVar`** created at startup and captured by
+the logger closure, so the logger becomes stateful (its constructor moves into
+IO, threaded from `main`/`appFromConfig`); each log file has its own lock and
+rotates independently.
+
+Consequences: both logs are bounded to roughly `(log_keep + 1) x log_max_bytes`
+on disk, with no external `logrotate` needed. The logger gains shared mutable
+state and a small libc FFI surface; app construction gains an IO step to create
+the locks. Rotation is best-effort-ordered under load but correct (no lost or
+misfiled lines) because of the per-file lock; contention is negligible at the
+expected volume. Builds on RFC-0012 (logging as middleware) and the
+`MicroHttp.Log` FFI precedent; depended on by ADR-052. RFC-0024 implements this.
+
 ## ADR Registry Open Review Items
 
 - Verify socket layout assumptions on non-macOS platforms before treating

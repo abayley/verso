@@ -112,6 +112,20 @@ renderer may still differ on; this contract is about the editor with itself.
 _Avoid_: round-trippable subset (conflates the contract with one past mechanism),
 representable, valid Markdown.
 
+**Client-error report**:
+One captured client-side editor failure, sent from the editor's error boundary
+to the server for operational visibility. A bounded, privacy-safe record (no
+**page** body content, no user identity) -- not the user-facing banner, which is
+the in-browser surfacing of the same failure (RFC-0022).
+_Avoid_: crash report, exception, log entry.
+
+**Client-error log**:
+The dedicated logfmt file the server appends **client-error reports** to,
+separate from the access log. The operator's after-the-fact view of editor
+failures ("Sentry-like" meaning the outcome -- queryable error visibility -- not
+the Sentry protocol). Selected by the `client_error_log` config key (RFC-0023).
+_Avoid_: telemetry, access log (a different file, HTTP-request lifecycle).
+
 ## Flagged ambiguities
 
 - **Metadata**: unqualified, it is ambiguous. Use **frontmatter** for the

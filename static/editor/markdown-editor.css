@@ -400,6 +400,19 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   user-select: none;
 }
 
+/* The title text is editable in the visual editor (the rest of the summary toggles). Make it behave like a
+   text field within the toggle bar: text cursor, selectable, with a subtle focus ring. */
+.markdown-collapsible-title-text {
+  border-radius: 3px;
+  cursor: text;
+  outline: none;
+  user-select: text;
+}
+
+.markdown-collapsible-title-text:focus {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--markdown-collapsible-accent, var(--markdown-editor-quote-border)) 45%, transparent);
+}
+
 /* The collapsible is a native <details>/<summary> (ADR-054): the browser hides the closed body and would
    show its own disclosure marker, which we hide in favour of the custom rotating arrow below. */
 .markdown-collapsible-title::-webkit-details-marker,

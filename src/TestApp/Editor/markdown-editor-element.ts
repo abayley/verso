@@ -23,7 +23,7 @@ import {
 } from "./command-bar-element.js";
 import { registerExtension } from "./content-extension.js";
 import { INLINE_COMMANDS } from "./editor-toolbar-shared.js";
-import { joinFrontmatter, splitFrontmatter } from "./frontmatter.js";
+import { frontmatterName, joinFrontmatter, setFrontmatterName, splitFrontmatter } from "./frontmatter.js";
 import { imageShortTitles } from "./image-metadata.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
 import { rawHtmlExtension } from "./raw-html-extension.js";
@@ -158,6 +158,8 @@ export class MarkdownEditorElement extends HTMLElement {
     private bodyWidth: BodyWidth = "narrow";
     private attachmentPanel: AttachmentPanel | null = null;
     private tocPanel: TableOfContentsPanel | null = null;
+    /** The page-title field above the editing pane: an editable input, or read-only text in the read view. */
+    private titleField: HTMLElement | null = null;
     /** The right-hand sidebar holding the contents panel and (in tree mode) the attachments panel. */
     private sidebar: HTMLDivElement | null = null;
     private mode: EditorMode = "visual";
@@ -395,7 +397,14 @@ export class MarkdownEditorElement extends HTMLElement {
 
         const workspace = document.createElement("div");
         workspace.className = "markdown-editor__workspace";
-        workspace.append(this.body);
+
+        // The editing column: the page-title field (from the frontmatter `name`, edited here and saved back)
+        // sits above the body, sized to match it. The body is the main edit/view pane.
+        const main = document.createElement("div");
+        main.className = "markdown-editor__main";
+        this.titleField = this.createTitleField();
+        main.append(this.titleField, this.body);
+        workspace.append(main);
 
         // The right-hand sidebar: the generated contents panel sits above the attachments panel. The contents
         // panel shows whenever the document has headings (any mode); the attachments panel is tree-mode only.
@@ -1920,6 +1929,39 @@ export class MarkdownEditorElement extends HTMLElement {
         if (this.sidebar) {
             this.sidebar.hidden = !this.isTreeMode() && entries.length === 0;
         }
+    }
+
+    /**
+     * Builds the page-title field shown above the editing pane. In the read view it is a read-only heading
+     * (hidden when the page has no title); when editable it is an input bound to the frontmatter `name`.
+     */
+    private createTitleField(): HTMLElement {
+        const title = frontmatterName(this.frontmatter);
+
+        if (this.isReadonly()) {
+            const display = document.createElement("h1");
+            display.className = "markdown-editor__title markdown-editor__title--display";
+            display.textContent = title ?? "";
+            display.hidden = title === null || title === "";
+
+            return display;
+        }
+
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "markdown-editor__title markdown-editor__title--input";
+        input.value = title ?? "";
+        input.placeholder = "Title";
+        input.setAttribute("aria-label", "Page title");
+        input.addEventListener("input", (): void => this.handleTitleChange(input.value));
+
+        return input;
+    }
+
+    /** Writes an edited title back to the frontmatter `name` and persists it (the body is unchanged). */
+    private handleTitleChange(title: string): void {
+        this.frontmatter = setFrontmatterName(this.frontmatter, title);
+        this.dispatchMarkdownChange(this.markdown);
     }
 
     /** Scrolls the active pane to the n-th heading (the contents panel's click target). */

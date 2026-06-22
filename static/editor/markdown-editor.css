@@ -158,6 +158,47 @@ markdown-editor {
   min-width: 0;
 }
 
+/* The editing column: the page-title field sits above the body, both full width of the column. */
+.markdown-editor__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* The page title (the frontmatter `name`), shown above the pane. It matches the content font per theme and
+   reads as a large title; the input is borderless so it looks like text, not a form control. */
+.markdown-editor__title {
+  border: 0;
+  box-sizing: border-box;
+  color: var(--markdown-editor-text);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.9rem;
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  width: 100%;
+}
+
+.markdown-editor__title--input {
+  background: transparent;
+  outline: none;
+}
+
+.markdown-editor__title--input::placeholder {
+  color: var(--markdown-editor-muted);
+}
+
+.markdown-editor__title--display[hidden] {
+  display: none;
+}
+
+:root[data-editor-theme="studio"] .markdown-editor__title,
+:root[data-editor-theme="workbench"] .markdown-editor__title {
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
 /* The editing column (and its peer metadata panel) is centred and width-capped by the chosen preset; the
    top toolbar spans the page independently, so changing the width never shifts the toolbar controls. */
 .markdown-editor__workspace {

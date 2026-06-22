@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { joinFrontmatter, splitFrontmatter } from "../../src/TestApp/Editor/frontmatter.js";
+import {
+    frontmatterName,
+    joinFrontmatter,
+    setFrontmatterName,
+    splitFrontmatter,
+} from "../../src/TestApp/Editor/frontmatter.js";
 
 describe("splitFrontmatter", (): void => {
     it("given a document with YAML frontmatter, when split, then the frontmatter and body are separated", (): void => {
@@ -47,5 +52,52 @@ describe("frontmatter round-trip", (): void => {
         expect(joinFrontmatter(frontmatter, editedBody)).toBe(
             "---\nname: Test\nmeta: meta/x.meta/meta.yaml\n---\n\n# Heading\n\nA new paragraph.",
         );
+    });
+});
+
+describe("frontmatterName", (): void => {
+    it("given a name field, when read, then it returns the value", (): void => {
+        expect(frontmatterName("---\nname: Aruba Central - Troubleshooting\nmeta: x\n---")).toBe(
+            "Aruba Central - Troubleshooting",
+        );
+    });
+
+    it("given a quoted name, when read, then the quotes are stripped and escapes resolved", (): void => {
+        expect(frontmatterName('---\nname: "A: title"\n---')).toBe("A: title");
+        expect(frontmatterName("---\nname: 'O''Brien'\n---")).toBe("O'Brien");
+    });
+
+    it("given no name field (or no frontmatter), when read, then it returns null", (): void => {
+        expect(frontmatterName("---\nmeta: x\n---")).toBeNull();
+        expect(frontmatterName(null)).toBeNull();
+    });
+});
+
+describe("setFrontmatterName", (): void => {
+    it("given an existing name, when set, then only that line changes (rest preserved)", (): void => {
+        expect(setFrontmatterName("---\nname: Old\nmeta: meta/x.yaml\n---", "New Title")).toBe(
+            "---\nname: New Title\nmeta: meta/x.yaml\n---",
+        );
+    });
+
+    it("given frontmatter without a name, when set, then a name line is inserted after the opening fence", (): void => {
+        expect(setFrontmatterName("---\nmeta: meta/x.yaml\n---", "Title")).toBe(
+            "---\nname: Title\nmeta: meta/x.yaml\n---",
+        );
+    });
+
+    it("given no frontmatter, when set, then a frontmatter block is created", (): void => {
+        expect(setFrontmatterName(null, "Title")).toBe("---\nname: Title\n---");
+    });
+
+    it("given a value needing quoting, when set, then it is double-quoted and escaped", (): void => {
+        expect(setFrontmatterName("---\nname: x\n---", "Has: colon")).toBe('---\nname: "Has: colon"\n---');
+        expect(setFrontmatterName("---\nname: x\n---", 'Quote " here')).toBe('---\nname: "Quote \\" here"\n---');
+    });
+
+    it("given a set name, when read back, then it round-trips", (): void => {
+        for (const title of ["Plain Title", "Has: colon", "HPE/Aruba Guides", 'with "quotes"']) {
+            expect(frontmatterName(setFrontmatterName(null, title))).toBe(title);
+        }
     });
 });

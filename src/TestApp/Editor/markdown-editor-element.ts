@@ -358,12 +358,9 @@ export class MarkdownEditorElement extends HTMLElement {
         this.body.className = "markdown-editor__body";
         this.wordCount = document.createElement("span");
         this.wordCount.className = "markdown-editor__word-count";
-        // A status line carrying a document-format label (left), and the caret position and word count
-        // (right). The format label and caret position only surface under the Workbench theme's status-bar
-        // chrome (CSS-gated); the other themes show the word count alone, as before.
-        const statusInfo = document.createElement("span");
-        statusInfo.className = "markdown-editor__status-info";
-        statusInfo.textContent = "markdown";
+        // A status line carrying the caret position and the word count. The caret position only surfaces
+        // under the Workbench theme's status-bar chrome (CSS-gated); the other themes show the word count
+        // alone, as before.
         const statusMeta = document.createElement("span");
         statusMeta.className = "markdown-editor__status-meta";
         this.cursorReadout = document.createElement("span");
@@ -371,7 +368,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.wordReadout = document.createElement("span");
         this.wordReadout.className = "markdown-editor__status-words";
         statusMeta.append(this.cursorReadout, this.wordReadout);
-        this.wordCount.append(statusInfo, statusMeta);
+        this.wordCount.append(statusMeta);
 
         this.uploadNotice = document.createElement("div");
         this.uploadNotice.className = "markdown-editor__upload-notice";

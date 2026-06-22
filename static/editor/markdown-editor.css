@@ -687,10 +687,8 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   text-align: right;
 }
 
-/* The format label and caret readout are Workbench status-bar chrome; the other
-   themes show the word count alone (the caret readout is also empty whenever no
-   source pane is shown). */
-.markdown-editor__status-info,
+/* The caret readout is Workbench status-bar chrome; the other themes show the word
+   count alone (the readout is also empty whenever no source pane is shown). */
 .markdown-editor__status-cursor:empty {
   display: none;
 }
@@ -1174,14 +1172,9 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
   font-size: 12.5px;
   grid-area: status;
-  justify-content: space-between;
+  justify-content: flex-end;
   margin: 0;
   padding: 0.55rem 0.85rem;
-}
-
-/* Surface the format label and (when a source pane is shown) the caret readout. */
-:root[data-editor-theme="workbench"] .markdown-editor__status-info {
-  display: inline;
 }
 
 /* The rendered content drops the shared serif for a sans-serif stack, so the

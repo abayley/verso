@@ -71,15 +71,12 @@ markdown-editor {
   color: var(--markdown-editor-muted);
   display: flex;
   /* The controls sit on the first line; the document name drops onto its own line below, so a long page
-     name never wraps a control onto a second line. */
+     name never wraps a control onto a second line. The bar spans the full width so the Edit/View toggle and
+     the breadcrumb sit at the left edge while the presentation controls sit at the right. */
   flex-direction: column;
   font: 13px system-ui, sans-serif;
   gap: 0.4rem;
   letter-spacing: 0.04em;
-  /* Capped at the "medium" column width and centred, so the controls sit at the right edge of the medium
-     pane rather than the far edge of the viewport; they only move inward once the viewport is narrower. */
-  margin: 0 auto;
-  max-width: 76rem;
   padding: 1rem 0.25rem;
   width: 100%;
 }
@@ -104,8 +101,8 @@ markdown-editor {
   flex-wrap: wrap;
   font: 13px system-ui, sans-serif;
   letter-spacing: 0.04em;
-  margin: -0.6rem auto 0;
-  max-width: 76rem;
+  /* Always left-aligned at the page edge (not centred to the medium column). */
+  margin: -0.6rem 0 0;
   padding: 0 0.25rem 0.5rem;
   row-gap: 0.1rem;
   width: 100%;
@@ -134,6 +131,8 @@ a.markdown-editor__crumb:hover {
 
 .markdown-editor__view-toggle {
   color: var(--markdown-editor-muted);
+  /* Pull the Edit/View toggle to the left edge of the top bar; the other controls stay right-aligned. */
+  margin-right: auto;
   text-decoration: none;
 }
 
@@ -263,6 +262,10 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   flex: 0 0 15rem;
   flex-direction: column;
   gap: 1.75rem;
+  /* Hold a fixed 15rem regardless of contents: without this, a long contents entry would grow the sidebar
+     past its basis (a flex item's min-width is auto by default) and squash the editing pane. The contents
+     links clip with an ellipsis instead. */
+  min-width: 0;
   position: sticky;
   top: 1rem;
 }
@@ -1145,6 +1148,7 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 }
 
 :root[data-editor-theme="workbench"] markdown-editor {
+  column-gap: 1.25rem;
   display: grid;
   grid-template-areas:
     "rail format"
@@ -1185,6 +1189,12 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 /* The colour-scheme icons tighten up so their row fits the narrow rail. */
 :root[data-editor-theme="workbench"] .markdown-editor__theme-option {
   --wa-form-control-padding-inline: 0.25rem;
+}
+
+/* Indent the Edit/View link to line up with the rail's button-group labels, whose buttons carry inline
+   padding the plain link otherwise lacks. */
+:root[data-editor-theme="workbench"] .markdown-editor__view-toggle {
+  padding-left: 0.45rem;
 }
 
 /* The radio groups size to their content rather than stretching to the rail (a

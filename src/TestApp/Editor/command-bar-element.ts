@@ -63,7 +63,7 @@ const STRUCTURE_COMMANDS: { style: VisualStructureStyle; label: string; icon: st
 /** The block-insert command buttons (table, callout, collapsible), in toolbar order. */
 const INSERT_COMMANDS: { kind: InsertStructureKind; label: string; icon: string }[] = [
     { kind: "table", label: "Insert table", icon: "table" },
-    { kind: "collapsible", label: "Insert collapsible", icon: "chevron-down" },
+    { kind: "collapsible", label: "Insert collapsible", icon: "down-left-and-up-right-to-center" },
 ];
 
 /**

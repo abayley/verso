@@ -1173,8 +1173,12 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   z-index: 5;
 }
 
-:root[data-editor-theme="workbench"] .markdown-editor__error-banner,
-:root[data-editor-theme="workbench"] .markdown-editor__save-error {
+/* :not([hidden]) is essential: this rule is more specific than the base
+   `[hidden] { display: none }`, so an unqualified `display: flex` here would keep
+   the banner/save-error visible (with its static message) even when hidden --
+   making it appear on every page and resist dismissal. */
+:root[data-editor-theme="workbench"] .markdown-editor__error-banner:not([hidden]),
+:root[data-editor-theme="workbench"] .markdown-editor__save-error:not([hidden]) {
   align-items: center;
   border-radius: 0;
   border-width: 0 0 0 3px;

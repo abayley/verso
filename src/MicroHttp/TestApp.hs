@@ -11,13 +11,16 @@ module MicroHttp.TestApp (
     clientErrorRoute,
     documentRoutes,
     fileStore,
+    frontmatterTitle,
+    linkedFolderPaths,
     routes,
     treeRoutes,
 ) where
 
 import qualified Data.ByteString.Char8 as BS
-import Data.Char (digitToInt, isDigit, isSpace)
+import Data.Char (digitToInt, isDigit, isSpace, toUpper)
 import Data.List (intercalate, isSuffixOf)
+import Data.Maybe (fromMaybe)
 import MicroHttp.Attachment (allowedExtension, attachmentRoutes, extensionOf, fileAttachmentStore, inlineImageExtension, originalUploadFilename, uploadFilename)
 import MicroHttp.Config (Config, configInt, configMounts, configString)
 import qualified MicroHttp.DocumentMeta as DocumentMeta
@@ -199,7 +202,8 @@ treeEdit editorThemeDefault root path request =
             exists <- liftIO (doesFileExist fsPath)
             content <- if exists then liftIO (BS.readFile fsPath) else pure (BS.pack seededMarkdown)
             attachments <- liftIO (loadPageAttachments root path)
-            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True True attachments Nothing))
+            breadcrumbs <- liftIO (breadcrumbsFor root path (BS.unpack content))
+            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True True attachments breadcrumbs Nothing))
 
 {- | Renders the read-only view for a tree document (the default @GET@, RFC-0020):
 the editor shell with editing disabled. A missing page is a @404@ -- reading never
@@ -216,7 +220,8 @@ treeRead editorThemeDefault root path request =
                 else do
                     content <- liftIO (BS.readFile fsPath)
                     attachments <- liftIO (loadPageAttachments root path)
-                    pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True False attachments Nothing))
+                    breadcrumbs <- liftIO (breadcrumbsFor root path (BS.unpack content))
+                    pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True False attachments breadcrumbs Nothing))
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
 treeServeFile :: FilePath -> String -> Iter StreamError Http.Response
@@ -364,6 +369,127 @@ jsonString s = "\"" ++ concatMap escape s ++ "\""
     escape '\r' = "\\r"
     escape '\t' = "\\t"
     escape c = [c]
+
+-- | A breadcrumb in the path navigation: a visible label and an optional link (Nothing for the current page).
+data Crumb = Crumb String (Maybe String)
+
+{- | The folder rel-paths whose @index.md@ pages link in a document's breadcrumb trail, root-first and
+excluding the current page (the trail's final, unlinked crumb). A folder index page contributes its folder as
+the current crumb, so it is not also linked: @"a/b/page.md"@ links @["", "a", "a/b"]@; @"a/index.md"@ links
+@["", "a"]@; @"a/page.md"@ links @["", "a"]@; the root @"index.md"@ links @[]@ (it is the current page).
+-}
+linkedFolderPaths :: String -> [String]
+linkedFolderPaths path
+    | isIndex && null dirSegs = []
+    | otherwise = "" : scanl1 joinSeg folderSegs
+  where
+    segs = pathSegments path
+    isIndex = not (null segs) && last segs == "index.md"
+    dirSegs = if null segs then [] else init segs
+    folderSegs = if isIndex then dropLast dirSegs else dirSegs
+    dropLast xs = if null xs then [] else init xs
+    joinSeg acc s = acc ++ "/" ++ s
+
+{- | The link target for a folder rel-path: its @index.md@ page (a directory URL is not itself routable, so
+the trail links the explicit index document). Root is @/documents/index.md@, @"a/b"@ is @/documents/a/b/index.md@.
+-}
+folderHref :: String -> String
+folderHref "" = "/documents/index.md"
+folderHref fp = "/documents/" ++ fp ++ "/index.md"
+
+{- | Builds a document's breadcrumb trail: each ancestor folder's @index.md@ title as a link, then the
+current page's own title as the final unlinked crumb. A folder's label falls back to a humanised segment
+(and the root to @Cello@) when its @index.md@ is missing or has no @name@.
+-}
+breadcrumbsFor :: FilePath -> String -> String -> IO [Crumb]
+breadcrumbsFor root path content = do
+    links <- mapM folderCrumb (linkedFolderPaths path)
+    pure (links ++ [Crumb currentLabel Nothing])
+  where
+    folderCrumb fp = do
+        name <- readIndexTitle root fp
+        pure (Crumb (fromMaybe (folderFallback fp) name) (Just (folderHref fp)))
+    folderFallback "" = "Cello"
+    folderFallback fp = humaniseSegment (lastSegment fp)
+    currentLabel = fromMaybe (humaniseSegment (lastSegment path)) (frontmatterTitle content)
+
+-- | The last @/@-separated segment of a path (the path itself when it has none).
+lastSegment :: String -> String
+lastSegment p = case pathSegments p of
+    [] -> p
+    segs -> last segs
+
+-- | A fallback label from a path segment: hyphens and underscores to spaces, each word capitalised.
+humaniseSegment :: String -> String
+humaniseSegment = unwords . map capitalise . words . map spacer . dropExtension
+  where
+    spacer c = if c == '-' || c == '_' then ' ' else c
+    capitalise [] = []
+    capitalise (c : cs) = toUpper c : cs
+    dropExtension s = if ".md" `isSuffixOf` s then take (length s - 3) s else s
+
+-- | Reads a folder's @index.md@ frontmatter title, or Nothing when the file is absent or untitled.
+readIndexTitle :: FilePath -> String -> IO (Maybe String)
+readIndexTitle root fp =
+    case Static.resolveStaticPath root (pathSegments indexPath) of
+        Nothing -> pure Nothing
+        Just fsPath -> do
+            exists <- doesFileExist fsPath
+            if exists
+                then fmap frontmatterTitle (readDocumentText fsPath)
+                else pure Nothing
+  where
+    indexPath = if null fp then "index.md" else fp ++ "/index.md"
+
+-- | The @name@ field from a document's leading @---@ frontmatter block (unquoted), or Nothing.
+frontmatterTitle :: String -> Maybe String
+frontmatterTitle content =
+    case map stripCarriageReturn (lines content) of
+        (first : rest)
+            | trimSpace first == "---" -> findName (takeWhile (\l -> trimSpace l /= "---") rest)
+        _ -> Nothing
+  where
+    findName [] = Nothing
+    findName (l : ls) = case nameFieldValue l of
+        Just value -> Just value
+        Nothing -> findName ls
+
+-- | The unquoted value of a @name:@ line, or Nothing for any other line.
+nameFieldValue :: String -> Maybe String
+nameFieldValue line = case break (== ':') (dropWhile isSpace (stripCarriageReturn line)) of
+    ("name", ':' : rest) -> Just (unquoteScalar (trimSpace rest))
+    _ -> Nothing
+
+-- | Strips a surrounding double- or single-quoted YAML scalar, unescaping as that style requires.
+unquoteScalar :: String -> String
+unquoteScalar value
+    | wrapped '"' = unescapeDouble middle
+    | wrapped '\'' = undoubleSingle middle
+    | otherwise = value
+  where
+    wrapped q = length value >= 2 && head value == q && last value == q
+    middle = init (drop 1 value)
+    unescapeDouble ('\\' : c : xs) = c : unescapeDouble xs
+    unescapeDouble (c : xs) = c : unescapeDouble xs
+    unescapeDouble [] = []
+    undoubleSingle ('\'' : '\'' : xs) = '\'' : undoubleSingle xs
+    undoubleSingle (c : xs) = c : undoubleSingle xs
+    undoubleSingle [] = []
+
+-- | Trims leading and trailing whitespace.
+trimSpace :: String -> String
+trimSpace = f . f where f = reverse . dropWhile isSpace
+
+-- | Drops a trailing carriage return (CRLF tolerance).
+stripCarriageReturn :: String -> String
+stripCarriageReturn s = if not (null s) && last s == '\r' then init s else s
+
+-- | The breadcrumb trail as a JSON array of @{"label","href"}@ (href omitted for the current page).
+breadcrumbsJson :: [Crumb] -> String
+breadcrumbsJson crumbs = "[" ++ intercalate "," (map crumbObject crumbs) ++ "]"
+  where
+    crumbObject (Crumb label href) =
+        "{\"label\":" ++ jsonString label ++ maybe "" (\h -> ",\"href\":" ++ jsonString h) href ++ "}"
 
 jsonResponse :: String -> Http.Response
 jsonResponse body =
@@ -550,7 +676,7 @@ editDocument :: String -> DocumentStore -> Router.Handler
 editDocument editorThemeDefault store captures request = do
     let docId = documentId captures
     content <- liftIO (loadDocument store docId)
-    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault (BS.pack content) False True [] Nothing))
+    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault (BS.pack content) False True [] [] Nothing))
 
 showDocument :: DocumentStore -> Router.Handler
 showDocument store captures _ = do
@@ -572,7 +698,7 @@ saveDocument editorThemeDefault store captures request = do
         Just err
             | isHtmxRequest request -> pure (htmlResponseChunks (validationStatusFragment err))
             | otherwise ->
-                pure (documentResponse (editorPage docId Nothing editorThemeDefault (BS.pack markdown) False True [] (Just err)))
+                pure (documentResponse (editorPage docId Nothing editorThemeDefault (BS.pack markdown) False True [] [] (Just err)))
         Nothing -> do
             liftIO (saveDocumentContent store docId markdown)
             if isHtmxRequest request
@@ -768,8 +894,8 @@ in form submission through @ElementInternals@, and htmx autosaves; the textarea
 is disabled so it does not double-submit. @maybeError@ re-renders a validation
 message after a failed ordinary post.
 -}
-editorPage :: String -> Maybe String -> String -> BS.ByteString -> Bool -> Bool -> [(String, String)] -> Maybe String -> Html.Html ()
-editorPage docId mode themeDefault content treeMode editable attachments maybeError =
+editorPage :: String -> Maybe String -> String -> BS.ByteString -> Bool -> Bool -> [(String, String)] -> [Crumb] -> Maybe String -> Html.Html ()
+editorPage docId mode themeDefault content treeMode editable attachments breadcrumbs maybeError =
     Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
@@ -793,23 +919,24 @@ editorPage docId mode themeDefault content treeMode editable attachments maybeEr
                         ]
                         $ do
                             maybe (return ()) validationStatusFragment maybeError
-                            editorElement docId mode treeMode editable attachments content
+                            editorElement docId mode treeMode editable attachments breadcrumbs content
                             Html.custom "noscript" [] $
                                 Html.button_ [Html.attr "type" "submit"] (Html.text "Save")
-                    else editorElement docId mode treeMode editable attachments content
+                    else editorElement docId mode treeMode editable attachments breadcrumbs content
 
 {- | The @\<markdown-editor\>@ custom element with its server-set attributes and the
 no-script @\<textarea\>@ fallback holding the document. @data-readonly@ is set in the
 read view (RFC-0020); the element disables editing and hides the editing chrome.
 -}
-editorElement :: String -> Maybe String -> Bool -> Bool -> [(String, String)] -> BS.ByteString -> Html.Html ()
-editorElement docId mode treeMode editable attachments content =
+editorElement :: String -> Maybe String -> Bool -> Bool -> [(String, String)] -> [Crumb] -> BS.ByteString -> Html.Html ()
+editorElement docId mode treeMode editable attachments breadcrumbs content =
     Html.custom
         "markdown-editor"
         ( [Html.attr "name" "markdown", Html.attr "data-document" docId]
             ++ maybe [] (\m -> [Html.attr "mode" m]) mode
             ++ [Html.attr "data-document-mode" "tree" | treeMode]
             ++ [Html.attr "data-attachments" (attachmentsJson attachments) | treeMode, not (null attachments)]
+            ++ [Html.attr "data-breadcrumbs" (breadcrumbsJson breadcrumbs) | not (null breadcrumbs)]
             ++ [Html.attr "data-readonly" "" | not editable]
         )
         ( Html.custom

@@ -103,6 +103,25 @@ spec =
             response <- runApp (request POST ["documents", "home", "preview"]) "markdown=%23+Preview+heading%0A%0APreview+paragraph."
             statusCode (responseStatus response) `shouldBe` 404
 
+        it "given frontmatter with a name, when read, then the title is returned (quotes stripped)" $ do
+            TestApp.frontmatterTitle "---\nname: Engineering\nmeta: x\n---\n\n# Body" `shouldBe` Just "Engineering"
+            TestApp.frontmatterTitle "---\nname: \"A: title\"\n---" `shouldBe` Just "A: title"
+
+        it "given no frontmatter or no name, when read, then Nothing is returned" $ do
+            TestApp.frontmatterTitle "# Just a body\n" `shouldBe` Nothing
+            TestApp.frontmatterTitle "---\nmeta: x\n---" `shouldBe` Nothing
+
+        it "given a regular page path, when linked folders computed, then root and each ancestor folder are linked" $ do
+            TestApp.linkedFolderPaths "engineering/hpearuba-guides/aruba-central-troubleshooting/noc.md"
+                `shouldBe` ["", "engineering", "engineering/hpearuba-guides", "engineering/hpearuba-guides/aruba-central-troubleshooting"]
+
+        it "given a folder index page, when linked folders computed, then its own folder is not linked (it is the current page)" $ do
+            TestApp.linkedFolderPaths "engineering/index.md" `shouldBe` [""]
+            TestApp.linkedFolderPaths "engineering/a/index.md" `shouldBe` ["", "engineering"]
+
+        it "given the root index page, when linked folders computed, then there are no ancestor links" $ do
+            TestApp.linkedFolderPaths "index.md" `shouldBe` []
+
 request :: Method -> [String] -> RequestHead
 request method path =
     emptyRequestHead

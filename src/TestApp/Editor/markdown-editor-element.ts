@@ -8,6 +8,7 @@ import {
 } from "./attachment-panel.js";
 import { attachmentMarkdown, isInlineImage, uploadAttachment } from "./attachment-upload.js";
 import { badgeExtension } from "./badge-extension.js";
+import { type Breadcrumb, parseBreadcrumbs } from "./breadcrumbs.js";
 import { BubbleToolbarElement } from "./bubble-toolbar-element.js";
 import { type ClientErrorKind, ClientErrorReporter } from "./client-error-reporter.js";
 import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
@@ -254,7 +255,7 @@ export class MarkdownEditorElement extends HTMLElement {
             void this.uploadFiles(files);
         }
     };
-    private documentName: HTMLSpanElement | null = null;
+    private documentName: HTMLElement | null = null;
     private toolbar: HTMLDivElement | null = null;
     private visualEditor: TiptapVisualEditor | null = null;
     private visualEditorChanged = false;
@@ -613,14 +614,54 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /** Creates the document name label shown in the editor top bar. */
-    private createDocumentName(): HTMLSpanElement {
-        const name = document.createElement("span");
-        name.className = "markdown-editor__document-name";
-        const fileName = documentFileName(this.getAttribute("data-document") ?? this.getAttribute("src"));
-        name.textContent = fileName ?? "";
-        name.hidden = fileName === null;
+    private createDocumentName(): HTMLElement {
+        const nav = document.createElement("nav");
+        nav.className = "markdown-editor__document-name";
+        nav.setAttribute("aria-label", "Breadcrumb");
 
-        return name;
+        const crumbs = parseBreadcrumbs(this.getAttribute("data-breadcrumbs"));
+
+        if (crumbs.length === 0) {
+            // No breadcrumb trail (a non-tree document): fall back to the filename.
+            const fileName = documentFileName(this.getAttribute("data-document") ?? this.getAttribute("src"));
+            nav.textContent = fileName ?? "";
+            nav.hidden = fileName === null;
+
+            return nav;
+        }
+
+        crumbs.forEach((crumb: Breadcrumb, index: number): void => {
+            if (index > 0) {
+                const separator = document.createElement("span");
+                separator.className = "markdown-editor__crumb-separator";
+                separator.textContent = "/";
+                separator.setAttribute("aria-hidden", "true");
+                nav.append(separator);
+            }
+
+            nav.append(this.createCrumb(crumb));
+        });
+
+        return nav;
+    }
+
+    /** Builds one breadcrumb: a link for an ancestor folder, or plain text for the current page. */
+    private createCrumb(crumb: Breadcrumb): HTMLElement {
+        if (crumb.href === undefined) {
+            const current = document.createElement("span");
+            current.className = "markdown-editor__crumb markdown-editor__crumb--current";
+            current.setAttribute("aria-current", "page");
+            current.textContent = crumb.label;
+
+            return current;
+        }
+
+        const link = document.createElement("a");
+        link.className = "markdown-editor__crumb";
+        link.href = crumb.href;
+        link.textContent = crumb.label;
+
+        return link;
     }
 
     /** Creates the editor view mode radio group. */

@@ -990,6 +990,31 @@ describe("MarkdownEditorElement", (): void => {
         expect(saveButton(editor).hasAttribute("disabled")).toBe(true);
     });
 
+    it("given content the editor normalises on load (a GFM alert), when initialised, then it stays clean", async (): Promise<void> => {
+        // Loading promotes the alert blockquote to an admonition (a dispatched transaction); that load-time
+        // normalisation must not mark the document dirty, which would autosave on every open.
+        const editor = document.createElement(elementName);
+        editor.textContent = "> [!NOTE]\n> Heads up.";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        expect(editor.getAttribute("data-save-state")).toBe("clean");
+    });
+
+    it("given a mode switch, when the editors rebuild, then the document stays clean", async (): Promise<void> => {
+        const editor = document.createElement(elementName);
+        editor.textContent = "> [!NOTE]\n> Heads up.";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        selectMode(editor, "source");
+        selectMode(editor, "visual");
+
+        expect(editor.getAttribute("data-save-state")).toBe("clean");
+    });
+
     it("given edited content, when htmx save succeeds, then save returns to clean disabled state after minimum saving time", async (): Promise<void> => {
         const { editor } = await initialiseEditorForm();
         vi.useFakeTimers();

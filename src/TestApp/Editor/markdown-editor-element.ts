@@ -175,6 +175,12 @@ export class MarkdownEditorElement extends HTMLElement {
     private saveController: SaveStateController | null = null;
     private sourceEditor: CodeMirrorSourceEditor | null = null;
     private syncingEditors = false;
+    /**
+     * True while {@link renderMode} is (re)building the editors. Their construction normalises the loaded
+     * Markdown and dispatches transactions that fire the change handlers; those are not user edits, so they
+     * must not mark the document dirty (which would otherwise autosave on load and on every mode switch).
+     */
+    private buildingEditors = false;
     private theme: EditorTheme = "match-system";
     private themeGroup: HTMLElement | null = null;
     private themeDropdown: HTMLElement | null = null;
@@ -1257,6 +1263,20 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
+        this.buildingEditors = true;
+        try {
+            this.buildEditors();
+        } finally {
+            this.buildingEditors = false;
+        }
+    }
+
+    /** (Re)builds the editor panes for the current mode. Wrapped by {@link renderMode}'s dirty-suppression. */
+    private buildEditors(): void {
+        if (!this.body) {
+            return;
+        }
+
         this.sourceEditor?.destroy();
         this.visualEditor?.destroy();
         this.sourceEditor = null;
@@ -1712,7 +1732,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Handles source editor edits and synchronises any visual split pane. */
     private handleSourceInput(): void {
-        if (this.syncingEditors) {
+        if (this.syncingEditors || this.buildingEditors) {
             return;
         }
 
@@ -1724,7 +1744,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Handles visual editor edits and synchronises any source split pane. */
     private handleVisualInput(): void {
-        if (this.syncingEditors) {
+        if (this.syncingEditors || this.buildingEditors) {
             return;
         }
 

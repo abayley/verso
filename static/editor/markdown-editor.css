@@ -1240,20 +1240,16 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 }
 
 /* The document name is the file tab below the toolbar, attached to the pane. */
+/* The breadcrumb trail is a full-width strip across the tab row, below the toolbar -- there is room to
+   spread out, so it is not constrained to a file-tab lozenge. */
 :root[data-editor-theme="workbench"] .markdown-editor__document-name {
-  align-self: end;
-  background: var(--markdown-editor-code-background);
-  border: 1px solid var(--markdown-editor-divider);
-  border-bottom: none;
-  border-radius: 6px 6px 0 0;
-  color: var(--markdown-editor-text);
+  border-bottom: 1px solid var(--markdown-editor-divider);
+  color: var(--markdown-editor-muted);
   font: 12px ui-monospace, "SFMono-Regular", Menlo, monospace;
   grid-area: tab;
   letter-spacing: normal;
-  margin: 0 0 0 0.75rem;
-  max-width: max-content;
-  padding: 0.3rem 0.7rem;
-  width: auto;
+  margin: 0;
+  padding: 0.45rem 0.85rem;
 }
 
 /* The modified-state dot rides on the file tab, mirroring data-save-state (set on

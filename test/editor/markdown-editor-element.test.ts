@@ -62,6 +62,21 @@ describe("MarkdownEditorElement", (): void => {
         consoleError.mockRestore();
     });
 
+    it("given a benign ResizeObserver loop error, when it fires, then the banner is not shown", async (): Promise<void> => {
+        const editor = document.createElement(elementName);
+        editor.textContent = "# Heading";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        const banner = editor.querySelector(".markdown-editor__error-banner") as HTMLElement | null;
+        window.dispatchEvent(
+            new ErrorEvent("error", { message: "ResizeObserver loop completed with undelivered notifications" }),
+        );
+
+        expect(banner?.hidden).toBe(true);
+    });
+
     it("given source mode, when initialised, then it uses CodeMirror and serialises Markdown", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.setAttribute("mode", "source");

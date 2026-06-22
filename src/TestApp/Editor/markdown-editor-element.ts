@@ -196,6 +196,13 @@ export class MarkdownEditorElement extends HTMLElement {
     // raises the dismissible banner rather than leaving a silently broken editor. The editor is the whole
     // page in this app, so page-level errors are treated as editor-originated.
     private readonly handleGlobalError = (event: ErrorEvent): void => {
+        // Ignore benign browser noise (notably the harmless "ResizeObserver loop" notification emitted during
+        // dynamic layout, e.g. the Workbench split). It carries no error object, recurs as the layout settles,
+        // and would otherwise raise the banner repeatedly so it could never be dismissed.
+        if (isIgnorableGlobalError(event.message)) {
+            return;
+        }
+
         this.showErrorBanner(event.error ?? event.message, "error");
     };
     private readonly handleUnhandledRejection = (event: PromiseRejectionEvent): void => {
@@ -2182,6 +2189,16 @@ function setElementValue(element: HTMLElement, value: string): void {
 
 /** Creates an icon for one toolbar command. */
 /** Derives a display file name from the document src path. */
+/**
+ * Whether a global error message is benign browser noise the error banner should ignore. The "ResizeObserver
+ * loop" notification is the notable case: browsers emit it (with no error object) when a resize handler
+ * causes further layout, which is normal for dynamic editor chrome; surfacing it would recur and block
+ * dismissal.
+ */
+function isIgnorableGlobalError(message: string): boolean {
+    return /ResizeObserver loop/i.test(message);
+}
+
 function documentFileName(src: string | null): string | null {
     if (!src) {
         return null;

@@ -189,12 +189,78 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   pointer-events: none;
 }
 
-.markdown-editor__metadata-panel {
-  color: var(--markdown-editor-muted);
+/* The right-hand sidebar stacks the contents panel above the attachments panel.
+   It owns the column width and sticky position; the panels inside are plain
+   blocks. It collapses when empty (no headings and no attachments panel). */
+.markdown-editor__sidebar {
+  display: flex;
   flex: 0 0 15rem;
-  font: 13px system-ui, sans-serif;
+  flex-direction: column;
+  gap: 1.75rem;
   position: sticky;
   top: 1rem;
+}
+
+.markdown-editor__sidebar[hidden] {
+  display: none;
+}
+
+.markdown-editor__metadata-panel,
+.markdown-editor__toc {
+  color: var(--markdown-editor-muted);
+  font: 13px system-ui, sans-serif;
+}
+
+.markdown-editor__toc[hidden] {
+  display: none;
+}
+
+.markdown-editor__toc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.markdown-editor__toc-item[data-level="2"] .markdown-editor__toc-link {
+  padding-left: 0.75rem;
+}
+
+.markdown-editor__toc-item[data-level="3"] .markdown-editor__toc-link {
+  padding-left: 1.5rem;
+}
+
+.markdown-editor__toc-item[data-level="4"] .markdown-editor__toc-link {
+  padding-left: 2.25rem;
+}
+
+.markdown-editor__toc-item[data-level="5"] .markdown-editor__toc-link {
+  padding-left: 3rem;
+}
+
+.markdown-editor__toc-item[data-level="6"] .markdown-editor__toc-link {
+  padding-left: 3.75rem;
+}
+
+.markdown-editor__toc-link {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  overflow: hidden;
+  padding-block: 0.1rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
+.markdown-editor__toc-link:hover {
+  color: var(--markdown-editor-accent);
 }
 
 .markdown-editor__metadata-heading {

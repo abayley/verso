@@ -479,6 +479,15 @@ export class TiptapVisualEditor {
         return this.root;
     }
 
+    /** Scrolls the n-th top-level heading into view (the contents panel's click target). */
+    public scrollToHeading(index: number): void {
+        const headings = this.root.querySelectorAll(
+            ".ProseMirror > h1, .ProseMirror > h2, .ProseMirror > h3, .ProseMirror > h4, .ProseMirror > h5, .ProseMirror > h6",
+        );
+
+        headings[index]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
     /** Serialises the current Tiptap document to Markdown. */
     public toMarkdown(): string {
         const markdown = documentToMarkdown(documentFromElements(editorContentElements(this.editor.view.dom)));

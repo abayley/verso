@@ -3,6 +3,7 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { EditorState, Prec } from "@codemirror/state";
 import { tags } from "@lezer/highlight";
 import { basicSetup, EditorView } from "codemirror";
+import { headingLineNumbers } from "./table-of-contents.js";
 import type { VisualBlockStyle } from "./tiptap-visual-editor.js";
 
 // Syntax highlighting driven by the editor's palette CSS variables, so the Markdown source reads correctly
@@ -77,6 +78,22 @@ export class CodeMirrorSourceEditor {
     /** Returns the root element that hosts the CodeMirror editor. */
     public element(): HTMLDivElement {
         return this.root;
+    }
+
+    /** Scrolls (and moves the caret) to the n-th heading line -- the contents panel's click target. */
+    public scrollToHeading(index: number): void {
+        const lineNumber = headingLineNumbers(this.view.state.doc.toString())[index];
+
+        if (lineNumber === undefined) {
+            return;
+        }
+
+        const line = this.view.state.doc.line(lineNumber + 1);
+        this.view.dispatch({
+            effects: EditorView.scrollIntoView(line.from, { y: "start" }),
+            selection: { anchor: line.from },
+        });
+        this.view.focus();
     }
 
     /** The 1-based line and column of the caret (the selection head), for the status bar. */

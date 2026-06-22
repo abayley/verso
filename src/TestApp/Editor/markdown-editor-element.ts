@@ -34,6 +34,7 @@ import {
     type TableCommandEventDetail,
     TableControlsElement,
 } from "./table-controls-element.js";
+import { documentHeadings, TableOfContentsPanel } from "./table-of-contents.js";
 import {
     TiptapVisualEditor,
     type VisualBlockStyle,
@@ -156,6 +157,9 @@ export class MarkdownEditorElement extends HTMLElement {
     private widthGroup: HTMLElement | null = null;
     private bodyWidth: BodyWidth = "narrow";
     private attachmentPanel: AttachmentPanel | null = null;
+    private tocPanel: TableOfContentsPanel | null = null;
+    /** The right-hand sidebar holding the contents panel and (in tree mode) the attachments panel. */
+    private sidebar: HTMLDivElement | null = null;
     private mode: EditorMode = "visual";
     private panes: HTMLDivElement | null = null;
     private linkController: LinkPopoverController | null = null;
@@ -392,17 +396,25 @@ export class MarkdownEditorElement extends HTMLElement {
         const workspace = document.createElement("div");
         workspace.className = "markdown-editor__workspace";
         workspace.append(this.body);
+
+        // The right-hand sidebar: the generated contents panel sits above the attachments panel. The contents
+        // panel shows whenever the document has headings (any mode); the attachments panel is tree-mode only.
+        this.sidebar = document.createElement("div");
+        this.sidebar.className = "markdown-editor__sidebar";
+        this.tocPanel = new TableOfContentsPanel((index: number): void => this.scrollToHeading(index));
+        this.sidebar.append(this.tocPanel.element());
         if (this.isTreeMode()) {
             this.attachmentPanel = new AttachmentPanel(
                 (attachment: PanelAttachment): void => this.insertAttachmentLink(attachment),
                 this.isReadonly(),
             );
             this.attachmentPanel.setAttachments(parseEmbeddedAttachments(this.getAttribute("data-attachments")));
-            workspace.append(this.attachmentPanel.element());
+            this.sidebar.append(this.attachmentPanel.element());
             if (!this.isReadonly()) {
                 this.enableAttachmentDrop(this.body);
             }
         }
+        workspace.append(this.sidebar);
 
         this.append(
             this.toolbar,
@@ -422,6 +434,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.updateToolbarState();
         this.updateWordCount();
         this.updateCursorPosition();
+        this.updateTableOfContents();
         this.systemThemeQuery()?.addEventListener("change", this.handleSystemThemeChange);
         document.addEventListener("selectionchange", this.handleSelectionChange);
 
@@ -1679,6 +1692,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.internals?.setFormValue(this.documentMarkdown());
         this.saveController?.markDirty();
         this.updateWordCount();
+        this.updateTableOfContents();
         this.dispatchEvent(
             new CustomEvent("editor:changed", {
                 bubbles: true,
@@ -1889,6 +1903,32 @@ export class MarkdownEditorElement extends HTMLElement {
 
         const position = this.sourceEditor?.cursorPosition() ?? null;
         this.cursorReadout.textContent = position ? `ln ${position.line}, col ${position.column}` : "";
+    }
+
+    /**
+     * Regenerates the contents panel from the current Markdown. The sidebar collapses when there is nothing
+     * to show (no headings and, outside the document tree, no attachments panel).
+     */
+    private updateTableOfContents(): void {
+        if (!this.tocPanel) {
+            return;
+        }
+
+        const entries = documentHeadings(this.markdown);
+        this.tocPanel.setEntries(entries);
+
+        if (this.sidebar) {
+            this.sidebar.hidden = !this.isTreeMode() && entries.length === 0;
+        }
+    }
+
+    /** Scrolls the active pane to the n-th heading (the contents panel's click target). */
+    private scrollToHeading(index: number): void {
+        if (this.visualEditor) {
+            this.visualEditor.scrollToHeading(index);
+        } else {
+            this.sourceEditor?.scrollToHeading(index);
+        }
     }
 
     /** Applies the editor theme selection to Web Awesome's document-level colour scheme classes. */

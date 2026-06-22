@@ -1252,23 +1252,6 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   padding: 0.45rem 0.85rem;
 }
 
-/* The modified-state dot rides on the file tab, mirroring data-save-state (set on
-   the markdown-editor element; the theme attribute is on the document root). */
-:root[data-editor-theme="workbench"] markdown-editor[data-save-state="dirty"] .markdown-editor__document-name::after,
-:root[data-editor-theme="workbench"] markdown-editor[data-save-state="retry"] .markdown-editor__document-name::after {
-  background: var(--markdown-editor-save-dirty);
-  border-radius: 50%;
-  content: "";
-  display: inline-block;
-  height: 7px;
-  margin-left: 0.5rem;
-  vertical-align: middle;
-  width: 7px;
-}
-
-:root[data-editor-theme="workbench"] markdown-editor[data-save-state="retry"] .markdown-editor__document-name::after {
-  background: var(--markdown-editor-save-retry);
-}
 
 /* The formatting command bar becomes a flat top toolbar on the row below the tab. */
 :root[data-editor-theme="workbench"] .markdown-editor__footer {

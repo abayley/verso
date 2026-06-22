@@ -161,6 +161,9 @@ export class MarkdownEditorElement extends HTMLElement {
     private linkController: LinkPopoverController | null = null;
     private saveError: HTMLSpanElement | null = null;
     private errorBanner: HTMLDivElement | null = null;
+    /** The single notification area (save + client errors, upload notices); relocated per theme. */
+    private notices: HTMLDivElement | null = null;
+    private footer: HTMLDivElement | null = null;
     private readonly clientErrorReporter = new ClientErrorReporter();
     private saveController: SaveStateController | null = null;
     private sourceEditor: CodeMirrorSourceEditor | null = null;
@@ -375,13 +378,19 @@ export class MarkdownEditorElement extends HTMLElement {
         this.uploadNotice.setAttribute("role", "status");
         this.uploadNotice.hidden = true;
 
-        const notices = document.createElement("div");
-        notices.className = "markdown-editor__notices";
-        notices.append(this.uploadNotice, this.createSaveError());
+        // The single notification area: upload notices, the save error, and the client-error banner all live
+        // here, so a theme has exactly one place for messages. It sits in the footer (above the command bar)
+        // for most themes; applyVisualTheme relocates it into the status row under Workbench.
+        this.notices = document.createElement("div");
+        this.notices.className = "markdown-editor__notices";
+        this.notices.append(this.uploadNotice, this.createSaveError());
+        if (this.errorBanner) {
+            this.notices.append(this.errorBanner);
+        }
 
-        const footer = document.createElement("div");
-        footer.className = "markdown-editor__footer";
-        footer.append(notices, this.commandBar);
+        this.footer = document.createElement("div");
+        this.footer.className = "markdown-editor__footer";
+        this.footer.append(this.notices, this.commandBar);
 
         const workspace = document.createElement("div");
         workspace.className = "markdown-editor__workspace";
@@ -408,7 +417,7 @@ export class MarkdownEditorElement extends HTMLElement {
             this.tableControls,
             this.tooltipController.element(),
             workspace,
-            footer,
+            this.footer,
             this.wordCount,
         );
         this.applyBodyWidth();
@@ -792,7 +801,26 @@ export class MarkdownEditorElement extends HTMLElement {
         const orientation = themeUsesWorkbenchRail(this.visualTheme) ? "vertical" : "horizontal";
         this.modeGroup?.setAttribute("orientation", orientation);
         this.widthGroup?.setAttribute("orientation", orientation);
+        this.relocateNotices();
         this.updateBubbleToolbar();
+    }
+
+    /**
+     * Keeps the single notification area in the right place for the theme: in the status row under Workbench
+     * (so messages show in the status bar), and in the footer above the command bar for the other themes.
+     */
+    private relocateNotices(): void {
+        if (!this.notices || !this.footer) {
+            return;
+        }
+
+        if (themeUsesWorkbenchRail(this.visualTheme)) {
+            if (this.notices.parentElement !== this) {
+                this.append(this.notices);
+            }
+        } else if (this.notices.parentElement !== this.footer) {
+            this.footer.insertBefore(this.notices, this.commandBar);
+        }
     }
 
     /** Resolves the initial visual theme: stored preference, then page attribute, else paper. */
@@ -872,9 +900,10 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
-        // Attach on demand if a failure happens before initialise attaches it (e.g. loadMarkdown rejecting).
+        // Attach on demand if a failure happens before initialise attaches it (e.g. loadMarkdown rejecting):
+        // into the notification area if it exists yet, else directly onto the host as a fallback.
         if (!this.errorBanner.isConnected) {
-            this.append(this.errorBanner);
+            (this.notices ?? this).append(this.errorBanner);
         }
 
         this.errorBanner.hidden = false;

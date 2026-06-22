@@ -544,6 +544,9 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
 
 /* Catch-all error banner (RFC-0022). A top-level child, not a footer notice, so it stays visible in the
    read view (where the footer is hidden). Sticks to the top of the viewport above all editor surfaces. */
+/* The client-error banner lives inside the notification area (with the save error
+   and upload notices), so it is a plain box here -- the notification area itself
+   is positioned per theme. */
 .markdown-editor__error-banner {
   align-items: center;
   background: var(--markdown-editor-pill-background);
@@ -555,11 +558,8 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   font: 13px system-ui, sans-serif;
   gap: 0.75rem;
   justify-content: space-between;
-  margin: 0.5rem 0;
   padding: 0.5rem 0.75rem;
-  position: sticky;
-  top: 0.5rem;
-  z-index: 20;
+  width: 100%;
 }
 
 .markdown-editor__error-banner[hidden] {
@@ -1026,6 +1026,32 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   height: 100vh;
 }
 
+/* The client-error banner occupies the status row, overlaying the status bar, so
+   messages show in the status bar itself (that is what it is for). The notice
+   area occupies the status row, overlaying the status bar; while empty it has no
+   height, so the status bar shows through. Each message fills the row full width
+   so it reads as the status bar turning into a message line. */
+:root[data-editor-theme="workbench"] .markdown-editor__notices {
+  align-items: stretch;
+  align-self: stretch;
+  gap: 0;
+  grid-area: status;
+  z-index: 5;
+}
+
+:root[data-editor-theme="workbench"] .markdown-editor__error-banner,
+:root[data-editor-theme="workbench"] .markdown-editor__save-error {
+  align-items: center;
+  border-radius: 0;
+  border-width: 0 0 0 3px;
+  box-sizing: border-box;
+  display: flex;
+  font-size: 12.5px;
+  margin: 0;
+  padding: 0.55rem 0.85rem;
+  width: 100%;
+}
+
 /* The colour-scheme icons tighten up so their row fits the narrow rail. */
 :root[data-editor-theme="workbench"] .markdown-editor__theme-option {
   --wa-form-control-padding-inline: 0.25rem;
@@ -1146,11 +1172,11 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   color: var(--markdown-editor-background);
   display: flex;
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-  font-size: 11px;
+  font-size: 12.5px;
   grid-area: status;
   justify-content: space-between;
   margin: 0;
-  padding: 0.4rem 0.75rem;
+  padding: 0.55rem 0.85rem;
 }
 
 /* Surface the format label and (when a source pane is shown) the caret readout. */

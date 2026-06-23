@@ -232,6 +232,17 @@ spec =
                 response <- runTreeAppBody treeRoot req "to=alpha&confirm=true"
                 statusCode (responseStatus response) `shouldBe` 409
 
+            it "given POST /tree ?move preview for a page, when routed, then it dispatches to the page move" $ do
+                treeRoot <- setupTreeFixture
+                let req = (request POST ["tree", "alpha", "page.md"]){requestQuery = [("move", "")]}
+                response <- runTreeAppBody treeRoot req "to=beta&confirm="
+                statusCode (responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "\"from\":\"alpha/page.md\""
+                bodyText response `shouldInclude` "\"to\":\"beta/page.md\""
+                bodyText response `shouldInclude` "\"applied\":false"
+                stillThere <- doesFileExist (treeRoot ++ "/alpha/page.md")
+                stillThere `shouldBe` True
+
 nodeTuple :: TestApp.TreeNode -> (String, TestApp.NodeKind, String, Bool)
 nodeTuple nd =
     (TestApp.nodeName nd, TestApp.nodeKind nd, TestApp.nodePath nd, TestApp.nodeHasChildren nd)

@@ -129,3 +129,34 @@ spec =
                 let pages = [("a/index.md", "[B](./b/index.md#intro)\n")]
                 planMoveRewrites ("a/b", "c/b") pages
                     `shouldBe` [("a/index.md", "[B](../c/b/index.md#intro)\n")]
+
+        describe "planPageMove" $ do
+            it "rewrites the moved page's outward links and leaves its travelling assets bare" $ do
+                let pages =
+                        [ ("a/old.md", "Link [Other](./other.md) and ![img](assets/x.png).\n")
+                        , ("a/other.md", "Back [Old](./old.md).\n")
+                        ]
+                    result = planPageMove ("a/old.md", "b/old.md") pages
+                lookup "b/old.md" result
+                    `shouldBe` Just "Link [Other](../a/other.md) and ![img](assets/x.png).\n"
+                lookup "a/other.md" result
+                    `shouldBe` Just "Back [Old](../b/old.md).\n"
+
+            it "leaves a same-folder rename's own links untouched and fixes inbound links" $ do
+                let pages =
+                        [ ("a/old.md", "Self [Sib](./sib.md) and ![img](assets/x.png).\n")
+                        , ("a/sib.md", "To [Old](./old.md).\n")
+                        ]
+                    result = planPageMove ("a/old.md", "a/new.md") pages
+                lookup "a/new.md" result `shouldBe` Nothing
+                lookup "a/sib.md" result `shouldBe` Just "To [Old](./new.md).\n"
+
+        describe "assetNamesIn" $ do
+            it "extracts asset basenames from body link and image targets" $ do
+                assetNamesIn "![d](assets/diagram.png) and [f](./assets/report.pdf) and [x](./other.md)"
+                    `shouldBe` ["diagram.png", "report.pdf"]
+
+        describe "classifyAssets" $ do
+            it "marks an asset shared when any peer references it, exclusive otherwise" $ do
+                classifyAssets ["a.png", "b.png"] [["a.png"], ["c.png"]]
+                    `shouldBe` [("a.png", SharedAsset), ("b.png", ExclusiveAsset)]

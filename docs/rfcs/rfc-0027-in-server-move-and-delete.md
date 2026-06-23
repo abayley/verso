@@ -356,8 +356,15 @@ later optimisation, not v1.
    fields `to`/`slug`/`confirm`; `confirm` absent returns the impact plan as a
    dry-run preview (the Open Question's option (b): one endpoint, body-driven), and
    `confirm=true` applies it.
-3. **Phase 3 -- Page move.** Same-folder rename, then cross-folder move with the
-   asset analysis, meta-dir co-move, and parent-listing bullet relocation.
+3. **Phase 3 -- Page move.** [DONE] Same-folder rename and cross-folder move
+   (`MicroHttp.TreeMove.movePage`). Page-aware link rewrite (`planPageMove`: the
+   moved page rewritten against its new directory, its travelling `assets/` refs
+   left bare, inbound links fixed via the subtree machinery). Asset shared/exclusive
+   analysis (`classifyAssets`/`assetNamesIn` over the union of body refs and sidecar
+   `local_path` entries across all source-folder peers; exclusive relocate, shared
+   copy). Sidecar meta directory co-moved. Parent-listing bullet relocated (the
+   listing helper generalised to cards and bullets). Endpoint dispatch chooses page
+   vs section move by whether the path ends `.md`.
 4. **Phase 4 -- Delete.** Refuse-if-referenced + referrer list; page delete
    (unlink + meta + exclusive assets); section recursive delete.
 5. **Phase 5 -- Client UX.** Rename/Move…/Delete actions, destination picker,
@@ -383,6 +390,13 @@ later optimisation, not v1.
   to keep one code path; a local, reversible decision.
 - **Anchor/query suffixes on link targets** (`foo.md#section`): preserved verbatim
   on rewrite; confirm none need path-relative anchor fix-ups.
+- **Destination asset-name collision** (resolved, Phase 3): when a cross-folder page
+  move would place an asset where the destination `assets/` already holds that name,
+  identical content is reused (idempotent) and **differing** content **refuses** the
+  whole move, naming the asset, rather than clobbering or content-hash-renaming. A
+  local, reversible decision (the corpus has no cross-dir asset refs, so collisions
+  are rare); content-addressed dedup-rename can be added later if a real case
+  appears.
 - **Section move with external inbound links**: rewrite them (as designed) vs also
   offer refuse-if-referenced like delete -- the design rewrites; confirm that is
   wanted for move (it is the point) and only delete refuses.

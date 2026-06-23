@@ -14,15 +14,26 @@ renamed and the rewritten pages and listings are written.
 module MicroHttp.TreeMove (
     MovePlan (..),
     moveSection,
+    movePage,
     movePlanJson,
 ) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM, forM_, void, when)
 import qualified Data.ByteString.Char8 as BS
-import Data.List (intercalate, isPrefixOf, isSuffixOf)
-import Data.Maybe (fromMaybe)
-import MicroHttp.DocumentLinks (pathSegmentsOf, planMoveRewrites, relocatePath)
+import Data.Char (isSpace)
+import Data.List (intercalate, isPrefixOf, isSuffixOf, nub, stripPrefix)
+import Data.Maybe (fromMaybe, maybeToList)
+import MicroHttp.DocumentLinks (
+    AssetClass (..),
+    assetNamesIn,
+    classifyAssets,
+    pathSegmentsOf,
+    planMoveRewrites,
+    planPageMove,
+    relocatePath,
+ )
 import MicroHttp.DocumentListing (addListingEntry, removeListingEntry)
+import MicroHttp.DocumentMeta (metaDirectoryFor)
 import MicroHttp.FileOps (renamePath)
 import MicroHttp.Static (resolveStaticPath)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
@@ -103,28 +114,230 @@ moveSection root rawSrcRel rawDestParentRel rawSlug confirm
                         relocateListing root srcRel srcParentRel destParentRel newPrefix
                         pure (Right (MovePlan srcRel newPrefix changed True))
 
-{- | Moves the moved section's listing card from the source parent's index.md to the
-destination parent's, repointing its link to the destination. When the source had no
-card, a minimal entry is synthesised from the section's index.md @name@.
+{- | Relocates a member's listing entry from the source parent's index.md to the
+destination parent's, repointing its link from @oldTarget@ to @newTarget@. When the
+source had no entry, the synthesised fallback is used. Shared by section move (a grid
+card, @newTarget@ ending @/index.md@) and page move (a flat bullet).
 -}
-relocateListing :: FilePath -> String -> String -> String -> String -> IO ()
-relocateListing root srcRel srcParentRel destParentRel newPrefix = do
+relocateEntry :: FilePath -> String -> String -> String -> String -> String -> IO ()
+relocateEntry root srcParentRel destParentRel oldTarget newTarget synth = do
     srcText <- readRel root srcIndexRel
     removed <- case srcText of
         Just t ->
-            let (t', r) = removeListingEntry srcParentRel (srcRel ++ "/index.md") t
+            let (t', r) = removeListingEntry srcParentRel oldTarget t
              in writeRel root srcIndexRel t' >> pure r
         Nothing -> pure Nothing
-    title <- frontmatterNameOf newSectionIndexFs
-    let entry = fromMaybe (synthEntry title) removed
+    let entry = fromMaybe synth removed
     destBase <- fmap (fromMaybe "") (readRel root destIndexRel)
-    writeRel root destIndexRel (addListingEntry destParentRel (newPrefix ++ "/index.md") entry destBase)
+    writeRel root destIndexRel (addListingEntry destParentRel newTarget entry destBase)
   where
     srcIndexRel = indexRel srcParentRel
     destIndexRel = indexRel destParentRel
+
+-- | Relocates the moved section's listing card (a grid card linking the section's index.md).
+relocateListing :: FilePath -> String -> String -> String -> String -> IO ()
+relocateListing root srcRel srcParentRel destParentRel newPrefix = do
+    title <- frontmatterNameOf newSectionIndexFs
+    relocateEntry
+        root
+        srcParentRel
+        destParentRel
+        (srcRel ++ "/index.md")
+        (newPrefix ++ "/index.md")
+        ("- [" ++ title ++ "](./" ++ last (pathSegmentsOf newPrefix) ++ "/index.md)")
+  where
     newSectionIndexFs = fromMaybe "" (resolveStaticPath root (pathSegmentsOf (newPrefix ++ "/index.md")))
-    slug = last (pathSegmentsOf newPrefix)
-    synthEntry t = "- [" ++ t ++ "](./" ++ slug ++ "/index.md)"
+
+{- | Moves the page at @srcRel@ (a @.md@ tree path) under @destParentRel@ with slug
+@slug@ (the source's own base name when empty), previewing when @confirm@ is 'False'.
+A same-folder change is a rename; a cross-folder move additionally co-moves the
+sidecar meta directory and runs the asset shared/exclusive analysis (ADR-062),
+relocating exclusive assets and copying shared ones. Refuses the root-of-page
+edge cases: an unsafe path, a missing source/destination parent, a destination
+collision, a no-op (destination is the source), or a destination asset name that
+already holds different content.
+-}
+movePage :: FilePath -> String -> String -> String -> Bool -> IO (Either String MovePlan)
+movePage root rawSrcRel rawDestParentRel rawSlug confirm
+    | not (".md" `isSuffixOf` srcRel) = pure (Left "source is not a page")
+    | otherwise =
+        case (resolveStaticPath root srcSegs, resolveStaticPath root newSegs, resolveStaticPath root destParentSegs) of
+            (Nothing, _, _) -> pure (Left "unsafe source path")
+            (_, Nothing, _) -> pure (Left "unsafe destination slug")
+            (_, _, Nothing) -> pure (Left "unsafe destination path")
+            (Just srcFs, Just newFs, Just destParentFs)
+                | srcRel == newPath -> pure (Left "destination is the source")
+                | otherwise -> withChecks srcFs newFs destParentFs
+  where
+    srcSegs = pathSegmentsOf rawSrcRel
+    srcRel = intercalate "/" srcSegs
+    destParentSegs = pathSegmentsOf rawDestParentRel
+    destParentRel = intercalate "/" destParentSegs
+    base = dropDotMd (last srcSegs)
+    slug = if null rawSlug then base else rawSlug
+    newPath = joinRel destParentRel (slug ++ ".md")
+    newSegs = pathSegmentsOf newPath
+    srcDir = parentRel srcRel
+
+    withChecks srcFs newFs destParentFs = do
+        srcIsFile <- doesFileExist srcFs
+        destParentIsDir <- doesDirectoryExist destParentFs
+        collides <- doesFileExist newFs
+        if not srcIsFile
+            then pure (Left "source page not found")
+            else
+                if not destParentIsDir
+                    then pure (Left "destination parent not found")
+                    else
+                        if collides
+                            then pure (Left "destination already exists")
+                            else runPageMove srcFs newFs
+
+    runPageMove srcFs newFs = do
+        let crossFolder = srcDir /= destParentRel
+            srcParentIndexRel = indexRel srcDir
+            destParentIndexRel = indexRel destParentRel
+            excluded = [srcParentIndexRel, destParentIndexRel]
+        assets <- if crossFolder then classifyMovingAssets root srcRel srcDir else pure []
+        conflicts <- assetConflicts root srcDir destParentRel (map fst assets)
+        if not (null conflicts)
+            then pure (Left ("destination asset already exists with different content: " ++ intercalate ", " conflicts))
+            else do
+                pages <- enumerateMarkdown root ""
+                let rewritePages = filter ((`notElem` excluded) . fst) pages
+                    rewrites = planPageMove (srcRel, newPath) rewritePages
+                    changed = map fst rewrites
+                if not confirm
+                    then pure (Right (MovePlan srcRel newPath changed False))
+                    else do
+                        -- Rename the .md first: it is the cheapest op and the only one
+                        -- whose failure has no clean recovery, so on failure nothing
+                        -- destructive has happened yet (the assets/meta still co-move
+                        -- from their unchanged source locations afterwards).
+                        ok <- renamePath srcFs newFs
+                        if not ok
+                            then pure (Left "rename failed")
+                            else do
+                                forM_ assets (relocateOrCopyAsset root srcDir destParentRel)
+                                relocateMeta root srcRel newPath
+                                forM_ rewrites (uncurry (writeRel root))
+                                title <- frontmatterNameOf newFs
+                                relocateEntry root srcDir destParentRel srcRel newPath ("- [" ++ title ++ "](./" ++ slug ++ ".md)")
+                                pure (Right (MovePlan srcRel newPath changed True))
+
+-- | Drops a trailing @.md@ from a filename.
+dropDotMd :: String -> String
+dropDotMd name
+    | ".md" `isSuffixOf` name = take (length name - length ".md") name
+    | otherwise = name
+
+-- | The shared/exclusive classification of the moving page's assets against its source-folder peers (ADR-062).
+classifyMovingAssets :: FilePath -> String -> String -> IO [(String, AssetClass)]
+classifyMovingAssets root srcRel srcDir = do
+    movingBody <- fmap (fromMaybe "") (readRel root srcRel)
+    movingSidecar <- sidecarAssetNames root srcRel
+    let movingAssets = nub (assetNamesIn movingBody ++ movingSidecar)
+    peers <- siblingPages root srcDir srcRel
+    peerRefs <- forM peers $ \peer -> do
+        body <- fmap (fromMaybe "") (readRel root peer)
+        sidecar <- sidecarAssetNames root peer
+        pure (nub (assetNamesIn body ++ sidecar))
+    pure (classifyAssets movingAssets peerRefs)
+
+-- | The @.md@ pages directly in a folder (non-recursive), excluding the named page.
+siblingPages :: FilePath -> String -> String -> IO [String]
+siblingPages root dir self =
+    case resolveStaticPath root (pathSegmentsOf dir) of
+        Nothing -> pure []
+        Just dirFs -> do
+            names <- listDirectory dirFs
+            pure [r | n <- names, ".md" `isSuffixOf` n, let r = joinRel dir n, r /= self]
+
+-- | The asset basenames referenced by a page's sidecar @images.yaml@/@attachments.yaml@ (local_path entries).
+sidecarAssetNames :: FilePath -> String -> IO [String]
+sidecarAssetNames root pageRel =
+    case metaDirectoryFor root pageRel of
+        Nothing -> pure []
+        Just metaFs -> do
+            imgs <- readLocalPaths (metaFs ++ "/images.yaml")
+            atts <- readLocalPaths (metaFs ++ "/attachments.yaml")
+            pure (imgs ++ atts)
+  where
+    readLocalPaths f = do
+        exists <- doesFileExist f
+        if exists then fmap (localPathNames . BS.unpack) (BS.readFile f) else pure []
+
+-- | The asset basenames in a sidecar yaml's @local_path:@ values.
+localPathNames :: String -> [String]
+localPathNames = concatMap nameOf . lines
+  where
+    nameOf line = case stripPrefix "local_path:" (dropWhile isSpace line) of
+        Just rest -> maybeToList (assetBasenameOf (trimValue rest))
+        Nothing -> []
+    trimValue = dropWhile isSpace
+
+-- | The basename of a same-page @assets/<name>@ reference (handling a @./@ prefix), or 'Nothing'.
+assetBasenameOf :: String -> Maybe String
+assetBasenameOf value = case dropWhile (== ".") (pathSegmentsOf value) of
+    ("assets" : rest@(_ : _)) -> Just (intercalate "/" rest)
+    _ -> Nothing
+
+-- | Names whose destination @assets/@ file already holds content differing from the source asset.
+assetConflicts :: FilePath -> String -> String -> [String] -> IO [String]
+assetConflicts root srcDir destDir names =
+    fmap concat $ forM names $ \name ->
+        case (assetFs root srcDir name, assetFs root destDir name) of
+            (Just sf, Just df) -> do
+                srcExists <- doesFileExist sf
+                destExists <- doesFileExist df
+                if srcExists && destExists
+                    then do
+                        sb <- BS.readFile sf
+                        db <- BS.readFile df
+                        pure [name | sb /= db]
+                    else pure []
+            _ -> pure []
+
+{- | Relocates an exclusive asset (rename) or copies a shared one to the
+destination @assets/@; a name already present (identical, as conflicts are refused
+beforehand) is reused. Skips an absent source.
+-}
+relocateOrCopyAsset :: FilePath -> String -> String -> (String, AssetClass) -> IO ()
+relocateOrCopyAsset root srcDir destDir (name, cls) =
+    case (assetFs root srcDir name, assetFs root destDir name) of
+        (Just sf, Just df) -> do
+            srcExists <- doesFileExist sf
+            when srcExists $ do
+                createDirectoryIfMissing True (parentDir df)
+                destExists <- doesFileExist df
+                if destExists
+                    then pure ()
+                    else case cls of
+                        ExclusiveAsset -> void (renamePath sf df)
+                        SharedAsset -> BS.readFile sf >>= BS.writeFile df
+        _ -> pure ()
+  where
+    parentDir = reverse . drop 1 . dropWhile (/= '/') . reverse
+
+-- | The filesystem path of a folder's @assets/<name>@, or 'Nothing' for an unsafe path.
+assetFs :: FilePath -> String -> String -> Maybe FilePath
+assetFs root dir name = resolveStaticPath root (pathSegmentsOf (joinRel dir ("assets/" ++ name)))
+
+-- | Co-moves a page's sidecar meta directory to follow the moved page (within or across folders).
+relocateMeta :: FilePath -> String -> String -> IO ()
+relocateMeta root srcRel newRel =
+    case (metaDirectoryFor root srcRel, metaDirectoryFor root newRel) of
+        (Just srcMeta, Just destMeta) -> do
+            srcExists <- doesDirectoryExist srcMeta
+            destExists <- doesDirectoryExist destMeta
+            -- Never clobber an existing destination meta dir (an orphan edge); only
+            -- co-move when the source has one and the destination is free.
+            when (srcExists && not destExists) $ do
+                createDirectoryIfMissing True (parentDir destMeta)
+                void (renamePath srcMeta destMeta)
+        _ -> pure ()
+  where
+    parentDir = reverse . drop 1 . dropWhile (/= '/') . reverse
 
 -- | Reads every @.md@ page beneath the tree as @(treeRelPath, body)@, skipping dot-entries and @assets@/@meta@ folders.
 enumerateMarkdown :: FilePath -> String -> IO [(String, String)]

@@ -3,7 +3,7 @@ module MicroHttp.TreeMoveSpec (spec) where
 import Control.Monad (forM_, void, when)
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.FileOps (removeEmptyDir, removeFilePath)
-import MicroHttp.TreeMove (MovePlan (..), moveSection)
+import MicroHttp.TreeMove (MovePlan (..), movePage, moveSection)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import Test.Hspec
 
@@ -49,13 +49,29 @@ seedFixture = do
     writeAt "sub/page.md" "# Page\n\nSee [Home](../index.md).\n"
     writeAt "other.md" "See [Sub](./sub/index.md).\n"
 
+{- | A page-move fixture: folder @a@ holds @mover.md@ (referencing an exclusive and
+a shared asset) and a peer @sib.md@ (referencing the shared asset and linking the
+mover); @mover.md@ has a sidecar image entry. Folder @b@ is the destination.
+-}
+seedPageFixture :: IO ()
+seedPageFixture = do
+    removeTree root
+    createDirectoryIfMissing True root
+    writeAt "a/index.md" "# A\n\n- [Mover](./mover.md)\n- [Sibling](./sib.md)\n"
+    writeAt "a/mover.md" "# Mover\n\n![e](assets/excl.png) and ![s](assets/shared.png) and [Sib](./sib.md)\n"
+    writeAt "a/sib.md" "# Sib\n\n![s](assets/shared.png) and [Mover](./mover.md)\n"
+    writeAt "a/assets/excl.png" "EXCL"
+    writeAt "a/assets/shared.png" "SHARED"
+    writeAt "a/meta/mover.meta/images.yaml" "- local_path: assets/excl.png\n  short_title: 'E'\n  description: ''\n"
+    writeAt "b/index.md" "# B\n"
+
 -- | The plan from a successful result, or a sentinel (so a wrong 'Left' fails an assertion below).
 planOr :: Either String MovePlan -> MovePlan
 planOr (Right plan) = plan
 planOr (Left _) = MovePlan "" "" [] False
 
 spec :: Spec
-spec =
+spec = do
     describe "MicroHttp.TreeMove.moveSection" $ do
         it "moves a section folder, rewrites inbound links, and relocates the listing card" $ do
             seedFixture
@@ -100,6 +116,50 @@ spec =
             seedFixture
             createDirectoryIfMissing True (root ++ "/dest/sub")
             result <- moveSection root "sub" "dest" "sub" True
+            isLeft result `shouldBe` True
+
+    describe "MicroHttp.TreeMove.movePage" $ do
+        it "moves a page cross-folder: relocates exclusive, copies shared, co-moves meta, rewrites links" $ do
+            seedPageFixture
+            result <- movePage root "a/mover.md" "b" "mover" True
+            isLeft result `shouldBe` False
+            doesFileExist (root ++ "/a/mover.md") `shouldReturn` False
+            doesFileExist (root ++ "/b/mover.md") `shouldReturn` True
+            -- Exclusive asset relocated (gone from source, present at destination).
+            doesFileExist (root ++ "/a/assets/excl.png") `shouldReturn` False
+            doesFileExist (root ++ "/b/assets/excl.png") `shouldReturn` True
+            -- Shared asset copied (stays at source, present at destination).
+            doesFileExist (root ++ "/a/assets/shared.png") `shouldReturn` True
+            doesFileExist (root ++ "/b/assets/shared.png") `shouldReturn` True
+            -- Sidecar meta directory co-moved.
+            doesFileExist (root ++ "/a/meta/mover.meta/images.yaml") `shouldReturn` False
+            doesFileExist (root ++ "/b/meta/mover.meta/images.yaml") `shouldReturn` True
+            -- Moved page keeps bare asset refs and repoints its outward link.
+            moved <- readAt "b/mover.md"
+            moved `shouldBe` "# Mover\n\n![e](assets/excl.png) and ![s](assets/shared.png) and [Sib](../a/sib.md)\n"
+            -- The peer's inbound link is repointed.
+            sib <- readAt "a/sib.md"
+            sib `shouldBe` "# Sib\n\n![s](assets/shared.png) and [Mover](../b/mover.md)\n"
+            -- Listing bullet relocated.
+            aIndex <- readAt "a/index.md"
+            ("Mover" `notInfix` aIndex) `shouldBe` True
+            bIndex <- readAt "b/index.md"
+            ("[Mover](./mover.md)" `infixOf` bIndex) `shouldBe` True
+
+        it "renames a page in the same folder, co-moving meta and fixing inbound links" $ do
+            seedPageFixture
+            result <- movePage root "a/mover.md" "a" "renamed" True
+            isLeft result `shouldBe` False
+            doesFileExist (root ++ "/a/mover.md") `shouldReturn` False
+            doesFileExist (root ++ "/a/renamed.md") `shouldReturn` True
+            doesFileExist (root ++ "/a/meta/renamed.meta/images.yaml") `shouldReturn` True
+            sib <- readAt "a/sib.md"
+            sib `shouldBe` "# Sib\n\n![s](assets/shared.png) and [Mover](./renamed.md)\n"
+
+        it "refuses when the destination page already exists" $ do
+            seedPageFixture
+            writeAt "b/mover.md" "# Existing\n"
+            result <- movePage root "a/mover.md" "b" "mover" True
             isLeft result `shouldBe` True
 
 isLeft :: Either a b -> Bool

@@ -43,7 +43,7 @@ import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
 import MicroHttp.Stream (StreamError (..))
-import MicroHttp.TreeMove (movePlanJson, moveSection)
+import MicroHttp.TreeMove (movePage, movePlanJson, moveSection)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 
 data DocumentStore = DocumentStore
@@ -218,8 +218,10 @@ treeMoveHandler :: FilePath -> Router.Captures -> Iter StreamError Http.Response
 treeMoveHandler root captures = do
     bytes <- readBodyStrict (StreamParseError BodyTooLarge) treeCreateMaxBytes
     let fields = formFields (BS.unpack bytes)
+        srcRel = capture "path" captures
         confirm = capture "confirm" fields == "true"
-    result <- liftIO (moveSection root (capture "path" captures) (capture "to" fields) (capture "slug" fields) confirm)
+        move = if isMarkdownPath srcRel then movePage else moveSection
+    result <- liftIO (move root srcRel (capture "to" fields) (capture "slug" fields) confirm)
     pure (either (statusResponse 409 "Conflict" . (++ "\n")) (jsonResponse . movePlanJson) result)
 
 -- | A handler that redirects to a fixed location (a @303 See Other@ to a GET target).

@@ -22,6 +22,10 @@ module MicroHttp.DocumentLinks (
     pathSegmentsOf,
     relocatePath,
     planMoveRewrites,
+    planPageMove,
+    assetNamesIn,
+    AssetClass (..),
+    classifyAssets,
 ) where
 
 import Data.List (intercalate, isPrefixOf, sortBy)
@@ -188,6 +192,74 @@ planMoveRewrites (oldPrefix, newPrefix) pages =
             , let newTarget = fromMaybe oldTarget (reloc oldTarget)
             , resolveTarget newDir pathPart /= Just newTarget
             ]
+
+{- | Plans the link rewrites a single page move induces. Unlike 'planMoveRewrites'
+(which relocates a whole subtree prefix), a page move changes the moved page's own
+directory, so the moved page is rewritten against its new directory -- its outward
+@.md@ links re-pointed, a self-link re-pointed, and its @assets/@ refs left as the
+same relative token (the assets travel into the destination's @assets/@) -- while
+every other page's inbound links to it are fixed by the subtree machinery (the file
+itself is the relocated prefix). The moved page's result is keyed by its new path.
+-}
+planPageMove :: (String, String) -> [(String, String)] -> [(String, String)]
+planPageMove (oldPath, newPath) pages =
+    movedEntry ++ planMoveRewrites (oldPath, newPath) others
+  where
+    others = filter ((/= oldPath) . fst) pages
+    oldDir = dirOfPath oldPath
+    newDir = dirOfPath newPath
+    oldAssets = assetsDir oldDir
+    newAssets = assetsDir newDir
+    movedEntry = case lookup oldPath pages of
+        Nothing -> []
+        Just body ->
+            let edits =
+                    [ (linkStart l, linkEnd l, relativeBetween newDir newTarget ++ suffix)
+                    | l <- pageLinks body
+                    , let (pathPart, suffix) = splitTargetSuffix (linkTarget l)
+                    , Just oldTarget <- [resolveTarget oldDir pathPart]
+                    , let newTarget = relocateMovedTarget oldTarget
+                    , resolveTarget newDir pathPart /= Just newTarget
+                    ]
+                rewritten = rewriteLinks body edits
+             in [(newPath, rewritten) | rewritten /= body]
+    relocateMovedTarget t =
+        fromMaybe t (orElse (relocatePath oldPath newPath t) (relocatePath oldAssets newAssets t))
+    orElse (Just x) _ = Just x
+    orElse Nothing y = y
+
+-- | The page-relative @assets@ directory tree path for a page directory (@assets@ at the root).
+assetsDir :: String -> String
+assetsDir "" = "assets"
+assetsDir dir = dir ++ "/assets"
+
+{- | The asset basenames a page body references (the names after a same-page
+@assets/@ prefix in inline link/image targets), in order, for the shared/exclusive
+analysis of a cross-folder page move (ADR-062).
+-}
+assetNamesIn :: String -> [String]
+assetNamesIn body =
+    [ name
+    | l <- pageLinks body
+    , let (pathPart, _) = splitTargetSuffix (linkTarget l)
+    , Just name <- [assetBasename pathPart]
+    ]
+  where
+    assetBasename p = case dropWhile (== ".") (pathSegmentsOf p) of
+        ("assets" : rest@(_ : _)) -> Just (intercalate "/" rest)
+        _ -> Nothing
+
+-- | Whether a peer asset is referenced only by the moving page ('ExclusiveAsset') or by a sibling too ('SharedAsset').
+data AssetClass = ExclusiveAsset | SharedAsset
+    deriving (Eq, Show)
+
+{- | Classifies each of the moving page's asset names against the peer pages' asset
+references (each peer's referenced names): 'SharedAsset' when any peer references it,
+'ExclusiveAsset' otherwise (ADR-062). Exclusive assets relocate, shared ones copy.
+-}
+classifyAssets :: [String] -> [[String]] -> [(String, AssetClass)]
+classifyAssets moving peerRefs =
+    [(asset, if any (asset `elem`) peerRefs then SharedAsset else ExclusiveAsset) | asset <- moving]
 
 -- | The tree-relative directory holding a page (its path minus the final segment; @""@ at the root).
 dirOfPath :: String -> String

@@ -2,25 +2,32 @@
 
 module MicroHttp.TestApp (
     DocumentStore (..),
+    NodeKind (..),
+    TreeNode (..),
     app,
     appFromConfig,
     appWith,
     appWithDocumentRoot,
     appWithDocumentTree,
     appWithStore,
+    childrenOf,
     clientErrorRoute,
     documentRoutes,
     fileStore,
     frontmatterTitle,
     linkedFolderPaths,
+    orderTreeNodes,
     routes,
+    slugify,
+    treeChildrenJson,
+    treeEntryKind,
     treeRoutes,
 ) where
 
 import qualified Data.ByteString.Char8 as BS
-import Data.Char (digitToInt, isDigit, isSpace, toUpper)
-import Data.List (intercalate, isSuffixOf)
-import Data.Maybe (fromMaybe)
+import Data.Char (digitToInt, isAsciiLower, isAsciiUpper, isDigit, isSpace, toLower, toUpper)
+import Data.List (intercalate, isSuffixOf, sortBy)
+import Data.Maybe (catMaybes, fromMaybe)
 import MicroHttp.Attachment (allowedExtension, attachmentRoutes, extensionOf, fileAttachmentStore, inlineImageExtension, originalUploadFilename, uploadFilename)
 import MicroHttp.Config (Config, configInt, configMounts, configString)
 import qualified MicroHttp.DocumentMeta as DocumentMeta
@@ -36,7 +43,7 @@ import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
 import MicroHttp.Stream (StreamError (..))
-import System.Directory (createDirectoryIfMissing, doesFileExist)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 
 data DocumentStore = DocumentStore
     { loadDocument :: String -> IO String
@@ -161,9 +168,37 @@ treeRoutes editorThemeDefault root =
     [ Router.get "/" (redirectTo "/documents/")
     , Router.get "/index.html" (redirectTo "/documents/")
     , Static.static "/static/editor" "static/editor"
+    , Router.get "/tree/*path" (treeChildrenHandler root)
+    , Router.post "/tree/*path" (treeCreateHandler root)
     , Router.post "/documents/*path" (treePost root)
     , Router.get "/documents/*path" (treeGet editorThemeDefault root)
     ]
+
+{- | The navigation-tree children endpoint (RFC-0026): @GET /tree/*path@ returns
+the immediate children of the folder at the tree-relative path (empty for the
+root) as JSON, read live from the filesystem.
+-}
+treeChildrenHandler :: FilePath -> Router.Handler
+treeChildrenHandler root captures _ = do
+    nodes <- liftIO (childrenOf root (capture "path" captures))
+    pure (jsonResponse (treeChildrenJson nodes))
+
+-- | The maximum accepted create-request body size in bytes.
+treeCreateMaxBytes :: Int
+treeCreateMaxBytes = 8192
+
+{- | The navigation-tree create endpoint (RFC-0026): @POST /tree/*path@ creates a
+new page or section under the parent section at the path, from form fields @kind@
+(@page@|@section@) and @title@. The file(s) are written eagerly with seeded
+frontmatter; the response carries the new node and the page to open for editing,
+or a @400@ for a bad request.
+-}
+treeCreateHandler :: FilePath -> Router.Handler
+treeCreateHandler root captures _ = do
+    bytes <- readBodyStrict (StreamParseError BodyTooLarge) treeCreateMaxBytes
+    let fields = formFields (BS.unpack bytes)
+    result <- liftIO (createTreeNode root (capture "path" captures) (capture "kind" fields) (capture "title" fields))
+    pure (either (statusResponse 400 "Bad Request") id result)
 
 -- | A handler that redirects to a fixed location (a @303 See Other@ to a GET target).
 redirectTo :: String -> Router.Handler
@@ -203,7 +238,8 @@ treeEdit editorThemeDefault root path request =
             content <- if exists then liftIO (BS.readFile fsPath) else pure (BS.pack seededMarkdown)
             attachments <- liftIO (loadPageAttachments root path)
             breadcrumbs <- liftIO (breadcrumbsFor root path (BS.unpack content))
-            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True True attachments breadcrumbs Nothing))
+            spine <- liftIO (treeSpineFor root path)
+            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True True attachments breadcrumbs spine Nothing))
 
 {- | Renders the read-only view for a tree document (the default @GET@, RFC-0020):
 the editor shell with editing disabled. A missing page is a @404@ -- reading never
@@ -221,7 +257,8 @@ treeRead editorThemeDefault root path request =
                     content <- liftIO (BS.readFile fsPath)
                     attachments <- liftIO (loadPageAttachments root path)
                     breadcrumbs <- liftIO (breadcrumbsFor root path (BS.unpack content))
-                    pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True False attachments breadcrumbs Nothing))
+                    spine <- liftIO (treeSpineFor root path)
+                    pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True False attachments breadcrumbs spine Nothing))
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
 treeServeFile :: FilePath -> String -> Iter StreamError Http.Response
@@ -491,6 +528,247 @@ breadcrumbsJson crumbs = "[" ++ intercalate "," (map crumbObject crumbs) ++ "]"
     crumbObject (Crumb label href) =
         "{\"label\":" ++ jsonString label ++ maybe "" (\h -> ",\"href\":" ++ jsonString h) href ++ "}"
 
+-- | A navigation-tree node kind: a section (a folder) or a page (a Markdown file).
+data NodeKind = Section | Page
+    deriving (Eq, Show)
+
+{- | A navigation-tree node (RFC-0026): a section or page with its display label,
+tree-relative path (a section's directory path, a page's @.md@ path), and whether a
+section has expandable children.
+-}
+data TreeNode = TreeNode
+    { nodeName :: String
+    , nodePath :: String
+    , nodeKind :: NodeKind
+    , nodeHasChildren :: Bool
+    }
+    deriving (Eq, Show)
+
+{- | Classifies a raw directory entry for the navigation tree, or 'Nothing' when it
+is hidden: the sidecar @meta@/peer-@assets@ folders, dotfiles, non-Markdown files,
+and a folder's own @index.md@ (folded into its section, ADR-058/ADR-059, not shown
+as a child).
+-}
+treeEntryKind :: String -> Bool -> Maybe NodeKind
+treeEntryKind name isDir
+    | isHidden = Nothing
+    | isDir = Just Section
+    | name == "index.md" = Nothing
+    | isMarkdownPath name = Just Page
+    | otherwise = Nothing
+  where
+    isHidden = isDotfile || name == "meta" || name == "assets"
+    isDotfile = case name of
+        ('.' : _) -> True
+        _ -> False
+
+{- | Orders sibling nodes for display (RFC-0026): sections before pages,
+alphabetical by label (case-insensitively) within each group.
+-}
+orderTreeNodes :: [TreeNode] -> [TreeNode]
+orderTreeNodes = sortBy compareNodes
+  where
+    compareNodes a b = compare (sortKey a) (sortKey b)
+    sortKey n = (kindRank (nodeKind n), map toLower (nodeName n))
+    kindRank :: NodeKind -> Int
+    kindRank Section = 0
+    kindRank Page = 1
+
+-- | The navigation-tree children as a JSON array of @{"name","path","kind","hasChildren"}@ (RFC-0026).
+treeChildrenJson :: [TreeNode] -> String
+treeChildrenJson nodes = "[" ++ intercalate "," (map nodeObject nodes) ++ "]"
+  where
+    nodeObject n =
+        "{\"name\":"
+            ++ jsonString (nodeName n)
+            ++ ",\"path\":"
+            ++ jsonString (nodePath n)
+            ++ ",\"kind\":"
+            ++ jsonString (kindString (nodeKind n))
+            ++ ",\"hasChildren\":"
+            ++ (if nodeHasChildren n then "true" else "false")
+            ++ "}"
+    kindString Section = "section"
+    kindString Page = "page"
+
+{- | The immediate navigation-tree children of a folder (its tree-relative path,
+empty for the root), read live from the filesystem and ordered for display
+(RFC-0026, ADR-059). Returns @[]@ for an unsafe path or a missing directory.
+-}
+childrenOf :: FilePath -> String -> IO [TreeNode]
+childrenOf root parentRel =
+    case Static.resolveStaticPath root (pathSegments parentRel) of
+        Nothing -> pure []
+        Just dirFs -> do
+            isDir <- doesDirectoryExist dirFs
+            if not isDir
+                then pure []
+                else do
+                    names <- listDirectory dirFs
+                    nodes <- mapM (childNode root parentRel dirFs) names
+                    pure (orderTreeNodes (catMaybes nodes))
+
+-- | Builds a navigation-tree node for one directory entry, or 'Nothing' when it is hidden.
+childNode :: FilePath -> String -> FilePath -> String -> IO (Maybe TreeNode)
+childNode root parentRel dirFs name = do
+    isDir <- doesDirectoryExist entryFs
+    case treeEntryKind name isDir of
+        Nothing -> pure Nothing
+        Just Section -> do
+            label <- sectionLabel root childRel name
+            hasKids <- dirHasVisibleChildren entryFs
+            pure (Just (TreeNode label childRel Section hasKids))
+        Just Page -> do
+            label <- pageLabel root childRel name
+            pure (Just (TreeNode label childRel Page False))
+  where
+    entryFs = dirFs ++ "/" ++ name
+    childRel = if null parentRel then name else parentRel ++ "/" ++ name
+
+-- | A section's label: its @index.md@ frontmatter @name@, or a humanised directory segment.
+sectionLabel :: FilePath -> String -> String -> IO String
+sectionLabel root childRel name = do
+    title <- readIndexTitle root childRel
+    pure (fromMaybe (humaniseSegment name) title)
+
+-- | A page's label: its frontmatter @name@, or a humanised filename.
+pageLabel :: FilePath -> String -> String -> IO String
+pageLabel root childRel name =
+    case Static.resolveStaticPath root (pathSegments childRel) of
+        Nothing -> pure (humaniseSegment name)
+        Just fsPath -> do
+            exists <- doesFileExist fsPath
+            if not exists
+                then pure (humaniseSegment name)
+                else do
+                    title <- fmap frontmatterTitle (readDocumentText fsPath)
+                    pure (fromMaybe (humaniseSegment name) title)
+
+-- | Whether a folder holds any entry the navigation tree would show (so a section is expandable).
+dirHasVisibleChildren :: FilePath -> IO Bool
+dirHasVisibleChildren dirFs = do
+    names <- listDirectory dirFs
+    anyVisible names
+  where
+    anyVisible [] = pure False
+    anyVisible (n : ns) = do
+        isDir <- doesDirectoryExist (dirFs ++ "/" ++ n)
+        case treeEntryKind n isDir of
+            Just _ -> pure True
+            Nothing -> anyVisible ns
+
+{- | The navigation-tree spine for the open page (RFC-0026): the children of each
+ancestor folder, root-first, so the client opens the tree pre-expanded to the page
+without load-time fetches. A JSON array of @{"path","children":[...]}@; the root
+is always present even for the root @index.md@.
+-}
+treeSpineFor :: FilePath -> String -> IO String
+treeSpineFor root path = do
+    entries <- mapM folderEntry spineFolders
+    pure ("[" ++ intercalate "," entries ++ "]")
+  where
+    spineFolders = case linkedFolderPaths path of
+        [] -> [""]
+        fps -> fps
+    folderEntry fp = do
+        nodes <- childrenOf root fp
+        pure ("{\"path\":" ++ jsonString fp ++ ",\"children\":" ++ treeChildrenJson nodes ++ "}")
+
+{- | Creates a new page or section under a parent section (RFC-0026), writing
+seeded frontmatter eagerly, and returns either an error message ('Left', a @400@)
+or the created-node JSON response ('Right'). The filename is a slug derived from
+the title, suffixed numerically on collision; the title is preserved verbatim in
+the frontmatter @name@. A section is a directory plus a seeded @index.md@.
+-}
+createTreeNode :: FilePath -> String -> String -> String -> IO (Either String Http.Response)
+createTreeNode root parentRel kind title
+    | null (trimSpace title) = pure (Left "missing title\n")
+    | kind /= "page" && kind /= "section" = pure (Left "unknown kind\n")
+    | otherwise =
+        case Static.resolveStaticPath root (pathSegments parentRel) of
+            Nothing -> pure (Left "unsafe path\n")
+            Just parentFs -> do
+                parentExists <- doesDirectoryExist parentFs
+                if not parentExists
+                    then pure (Left "parent not found\n")
+                    else do
+                        slug <- uniqueSlug parentFs (slugify title) (kind == "section")
+                        let childRel = joinRel parentRel slug
+                            seedBody = "---\nname: " ++ yamlScalar title ++ "\n---\n\n# " ++ title ++ "\n"
+                        if kind == "section"
+                            then do
+                                createDirectoryIfMissing True (parentFs ++ "/" ++ slug)
+                                writeDocumentText (parentFs ++ "/" ++ slug ++ "/index.md") seedBody
+                                pure (Right (jsonResponse (createdJson title childRel "section" (childRel ++ "/index.md"))))
+                            else do
+                                writeDocumentText (parentFs ++ "/" ++ slug ++ ".md") seedBody
+                                pure (Right (jsonResponse (createdJson title (childRel ++ ".md") "page" (childRel ++ ".md"))))
+
+-- | Joins a parent tree-relative path and a child segment (the segment alone at the root).
+joinRel :: String -> String -> String
+joinRel "" s = s
+joinRel p s = p ++ "/" ++ s
+
+{- | A kebab-case filename slug from a title: lower-cased, non-alphanumeric runs
+collapsed to single hyphens and trimmed, falling back to @untitled@ when nothing
+remains.
+-}
+slugify :: String -> String
+slugify title =
+    case trimHyphens (collapse (map toSlugChar title)) of
+        "" -> "untitled"
+        s -> s
+  where
+    toSlugChar c
+        | isAsciiLower c || isDigit c = c
+        | isAsciiUpper c = toLower c
+        | otherwise = '-'
+    collapse ('-' : '-' : rest) = collapse ('-' : rest)
+    collapse (c : rest) = c : collapse rest
+    collapse [] = []
+    trimHyphens = f . f where f = reverse . dropWhile (== '-')
+
+-- | The first slug from @base@, @base-2@, @base-3@, ... not already taken in the parent folder.
+uniqueSlug :: FilePath -> String -> Bool -> IO String
+uniqueSlug parentFs base isSection = pick (base : [base ++ "-" ++ show n | n <- [(2 :: Int) ..]])
+  where
+    pick [] = pure base
+    pick (candidate : rest) = do
+        taken <- slugTaken parentFs candidate isSection
+        if taken then pick rest else pure candidate
+
+-- | Whether a slug is already taken in a folder (a directory for a section, a @.md@ file for a page).
+slugTaken :: FilePath -> String -> Bool -> IO Bool
+slugTaken parentFs slug isSection =
+    if isSection
+        then doesDirectoryExist (parentFs ++ "/" ++ slug)
+        else doesFileExist (parentFs ++ "/" ++ slug ++ ".md")
+
+-- | A YAML scalar for a frontmatter value: bare when safe, else double-quoted with escapes.
+yamlScalar :: String -> String
+yamlScalar s
+    | needsQuote = "\"" ++ concatMap esc s ++ "\""
+    | otherwise = s
+  where
+    needsQuote = null s || head s == ' ' || last s == ' ' || any special s
+    special c = c == ':' || c == '#' || c == '"' || c == '\'' || c == '\n' || c == '\t'
+    esc '"' = "\\\""
+    esc '\\' = "\\\\"
+    esc c = [c]
+
+-- | The created-node JSON: the display name, tree path, kind, and the page path to open for editing.
+createdJson :: String -> String -> String -> String -> String
+createdJson name path kind editPath =
+    "{\"name\":"
+        ++ jsonString name
+        ++ ",\"path\":"
+        ++ jsonString path
+        ++ ",\"kind\":"
+        ++ jsonString kind
+        ++ ",\"editPath\":"
+        ++ jsonString editPath
+        ++ "}"
+
 jsonResponse :: String -> Http.Response
 jsonResponse body =
     Http.Response Http.okStatus [contentTypeHeader "application/json"] (Http.StrictBody (BS.pack body))
@@ -676,7 +954,7 @@ editDocument :: String -> DocumentStore -> Router.Handler
 editDocument editorThemeDefault store captures request = do
     let docId = documentId captures
     content <- liftIO (loadDocument store docId)
-    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault (BS.pack content) False True [] [] Nothing))
+    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault (BS.pack content) False True [] [] "" Nothing))
 
 showDocument :: DocumentStore -> Router.Handler
 showDocument store captures _ = do
@@ -698,7 +976,7 @@ saveDocument editorThemeDefault store captures request = do
         Just err
             | isHtmxRequest request -> pure (htmlResponseChunks (validationStatusFragment err))
             | otherwise ->
-                pure (documentResponse (editorPage docId Nothing editorThemeDefault (BS.pack markdown) False True [] [] (Just err)))
+                pure (documentResponse (editorPage docId Nothing editorThemeDefault (BS.pack markdown) False True [] [] "" (Just err)))
         Nothing -> do
             liftIO (saveDocumentContent store docId markdown)
             if isHtmxRequest request
@@ -894,8 +1172,8 @@ in form submission through @ElementInternals@, and htmx autosaves; the textarea
 is disabled so it does not double-submit. @maybeError@ re-renders a validation
 message after a failed ordinary post.
 -}
-editorPage :: String -> Maybe String -> String -> BS.ByteString -> Bool -> Bool -> [(String, String)] -> [Crumb] -> Maybe String -> Html.Html ()
-editorPage docId mode themeDefault content treeMode editable attachments breadcrumbs maybeError =
+editorPage :: String -> Maybe String -> String -> BS.ByteString -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Maybe String -> Html.Html ()
+editorPage docId mode themeDefault content treeMode editable attachments breadcrumbs treeSpine maybeError =
     Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
@@ -919,17 +1197,17 @@ editorPage docId mode themeDefault content treeMode editable attachments breadcr
                         ]
                         $ do
                             maybe (return ()) validationStatusFragment maybeError
-                            editorElement docId mode treeMode editable attachments breadcrumbs content
+                            editorElement docId mode treeMode editable attachments breadcrumbs treeSpine content
                             Html.custom "noscript" [] $
                                 Html.button_ [Html.attr "type" "submit"] (Html.text "Save")
-                    else editorElement docId mode treeMode editable attachments breadcrumbs content
+                    else editorElement docId mode treeMode editable attachments breadcrumbs treeSpine content
 
 {- | The @\<markdown-editor\>@ custom element with its server-set attributes and the
 no-script @\<textarea\>@ fallback holding the document. @data-readonly@ is set in the
 read view (RFC-0020); the element disables editing and hides the editing chrome.
 -}
-editorElement :: String -> Maybe String -> Bool -> Bool -> [(String, String)] -> [Crumb] -> BS.ByteString -> Html.Html ()
-editorElement docId mode treeMode editable attachments breadcrumbs content =
+editorElement :: String -> Maybe String -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> BS.ByteString -> Html.Html ()
+editorElement docId mode treeMode editable attachments breadcrumbs treeSpine content =
     Html.custom
         "markdown-editor"
         ( [Html.attr "name" "markdown", Html.attr "data-document" docId]
@@ -937,6 +1215,7 @@ editorElement docId mode treeMode editable attachments breadcrumbs content =
             ++ [Html.attr "data-document-mode" "tree" | treeMode]
             ++ [Html.attr "data-attachments" (attachmentsJson attachments) | treeMode, not (null attachments)]
             ++ [Html.attr "data-breadcrumbs" (breadcrumbsJson breadcrumbs) | not (null breadcrumbs)]
+            ++ [Html.attr "data-tree-spine" treeSpine | treeMode, not (null treeSpine)]
             ++ [Html.attr "data-readonly" "" | not editable]
         )
         ( Html.custom

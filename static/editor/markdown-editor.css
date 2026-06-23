@@ -67,6 +67,148 @@ markdown-editor {
   position: relative;
 }
 
+/* The navigation tree (RFC-0026) puts a full-height column on the left. For the
+   flex-column themes this switches the editor frame to a two-column grid: the nav
+   in the leading column (spanning every content row), everything else in column
+   two. Workbench keeps its own grid and gets the nav column added separately. */
+:root:not([data-editor-theme="workbench"]) markdown-editor.markdown-editor--has-nav {
+  display: grid;
+  grid-template-columns: var(--markdown-editor-nav-width, 15rem) minmax(0, 1fr);
+}
+
+:root:not([data-editor-theme="workbench"]) markdown-editor.markdown-editor--has-nav > * {
+  grid-column: 2;
+  min-width: 0;
+}
+
+:root:not([data-editor-theme="workbench"]) markdown-editor.markdown-editor--has-nav > .markdown-editor__nav {
+  grid-column: 1;
+  grid-row: 1 / span 50;
+}
+
+/* Collapsed: the column shrinks to the toggle's width (the body is hidden below). */
+markdown-editor.markdown-editor--has-nav:has(.markdown-editor__nav[data-collapsed="true"]) {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.markdown-editor__nav {
+  align-self: start;
+  border-right: 1px solid var(--markdown-editor-divider);
+  box-sizing: border-box;
+  color: var(--markdown-editor-muted);
+  display: flex;
+  flex-direction: column;
+  font: 13px system-ui, sans-serif;
+  gap: 0.5rem;
+  max-height: 100vh;
+  overflow: auto;
+  padding: 1rem 0.75rem;
+  position: sticky;
+  top: 0;
+}
+
+.markdown-editor__nav-header {
+  align-items: center;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.markdown-editor__nav-header .markdown-editor__metadata-heading {
+  flex: 1;
+  margin: 0;
+}
+
+.markdown-editor__nav-toggle,
+.markdown-editor__nav-disclosure,
+.markdown-editor__nav-create {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+  padding: 0.1rem 0.25rem;
+}
+
+.markdown-editor__nav[data-collapsed="true"] .markdown-editor__metadata-heading,
+.markdown-editor__nav[data-collapsed="true"] .markdown-editor__nav-list,
+.markdown-editor__nav[data-collapsed="true"] .markdown-editor__nav-header .markdown-editor__nav-create {
+  display: none;
+}
+
+.markdown-editor__nav-toggle {
+  transition: transform 0.15s ease;
+}
+
+.markdown-editor__nav[data-collapsed="true"] .markdown-editor__nav-toggle {
+  transform: rotate(180deg);
+}
+
+.markdown-editor__nav-list {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.markdown-editor__nav-list .markdown-editor__nav-list {
+  padding-left: 0.6rem;
+}
+
+.markdown-editor__nav-row {
+  align-items: center;
+  border-radius: 0.25rem;
+  display: flex;
+  gap: 0.1rem;
+  padding: 0.1rem 0.2rem;
+}
+
+.markdown-editor__nav-row:hover {
+  background: var(--markdown-editor-code-background);
+}
+
+.markdown-editor__nav-row[data-active="true"] {
+  background: var(--markdown-editor-code-background);
+  font-weight: 600;
+}
+
+.markdown-editor__nav-disclosure,
+.markdown-editor__nav-spacer {
+  flex: 0 0 1rem;
+  text-align: center;
+}
+
+.markdown-editor__nav-disclosure {
+  transition: transform 0.15s ease;
+}
+
+.markdown-editor__nav-item[data-expanded="true"] > .markdown-editor__nav-row .markdown-editor__nav-disclosure {
+  transform: rotate(90deg);
+}
+
+.markdown-editor__nav-label {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  flex: 1;
+  font: inherit;
+  overflow: hidden;
+  padding: 0.1rem 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.markdown-editor__nav-create {
+  opacity: 0;
+}
+
+.markdown-editor__nav-row:hover .markdown-editor__nav-create {
+  opacity: 1;
+}
+
 .markdown-editor__toolbar--top {
   color: var(--markdown-editor-muted);
   display: flex;
@@ -1158,6 +1300,27 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   grid-template-columns: 7rem 1fr;
   grid-template-rows: auto auto 1fr auto;
   height: 100vh;
+}
+
+/* Workbench with the navigation tree (RFC-0026): a nav column ahead of the rail,
+   spanning the full height. The flush rail stays put; only the named areas shift. */
+:root[data-editor-theme="workbench"] markdown-editor.markdown-editor--has-nav {
+  column-gap: 0;
+  grid-template-areas:
+    "nav rail format"
+    "nav rail tab"
+    "nav rail main"
+    "nav status status";
+  grid-template-columns: var(--markdown-editor-nav-width, 15rem) 7rem 1fr;
+}
+
+:root[data-editor-theme="workbench"] markdown-editor.markdown-editor--has-nav > .markdown-editor__nav {
+  grid-area: nav;
+  max-height: none;
+}
+
+:root[data-editor-theme="workbench"] markdown-editor.markdown-editor--has-nav:has(.markdown-editor__nav[data-collapsed="true"]) {
+  grid-template-columns: auto 7rem 1fr;
 }
 
 /* The client-error banner occupies the status row, overlaying the status bar, so

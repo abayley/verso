@@ -18,6 +18,14 @@ A single Markdown document in the tree, identified by its tree-relative path
 including `.md`. The unit a reader views and an author edits.
 _Avoid_: file (too generic), article.
 
+**Section**:
+A folder of the **document tree**, holding nested **sections** and **pages**.
+Its title and landing page are its `index.md` (a **page**); selecting a section
+opens that `index.md`. By convention every section has an `index.md`; one lacking
+it shows a humanised label and is expand-only (no landing page). A section's
+`index.md` is folded into the section, not shown as a separate child.
+_Avoid_: directory (filesystem term), category, subsection.
+
 **Read view**:
 The default rendered, read-only presentation of a **page** (a plain `GET` of its
 URL). It is the **edit view**'s shell with editing switched off (RFC-0020,
@@ -96,10 +104,18 @@ attribute list, e.g. `` `TODO`{.badge.yellow} ``; rendered as a coloured pill
 formatting.
 _Avoid_: label, tag, pill (pill is the rendered shape, not the construct).
 
+**Navigation tree**:
+The editor chrome panel, on the left of the **read view** and **edit view**, that
+shows the **document tree**'s **sections** and **pages** for browsing and managing
+them. A section row's disclosure control expands/collapses its children; the row
+label opens the section (its `index.md`). One of the three panels (with the
+**metadata panel** and the table of contents).
+_Avoid_: sidebar (ambiguous; there are several), file tree, file explorer.
+
 **Metadata panel**:
 The editor chrome panel that surfaces a page's **sidecar metadata** -- for now,
-the list of **attachments** (including unlinked ones). One of three planned
-panels (the others being a navigation tree and a table of contents).
+the list of **attachments** (including unlinked ones). One of three panels (with
+the **navigation tree** and a table of contents).
 _Avoid_: sidebar (ambiguous; there are several), attachments panel.
 
 **Round-trip stability**:
@@ -135,6 +151,12 @@ _Avoid_: telemetry, access log (a different file, HTTP-request lifecycle).
   canonical filename; an **inline image** entry's `short_title` mirrors the
   body image's **alt text** (falling back to the filename). They are not
   interchangeable, and `name` is not synced from body link text.
+- **Title vs slug**: a **page**'s display title is its **frontmatter** `name`;
+  its slug is the filename/path segment (and so its URL). They are deliberately
+  independent and not synced -- editing the title (ADR-057) never renames the
+  file. A new page derives an initial slug from its title, after which they
+  diverge freely. The **navigation tree** and breadcrumbs show the title; the
+  filesystem and URLs use the slug.
 - **Preview**: there is no rendered-preview pane anywhere in the editor. The
   **read view** and **Visual view** render via Tiptap; the **Split view**'s
   right pane is the live **Visual view**. "Preview" denotes nothing -- do not

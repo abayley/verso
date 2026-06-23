@@ -1,5 +1,6 @@
 module MicroHttp.TestAppSpec (spec) where
 
+import Control.Monad (when)
 import qualified Data.ByteString.Char8 as BS
 import Data.List (isInfixOf)
 import MicroHttp.Http
@@ -7,6 +8,7 @@ import MicroHttp.Iteratee (Iter, run, strictEnumerator)
 import qualified MicroHttp.Router as Router
 import MicroHttp.Stream (StreamError)
 import qualified MicroHttp.TestApp as TestApp
+import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
 import Test.Hspec
 
 spec :: Spec
@@ -121,6 +123,146 @@ spec =
 
         it "given the root index page, when linked folders computed, then there are no ancestor links" $ do
             TestApp.linkedFolderPaths "index.md" `shouldBe` []
+
+        describe "navigation tree (RFC-0026)" $ do
+            it "given a directory entry, when classified, then sidecars, dotfiles, non-markdown, and index.md are hidden" $ do
+                TestApp.treeEntryKind "alpha" True `shouldBe` Just TestApp.Section
+                TestApp.treeEntryKind "page.md" False `shouldBe` Just TestApp.Page
+                TestApp.treeEntryKind "index.md" False `shouldBe` Nothing
+                TestApp.treeEntryKind "meta" True `shouldBe` Nothing
+                TestApp.treeEntryKind "assets" True `shouldBe` Nothing
+                TestApp.treeEntryKind ".DS_Store" False `shouldBe` Nothing
+                TestApp.treeEntryKind "notes.txt" False `shouldBe` Nothing
+
+            it "given sibling nodes, when ordered, then sections precede pages, alphabetical within each" $ do
+                let node k nm = TestApp.TreeNode nm nm k False
+                map
+                    TestApp.nodeName
+                    ( TestApp.orderTreeNodes
+                        [ node TestApp.Page "zebra.md"
+                        , node TestApp.Section "Beta"
+                        , node TestApp.Page "Apple"
+                        , node TestApp.Section "alpha"
+                        ]
+                    )
+                    `shouldBe` ["alpha", "Beta", "Apple", "zebra.md"]
+
+            it "given nodes, when serialised, then the json carries name, path, kind, and hasChildren" $ do
+                TestApp.treeChildrenJson [TestApp.TreeNode "Alpha" "alpha" TestApp.Section True]
+                    `shouldBe` "[{\"name\":\"Alpha\",\"path\":\"alpha\",\"kind\":\"section\",\"hasChildren\":true}]"
+
+            it "given the tree root, when children read, then sections come first then pages, index.md folded and sidecars hidden" $ do
+                treeRoot <- setupTreeFixture
+                nodes <- TestApp.childrenOf treeRoot ""
+                map nodeTuple nodes
+                    `shouldBe` [ ("Alpha", TestApp.Section, "alpha", True)
+                               , ("Beta", TestApp.Section, "beta", True)
+                               , ("Empty Section", TestApp.Section, "empty", False)
+                               , ("Home Page", TestApp.Page, "home.md", False)
+                               ]
+
+            it "given a subsection, when children read, then its page is labelled by frontmatter and index.md is folded" $ do
+                treeRoot <- setupTreeFixture
+                nodes <- TestApp.childrenOf treeRoot "alpha"
+                map (\nd -> (TestApp.nodeName nd, TestApp.nodePath nd)) nodes
+                    `shouldBe` [("Alpha Page", "alpha/page.md")]
+
+            it "given a section holding only index.md, when children read, then there are none" $ do
+                treeRoot <- setupTreeFixture
+                nodes <- TestApp.childrenOf treeRoot "empty"
+                nodes `shouldBe` []
+
+            it "given an unsafe path, when children read, then none are returned" $ do
+                treeRoot <- setupTreeFixture
+                nodes <- TestApp.childrenOf treeRoot "../secret"
+                nodes `shouldBe` []
+
+            it "given GET /tree, when routed against the tree, then the root children are returned as json" $ do
+                treeRoot <- setupTreeFixture
+                response <- runTreeApp treeRoot (request GET ["tree"])
+                statusCode (responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "\"name\":\"Alpha\",\"path\":\"alpha\",\"kind\":\"section\""
+                bodyText response `shouldInclude` "\"name\":\"Home Page\",\"path\":\"home.md\",\"kind\":\"page\""
+
+            it "given a page read against the tree, when rendered, then the editor embeds the navigation spine" $ do
+                treeRoot <- setupTreeFixture
+                response <- runTreeApp treeRoot (request GET ["documents", "alpha", "page.md"])
+                bodyText response `shouldInclude` "data-tree-spine="
+                bodyText response `shouldInclude` "Alpha Page"
+                bodyText response `shouldInclude` "Beta"
+
+            it "given a title, when slugified, then it is lower-cased kebab-case with runs collapsed and trimmed" $ do
+                TestApp.slugify "Network Delivery" `shouldBe` "network-delivery"
+                TestApp.slugify "  A: B & C!  " `shouldBe` "a-b-c"
+                TestApp.slugify "!!!" `shouldBe` "untitled"
+
+            it "given POST /tree create page, when routed, then the seeded page is written and returned, and appears in the tree" $ do
+                treeRoot <- setupTreeFixture
+                cleanFile (treeRoot ++ "/alpha/created-page.md")
+                response <- runTreeAppBody treeRoot (request POST ["tree", "alpha"]) "kind=page&title=Created+Page"
+                statusCode (responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "\"path\":\"alpha/created-page.md\""
+                bodyText response `shouldInclude` "\"editPath\":\"alpha/created-page.md\""
+                bodyText response `shouldInclude` "\"kind\":\"page\""
+                written <- readFile (treeRoot ++ "/alpha/created-page.md")
+                written `shouldBe` "---\nname: Created Page\n---\n\n# Created Page\n"
+                nodes <- TestApp.childrenOf treeRoot "alpha"
+                map TestApp.nodeName nodes `shouldBe` ["Alpha Page", "Created Page"]
+                cleanFile (treeRoot ++ "/alpha/created-page.md")
+
+            it "given POST /tree create with no title, when routed, then it is a bad request" $ do
+                treeRoot <- setupTreeFixture
+                response <- runTreeAppBody treeRoot (request POST ["tree", "alpha"]) "kind=page&title="
+                statusCode (responseStatus response) `shouldBe` 400
+
+nodeTuple :: TestApp.TreeNode -> (String, TestApp.NodeKind, String, Bool)
+nodeTuple nd =
+    (TestApp.nodeName nd, TestApp.nodeKind nd, TestApp.nodePath nd, TestApp.nodeHasChildren nd)
+
+{- | Builds (idempotently) a small document tree under @build/@ for the
+navigation-tree IO and routing tests, and returns its root.
+-}
+setupTreeFixture :: IO FilePath
+setupTreeFixture = do
+    let root = "build/tree-spec"
+        seed name title = "---\nname: " ++ title ++ "\n---\n\n# " ++ title ++ "\n"
+    createDirectoryIfMissing True (root ++ "/alpha")
+    createDirectoryIfMissing True (root ++ "/beta/sub")
+    createDirectoryIfMissing True (root ++ "/empty")
+    createDirectoryIfMissing True (root ++ "/meta")
+    createDirectoryIfMissing True (root ++ "/assets")
+    writeFile (root ++ "/index.md") (seed "index" "Cello Docs")
+    writeFile (root ++ "/home.md") (seed "home" "Home Page")
+    writeFile (root ++ "/notes.txt") "not markdown\n"
+    writeFile (root ++ "/.DS_Store") "junk\n"
+    writeFile (root ++ "/alpha/index.md") (seed "alpha" "Alpha")
+    writeFile (root ++ "/alpha/page.md") (seed "alpha-page" "Alpha Page")
+    writeFile (root ++ "/beta/index.md") (seed "beta" "Beta")
+    writeFile (root ++ "/beta/sub/index.md") (seed "beta-sub" "Beta Sub")
+    writeFile (root ++ "/empty/index.md") (seed "empty" "Empty Section")
+    writeFile (root ++ "/meta/meta.yaml") "x: y\n"
+    writeFile (root ++ "/assets/diagram.png") "binary\n"
+    pure root
+
+{- | Runs the tree-serving routes (RFC-0026) over a request head against a real
+filesystem root, returning the response.
+-}
+runTreeApp :: FilePath -> RequestHead -> IO Response
+runTreeApp root head = runTreeAppBody root head ""
+
+-- | As 'runTreeApp', with a request body (for create posts).
+runTreeAppBody :: FilePath -> RequestHead -> String -> IO Response
+runTreeAppBody root head body = do
+    outcome <- strictEnumerator (BS.pack body) (Router.route (TestApp.treeRoutes "paper" root) head) >>= run
+    case outcome of
+        Right response -> return response
+        Left err -> expectFailure err
+
+-- | Removes a file if it exists (test cleanup).
+cleanFile :: FilePath -> IO ()
+cleanFile f = do
+    exists <- doesFileExist f
+    when exists (removeFile f)
 
 request :: Method -> [String] -> RequestHead
 request method path =

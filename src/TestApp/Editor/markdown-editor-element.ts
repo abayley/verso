@@ -27,6 +27,7 @@ import { INLINE_COMMANDS } from "./editor-toolbar-shared.js";
 import { frontmatterName, joinFrontmatter, setFrontmatterName, splitFrontmatter } from "./frontmatter.js";
 import { imageShortTitles } from "./image-metadata.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
+import { NavTreePanel, parseTreeChildren, parseTreeSpine, type TreeNodeData } from "./nav-tree.js";
 import { rawHtmlExtension } from "./raw-html-extension.js";
 import { SaveStateController, type SaveStateView } from "./save-state-controller.js";
 import { SlashMenuElement, type SlashSelectEventDetail } from "./slash-menu-element.js";
@@ -159,6 +160,8 @@ export class MarkdownEditorElement extends HTMLElement {
     private bodyWidth: BodyWidth = "narrow";
     private attachmentPanel: AttachmentPanel | null = null;
     private tocPanel: TableOfContentsPanel | null = null;
+    /** The left-hand navigation tree (tree mode only, RFC-0026). */
+    private navTree: NavTreePanel | null = null;
     /** The page-title field above the editing pane: an editable input, or read-only text in the read view. */
     private titleField: HTMLElement | null = null;
     /** The right-hand sidebar holding the contents panel and (in tree mode) the attachments panel. */
@@ -439,6 +442,14 @@ export class MarkdownEditorElement extends HTMLElement {
         }
         workspace.append(this.sidebar);
 
+        // The left-hand navigation tree (RFC-0026), tree mode only. A direct child placed by CSS grid in the
+        // leading column; the `--has-nav` class switches the editor frame to the two-column layout.
+        if (this.isTreeMode()) {
+            this.navTree = this.createNavTree();
+            this.classList.add("markdown-editor--has-nav");
+            this.append(this.navTree.element());
+        }
+
         this.append(
             this.toolbar,
             this.documentName,
@@ -471,6 +482,50 @@ export class MarkdownEditorElement extends HTMLElement {
             this.body.addEventListener("drop", this.handleDrop);
             this.body.addEventListener("paste", this.handlePaste, true);
         }
+    }
+
+    /**
+     * Builds the navigation tree panel (RFC-0026): seeded with the embedded ancestor spine, fetching deeper
+     * folders lazily from `/tree`, creating pages/sections via `POST /tree`, and navigating on click. Edit
+     * intent is preserved -- navigating from the edit view keeps `?edit`.
+     */
+    private createNavTree(): NavTreePanel {
+        const editMode = !this.isReadonly();
+        const encodePath = (path: string): string =>
+            path
+                .split("/")
+                .map((segment): string => encodeURIComponent(segment))
+                .join("/");
+        return new NavTreePanel({
+            documentPath: this.getAttribute("data-document") ?? "",
+            spine: parseTreeSpine(this.getAttribute("data-tree-spine")),
+            readonly: this.isReadonly(),
+            fetchChildren: async (path: string): Promise<TreeNodeData[]> => {
+                const response = await fetch(`/tree/${encodePath(path)}`, { headers: { Accept: "application/json" } });
+                if (!response.ok) {
+                    throw new Error(`Failed to load tree children: ${response.status}`);
+                }
+                return parseTreeChildren(await response.text());
+            },
+            createNode: async (parentPath: string, kind: "page" | "section", title: string): Promise<string | null> => {
+                const response = await fetch(`/tree/${encodePath(parentPath)}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: new URLSearchParams({ kind, title }).toString(),
+                });
+                if (!response.ok) {
+                    return null;
+                }
+                const data: unknown = JSON.parse(await response.text());
+                const editPath =
+                    data && typeof data === "object" ? (data as Record<string, unknown>)["editPath"] : null;
+                return typeof editPath === "string" ? editPath : null;
+            },
+            navigate: (target: string): void => {
+                const suffix = editMode && !target.includes("?") ? "?edit" : "";
+                window.location.href = `/documents/${target}${suffix}`;
+            },
+        });
     }
 
     /** Creates the hidden file input the toolbar and slash commands trigger for uploads. */

@@ -180,6 +180,8 @@ export class NavTreePanel {
     private trashEntries: TrashEntry[] = [];
     /** The container the Trash view renders into, between the header and the tree list. */
     private readonly trashPanel: HTMLDivElement;
+    /** The tree path of the node currently being dragged (for drag-and-drop move), or null. */
+    private draggingPath: string | null = null;
 
     constructor(options: NavTreeOptions) {
         this.options = options;
@@ -229,6 +231,26 @@ export class NavTreePanel {
 
         this.list = document.createElement("ul");
         this.list.className = "markdown-editor__nav-list";
+        // The root list's own background is a drop target for moving an item out to the top level
+        // (guarded to the list element itself, so a drop on a row is handled by that row, not here).
+        this.list.addEventListener("dragover", (event: DragEvent): void => {
+            if (event.target === this.list && this.canDropInto(this.draggingPath, "")) {
+                event.preventDefault();
+                this.list.dataset["dropTarget"] = "true";
+            }
+        });
+        this.list.addEventListener("dragleave", (event: DragEvent): void => {
+            if (event.target === this.list) {
+                delete this.list.dataset["dropTarget"];
+            }
+        });
+        this.list.addEventListener("drop", (event: DragEvent): void => {
+            if (event.target === this.list) {
+                event.preventDefault();
+                delete this.list.dataset["dropTarget"];
+                void this.dropInto("");
+            }
+        });
 
         this.panel.append(header, this.trashPanel, this.list);
         this.applyCollapsed();
@@ -312,6 +334,7 @@ export class NavTreePanel {
         }
         row.append(this.createRowAction("⤴", "Move", node, (): void => void this.moveNode(node)));
         row.append(this.createRowAction("✕", "Delete", node, (): void => void this.deleteNode(node)));
+        this.attachDragAndDrop(row, node);
 
         item.append(row);
 
@@ -482,30 +505,97 @@ export class NavTreePanel {
         return button;
     }
 
-    /** Prompts for a destination, previews the move's impact, and applies it on confirmation. */
+    /** Prompts for a destination and slug, then runs the move (the keyboard-accessible alternative to drag-and-drop). */
     private async moveNode(node: TreeNodeData): Promise<void> {
-        const currentParent = parentOfPath(node.path);
-        const destParent = window.prompt("Move to which folder? (tree path; blank = root)", currentParent);
+        const destParent = window.prompt("Move to which folder? (tree path; blank = root)", parentOfPath(node.path));
         if (destParent === null) {
             return;
         }
         const slug = window.prompt("New slug? (blank keeps the current name)", "") ?? "";
-        const preview = await this.options.moveNode(node.path, destParent.trim(), slug.trim(), false);
+        await this.runMove(node.path, node.name, destParent.trim(), slug.trim());
+    }
+
+    /** Previews a move's impact, confirms, applies, and refreshes; surfaces any failure (shared by prompt and drag-drop). */
+    private async runMove(path: string, name: string, destParent: string, slug: string): Promise<void> {
+        const preview = await this.options.moveNode(path, destParent, slug, false);
         if (!preview.ok) {
             this.options.notify(preview.message ?? "Move not possible.", true);
             return;
         }
         const count = preview.changed ?? 0;
-        if (!window.confirm(`Moving “${node.name}” will update links in ${count} file(s). Proceed?`)) {
+        const into = destParent === "" ? "the top level" : `“${destParent}”`;
+        if (!window.confirm(`Move “${name}” into ${into}? This updates links in ${count} file(s).`)) {
             return;
         }
-        const applied = await this.options.moveNode(node.path, destParent.trim(), slug.trim(), true);
+        this.options.notify(`Moving “${name}”…`, false);
+        const applied = await this.options.moveNode(path, destParent, slug, true);
         if (!applied.ok) {
             this.options.notify(applied.message ?? "Move failed.", true);
             return;
         }
-        this.options.notify(`Moved “${node.name}”.`, false);
+        this.options.notify(`Moved “${name}”.`, false);
         await this.refresh();
+    }
+
+    /**
+     * Makes a node row a drag source and a drop target for move-by-drag. Dropping onto a section drops
+     * into it; dropping onto a page drops into that page's folder. The destination and a name are
+     * carried on the row so the drop can run the move.
+     */
+    private attachDragAndDrop(row: HTMLElement, node: TreeNodeData): void {
+        const destParent = node.kind === "section" ? node.path : parentOfPath(node.path);
+        row.draggable = true;
+        row.addEventListener("dragstart", (event: DragEvent): void => {
+            this.draggingPath = node.path;
+            event.dataTransfer?.setData("text/plain", node.path);
+        });
+        row.addEventListener("dragend", (): void => {
+            this.draggingPath = null;
+            this.clearDropTargets();
+        });
+        row.addEventListener("dragover", (event: DragEvent): void => {
+            if (this.canDropInto(this.draggingPath, destParent)) {
+                event.preventDefault();
+                row.dataset["dropTarget"] = "true";
+            }
+        });
+        row.addEventListener("dragleave", (): void => {
+            delete row.dataset["dropTarget"];
+        });
+        row.addEventListener("drop", (event: DragEvent): void => {
+            event.preventDefault();
+            delete row.dataset["dropTarget"];
+            void this.dropInto(destParent);
+        });
+    }
+
+    /** Whether the dragged node may drop into a destination folder: not its current folder, not itself or its own descendant. */
+    private canDropInto(source: string | null, destParent: string): boolean {
+        if (source === null) {
+            return false;
+        }
+        if (destParent === parentOfPath(source)) {
+            return false; // already there
+        }
+        return destParent !== source && !destParent.startsWith(`${source}/`); // not into self/descendant
+    }
+
+    /** Runs the move for a completed drop (keeping the dragged node's own name). */
+    private async dropInto(destParent: string): Promise<void> {
+        const source = this.draggingPath;
+        this.draggingPath = null;
+        if (!this.canDropInto(source, destParent) || source === null) {
+            return;
+        }
+        const name = source.split("/").pop() ?? source;
+        await this.runMove(source, name, destParent, "");
+    }
+
+    /** Clears any lingering drop-target highlight (after a drag ends). */
+    private clearDropTargets(): void {
+        for (const el of this.panel.querySelectorAll<HTMLElement>('[data-drop-target="true"]')) {
+            delete el.dataset["dropTarget"];
+        }
     }
 
     /** Confirms, then deletes a node (to trash); surfaces the referrer list on a refused delete. */
@@ -513,6 +603,7 @@ export class NavTreePanel {
         if (!window.confirm(`Delete “${node.name}”? It moves to the trash and can be restored.`)) {
             return;
         }
+        this.options.notify(`Deleting “${node.name}”…`, false);
         const result = await this.options.deleteNode(node.path);
         if (result.status === "refused") {
             const pages = (result.referrers ?? []).map((r): string => r.page).join(", ");

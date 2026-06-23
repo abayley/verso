@@ -163,6 +163,13 @@ markdown-editor {
   font-weight: 600;
 }
 
+/* Drag-and-drop move: the row (or root list) currently under the dragged item. */
+.markdown-editor__nav-row[data-drop-target="true"],
+.markdown-editor__nav-list[data-drop-target="true"] {
+  outline: 2px dashed var(--markdown-editor-accent, currentColor);
+  outline-offset: -2px;
+}
+
 .markdown-editor__nav-disclosure,
 .markdown-editor__nav-spacer {
   flex: 0 0 1.5rem;

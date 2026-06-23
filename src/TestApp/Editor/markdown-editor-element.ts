@@ -540,54 +540,63 @@ export class MarkdownEditorElement extends HTMLElement {
                 this.navTooltipController?.register(target, text),
             notify: (message: string, isError: boolean): void => this.showUploadNotice(message, isError),
             deleteNode: async (path: string): Promise<DeleteResult> => {
-                const response = await fetch(`/tree/${encodePath(path)}?delete`, { method: "POST" });
-                if (response.status === 409) {
-                    const data: unknown = safeJson(await response.text());
-                    const referrers =
-                        data &&
-                        typeof data === "object" &&
-                        Array.isArray((data as Record<string, unknown>)["referrers"])
-                            ? ((data as Record<string, unknown>)["referrers"] as { page: string; link: string }[])
-                            : undefined;
-                    return referrers ? { status: "refused", referrers } : { status: "error" };
+                try {
+                    const response = await fetch(`/tree/${encodePath(path)}?delete`, { method: "POST" });
+                    if (response.status === 409) {
+                        const data: unknown = safeJson(await response.text());
+                        const referrers =
+                            data &&
+                            typeof data === "object" &&
+                            Array.isArray((data as Record<string, unknown>)["referrers"])
+                                ? ((data as Record<string, unknown>)["referrers"] as { page: string; link: string }[])
+                                : undefined;
+                        return referrers
+                            ? { status: "refused", referrers }
+                            : { status: "error", message: (await response.text()).trim() || "Delete refused." };
+                    }
+                    return response.ok ? { status: "deleted" } : { status: "error", message: "Delete failed." };
+                } catch {
+                    return { status: "error", message: NETWORK_ERROR };
                 }
-                return response.ok ? { status: "deleted" } : { status: "error" };
             },
             moveNode: async (path: string, destParent: string, slug: string, confirm: boolean): Promise<MoveResult> => {
-                const body = new URLSearchParams({ to: destParent, slug, ...(confirm ? { confirm: "true" } : {}) });
-                const response = await fetch(`/tree/${encodePath(path)}?move`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                    body: body.toString(),
-                });
-                if (!response.ok) {
-                    return { ok: false, message: (await response.text()).trim() || "Move failed." };
+                try {
+                    const body = new URLSearchParams({ to: destParent, slug, ...(confirm ? { confirm: "true" } : {}) });
+                    const response = await fetch(`/tree/${encodePath(path)}?move`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                        body: body.toString(),
+                    });
+                    if (!response.ok) {
+                        return { ok: false, message: (await response.text()).trim() || "Move failed." };
+                    }
+                    const data: unknown = safeJson(await response.text());
+                    const changed =
+                        data && typeof data === "object" && Array.isArray((data as Record<string, unknown>)["changed"])
+                            ? ((data as Record<string, unknown>)["changed"] as unknown[]).length
+                            : 0;
+                    return { ok: true, changed };
+                } catch {
+                    return { ok: false, message: NETWORK_ERROR };
                 }
-                const data: unknown = safeJson(await response.text());
-                const changed =
-                    data && typeof data === "object" && Array.isArray((data as Record<string, unknown>)["changed"])
-                        ? ((data as Record<string, unknown>)["changed"] as unknown[]).length
-                        : 0;
-                return { ok: true, changed };
             },
-            undo: async (): Promise<OpResult> =>
-                opResult(await fetch("/undo", { method: "POST" }), "Undone.", "Nothing to undo."),
+            undo: (): Promise<OpResult> => opRequest("/undo", { method: "POST" }, "Undone.", "Nothing to undo."),
             listTrash: async (): Promise<TrashEntry[]> => {
-                const response = await fetch("/trash", { headers: { Accept: "application/json" } });
-                if (!response.ok) {
+                try {
+                    const response = await fetch("/trash", { headers: { Accept: "application/json" } });
+                    if (!response.ok) {
+                        return [];
+                    }
+                    const data: unknown = safeJson(await response.text());
+                    return Array.isArray(data) ? (data as TrashEntry[]) : [];
+                } catch {
                     return [];
                 }
-                const data: unknown = safeJson(await response.text());
-                return Array.isArray(data) ? (data as TrashEntry[]) : [];
             },
-            restore: async (id: string): Promise<OpResult> =>
-                opResult(
-                    await fetch(`/trash/${encodeURIComponent(id)}`, { method: "POST" }),
-                    "Restored.",
-                    "Restore failed.",
-                ),
-            replay: async (): Promise<OpResult> =>
-                opResult(await fetch("/replay", { method: "POST" }), "Replayed the operation log.", "Replay failed."),
+            restore: (id: string): Promise<OpResult> =>
+                opRequest(`/trash/${encodeURIComponent(id)}`, { method: "POST" }, "Restored.", "Restore failed."),
+            replay: (): Promise<OpResult> =>
+                opRequest("/replay", { method: "POST" }, "Replayed the operation log.", "Replay failed."),
         });
     }
 
@@ -2301,17 +2310,30 @@ function safeJson(text: string): unknown {
     }
 }
 
-/** Normalises a structural-operation response (undo/restore/replay) to an OpResult, using the body as the error message. */
-async function opResult(
-    response: Response,
+/** The message shown when a structural-operation request cannot reach the server. */
+const NETWORK_ERROR = "Couldn’t reach the server.";
+
+/**
+ * Runs a structural-operation request (undo/restore/replay) and normalises it to an OpResult: the
+ * ok message on success, the response body (or a fallback) on an error status, and the network
+ * message when the fetch itself throws — so a failure always surfaces rather than being swallowed.
+ */
+async function opRequest(
+    url: string,
+    init: RequestInit,
     okMessage: string,
     failMessage: string,
 ): Promise<{ ok: boolean; message: string }> {
-    if (response.ok) {
-        return { ok: true, message: okMessage };
+    try {
+        const response = await fetch(url, init);
+        if (response.ok) {
+            return { ok: true, message: okMessage };
+        }
+        const body = (await response.text()).trim();
+        return { ok: false, message: body || failMessage };
+    } catch {
+        return { ok: false, message: NETWORK_ERROR };
     }
-    const body = (await response.text()).trim();
-    return { ok: false, message: body || failMessage };
 }
 
 function elementValue(element: HTMLElement): string {

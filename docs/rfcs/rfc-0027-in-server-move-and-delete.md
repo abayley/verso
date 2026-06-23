@@ -377,9 +377,14 @@ later optimisation, not v1.
    destination folder and optional slug, previews the impact (the dry-run `?move`
    reporting the count of files whose links change), and applies on confirmation;
    Delete confirms, then surfaces the referrer list on a refused (referenced) delete
-   or moves to trash with an Undo hint. Wired to `?move`/`?delete` via editor-element
-   callbacks. (The destination is a prompt for now; a full tree-as-chooser picker is
-   a possible later refinement.) Browser-verified against a scratch tree.
+   or moves to trash with an Undo hint. **Move is also a drag-and-drop gesture**:
+   dragging a node onto a section drops into it (onto a page drops into that page's
+   folder; onto the root list moves to the top level), with the same preview-confirm;
+   self/descendant/no-op drops are rejected. The Move button remains as a
+   keyboard-accessible alternative. Wired to `?move`/`?delete` via editor-element
+   callbacks that catch network errors and surface a clear message (so a failed or
+   unreachable request never silently does nothing). Browser-verified against a
+   scratch tree.
 
 ### Rollout Plan Escape Hatch
 

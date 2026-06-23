@@ -3,6 +3,7 @@ module Main (main) where
 import qualified MicroHttp.AttachmentSpec as AttachmentSpec
 import qualified MicroHttp.ClientErrorSpec as ClientErrorSpec
 import qualified MicroHttp.ConfigSpec as ConfigSpec
+import qualified MicroHttp.DocumentLinksSpec as DocumentLinksSpec
 import qualified MicroHttp.DocumentMetaSpec as DocumentMetaSpec
 import qualified MicroHttp.HtmlSpec as HtmlSpec
 import qualified MicroHttp.Http.FramingSpec as FramingSpec
@@ -26,6 +27,7 @@ main = hspec $ do
     AttachmentSpec.spec
     ClientErrorSpec.spec
     ConfigSpec.spec
+    DocumentLinksSpec.spec
     DocumentMetaSpec.spec
     FramingSpec.spec
     HtmlSpec.spec

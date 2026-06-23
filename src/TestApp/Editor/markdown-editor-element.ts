@@ -190,6 +190,8 @@ export class MarkdownEditorElement extends HTMLElement {
     private themeDropdownTrigger: ToolbarButtonElement | null = null;
     private visualTheme: VisualTheme = "paper";
     private tooltipController: ToolbarTooltipController | null = null;
+    /** A faster (200 ms) tooltip just for the navigation tree's truncated labels (RFC-0026). */
+    private navTooltipController: ToolbarTooltipController | null = null;
     private readonly handleSystemThemeChange = (): void => {
         if (this.theme === "match-system") {
             this.applyDocumentTheme();
@@ -314,6 +316,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.closeSlashMenu();
         this.linkController?.dispose();
         this.tooltipController?.hide();
+        this.navTooltipController?.hide();
         this.saveController?.dispose();
         this.sourceEditor?.destroy();
         this.sourceEditor = null;
@@ -440,15 +443,15 @@ export class MarkdownEditorElement extends HTMLElement {
                 this.enableAttachmentDrop(this.body);
             }
         }
-        workspace.append(this.sidebar);
-
-        // The left-hand navigation tree (RFC-0026), tree mode only. A direct child placed by CSS grid in the
-        // leading column; the `--has-nav` class switches the editor frame to the two-column layout.
+        // The navigation tree (RFC-0026), tree mode only: the workspace's leading column, so it sits below the
+        // top bar and breadcrumbs and to the left of the editing pane (RFC-0026 position revision).
         if (this.isTreeMode()) {
+            this.navTooltipController = new ToolbarTooltipController(200);
             this.navTree = this.createNavTree();
-            this.classList.add("markdown-editor--has-nav");
-            this.append(this.navTree.element());
+            workspace.insertBefore(this.navTree.element(), main);
+            this.append(this.navTooltipController.element());
         }
+        workspace.append(this.sidebar);
 
         this.append(
             this.toolbar,
@@ -499,7 +502,6 @@ export class MarkdownEditorElement extends HTMLElement {
         return new NavTreePanel({
             documentPath: this.getAttribute("data-document") ?? "",
             spine: parseTreeSpine(this.getAttribute("data-tree-spine")),
-            readonly: this.isReadonly(),
             fetchChildren: async (path: string): Promise<TreeNodeData[]> => {
                 const response = await fetch(`/tree/${encodePath(path)}`, { headers: { Accept: "application/json" } });
                 if (!response.ok) {
@@ -525,6 +527,9 @@ export class MarkdownEditorElement extends HTMLElement {
                 const suffix = editMode && !target.includes("?") ? "?edit" : "";
                 window.location.href = `/documents/${target}${suffix}`;
             },
+            registerTooltip: (target: HTMLElement, text: string): void =>
+                this.navTooltipController?.register(target, text),
+            notify: (message: string, isError: boolean): void => this.showUploadNotice(message, isError),
         });
     }
 
@@ -934,15 +939,17 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /**
-     * Keeps the single notification area in the right place for the theme: in the status row under Workbench
-     * (so messages show in the status bar), and in the footer above the command bar for the other themes.
+     * Keeps the single notification area in the right place: the status row under Workbench (so messages show
+     * in the status bar), and the footer above the command bar otherwise. In the read view the footer is
+     * hidden, so notices are lifted to a top-level child there -- the create flow (RFC-0026) runs in both views
+     * and its errors must stay visible.
      */
     private relocateNotices(): void {
         if (!this.notices || !this.footer) {
             return;
         }
 
-        if (themeUsesWorkbenchRail(this.visualTheme)) {
+        if (themeUsesWorkbenchRail(this.visualTheme) || this.isReadonly()) {
             if (this.notices.parentElement !== this) {
                 this.append(this.notices);
             }

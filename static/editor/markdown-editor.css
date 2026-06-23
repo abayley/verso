@@ -67,44 +67,33 @@ markdown-editor {
   position: relative;
 }
 
-/* The navigation tree (RFC-0026) puts a full-height column on the left. For the
-   flex-column themes this switches the editor frame to a two-column grid: the nav
-   in the leading column (spanning every content row), everything else in column
-   two. Workbench keeps its own grid and gets the nav column added separately. */
-:root:not([data-editor-theme="workbench"]) markdown-editor.markdown-editor--has-nav {
-  display: grid;
-  grid-template-columns: var(--markdown-editor-nav-width, 15rem) minmax(0, 1fr);
-}
-
-:root:not([data-editor-theme="workbench"]) markdown-editor.markdown-editor--has-nav > * {
-  grid-column: 2;
-  min-width: 0;
-}
-
-:root:not([data-editor-theme="workbench"]) markdown-editor.markdown-editor--has-nav > .markdown-editor__nav {
-  grid-column: 1;
-  grid-row: 1 / span 50;
-}
-
-/* Collapsed: the column shrinks to the toggle's width (the body is hidden below). */
-markdown-editor.markdown-editor--has-nav:has(.markdown-editor__nav[data-collapsed="true"]) {
-  grid-template-columns: auto minmax(0, 1fr);
-}
-
+/* The navigation tree (RFC-0026) is the workspace's leading column: it sits below
+   the top bar and breadcrumbs (which span the full width), to the left of the
+   editing pane, in every theme. It is a sticky flex item so it stays in view while
+   the pane scrolls, and collapses to just its toggle. */
 .markdown-editor__nav {
   align-self: start;
   border-right: 1px solid var(--markdown-editor-divider);
   box-sizing: border-box;
   color: var(--markdown-editor-muted);
   display: flex;
+  flex: 0 0 var(--markdown-editor-nav-width, 15rem);
   flex-direction: column;
   font: 13px system-ui, sans-serif;
   gap: 0.5rem;
-  max-height: 100vh;
+  margin-right: 1rem;
+  max-height: calc(100vh - 2rem);
+  min-width: 0;
   overflow: auto;
-  padding: 1rem 0.75rem;
+  padding-right: 0.75rem;
   position: sticky;
-  top: 0;
+  top: 1rem;
+}
+
+.markdown-editor__nav[data-collapsed="true"] {
+  flex-basis: auto;
+  margin-right: 0.5rem;
+  padding-right: 0.35rem;
 }
 
 .markdown-editor__nav-header {
@@ -120,6 +109,7 @@ markdown-editor.markdown-editor--has-nav:has(.markdown-editor__nav[data-collapse
 
 .markdown-editor__nav-toggle,
 .markdown-editor__nav-disclosure,
+.markdown-editor__nav-collapse-all,
 .markdown-editor__nav-create {
   background: transparent;
   border: 0;
@@ -132,6 +122,7 @@ markdown-editor.markdown-editor--has-nav:has(.markdown-editor__nav[data-collapse
 
 .markdown-editor__nav[data-collapsed="true"] .markdown-editor__metadata-heading,
 .markdown-editor__nav[data-collapsed="true"] .markdown-editor__nav-list,
+.markdown-editor__nav[data-collapsed="true"] .markdown-editor__nav-collapse-all,
 .markdown-editor__nav[data-collapsed="true"] .markdown-editor__nav-header .markdown-editor__nav-create {
   display: none;
 }
@@ -175,12 +166,17 @@ markdown-editor.markdown-editor--has-nav:has(.markdown-editor__nav[data-collapse
 
 .markdown-editor__nav-disclosure,
 .markdown-editor__nav-spacer {
-  flex: 0 0 1rem;
+  flex: 0 0 1.5rem;
   text-align: center;
 }
 
 .markdown-editor__nav-disclosure {
+  font-size: 1.25rem;
   transition: transform 0.15s ease;
+}
+
+.markdown-editor__nav-collapse-all {
+  font-size: 1.25rem;
 }
 
 .markdown-editor__nav-item[data-expanded="true"] > .markdown-editor__nav-row .markdown-editor__nav-disclosure {
@@ -201,12 +197,87 @@ markdown-editor.markdown-editor--has-nav:has(.markdown-editor__nav[data-collapse
   white-space: nowrap;
 }
 
+/* The "+" stays hidden until the pointer is over its row (or the header), in both
+   views; focus reveals it for keyboard users. */
 .markdown-editor__nav-create {
+  font-size: 1rem;
   opacity: 0;
 }
 
-.markdown-editor__nav-row:hover .markdown-editor__nav-create {
+.markdown-editor__nav-row:hover .markdown-editor__nav-create,
+.markdown-editor__nav-header:hover .markdown-editor__nav-create,
+.markdown-editor__nav-create:focus-visible {
   opacity: 1;
+}
+
+/* The inline new-page/new-section form, shown under the chosen parent. */
+.markdown-editor__nav-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.35rem 0.2rem 0.5rem 1.5rem;
+}
+
+.markdown-editor__nav-create-form form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.markdown-editor__nav-create-input {
+  background: var(--markdown-editor-background);
+  border: 1px solid var(--markdown-editor-divider);
+  border-radius: 0.25rem;
+  color: var(--markdown-editor-text);
+  font: inherit;
+  padding: 0.2rem 0.35rem;
+  width: 100%;
+}
+
+.markdown-editor__nav-create-kind {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.markdown-editor__nav-create-kind label {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 0.25rem;
+}
+
+.markdown-editor__nav-create-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.markdown-editor__nav-create-actions button {
+  background: transparent;
+  border: 1px solid var(--markdown-editor-divider);
+  border-radius: 0.2rem;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0.1rem 0.5rem;
+}
+
+/* A node whose children failed to load: a small inline error with a retry. */
+.markdown-editor__nav-error {
+  align-items: center;
+  color: var(--markdown-editor-danger, #b3261e);
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.1rem 0.2rem 0.1rem 1.5rem;
+}
+
+.markdown-editor__nav-retry {
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 0.2rem;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 0 0.3rem;
 }
 
 .markdown-editor__toolbar--top {
@@ -1302,25 +1373,12 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   height: 100vh;
 }
 
-/* Workbench with the navigation tree (RFC-0026): a nav column ahead of the rail,
-   spanning the full height. The flush rail stays put; only the named areas shift. */
-:root[data-editor-theme="workbench"] markdown-editor.markdown-editor--has-nav {
-  column-gap: 0;
-  grid-template-areas:
-    "nav rail format"
-    "nav rail tab"
-    "nav rail main"
-    "nav status status";
-  grid-template-columns: var(--markdown-editor-nav-width, 15rem) 7rem 1fr;
-}
-
-:root[data-editor-theme="workbench"] markdown-editor.markdown-editor--has-nav > .markdown-editor__nav {
-  grid-area: nav;
+/* In Workbench the workspace is the scrolling `main` area, so the navigation tree
+   (a flex child of the workspace) sits inside it and scrolls with it rather than
+   pinning to the viewport; drop the sticky/viewport-height treatment there. */
+:root[data-editor-theme="workbench"] .markdown-editor__nav {
   max-height: none;
-}
-
-:root[data-editor-theme="workbench"] markdown-editor.markdown-editor--has-nav:has(.markdown-editor__nav[data-collapsed="true"]) {
-  grid-template-columns: auto 7rem 1fr;
+  position: static;
 }
 
 /* The client-error banner occupies the status row, overlaying the status bar, so

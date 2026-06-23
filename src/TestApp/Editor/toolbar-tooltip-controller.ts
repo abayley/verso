@@ -16,10 +16,12 @@ let tooltipTargetSequence = 0;
  */
 export class ToolbarTooltipController {
     private readonly tooltip: HTMLElement;
+    private readonly showDelay: number;
     private showTimeout: number | null = null;
     private hideTimeout: number | null = null;
 
-    constructor() {
+    constructor(showDelay: number = showDelayMilliseconds) {
+        this.showDelay = showDelay;
         this.tooltip = document.createElement("wa-tooltip");
         this.tooltip.className = "markdown-editor__tooltip";
         this.tooltip.setAttribute("trigger", "manual");
@@ -71,7 +73,7 @@ export class ToolbarTooltipController {
         this.showTimeout = window.setTimeout((): void => {
             this.showTimeout = null;
             this.open(target, tooltipText);
-        }, showDelayMilliseconds);
+        }, this.showDelay);
     }
 
     /** Opens the tooltip on a target control. */

@@ -187,8 +187,12 @@ involvement, and no new FFI (`createDirectoryIfMissing` + `BS.writeFile`).
   author starts writing; the client optimistically inserts the node and the next
   tree read confirms it.
 
-The create affordance (a "new page / new section" control on a section row,
-creating the child under that section) is browser-iterated UI, not a contract.
+The create affordance is browser-iterated UI, not a contract: a "+" on each
+section row and on the panel header (top level), revealed on hover, opening one
+inline form (a title field, a page/section choice, create/cancel) under the
+chosen parent. Create is available in **both** the read and edit views (creating
+always opens the new page in the edit view). The panel also has a collapse-all
+control, and node labels carry a full-title tooltip since deep rows truncate.
 
 ### Client
 
@@ -209,16 +213,16 @@ creating the child under that section) is browser-iterated UI, not a contract.
 
 ### Layout
 
-The panel is a left column in both views.
-
-- **Workbench** (already CSS grid `rail / format / tab / main / status`): add a
-  `nav` column to the grid template.
-- **Other themes** (Paper/Aurora/Blueprint/Studio, where `markdown-editor` is a
-  flex column today): introduce a two-column grid wrapper `[nav] [main]` around
-  the existing stacked content. This is the one invasive structural change; exact
-  CSS is browser-iterated per AGENTS.md (visual work is not strict-TDD), but the
-  *behaviour* (panel present in both views, collapse/expand, persistence,
-  navigation, create) is tested.
+The panel is the **workspace's leading column** in both views: it sits below the
+top bar (the Edit/View toggle and presentation controls) and the breadcrumbs --
+which keep their full width -- and to the left of the editing pane, with the
+metadata panel still on the right. It is a sticky flex item (it stays in view
+while the pane scrolls) and collapses to just its toggle. Because the workspace is
+a plain flex row in every theme, the same placement works uniformly -- no
+per-theme grid surgery (an earlier full-height left-rail variant was dropped for
+this position on review). Exact CSS is browser-iterated per AGENTS.md (visual work
+is not strict-TDD), but the *behaviour* (present in both views, collapse/expand,
+persistence, navigation, create, lazy-load error/retry) is verified.
 
 ## Alternatives Considered
 
@@ -303,7 +307,8 @@ The panel is a left column in both views.
    navigation/disclosure. Ships usable navigation.
 2. **Phase 2 -- Create.** (Done 2026-06-23.) `POST /tree/*path` (eager write,
    title->slug, numeric-suffix collision, seed, section `index.md`); create
-   affordance (prompt-based for now); optimistic reveal + open-in-edit.
+   affordance (inline form, both views, hover-revealed "+"); optimistic reveal +
+   open-in-edit. Panel also gains collapse-all and full-title tooltips.
 
 ### Rollout Plan Escape Hatch
 

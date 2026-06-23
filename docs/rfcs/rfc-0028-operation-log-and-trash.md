@@ -17,7 +17,7 @@ superseded_by: null
 | Stage     | Timestamp        |
 |-----------|------------------|
 | Authored  | 2026-06-23       |
-| Started   |                  |
+| Started   | 2026-06-24       |
 | Completed |                  |
 
 ## Summary
@@ -238,9 +238,12 @@ preferred.)
 
 ## Rollout Plan
 
-1. **Phase 1 -- Operation log.** The logical-record type, append-only writer/reader
-   at the configured path, and recording every RFC-0027 move/delete. No replay/undo
-   yet.
+1. **Phase 1 -- Operation log.** [DONE] `MicroHttp.OperationLog`: the logical-record
+   type (`Operation`/`OpType`), render/parse round-trip, append-only writer/reader at
+   the configured path, and `nextSeq`. The tree-move endpoint records a `move` record
+   after a successful applied move (apply-then-append; previews/refusals log nothing),
+   with config keys `operation_log` and `trash_root` threaded through `treeRoutes`.
+   Replay/undo and delete-logging come in later phases.
 2. **Phase 2 -- Trash.** Delete routes to `trash_root` with a provenance manifest;
    restore (refuse-if-occupied) via RFC-0027's move machinery.
 3. **Phase 3 -- Undo.** Inverse generation for move/delete/restore; apply-and-append.

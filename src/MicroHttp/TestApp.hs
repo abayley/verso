@@ -39,11 +39,12 @@ import MicroHttp.Iteratee (Iter, liftIO, readBodyStrict)
 import MicroHttp.Log (Logger, localTimestamp, rotatingAppender, rotatingFileLogfmtLogger)
 import MicroHttp.Middleware (logRequests, withErrorResponses)
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), fileSizeBytes)
+import MicroHttp.OperationLog (OpType (..), Operation (..), appendOperation, nextSeq)
 import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
 import MicroHttp.Stream (StreamError (..))
-import MicroHttp.TreeMove (movePage, movePlanJson, moveSection)
+import MicroHttp.TreeMove (MovePlan (..), movePage, movePlanJson, moveSection)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 
 data DocumentStore = DocumentStore
@@ -115,9 +116,11 @@ configuredRoutes cfg clientErrorSink =
                     ++ attachmentRoutes (fileAttachmentStore (configString "attachment_root" "data/attachments" cfg))
                     ++ mounts
             treeRoot ->
-                treeRoutes editorTheme treeRoot ++ mounts
+                treeRoutes editorTheme treeRoot logPath trashRoot ++ mounts
   where
     editorTheme = configString "editor_theme" "paper" cfg
+    logPath = configString "operation_log" "data/operation_log" cfg
+    trashRoot = configString "trash_root" "data/trash" cfg
     mounts = [Static.static prefix root | (prefix, root) <- configMounts "static_mounts" cfg]
 
 appWithDocumentRoot :: FilePath -> Server.Application
@@ -164,13 +167,13 @@ and every other tree file (images, attachments, raw Markdown) is served
 statically and path-safely (reusing 'Static.resolveStaticPath'). The document id
 is the tree-relative path including the @.md@ extension.
 -}
-treeRoutes :: String -> FilePath -> [Router.Route]
-treeRoutes editorThemeDefault root =
+treeRoutes :: String -> FilePath -> FilePath -> FilePath -> [Router.Route]
+treeRoutes editorThemeDefault root logPath trashRoot =
     [ Router.get "/" (redirectTo "/documents/")
     , Router.get "/index.html" (redirectTo "/documents/")
     , Static.static "/static/editor" "static/editor"
     , Router.get "/tree/*path" (treeChildrenHandler root)
-    , Router.post "/tree/*path" (treePostDispatch root)
+    , Router.post "/tree/*path" (treePostDispatch root logPath trashRoot)
     , Router.post "/documents/*path" (treePost root)
     , Router.get "/documents/*path" (treeGet editorThemeDefault root)
     ]
@@ -204,9 +207,9 @@ treeCreateHandler root captures _ = do
 {- | Dispatches a @POST /tree/*path@: a section/page move when the @?move@ flag is
 present (RFC-0027), otherwise a create (RFC-0026).
 -}
-treePostDispatch :: FilePath -> Router.Handler
-treePostDispatch root captures request
-    | hasQueryFlag "move" request = treeMoveHandler root captures
+treePostDispatch :: FilePath -> FilePath -> FilePath -> Router.Handler
+treePostDispatch root logPath _trashRoot captures request
+    | hasQueryFlag "move" request = treeMoveHandler root logPath captures
     | otherwise = treeCreateHandler root captures request
 
 {- | The section-move endpoint (RFC-0027): @POST /tree/*path?move@ with form fields
@@ -214,15 +217,40 @@ treePostDispatch root captures request
 (@true@ to apply, otherwise a dry-run preview). Returns the impact plan as JSON, or a
 @409@ with the reason on refusal (root, cycle, collision, unsafe path).
 -}
-treeMoveHandler :: FilePath -> Router.Captures -> Iter StreamError Http.Response
-treeMoveHandler root captures = do
+treeMoveHandler :: FilePath -> FilePath -> Router.Captures -> Iter StreamError Http.Response
+treeMoveHandler root logPath captures = do
     bytes <- readBodyStrict (StreamParseError BodyTooLarge) treeCreateMaxBytes
     let fields = formFields (BS.unpack bytes)
         srcRel = capture "path" captures
         confirm = capture "confirm" fields == "true"
-        move = if isMarkdownPath srcRel then movePage else moveSection
+        isPage = isMarkdownPath srcRel
+        move = if isPage then movePage else moveSection
     result <- liftIO (move root srcRel (capture "to" fields) (capture "slug" fields) confirm)
+    liftIO (recordAppliedMove logPath isPage result)
     pure (either (statusResponse 409 "Conflict" . (++ "\n")) (jsonResponse . movePlanJson) result)
+
+{- | Appends a @move@ record to the operation log after a move was applied
+(apply-then-append, RFC-0028); a preview or a refusal logs nothing. The log's parent
+directory is created on demand.
+-}
+recordAppliedMove :: FilePath -> Bool -> Either String MovePlan -> IO ()
+recordAppliedMove logPath isPage (Right plan)
+    | planApplied plan = do
+        createDirectoryIfMissing True (parentDirectory logPath)
+        seq' <- nextSeq logPath
+        ts <- localTimestamp
+        appendOperation
+            logPath
+            Operation
+                { opType = OpMove
+                , opKind = if isPage then "page" else "section"
+                , opFrom = Just (planFrom plan)
+                , opTo = Just (planTo plan)
+                , opSeq = seq'
+                , opTs = ts
+                , opTrash = Nothing
+                }
+recordAppliedMove _ _ _ = pure ()
 
 -- | A handler that redirects to a fixed location (a @303 See Other@ to a GET target).
 redirectTo :: String -> Router.Handler
@@ -233,7 +261,7 @@ appWithDocumentTree :: String -> FilePath -> Server.Application
 appWithDocumentTree editorThemeDefault root =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
-        (treeRoutes editorThemeDefault root)
+        (treeRoutes editorThemeDefault root "data/operation_log" "data/trash")
 
 {- | A GET under the tree: the editor page for @?edit@ on a Markdown file,
 otherwise the file served statically (raw Markdown, images, attachments).

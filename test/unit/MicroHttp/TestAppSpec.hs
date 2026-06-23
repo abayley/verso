@@ -1,14 +1,15 @@
 module MicroHttp.TestAppSpec (spec) where
 
-import Control.Monad (when)
+import Control.Monad (forM_, void, when)
 import qualified Data.ByteString.Char8 as BS
 import Data.List (isInfixOf)
+import MicroHttp.FileOps (removeEmptyDir, removeFilePath)
 import MicroHttp.Http
 import MicroHttp.Iteratee (Iter, run, strictEnumerator)
 import qualified MicroHttp.Router as Router
 import MicroHttp.Stream (StreamError)
 import qualified MicroHttp.TestApp as TestApp
-import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory, removeFile)
 import Test.Hspec
 
 spec :: Spec
@@ -243,6 +244,25 @@ spec =
                 stillThere <- doesFileExist (treeRoot ++ "/alpha/page.md")
                 stillThere `shouldBe` True
 
+            it "given POST /tree ?move confirmed, when applied, then a move record is appended to the operation log" $ do
+                let appliedRoot = "build/tree-applied-move"
+                    logFile = "build/tree-spec-oplog"
+                removeTree appliedRoot
+                cleanFile logFile
+                createDirectoryIfMissing True (appliedRoot ++ "/x")
+                createDirectoryIfMissing True (appliedRoot ++ "/y")
+                writeFile (appliedRoot ++ "/index.md") "# Root\n"
+                writeFile (appliedRoot ++ "/x/index.md") "---\nname: X\n---\n\n# X\n"
+                writeFile (appliedRoot ++ "/y/index.md") "# Y\n"
+                let req = (request POST ["tree", "x"]){requestQuery = [("move", "")]}
+                response <- runTreeAppBody appliedRoot req "to=y&slug=x&confirm=true"
+                statusCode (responseStatus response) `shouldBe` 200
+                logged <- readFile logFile
+                logged `shouldInclude` "\"type\":\"move\""
+                logged `shouldInclude` "\"kind\":\"section\""
+                logged `shouldInclude` "\"from\":\"x\""
+                logged `shouldInclude` "\"to\":\"y/x\""
+
 nodeTuple :: TestApp.TreeNode -> (String, TestApp.NodeKind, String, Bool)
 nodeTuple nd =
     (TestApp.nodeName nd, TestApp.nodeKind nd, TestApp.nodePath nd, TestApp.nodeHasChildren nd)
@@ -281,7 +301,7 @@ runTreeApp root head = runTreeAppBody root head ""
 -- | As 'runTreeApp', with a request body (for create posts).
 runTreeAppBody :: FilePath -> RequestHead -> String -> IO Response
 runTreeAppBody root head body = do
-    outcome <- strictEnumerator (BS.pack body) (Router.route (TestApp.treeRoutes "paper" root) head) >>= run
+    outcome <- strictEnumerator (BS.pack body) (Router.route (TestApp.treeRoutes "paper" root "build/tree-spec-oplog" "build/tree-spec-trash") head) >>= run
     case outcome of
         Right response -> return response
         Left err -> expectFailure err
@@ -291,6 +311,19 @@ cleanFile :: FilePath -> IO ()
 cleanFile f = do
     exists <- doesFileExist f
     when exists (removeFile f)
+
+-- | Recursively removes a directory tree (test cleanup; no removeDirectoryRecursive in mhs).
+removeTree :: FilePath -> IO ()
+removeTree dir = do
+    isDir <- doesDirectoryExist dir
+    when isDir $ do
+        names <- listDirectory dir
+        forM_ names $ \name -> do
+            let path = dir ++ "/" ++ name
+            sub <- doesDirectoryExist path
+            if sub then removeTree path else void (removeFilePath path)
+        _ <- removeEmptyDir dir
+        pure ()
 
 request :: Method -> [String] -> RequestHead
 request method path =

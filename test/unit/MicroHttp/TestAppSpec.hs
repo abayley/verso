@@ -215,6 +215,23 @@ spec =
                 response <- runTreeAppBody treeRoot (request POST ["tree", "alpha"]) "kind=page&title="
                 statusCode (responseStatus response) `shouldBe` 400
 
+            it "given POST /tree ?move preview, when routed, then it returns the impact plan without writing" $ do
+                treeRoot <- setupTreeFixture
+                let req = (request POST ["tree", "beta"]){requestQuery = [("move", "")]}
+                response <- runTreeAppBody treeRoot req "to=alpha&slug=beta&confirm="
+                statusCode (responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "\"from\":\"beta\""
+                bodyText response `shouldInclude` "\"to\":\"alpha/beta\""
+                bodyText response `shouldInclude` "\"applied\":false"
+                stillThere <- doesFileExist (treeRoot ++ "/beta/index.md")
+                stillThere `shouldBe` True
+
+            it "given POST /tree ?move on the root, when routed, then it is refused with 409" $ do
+                treeRoot <- setupTreeFixture
+                let req = (request POST ["tree"]){requestQuery = [("move", "")]}
+                response <- runTreeAppBody treeRoot req "to=alpha&confirm=true"
+                statusCode (responseStatus response) `shouldBe` 409
+
 nodeTuple :: TestApp.TreeNode -> (String, TestApp.NodeKind, String, Bool)
 nodeTuple nd =
     (TestApp.nodeName nd, TestApp.nodeKind nd, TestApp.nodePath nd, TestApp.nodeHasChildren nd)

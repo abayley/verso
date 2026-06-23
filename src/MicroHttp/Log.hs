@@ -29,18 +29,17 @@ import Foreign.C.String (CString, peekCStringLen, withCString)
 import Foreign.Marshal.Alloc (alloca, allocaBytes)
 import Foreign.Ptr (Ptr)
 import Foreign.Storable (poke)
+import MicroHttp.FileOps (removeFilePath, renamePath)
 import MicroHttp.Http (Status (..))
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), Port (..))
 import System.Directory (doesFileExist)
 import System.IO.TimeMilli (getTimeMilli)
 
--- rename(2)/unlink(2) directly: MicroHs has no atomic renameFile/removeFile in
--- System.Directory (see MicroHttp.Attachment), so log rotation drives libc, the
--- same escape hatch this module already uses for localtime/strftime. Return
--- codes are discarded: a failed rename/unlink leaves the files as-is and the
--- caller falls back to appending (best-effort rotation, ADR-053).
-foreign import ccall "stdio.h rename" c_rename :: CString -> CString -> IO Int
-foreign import ccall "unistd.h unlink" c_unlink :: CString -> IO Int
+-- Log rotation reuses the libc rename/unlink wrappers from MicroHttp.FileOps
+-- (MicroHs has no atomic renameFile/removeFile in System.Directory). Rotation is
+-- best-effort: the wrappers' success/failure result is discarded here, so a failed
+-- rename/unlink leaves the files as-is and the caller falls back to appending
+-- (ADR-053). FileOps itself checks the codes for callers that need them (ADR-061).
 
 -- localtime converts epoch seconds to a broken-down local time (applying the
 -- zone and DST); strftime renders it. The struct tm is opaque here -- localtime
@@ -177,13 +176,13 @@ archivePath path n = path ++ "." ++ show n
 renameIfExists :: FilePath -> FilePath -> IO ()
 renameIfExists from to = do
     exists <- doesFileExist from
-    when exists (withCString from (\f -> withCString to (void . c_rename f)))
+    when exists (void (renamePath from to))
 
 -- | Unlinks a file via libc when it exists, discarding the result (best-effort).
 dropIfExists :: FilePath -> IO ()
 dropIfExists path = do
     exists <- doesFileExist path
-    when exists (withCString path (void . c_unlink))
+    when exists (void (removeFilePath path))
 
 -- | Renders an access event as a single logfmt line, stamped with @ts@ first.
 formatLogfmt :: String -> AccessEvent -> String

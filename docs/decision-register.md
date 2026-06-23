@@ -1737,6 +1737,94 @@ and a small per-expand/per-load filesystem read cost. Section labels reuse the
 ancestor-index-title reading of ADR-058, and a section's `index.md` is folded
 into the section node rather than shown as a child (extends ADR-058).
 
+### ADR-060: Move and Delete Are In-Server and Link-Preserving
+
+Status: Accepted (RFC-0027).
+
+Context: RFC-0026 deferred rename/move/delete to an external move-utility that
+would reconcile links and sidecar metadata. The owner reversed that: the
+reconciliation is wanted in-server so the external tracker can be retired. The
+served tree is gitignored, so there is no git net for the link breakage a naive
+move would cause.
+
+Decision: move and delete are server endpoints under `/tree`, and the server
+preserves relative-link integrity itself. A move rewrites every relative `.md`/
+`assets/` link across the tree whose resolved target moved (a general whole-tree
+re-resolution, `planMoveRewrites`, not a boundary special case, so a move that also
+renames fixes internal `../<oldname>/` links too), co-moves the sidecar meta
+directory, and **relocates** the moved item's entry between the source and
+destination parent `index.md` listings (those two files are excluded from the
+generic rewrite so the entry moves rather than being repointed in place). This
+supersedes RFC-0026's external-utility reconciliation contract.
+
+Consequences: the tree can be reorganised in place without leaving dangling links,
+and the tracker tool leaves the loop. The cost is a whole-tree scan per operation
+(~3,900 page reads + link parse), run behind the preview/confirm; an index is a
+later optimisation. Recovery (undo, trash, replay) is layered on by RFC-0028.
+
+### ADR-061: Filesystem Mutation Uses a Shared FileOps With Checked Return Codes
+
+Status: Accepted (RFC-0027).
+
+Context: MicroHs's `System.Directory` has no atomic file rename/remove and no
+`removeDirectory`, so `MicroHttp.Log` already drove libc `rename`/`unlink` directly
+for log rotation, discarding the return codes (best-effort rotation is acceptable).
+Move and delete need the same primitives plus `rmdir`, but a failed move or remove
+must not silently leave an inconsistent tree.
+
+Decision: consolidate the libc `rename`/`unlink`/`rmdir` bindings in a single
+`MicroHttp.FileOps`, whose wrappers **check the return code** and report success or
+failure. `MicroHttp.Log` imports the rename/unlink wrappers from it (still
+discarding the result for rotation). Callers validate tree-relative inputs with
+`safeComponent`/`resolveStaticPath` before invoking FileOps, which performs no path
+validation of its own.
+
+Consequences: one place owns filesystem mutation; a failed `rename`/`rmdir`
+surfaces to move/delete rather than being swallowed (the RFC-0027 reliability
+contract). Log rotation's behaviour is unchanged.
+
+### ADR-062: Cross-Folder Page Moves Classify Assets Shared vs Exclusive
+
+Status: Accepted (RFC-0027). Scope: realised in phase 3 (page move); recorded here
+with the move contract.
+
+Context: pages in a folder share one `assets/` directory. Moving a single page
+across folders must decide what happens to each asset it references: copying all of
+them duplicates assets siblings still use, while moving a shared asset breaks those
+siblings.
+
+Decision: classify each asset the moving page references (the union of its body
+`assets/<name>` refs and its sidecar image/attachment entries, so an unlinked
+attachment still travels) by scanning all peer pages' bodies and sidecars. An
+**exclusive** asset (no sibling references it) is relocated to the destination; a
+**shared** asset is copied (the source copy stays). Destination name collisions
+dedup by content (the `storeAsset` rule).
+
+Consequences: a page move keeps its own assets working at the destination without
+breaking siblings and without needless duplication. Classification reads bodies
+(authoritative) cross-checked with sidecars, so a body-only reference is never
+mistaken for exclusive.
+
+### ADR-063: Delete Refuses While Inbound Links Exist
+
+Status: Accepted (RFC-0027). Scope: realised in phase 4 (delete); recorded here with
+the move contract.
+
+Context: the served tree is gitignored, so a delete that drops pages other pages
+link to would leave dangling links with no git undo. The target's own parent
+`index.md` lists it, so that listing entry must not itself count as a blocking
+reference (otherwise nothing would be deletable).
+
+Decision: a delete first removes the target's entry from its parent `index.md`
+listing (the same membership reconciliation a move does), then refuses if any
+**other** page still links to the target (for a section, any page outside the
+subtree), returning the referrer list so the author resolves them first. Otherwise
+the target is routed to RFC-0028's trash rather than destroyed.
+
+Consequences: the tree stays link-clean and deletes are reversible by the author
+(resolve the referrers, or restore from trash). Full content history awaits the
+versioning store.
+
 ## ADR Registry Open Review Items
 
 - Verify socket layout assumptions on non-macOS platforms before treating

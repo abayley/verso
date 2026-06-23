@@ -20,9 +20,12 @@ module MicroHttp.DocumentLinks (
     relativeBetween,
     rewriteLinks,
     pathSegmentsOf,
+    relocatePath,
+    planMoveRewrites,
 ) where
 
 import Data.List (intercalate, isPrefixOf, sortBy)
+import Data.Maybe (fromMaybe)
 
 {- | An inline link or image target in a page body: the raw target token (the text
 between @](@ and the closing @)@ or a title, which may carry a @#anchor@/@?query@
@@ -142,6 +145,56 @@ rewriteLinks text edits = go 0 (sortBy byStart edits)
         | start < cursor = go cursor rest -- overlapping/out-of-order: skip
         | otherwise = sliceBetween cursor start ++ replacement ++ go end rest
     sliceBetween from to = take (to - from) (drop from text)
+
+{- | Relocates a tree path that lies within a moved subtree: the subtree root
+@oldPrefix@ itself, or any descendant under it, maps to the same suffix beneath
+@newPrefix@. 'Nothing' for a path outside the subtree (left where it is). The
+prefixes are non-empty tree paths (the root never moves), and a sibling whose name
+merely starts with @oldPrefix@ (e.g. @a/bc@ vs @a/b@) is not matched.
+-}
+relocatePath :: String -> String -> String -> Maybe String
+relocatePath oldPrefix newPrefix p
+    | p == oldPrefix = Just newPrefix
+    | (oldPrefix ++ "/") `isPrefixOf` p = Just (newPrefix ++ drop (length oldPrefix) p)
+    | otherwise = Nothing
+
+{- | Plans the link rewrites a move induces across the tree. Given the relocation
+@(oldPrefix, newPrefix)@ and every page as @(treePath, body)@ (paths at their
+*current* locations), it returns @(treePath, newBody)@ for each page whose body
+changes. A link is rewritten only when its current token would no longer resolve to
+the target's new location from the page's new directory, so a pure move leaves
+intra-subtree links and unrelated links byte-for-byte unchanged; a move that also
+renames additionally fixes internal links routing through the old name.
+
+The two parent index.md listings are reconciled separately (their membership entry
+relocates, not repoints) and so are excluded by the caller from the page set here.
+-}
+planMoveRewrites :: (String, String) -> [(String, String)] -> [(String, String)]
+planMoveRewrites (oldPrefix, newPrefix) pages =
+    [ (path, rewriteLinks text edits)
+    | (path, text) <- pages
+    , let edits = pageEdits path text
+    , not (null edits)
+    ]
+  where
+    reloc = relocatePath oldPrefix newPrefix
+    pageEdits path text =
+        let oldDir = dirOfPath path
+            newDir = fromMaybe oldDir (reloc oldDir)
+         in [ (linkStart l, linkEnd l, relativeBetween newDir newTarget ++ suffix)
+            | l <- pageLinks text
+            , let (pathPart, suffix) = splitTargetSuffix (linkTarget l)
+            , Just oldTarget <- [resolveTarget oldDir (linkTarget l)]
+            , let newTarget = fromMaybe oldTarget (reloc oldTarget)
+            , resolveTarget newDir pathPart /= Just newTarget
+            ]
+
+-- | The tree-relative directory holding a page (its path minus the final segment; @""@ at the root).
+dirOfPath :: String -> String
+dirOfPath p = intercalate "/" (initOrEmpty (pathSegmentsOf p))
+  where
+    initOrEmpty [] = []
+    initOrEmpty xs = init xs
 
 -- | The non-empty @/@-separated segments of a path.
 pathSegmentsOf :: String -> [String]

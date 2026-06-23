@@ -4,7 +4,9 @@ import qualified MicroHttp.AttachmentSpec as AttachmentSpec
 import qualified MicroHttp.ClientErrorSpec as ClientErrorSpec
 import qualified MicroHttp.ConfigSpec as ConfigSpec
 import qualified MicroHttp.DocumentLinksSpec as DocumentLinksSpec
+import qualified MicroHttp.DocumentListingSpec as DocumentListingSpec
 import qualified MicroHttp.DocumentMetaSpec as DocumentMetaSpec
+import qualified MicroHttp.FileOpsSpec as FileOpsSpec
 import qualified MicroHttp.HtmlSpec as HtmlSpec
 import qualified MicroHttp.Http.FramingSpec as FramingSpec
 import qualified MicroHttp.Http.ParserSpec as ParserSpec
@@ -18,6 +20,7 @@ import qualified MicroHttp.RouterSpec as RouterSpec
 import qualified MicroHttp.ServerSpec as ServerSpec
 import qualified MicroHttp.StaticSpec as StaticSpec
 import qualified MicroHttp.TestAppSpec as TestAppSpec
+import qualified MicroHttp.TreeMoveSpec as TreeMoveSpec
 import qualified MicroHttpSpec as FacadeSpec
 import Test.Hspec
 
@@ -28,7 +31,9 @@ main = hspec $ do
     ClientErrorSpec.spec
     ConfigSpec.spec
     DocumentLinksSpec.spec
+    DocumentListingSpec.spec
     DocumentMetaSpec.spec
+    FileOpsSpec.spec
     FramingSpec.spec
     HtmlSpec.spec
     HttpSpec.spec
@@ -37,6 +42,7 @@ main = hspec $ do
     RouterSpec.spec
     ServerSpec.spec
     StaticSpec.spec
+    TreeMoveSpec.spec
     IterateeSpec.spec
     LogSpec.spec
     MiddlewareSpec.spec

@@ -83,3 +83,49 @@ spec =
 
             it "is a no-op with no edits" $ do
                 rewriteLinks "unchanged" [] `shouldBe` "unchanged"
+
+        describe "relocatePath" $ do
+            it "relocates the subtree root and its descendants, leaving others" $ do
+                relocatePath "a/b" "c/b" "a/b" `shouldBe` Just "c/b"
+                relocatePath "a/b" "c/b" "a/b/index.md" `shouldBe` Just "c/b/index.md"
+                relocatePath "a/b" "c/b" "a/b/sub/x.md" `shouldBe` Just "c/b/sub/x.md"
+                relocatePath "a/b" "c/b" "a/other.md" `shouldBe` Nothing
+                relocatePath "a/b" "c/b" "a/bc/x.md" `shouldBe` Nothing
+
+            it "handles a rename in place (same parent, new slug)" $ do
+                relocatePath "a/b" "a/bnew" "a/b/x.md" `shouldBe` Just "a/bnew/x.md"
+
+        describe "planMoveRewrites" $ do
+            it "rewrites an inbound link from outside the moved subtree" $ do
+                let pages =
+                        [ ("a/index.md", "See [B](./b/index.md).\n")
+                        , ("a/b/index.md", "# B\n")
+                        ]
+                planMoveRewrites ("a/b", "c/b") pages
+                    `shouldBe` [("a/index.md", "See [B](../c/b/index.md).\n")]
+
+            it "leaves intra-subtree links untouched on a plain move" $ do
+                let pages =
+                        [ ("a/b/index.md", "Child [P](./p.md) and [Q](./sub/q.md).\n")
+                        , ("a/b/p.md", "Up [Idx](./index.md).\n")
+                        ]
+                planMoveRewrites ("a/b", "c/b") pages `shouldBe` []
+
+            it "fixes the moved page's outward link to a non-moved target" $ do
+                let pages = [("a/b/p.md", "Out [Z](../z.md).\n")]
+                planMoveRewrites ("a/b", "c/b") pages
+                    `shouldBe` [("a/b/p.md", "Out [Z](../../a/z.md).\n")]
+
+            it "fixes an internal link routing through the old name on a rename" $ do
+                let pages = [("a/b/sub/p.md", "Sib [O](../../b/other.md).\n")]
+                planMoveRewrites ("a/b", "a/bnew") pages
+                    `shouldBe` [("a/b/sub/p.md", "Sib [O](../other.md).\n")]
+
+            it "leaves external targets and code-fenced links alone" $ do
+                let pages = [("a/index.md", "[E](https://x.test) and `code`.\n")]
+                planMoveRewrites ("a/b", "c/b") pages `shouldBe` []
+
+            it "preserves a target's anchor suffix when rewriting" $ do
+                let pages = [("a/index.md", "[B](./b/index.md#intro)\n")]
+                planMoveRewrites ("a/b", "c/b") pages
+                    `shouldBe` [("a/index.md", "[B](../c/b/index.md#intro)\n")]

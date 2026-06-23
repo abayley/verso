@@ -43,6 +43,7 @@ import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
 import MicroHttp.Stream (StreamError (..))
+import MicroHttp.TreeMove (movePlanJson, moveSection)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 
 data DocumentStore = DocumentStore
@@ -169,7 +170,7 @@ treeRoutes editorThemeDefault root =
     , Router.get "/index.html" (redirectTo "/documents/")
     , Static.static "/static/editor" "static/editor"
     , Router.get "/tree/*path" (treeChildrenHandler root)
-    , Router.post "/tree/*path" (treeCreateHandler root)
+    , Router.post "/tree/*path" (treePostDispatch root)
     , Router.post "/documents/*path" (treePost root)
     , Router.get "/documents/*path" (treeGet editorThemeDefault root)
     ]
@@ -199,6 +200,27 @@ treeCreateHandler root captures _ = do
     let fields = formFields (BS.unpack bytes)
     result <- liftIO (createTreeNode root (capture "path" captures) (capture "kind" fields) (capture "title" fields))
     pure (either (statusResponse 400 "Bad Request") id result)
+
+{- | Dispatches a @POST /tree/*path@: a section/page move when the @?move@ flag is
+present (RFC-0027), otherwise a create (RFC-0026).
+-}
+treePostDispatch :: FilePath -> Router.Handler
+treePostDispatch root captures request
+    | hasQueryFlag "move" request = treeMoveHandler root captures
+    | otherwise = treeCreateHandler root captures request
+
+{- | The section-move endpoint (RFC-0027): @POST /tree/*path?move@ with form fields
+@to@ (destination parent tree path), @slug@ (optional new slug), and @confirm@
+(@true@ to apply, otherwise a dry-run preview). Returns the impact plan as JSON, or a
+@409@ with the reason on refusal (root, cycle, collision, unsafe path).
+-}
+treeMoveHandler :: FilePath -> Router.Captures -> Iter StreamError Http.Response
+treeMoveHandler root captures = do
+    bytes <- readBodyStrict (StreamParseError BodyTooLarge) treeCreateMaxBytes
+    let fields = formFields (BS.unpack bytes)
+        confirm = capture "confirm" fields == "true"
+    result <- liftIO (moveSection root (capture "path" captures) (capture "to" fields) (capture "slug" fields) confirm)
+    pure (either (statusResponse 409 "Conflict" . (++ "\n")) (jsonResponse . movePlanJson) result)
 
 -- | A handler that redirects to a fixed location (a @303 See Other@ to a GET target).
 redirectTo :: String -> Router.Handler

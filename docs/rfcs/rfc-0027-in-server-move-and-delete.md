@@ -17,7 +17,7 @@ superseded_by: null
 | Stage     | Timestamp        |
 |-----------|------------------|
 | Authored  | 2026-06-23       |
-| Started   |                  |
+| Started   | 2026-06-23       |
 | Completed |                  |
 
 ## Summary
@@ -343,10 +343,19 @@ later optimisation, not v1.
 
 ## Rollout Plan
 
-1. **Phase 1 -- Link engine.** The pure module + exhaustive tests. No FS mutation.
-2. **Phase 2 -- FileOps + section move.** `MicroHttp.FileOps` (add `rmdir`);
-   `?move` for sections (`rename(2)` + boundary-link rewrite + parent-listing
-   card relocation + preview).
+1. **Phase 1 -- Link engine.** [DONE] The pure module + exhaustive tests. No FS
+   mutation. (`MicroHttp.DocumentLinks`.)
+2. **Phase 2 -- FileOps + section move.** [DONE] `MicroHttp.FileOps`
+   (`rename`/`unlink`/`rmdir`, checked return codes; `MicroHttp.Log` now imports the
+   rename/unlink wrappers from it). General whole-tree link rewrite
+   (`planMoveRewrites`, not boundary-special-cased). Parent index.md listing
+   relocation (`MicroHttp.DocumentListing`: remove the source card, add the
+   repointed card to the destination, synthesise when absent). `MicroHttp.TreeMove`
+   wires the IO: page enumeration, refusals (root / cycle / collision / unsafe
+   path), `rename(2)`, and the writes. Endpoint `POST /tree/*path?move` with form
+   fields `to`/`slug`/`confirm`; `confirm` absent returns the impact plan as a
+   dry-run preview (the Open Question's option (b): one endpoint, body-driven), and
+   `confirm=true` applies it.
 3. **Phase 3 -- Page move.** Same-folder rename, then cross-folder move with the
    asset analysis, meta-dir co-move, and parent-listing bullet relocation.
 4. **Phase 4 -- Delete.** Refuse-if-referenced + referrer list; page delete
@@ -366,9 +375,12 @@ later optimisation, not v1.
 
 ## Open Questions
 
-- **Preview transport**: a dedicated `GET /tree/<path>?move-preview&to=...`
-  returning the impact JSON, vs the client computing nothing and the `?move` body
-  carrying a `confirm` flag (preview first, apply second) -- decide in Phase 2.
+- **Preview transport** (resolved, Phase 2): option (b) -- one endpoint,
+  `POST /tree/<path>?move` with the body carrying a `confirm` flag. Without
+  `confirm=true` the server computes the move and returns the impact plan as JSON
+  without writing; with it, the move is applied. Chosen over a separate
+  `?move-preview` GET for parity with the existing body-driven create endpoint and
+  to keep one code path; a local, reversible decision.
 - **Anchor/query suffixes on link targets** (`foo.md#section`): preserved verbatim
   on rewrite; confirm none need path-relative anchor fix-ups.
 - **Section move with external inbound links**: rewrite them (as designed) vs also

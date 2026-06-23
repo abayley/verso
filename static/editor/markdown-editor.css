@@ -69,8 +69,9 @@ markdown-editor {
 
 /* The navigation tree (RFC-0026) is the workspace's leading column: it sits below
    the top bar and breadcrumbs (which span the full width), to the left of the
-   editing pane, in every theme. It is a sticky flex item so it stays in view while
-   the pane scrolls, and collapses to just its toggle. */
+   editing pane, in every theme. It scrolls with its container (the page, or the
+   Workbench content pane) rather than owning a scrollbar, so there is a single
+   scrollbar; it collapses to just its toggle. */
 .markdown-editor__nav {
   align-self: start;
   border-right: 1px solid var(--markdown-editor-divider);
@@ -82,12 +83,8 @@ markdown-editor {
   font: 13px system-ui, sans-serif;
   gap: 0.5rem;
   margin-right: 1rem;
-  max-height: calc(100vh - 2rem);
   min-width: 0;
-  overflow: auto;
   padding-right: 0.75rem;
-  position: sticky;
-  top: 1rem;
 }
 
 .markdown-editor__nav[data-collapsed="true"] {
@@ -444,16 +441,19 @@ a.markdown-editor__crumb:hover {
   flex: 1;
   gap: 1.5rem;
   margin: 0 auto;
-  max-width: 60rem;
+  max-width: 74rem;
   width: 100%;
 }
 
+/* The widths cap the whole workspace row (nav + editing column + metadata panel),
+   so they are wider than the bare editing measure to leave the navigation tree its
+   column (RFC-0026). */
 markdown-editor[data-body-width="narrow"] .markdown-editor__workspace {
-  max-width: 60rem;
+  max-width: 74rem;
 }
 
 markdown-editor[data-body-width="medium"] .markdown-editor__workspace {
-  max-width: 76rem;
+  max-width: 92rem;
 }
 
 markdown-editor[data-body-width="full"] .markdown-editor__workspace {
@@ -1370,15 +1370,15 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
     "status status";
   grid-template-columns: 7rem 1fr;
   grid-template-rows: auto auto 1fr auto;
+  /* A fixed-viewport IDE frame: the toolbar (format), breadcrumb (tab), rail, and
+     status bar stay put, and only the content pane (main, below) scrolls. */
   height: 100vh;
 }
 
-/* In Workbench the workspace is the scrolling `main` area, so the navigation tree
-   (a flex child of the workspace) sits inside it and scrolls with it rather than
-   pinning to the viewport; drop the sticky/viewport-height treatment there. */
+/* The navigation tree scrolls with the Workbench content pane (it is inside the
+   scrolling workspace), so it shares that one scrollbar rather than pinning. */
 :root[data-editor-theme="workbench"] .markdown-editor__nav {
-  max-height: none;
-  position: static;
+  align-self: stretch;
 }
 
 /* The client-error banner occupies the status row, overlaying the status bar, so
@@ -1505,10 +1505,31 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   width: 100%;
 }
 
+/* The content pane is a full-width scroll container (so its scrollbar is at the
+   window's right edge, not mid-page), with the nav + editing column + metadata
+   panel centred inside it; the editing column carries the width measure. */
 :root[data-editor-theme="workbench"] .markdown-editor__workspace {
   grid-area: main;
+  justify-content: center;
+  max-width: none;
   min-height: 0;
   overflow: auto;
+}
+
+:root[data-editor-theme="workbench"] .markdown-editor__main {
+  flex: 0 1 auto;
+}
+
+:root[data-editor-theme="workbench"] markdown-editor[data-body-width="narrow"] .markdown-editor__main {
+  width: 41rem;
+}
+
+:root[data-editor-theme="workbench"] markdown-editor[data-body-width="medium"] .markdown-editor__main {
+  width: 59rem;
+}
+
+:root[data-editor-theme="workbench"] markdown-editor[data-body-width="full"] .markdown-editor__main {
+  flex: 1;
 }
 
 :root[data-editor-theme="workbench"] .markdown-editor__word-count {

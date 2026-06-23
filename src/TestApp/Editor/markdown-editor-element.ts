@@ -571,11 +571,11 @@ export class MarkdownEditorElement extends HTMLElement {
                         return { ok: false, message: (await response.text()).trim() || "Move failed." };
                     }
                     const data: unknown = safeJson(await response.text());
-                    const changed =
-                        data && typeof data === "object" && Array.isArray((data as Record<string, unknown>)["changed"])
-                            ? ((data as Record<string, unknown>)["changed"] as unknown[]).length
-                            : 0;
-                    return { ok: true, changed };
+                    const record = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
+                    const changed = Array.isArray(record["changed"]) ? (record["changed"] as unknown[]).length : 0;
+                    return typeof record["to"] === "string"
+                        ? { ok: true, changed, to: record["to"] as string }
+                        : { ok: true, changed };
                 } catch {
                     return { ok: false, message: NETWORK_ERROR };
                 }

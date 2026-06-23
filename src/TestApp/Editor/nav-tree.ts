@@ -99,6 +99,11 @@ function parentOfPath(path: string): string {
     return index < 0 ? "" : path.slice(0, index);
 }
 
+/** The index.md document path of a folder (`index.md` at the root), for navigating to a folder. */
+function folderIndexPath(folder: string): string {
+    return folder === "" ? "index.md" : `${folder}/index.md`;
+}
+
 /** A delete outcome from the server: moved to trash, refused with referrers, or an error. */
 export interface DeleteResult {
     status: "deleted" | "refused" | "error";
@@ -106,10 +111,11 @@ export interface DeleteResult {
     message?: string;
 }
 
-/** A move outcome: applied (or previewed) with the count of files whose links change, or an error. */
+/** A move outcome: applied (or previewed) with the count of files whose links change, the new path, or an error. */
 export interface MoveResult {
     ok: boolean;
     changed?: number;
+    to?: string;
     message?: string;
 }
 
@@ -534,7 +540,14 @@ export class NavTreePanel {
             return;
         }
         this.options.notify(`Moved “${name}”.`, false);
-        await this.refresh();
+        // If the open document moved (the item itself, or a page inside a moved section), follow it to
+        // its new location instead of leaving the editor on the old path; otherwise refresh in place.
+        const openMoved = this.openDocumentUnder(path);
+        if (openMoved !== null && applied.to) {
+            this.options.navigate(applied.to + openMoved.slice(path.length));
+        } else {
+            await this.refresh();
+        }
     }
 
     /**
@@ -615,7 +628,27 @@ export class NavTreePanel {
             return;
         }
         this.options.notify(`Deleted “${node.name}” (in trash). Use Undo or Trash to recover.`, false);
-        await this.refresh();
+        // If the open document was just deleted (the page itself, or anything inside a deleted
+        // section), navigate to the parent folder's index rather than leaving the editor on a
+        // vanished file; otherwise refresh the tree in place.
+        if (this.openDocumentUnder(node.path) !== null) {
+            this.options.navigate(folderIndexPath(parentOfPath(node.path)));
+        } else {
+            await this.refresh();
+        }
+    }
+
+    /**
+     * The open document's path if it is at or beneath @oldPath@ (so an operation on @oldPath@ moves
+     * the file out from under the editor), else null. A page matches by equality; a section matches
+     * its own index.md and any descendant.
+     */
+    private openDocumentUnder(oldPath: string): string | null {
+        const open = this.options.documentPath;
+        if (open === oldPath) {
+            return open;
+        }
+        return open.startsWith(`${oldPath}/`) ? open : null;
     }
 
     private async undo(): Promise<void> {

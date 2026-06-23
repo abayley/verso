@@ -383,8 +383,11 @@ later optimisation, not v1.
    self/descendant/no-op drops are rejected. The Move button remains as a
    keyboard-accessible alternative. Wired to `?move`/`?delete` via editor-element
    callbacks that catch network errors and surface a clear message (so a failed or
-   unreachable request never silently does nothing). Browser-verified against a
-   scratch tree.
+   unreachable request never silently does nothing). When the operation targets the
+   **currently-open** document, the editor navigates away instead of stranding on a
+   vanished file: a delete goes to the parent folder's index, a move follows the page
+   to its new location (and a descendant of a moved/deleted section is handled too).
+   Browser-verified against a scratch tree.
 
 ### Rollout Plan Escape Hatch
 

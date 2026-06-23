@@ -44,7 +44,7 @@ import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
 import MicroHttp.Stream (StreamError (..))
-import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), deleteTarget, movePage, movePlanJson, moveSection, restoreFromTrash)
+import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), deleteTarget, movePage, movePlanJson, moveSection, replayLog, replayReportJson, restoreFromTrash)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 
 data DocumentStore = DocumentStore
@@ -176,6 +176,7 @@ treeRoutes editorThemeDefault root logPath trashRoot =
     , Router.post "/tree/*path" (treePostDispatch root logPath trashRoot)
     , Router.post "/trash/*id" (treeRestoreHandler root logPath trashRoot)
     , Router.post "/undo" (treeUndoHandler root logPath trashRoot)
+    , Router.post "/replay" (treeReplayHandler root logPath trashRoot)
     , Router.post "/documents/*path" (treePost root)
     , Router.get "/documents/*path" (treeGet editorThemeDefault root)
     ]
@@ -411,6 +412,16 @@ applyInverse root logPath trashRoot op = case opType op of
                 , opTs = ts
                 , opTrash = trash
                 }
+
+{- | The replay endpoint (RFC-0028 phase 4): @POST /replay@ applies the operation log
+in order to the (refreshed) corpus and returns the best-effort report. Replay does
+not append to the log.
+-}
+treeReplayHandler :: FilePath -> FilePath -> FilePath -> Router.Handler
+treeReplayHandler root logPath trashRoot _ _ = liftIO $ do
+    ops <- readOperations logPath
+    report <- replayLog root trashRoot ops
+    pure (jsonResponse (replayReportJson report))
 
 -- | @"page"@ or @"section"@ for a tree path.
 kindOf :: String -> String

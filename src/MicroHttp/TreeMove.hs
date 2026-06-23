@@ -19,6 +19,9 @@ module MicroHttp.TreeMove (
     DeleteOutcome (..),
     deleteTarget,
     restoreFromTrash,
+    ReplayEntry (..),
+    replayLog,
+    replayReportJson,
 ) where
 
 import Control.Monad (forM, forM_, void, when, zipWithM)
@@ -39,6 +42,7 @@ import MicroHttp.DocumentLinks (
 import MicroHttp.DocumentListing (addListingEntry, removeListingEntry)
 import MicroHttp.DocumentMeta (metaDirectoryFor)
 import MicroHttp.FileOps (removeEmptyDir, removeFilePath, renamePath)
+import MicroHttp.OperationLog (OpType (..), Operation (..))
 import MicroHttp.Static (resolveStaticPath)
 import MicroHttp.Trash (Manifest (..), TrashItem (..), parseManifest, renderManifest)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
@@ -510,6 +514,80 @@ targetOccupied root path kind =
 -- | Writes a trash entry's provenance manifest.
 writeManifest :: FilePath -> Manifest -> IO ()
 writeManifest entryDir manifest = BS.writeFile (entryDir ++ "/manifest") (BS.pack (renderManifest manifest))
+
+-- | One operation's outcome during replay: its seq, type, and @applied@ or @skipped: <reason>@ status.
+data ReplayEntry = ReplayEntry
+    { reSeq :: Int
+    , reType :: String
+    , reStatus :: String
+    }
+    deriving (Eq, Show)
+
+{- | Replays the operation log onto a (refreshed, original-layout) corpus in @seq@
+order (RFC-0028 phase 4), each operation going through the same move/delete/restore
+machinery. Best-effort: an operation whose precondition no longer holds (source
+missing, destination occupied, now-referenced) is skipped and recorded, and replay
+continues. A delete reuses the operation's recorded trash id so a later restore in
+the log finds the entry; replay does not append to the log.
+-}
+replayLog :: FilePath -> FilePath -> [Operation] -> IO [ReplayEntry]
+replayLog root trashRoot = mapM replayOne
+  where
+    replayOne op = do
+        status <- applyReplayOp root trashRoot op
+        pure (ReplayEntry (opSeq op) (typeWord (opType op)) status)
+
+-- | Applies one operation during replay, returning @applied@ or @skipped: <reason>@.
+applyReplayOp :: FilePath -> FilePath -> Operation -> IO String
+applyReplayOp root trashRoot op = case opType op of
+    OpMove -> do
+        let from = fromMaybe "" (opFrom op)
+            to = fromMaybe "" (opTo op)
+            move = if opKind op == "page" then movePage else moveSection
+        result <- move root from (parentRel to) (slugOfPath (opKind op) to) True
+        pure (movePlanStatus result)
+    OpDelete -> do
+        let from = fromMaybe "" (opFrom op)
+            trashId = fromMaybe (show (opSeq op)) (opTrash op)
+        result <- deleteTarget root trashRoot from trashId (opSeq op)
+        pure $ case result of
+            Left err -> "skipped: " ++ err
+            Right (Refused _) -> "skipped: referenced"
+            Right Deleted{} -> "applied"
+    OpRestore -> do
+        result <- restoreFromTrash root trashRoot (fromMaybe "" (opTrash op))
+        pure (either ("skipped: " ++) (const "applied") result)
+
+-- | The status word for a move result during replay.
+movePlanStatus :: Either String MovePlan -> String
+movePlanStatus (Left err) = "skipped: " ++ err
+movePlanStatus (Right plan) = if planApplied plan then "applied" else "skipped: not applied"
+
+-- | The destination slug to move a path to: a page's basename without @.md@, a section's last segment.
+slugOfPath :: String -> String -> String
+slugOfPath kind path = case pathSegmentsOf path of
+    [] -> ""
+    segs -> if kind == "page" then dropDotMd (last segs) else last segs
+
+-- | The wire word for an operation type.
+typeWord :: OpType -> String
+typeWord OpMove = "move"
+typeWord OpDelete = "delete"
+typeWord OpRestore = "restore"
+
+-- | A replay report as JSON @{"replayed":[{"seq","type","status"}]}@.
+replayReportJson :: [ReplayEntry] -> String
+replayReportJson entries =
+    "{\"replayed\":[" ++ intercalate "," (map one entries) ++ "]}"
+  where
+    one e =
+        "{\"seq\":"
+            ++ show (reSeq e)
+            ++ ",\"type\":"
+            ++ jsonStr (reType e)
+            ++ ",\"status\":"
+            ++ jsonStr (reStatus e)
+            ++ "}"
 
 -- | Reads every @.md@ page beneath the tree as @(treeRelPath, body)@, skipping dot-entries and @assets@/@meta@ folders.
 enumerateMarkdown :: FilePath -> String -> IO [(String, String)]

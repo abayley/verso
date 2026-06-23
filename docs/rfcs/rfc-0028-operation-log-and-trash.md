@@ -256,8 +256,12 @@ preferred.)
    `restoreFromTrash` for a delete, `deleteTarget` for a restore -- and appends the
    inverse as a new record (undo is itself logged, so a further undo is a redo). A
    @409@ when the log is empty or the inverse cannot apply (occupied/now-referenced).
-4. **Phase 4 -- Replay.** Ordered, best-effort replay onto a refreshed corpus with a
-   report.
+4. **Phase 4 -- Replay.** [DONE] `MicroHttp.TreeMove.replayLog` + `POST /replay`:
+   applies the log in `seq` order through the move/delete/restore machinery,
+   best-effort -- an op whose precondition fails (source missing, destination
+   occupied, now-referenced) is skipped and recorded, replay continues. A delete
+   reuses the op's recorded trash id so a later restore finds the entry; replay does
+   not append to the log. Returns a JSON report of each op's seq/type/status.
 5. **Phase 5 -- Client UX.** Undo affordance, a trash view with restore, and a
    replay trigger + report surface.
 

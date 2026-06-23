@@ -263,6 +263,37 @@ spec =
                 logged `shouldInclude` "\"from\":\"x\""
                 logged `shouldInclude` "\"to\":\"y/x\""
 
+            it "given POST /tree ?delete on a referenced page, when routed, then it is refused with the referrer list" $ do
+                appliedRoot <- setupDeleteRouteFixture
+                let req = (request POST ["tree", "a.md"]){requestQuery = [("delete", "")]}
+                response <- runTreeAppBody appliedRoot req ""
+                statusCode (responseStatus response) `shouldBe` 409
+                bodyText response `shouldInclude` "\"refused\":true"
+                bodyText response `shouldInclude` "\"page\":\"b.md\""
+
+            it "given POST /tree ?delete on an unreferenced page, when routed, then it trashes the page and logs a delete" $ do
+                appliedRoot <- setupDeleteRouteFixture
+                let req = (request POST ["tree", "b.md"]){requestQuery = [("delete", "")]}
+                response <- runTreeAppBody appliedRoot req ""
+                statusCode (responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "\"deleted\":\"b.md\""
+                doesFileExist (appliedRoot ++ "/b.md") `shouldReturn` False
+                doesFileExist "build/tree-spec-trash/0/manifest" `shouldReturn` True
+                logged <- readFile "build/tree-spec-oplog"
+                logged `shouldInclude` "\"type\":\"delete\""
+                logged `shouldInclude` "\"from\":\"b.md\""
+
+            it "given POST /trash/<id> after a delete, when routed, then it restores the page and logs a restore" $ do
+                appliedRoot <- setupDeleteRouteFixture
+                let delReq = (request POST ["tree", "b.md"]){requestQuery = [("delete", "")]}
+                _ <- runTreeAppBody appliedRoot delReq ""
+                response <- runTreeAppBody appliedRoot (request POST ["trash", "0"]) ""
+                statusCode (responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "\"restored\":\"b.md\""
+                doesFileExist (appliedRoot ++ "/b.md") `shouldReturn` True
+                logged <- readFile "build/tree-spec-oplog"
+                logged `shouldInclude` "\"type\":\"restore\""
+
 nodeTuple :: TestApp.TreeNode -> (String, TestApp.NodeKind, String, Bool)
 nodeTuple nd =
     (TestApp.nodeName nd, TestApp.nodeKind nd, TestApp.nodePath nd, TestApp.nodeHasChildren nd)
@@ -290,6 +321,22 @@ setupTreeFixture = do
     writeFile (root ++ "/empty/index.md") (seed "empty" "Empty Section")
     writeFile (root ++ "/meta/meta.yaml") "x: y\n"
     writeFile (root ++ "/assets/diagram.png") "binary\n"
+    pure root
+
+{- | Builds a delete/restore route fixture and resets the harness log/trash dirs: a
+root with two pages where @b.md@ links to @a.md@ (so deleting @a.md@ is refused and
+deleting @b.md@ is allowed). Returns the fixture root.
+-}
+setupDeleteRouteFixture :: IO FilePath
+setupDeleteRouteFixture = do
+    let root = "build/tree-del-route"
+    removeTree root
+    cleanFile "build/tree-spec-oplog"
+    removeTree "build/tree-spec-trash"
+    createDirectoryIfMissing True root
+    writeFile (root ++ "/index.md") "# Root\n\n- [A](./a.md)\n- [B](./b.md)\n"
+    writeFile (root ++ "/a.md") "# A\n"
+    writeFile (root ++ "/b.md") "# B\n\n[A](./a.md)\n"
     pure root
 
 {- | Runs the tree-serving routes (RFC-0026) over a request head against a real

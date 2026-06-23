@@ -1,5 +1,6 @@
 module MicroHttp.DocumentLinksSpec (spec) where
 
+import Data.List (isPrefixOf)
 import MicroHttp.DocumentLinks
 import Test.Hspec
 
@@ -160,3 +161,22 @@ spec =
             it "marks an asset shared when any peer references it, exclusive otherwise" $ do
                 classifyAssets ["a.png", "b.png"] [["a.png"], ["c.png"]]
                     `shouldBe` [("a.png", SharedAsset), ("b.png", ExclusiveAsset)]
+
+        describe "referrersMatching" $ do
+            it "finds pages linking to a target, excluding listed pages, with the raw link" $ do
+                let pages =
+                        [ ("a/index.md", "Card [P](./p.md)\n")
+                        , ("a/other.md", "See [P](./p.md) twice [P](./p.md#x)\n")
+                        , ("a/p.md", "self [me](./p.md)\n")
+                        ]
+                referrersMatching (== "a/p.md") ["a/index.md", "a/p.md"] pages
+                    `shouldBe` [("a/other.md", "./p.md"), ("a/other.md", "./p.md#x")]
+
+            it "matches a subtree predicate for a section delete" $ do
+                let pages =
+                        [ ("top.md", "Into [X](./sec/sub/x.md)\n")
+                        , ("sec/inside.md", "Sibling [Y](./y.md)\n")
+                        ]
+                    inSubtree t = t == "sec" || ("sec/" `isPrefixOf` t)
+                referrersMatching inSubtree ["sec/inside.md"] pages
+                    `shouldBe` [("top.md", "./sec/sub/x.md")]

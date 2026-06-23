@@ -26,6 +26,7 @@ module MicroHttp.DocumentLinks (
     assetNamesIn,
     AssetClass (..),
     classifyAssets,
+    referrersMatching,
 ) where
 
 import Data.List (intercalate, isPrefixOf, sortBy)
@@ -260,6 +261,23 @@ references (each peer's referenced names): 'SharedAsset' when any peer reference
 classifyAssets :: [String] -> [[String]] -> [(String, AssetClass)]
 classifyAssets moving peerRefs =
     [(asset, if any (asset `elem`) peerRefs then SharedAsset else ExclusiveAsset) | asset <- moving]
+
+{- | The inbound references to a delete target: each page (excluding @excluded@
+paths) and the raw link token of every one of its links that resolves to a path the
+@matches@ predicate accepts. For a page delete @matches@ is equality with the target;
+for a section delete it accepts the subtree (the folder and its descendants), and the
+subtree's own pages are excluded. Used to refuse a referenced delete (RFC-0027,
+ADR-063) and list the referrers.
+-}
+referrersMatching :: (String -> Bool) -> [String] -> [(String, String)] -> [(String, String)]
+referrersMatching matches excluded pages =
+    [ (path, linkTarget l)
+    | (path, body) <- pages
+    , path `notElem` excluded
+    , l <- pageLinks body
+    , Just target <- [resolveTarget (dirOfPath path) (linkTarget l)]
+    , matches target
+    ]
 
 -- | The tree-relative directory holding a page (its path minus the final segment; @""@ at the root).
 dirOfPath :: String -> String

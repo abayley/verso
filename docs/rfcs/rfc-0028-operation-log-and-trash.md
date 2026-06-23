@@ -244,8 +244,13 @@ preferred.)
    after a successful applied move (apply-then-append; previews/refusals log nothing),
    with config keys `operation_log` and `trash_root` threaded through `treeRoutes`.
    Replay/undo and delete-logging come in later phases.
-2. **Phase 2 -- Trash.** Delete routes to `trash_root` with a provenance manifest;
-   restore (refuse-if-occupied) via RFC-0027's move machinery.
+2. **Phase 2 -- Trash.** [DONE] `MicroHttp.Trash` (provenance manifest: each stored
+   item carries its origin tree path and the removed listing line, so restore is a
+   uniform inverse) plus `MicroHttp.TreeMove.deleteTarget`/`restoreFromTrash`. A
+   delete moves the target into a `trash_root/<seq>` entry (the trash id is the delete
+   op's seq); restore moves every item back to its origin, refuses if the origin is
+   occupied, re-inserts the preserved listing entry, removes the entry, and logs a
+   `restore` op. Endpoints `POST /tree/*path?delete` and `POST /trash/*id`.
 3. **Phase 3 -- Undo.** Inverse generation for move/delete/restore; apply-and-append.
 4. **Phase 4 -- Replay.** Ordered, best-effort replay onto a refreshed corpus with a
    report.

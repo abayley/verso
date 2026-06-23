@@ -16,13 +16,16 @@ module MicroHttp.TreeMove (
     moveSection,
     movePage,
     movePlanJson,
+    DeleteOutcome (..),
+    deleteTarget,
+    restoreFromTrash,
 ) where
 
-import Control.Monad (forM, forM_, void, when)
+import Control.Monad (forM, forM_, void, when, zipWithM)
 import qualified Data.ByteString.Char8 as BS
 import Data.Char (isSpace)
 import Data.List (intercalate, isPrefixOf, isSuffixOf, nub, stripPrefix)
-import Data.Maybe (fromMaybe, maybeToList)
+import Data.Maybe (catMaybes, fromMaybe, maybeToList)
 import MicroHttp.DocumentLinks (
     AssetClass (..),
     assetNamesIn,
@@ -30,12 +33,14 @@ import MicroHttp.DocumentLinks (
     pathSegmentsOf,
     planMoveRewrites,
     planPageMove,
+    referrersMatching,
     relocatePath,
  )
 import MicroHttp.DocumentListing (addListingEntry, removeListingEntry)
 import MicroHttp.DocumentMeta (metaDirectoryFor)
-import MicroHttp.FileOps (renamePath)
+import MicroHttp.FileOps (removeEmptyDir, removeFilePath, renamePath)
 import MicroHttp.Static (resolveStaticPath)
+import MicroHttp.Trash (Manifest (..), TrashItem (..), parseManifest, renderManifest)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 
 {- | The impact of a section move: the source and destination tree paths, the tree
@@ -338,6 +343,173 @@ relocateMeta root srcRel newRel =
         _ -> pure ()
   where
     parentDir = reverse . drop 1 . dropWhile (/= '/') . reverse
+
+-- | The outcome of a delete: the target was moved to trash, or refused because other pages still link in.
+data DeleteOutcome
+    = Deleted {delTrashId :: String, delPath :: String, delKind :: String}
+    | Refused {refReferrers :: [(String, String)]}
+    deriving (Eq, Show)
+
+{- | Deletes the page or section at @relPath@ (RFC-0027 phase 4 + RFC-0028 trash).
+The target's parent index.md listing entry is not counted as a referrer (it is
+removed as part of the delete); if any /other/ page still links to the target (for a
+section, any page outside the subtree links into it) the delete is 'Refused' with the
+referrer list and nothing is written (ADR-063). Otherwise the target -- a page's
+@.md@, sidecar meta dir, and exclusive assets, or a whole section folder -- is moved
+into the trash entry @trashId@ with a provenance manifest (ADR-065), the listing
+entry removed, and 'Deleted' returned for the caller to log.
+-}
+deleteTarget :: FilePath -> FilePath -> String -> String -> Int -> IO (Either String DeleteOutcome)
+deleteTarget root trashRoot relPathRaw trashId seqNo
+    | null segs = pure (Left "cannot delete the root")
+    | otherwise = case resolveStaticPath root segs of
+        Nothing -> pure (Left "unsafe path")
+        Just fs -> do
+            exists <- if isPage then doesFileExist fs else doesDirectoryExist fs
+            if not exists
+                then pure (Left "not found")
+                else do
+                    pages <- enumerateMarkdown root ""
+                    if isPage
+                        then
+                            let referrers = referrersMatching (== relPath) [parentIndexRel, relPath] pages
+                             in if not (null referrers)
+                                    then pure (Right (Refused referrers))
+                                    else applyPageDelete root trashRoot relPath parent parentIndexRel trashId seqNo
+                        else
+                            let inSub t = t == relPath || ((relPath ++ "/") `isPrefixOf` t)
+                                subtreePaths = [p | (p, _) <- pages, inSub p]
+                                referrers = referrersMatching inSub (parentIndexRel : subtreePaths) pages
+                             in if not (null referrers)
+                                    then pure (Right (Refused referrers))
+                                    else applySectionDelete root trashRoot relPath parent parentIndexRel trashId seqNo
+  where
+    segs = pathSegmentsOf relPathRaw
+    relPath = intercalate "/" segs
+    isPage = ".md" `isSuffixOf` relPath
+    parent = parentRel relPath
+    parentIndexRel = indexRel parent
+
+-- | Moves a page (its .md, sidecar meta dir, exclusive assets) to trash, removes its listing bullet, writes the manifest.
+applyPageDelete :: FilePath -> FilePath -> String -> String -> String -> String -> Int -> IO (Either String DeleteOutcome)
+applyPageDelete root trashRoot relPath parent parentIndexRel trashId seqNo = do
+    let entryDir = trashRoot ++ "/" ++ trashId
+        base = last (pathSegmentsOf relPath)
+        metaRel = joinRel parent ("meta/" ++ dropDotMd base ++ ".meta")
+    createDirectoryIfMissing True entryDir
+    assetClasses <- classifyMovingAssets root relPath parent
+    let exclusives = [name | (name, ExclusiveAsset) <- assetClasses]
+    mdItem <- moveIntoTrash root entryDir "page.md" relPath False
+    metaItem <- moveDirIntoTrash root entryDir "meta" metaRel
+    assetItems <-
+        zipWithM
+            (\i name -> moveIntoTrash root entryDir ("asset-" ++ show i) (joinRel parent ("assets/" ++ name)) False)
+            [(0 :: Int) ..]
+            exclusives
+    removed <- removeParentListing root parentIndexRel parent relPath
+    let items = catMaybes (mdItem : metaItem : assetItems)
+    writeManifest entryDir (Manifest relPath "page" seqNo removed items)
+    pure (Right (Deleted trashId relPath "page"))
+
+-- | Moves a whole section folder to trash, removes its listing card, writes the manifest.
+applySectionDelete :: FilePath -> FilePath -> String -> String -> String -> String -> Int -> IO (Either String DeleteOutcome)
+applySectionDelete root trashRoot relPath parent parentIndexRel trashId seqNo = do
+    let entryDir = trashRoot ++ "/" ++ trashId
+    createDirectoryIfMissing True entryDir
+    removed <- removeParentListing root parentIndexRel parent (relPath ++ "/index.md")
+    payloadItem <- moveIntoTrash root entryDir "payload" relPath True
+    writeManifest entryDir (Manifest relPath "section" seqNo removed (catMaybes [payloadItem]))
+    pure (Right (Deleted trashId relPath "section"))
+
+{- | Restores a trash entry to its provenance path (RFC-0028), re-adding the parent
+listing entry. Refuses if the original location is now occupied (prompting a new
+location, like a move collision). Returns the restored @(path, kind)@ for the caller
+to log a @restore@ operation.
+-}
+restoreFromTrash :: FilePath -> FilePath -> String -> IO (Either String (String, String))
+restoreFromTrash root trashRoot trashId = do
+    let entryDir = trashRoot ++ "/" ++ trashId
+        manifestFile = entryDir ++ "/manifest"
+    hasManifest <- doesFileExist manifestFile
+    if not hasManifest
+        then pure (Left "trash entry not found")
+        else do
+            text <- fmap BS.unpack (BS.readFile manifestFile)
+            case parseManifest text of
+                Nothing -> pure (Left "corrupt trash manifest")
+                Just manifest -> do
+                    occupied <- targetOccupied root (manPath manifest) (manKind manifest)
+                    if occupied
+                        then pure (Left "original location is occupied")
+                        else do
+                            forM_ (manItems manifest) (restoreItem root entryDir)
+                            reAddListing root manifest
+                            void (removeFilePath manifestFile)
+                            void (removeEmptyDir entryDir)
+                            pure (Right (manPath manifest, manKind manifest))
+
+-- | Moves one tree path into a trash entry under the given stored name (best-effort), yielding its manifest item.
+moveIntoTrash :: FilePath -> FilePath -> String -> String -> Bool -> IO (Maybe TrashItem)
+moveIntoTrash root entryDir stored originRel isDir =
+    case resolveStaticPath root (pathSegmentsOf originRel) of
+        Nothing -> pure Nothing
+        Just srcFs -> do
+            ok <- renamePath srcFs (entryDir ++ "/" ++ stored)
+            pure (if ok then Just (TrashItem stored isDir originRel) else Nothing)
+
+-- | As 'moveIntoTrash' for a directory that may be absent (a page with no sidecar meta dir).
+moveDirIntoTrash :: FilePath -> FilePath -> String -> String -> IO (Maybe TrashItem)
+moveDirIntoTrash root entryDir stored originRel =
+    case resolveStaticPath root (pathSegmentsOf originRel) of
+        Nothing -> pure Nothing
+        Just srcFs -> do
+            exists <- doesDirectoryExist srcFs
+            if not exists then pure Nothing else moveIntoTrash root entryDir stored originRel True
+
+-- | Moves one trashed item back to its origin tree path (creating parent directories).
+restoreItem :: FilePath -> FilePath -> TrashItem -> IO ()
+restoreItem root entryDir item =
+    case resolveStaticPath root (pathSegmentsOf (itemOrigin item)) of
+        Nothing -> pure ()
+        Just destFs -> do
+            createDirectoryIfMissing True (parentDir destFs)
+            void (renamePath (entryDir ++ "/" ++ itemStored item) destFs)
+  where
+    parentDir = reverse . drop 1 . dropWhile (/= '/') . reverse
+
+-- | Removes a target's entry from its parent index.md listing, returning the removed line.
+removeParentListing :: FilePath -> String -> String -> String -> IO (Maybe String)
+removeParentListing root parentIndexRel parent target = do
+    txt <- readRel root parentIndexRel
+    case txt of
+        Just t ->
+            let (t', removed) = removeListingEntry parent target t
+             in writeRel root parentIndexRel t' >> pure removed
+        Nothing -> pure Nothing
+
+-- | Re-adds a restored item's listing entry to its parent index.md (the preserved line, or nothing when absent).
+reAddListing :: FilePath -> Manifest -> IO ()
+reAddListing root manifest =
+    case manListing manifest of
+        Nothing -> pure ()
+        Just entry -> do
+            base <- fmap (fromMaybe "") (readRel root parentIndexRel)
+            writeRel root parentIndexRel (addListingEntry parent target entry base)
+  where
+    parent = parentRel (manPath manifest)
+    parentIndexRel = indexRel parent
+    target = if manKind manifest == "section" then manPath manifest ++ "/index.md" else manPath manifest
+
+-- | Whether a tree path is currently occupied (a page's file, a section's directory).
+targetOccupied :: FilePath -> String -> String -> IO Bool
+targetOccupied root path kind =
+    case resolveStaticPath root (pathSegmentsOf path) of
+        Nothing -> pure True
+        Just fs -> if kind == "section" then doesDirectoryExist fs else doesFileExist fs
+
+-- | Writes a trash entry's provenance manifest.
+writeManifest :: FilePath -> Manifest -> IO ()
+writeManifest entryDir manifest = BS.writeFile (entryDir ++ "/manifest") (BS.pack (renderManifest manifest))
 
 -- | Reads every @.md@ page beneath the tree as @(treeRelPath, body)@, skipping dot-entries and @assets@/@meta@ folders.
 enumerateMarkdown :: FilePath -> String -> IO [(String, String)]

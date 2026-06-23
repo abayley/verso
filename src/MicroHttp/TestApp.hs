@@ -44,7 +44,7 @@ import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
 import MicroHttp.Stream (StreamError (..))
-import MicroHttp.TreeMove (MovePlan (..), movePage, movePlanJson, moveSection)
+import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), deleteTarget, movePage, movePlanJson, moveSection, restoreFromTrash)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 
 data DocumentStore = DocumentStore
@@ -174,6 +174,7 @@ treeRoutes editorThemeDefault root logPath trashRoot =
     , Static.static "/static/editor" "static/editor"
     , Router.get "/tree/*path" (treeChildrenHandler root)
     , Router.post "/tree/*path" (treePostDispatch root logPath trashRoot)
+    , Router.post "/trash/*id" (treeRestoreHandler root logPath trashRoot)
     , Router.post "/documents/*path" (treePost root)
     , Router.get "/documents/*path" (treeGet editorThemeDefault root)
     ]
@@ -208,8 +209,9 @@ treeCreateHandler root captures _ = do
 present (RFC-0027), otherwise a create (RFC-0026).
 -}
 treePostDispatch :: FilePath -> FilePath -> FilePath -> Router.Handler
-treePostDispatch root logPath _trashRoot captures request
+treePostDispatch root logPath trashRoot captures request
     | hasQueryFlag "move" request = treeMoveHandler root logPath captures
+    | hasQueryFlag "delete" request = treeDeleteHandler root logPath trashRoot captures
     | otherwise = treeCreateHandler root captures request
 
 {- | The section-move endpoint (RFC-0027): @POST /tree/*path?move@ with form fields
@@ -251,6 +253,86 @@ recordAppliedMove logPath isPage (Right plan)
                 , opTrash = Nothing
                 }
 recordAppliedMove _ _ _ = pure ()
+
+{- | The delete endpoint (RFC-0027 phase 4 + RFC-0028 trash): @POST /tree/*path?delete@.
+Refuses with @409@ and the referrer list when another page links in; otherwise moves
+the target to trash, appends a @delete@ record to the operation log, and returns the
+trash id. The trash id is the delete record's @seq@.
+-}
+treeDeleteHandler :: FilePath -> FilePath -> FilePath -> Router.Captures -> Iter StreamError Http.Response
+treeDeleteHandler root logPath trashRoot captures = liftIO $ do
+    let path = capture "path" captures
+        isPage = isMarkdownPath path
+    seqNo <- logSeq logPath
+    result <- deleteTarget root trashRoot path (show seqNo) seqNo
+    case result of
+        Left err -> pure (statusResponse 409 "Conflict" (err ++ "\n"))
+        Right (Refused referrers) -> pure (statusResponse 409 "Conflict" (referrersJson referrers))
+        Right (Deleted tid p _) -> do
+            ts <- localTimestamp
+            appendOp
+                logPath
+                Operation
+                    { opType = OpDelete
+                    , opKind = kindLabel isPage
+                    , opFrom = Just p
+                    , opTo = Nothing
+                    , opSeq = seqNo
+                    , opTs = ts
+                    , opTrash = Just tid
+                    }
+            pure (jsonResponse ("{\"deleted\":" ++ jsonString p ++ ",\"trashId\":" ++ jsonString tid ++ "}"))
+
+{- | The restore endpoint (RFC-0028): @POST /trash/*id@ moves a trashed entry back to
+its origin (re-adding the listing), appends a @restore@ record, and returns the
+restored path; a @409@ if the origin is now occupied or the entry is missing.
+-}
+treeRestoreHandler :: FilePath -> FilePath -> FilePath -> Router.Handler
+treeRestoreHandler root logPath trashRoot captures _ = liftIO $ do
+    let trashId = capture "id" captures
+    result <- restoreFromTrash root trashRoot trashId
+    case result of
+        Left err -> pure (statusResponse 409 "Conflict" (err ++ "\n"))
+        Right (path, kind) -> do
+            seqNo <- logSeq logPath
+            ts <- localTimestamp
+            appendOp
+                logPath
+                Operation
+                    { opType = OpRestore
+                    , opKind = kind
+                    , opFrom = Nothing
+                    , opTo = Just path
+                    , opSeq = seqNo
+                    , opTs = ts
+                    , opTrash = Just trashId
+                    }
+            pure (jsonResponse ("{\"restored\":" ++ jsonString path ++ "}"))
+
+-- | @"page"@ or @"section"@ for the operation log.
+kindLabel :: Bool -> String
+kindLabel isPage = if isPage then "page" else "section"
+
+-- | The next operation-log sequence number, creating the log's parent directory on demand.
+logSeq :: FilePath -> IO Int
+logSeq logPath = do
+    createDirectoryIfMissing True (parentDirectory logPath)
+    nextSeq logPath
+
+-- | Appends an operation to the log, creating its parent directory on demand.
+appendOp :: FilePath -> Operation -> IO ()
+appendOp logPath op = do
+    createDirectoryIfMissing True (parentDirectory logPath)
+    appendOperation logPath op
+
+-- | A refused-delete body: the referrers as @{"refused":true,"referrers":[{"page","link"}]}@.
+referrersJson :: [(String, String)] -> String
+referrersJson referrers =
+    "{\"refused\":true,\"referrers\":["
+        ++ intercalate "," (map one referrers)
+        ++ "]}"
+  where
+    one (page, link) = "{\"page\":" ++ jsonString page ++ ",\"link\":" ++ jsonString link ++ "}"
 
 -- | A handler that redirects to a fixed location (a @303 See Other@ to a GET target).
 redirectTo :: String -> Router.Handler

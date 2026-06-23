@@ -21,6 +21,7 @@ import qualified MicroHttp.RouterSpec as RouterSpec
 import qualified MicroHttp.ServerSpec as ServerSpec
 import qualified MicroHttp.StaticSpec as StaticSpec
 import qualified MicroHttp.TestAppSpec as TestAppSpec
+import qualified MicroHttp.TrashSpec as TrashSpec
 import qualified MicroHttp.TreeMoveSpec as TreeMoveSpec
 import qualified MicroHttpSpec as FacadeSpec
 import Test.Hspec
@@ -43,6 +44,7 @@ main = hspec $ do
     RouterSpec.spec
     ServerSpec.spec
     StaticSpec.spec
+    TrashSpec.spec
     TreeMoveSpec.spec
     IterateeSpec.spec
     LogSpec.spec

@@ -365,8 +365,13 @@ later optimisation, not v1.
    copy). Sidecar meta directory co-moved. Parent-listing bullet relocated (the
    listing helper generalised to cards and bullets). Endpoint dispatch chooses page
    vs section move by whether the path ends `.md`.
-4. **Phase 4 -- Delete.** Refuse-if-referenced + referrer list; page delete
-   (unlink + meta + exclusive assets); section recursive delete.
+4. **Phase 4 -- Delete.** [DONE] `MicroHttp.TreeMove.deleteTarget` +
+   `referrersMatching`. The target's parent listing entry is excluded from the
+   inbound scan (so it is never a self-blocker); any other inbound link refuses the
+   delete with the referrer list (`Refused`, nothing written). Otherwise the target
+   is routed to RFC-0028's trash (page: `.md` + meta dir + exclusive assets; section:
+   whole folder) with a provenance manifest, the listing entry removed, and a
+   `delete` op logged. Endpoint `POST /tree/*path?delete`.
 5. **Phase 5 -- Client UX.** Rename/Move…/Delete actions, destination picker,
    impact preview, referrer list, confirms.
 

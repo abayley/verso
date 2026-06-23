@@ -3,7 +3,7 @@ module MicroHttp.TreeMoveSpec (spec) where
 import Control.Monad (forM_, void, when)
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.FileOps (removeEmptyDir, removeFilePath)
-import MicroHttp.TreeMove (MovePlan (..), movePage, moveSection)
+import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), deleteTarget, movePage, moveSection, restoreFromTrash)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import Test.Hspec
 
@@ -64,6 +64,25 @@ seedPageFixture = do
     writeAt "a/assets/shared.png" "SHARED"
     writeAt "a/meta/mover.meta/images.yaml" "- local_path: assets/excl.png\n  short_title: 'E'\n  description: ''\n"
     writeAt "b/index.md" "# B\n"
+
+{- | A delete fixture at the root: @lonely.md@ (no inbound links but the index;
+references an exclusive asset and a shared one, with a sidecar) and @other.md@ which
+links to @refed.md@. The root index.md lists @lonely@ and @other@ as bullets.
+-}
+seedDeleteFixture :: IO ()
+seedDeleteFixture = do
+    removeTree root
+    createDirectoryIfMissing True root
+    writeAt "index.md" "# Root\n\n- [Lonely](./lonely.md)\n- [Other](./other.md)\n"
+    writeAt "lonely.md" "# Lonely\n\n![o](assets/only.png) and ![s](assets/shared.png)\n"
+    writeAt "other.md" "# Other\n\n![s](assets/shared.png) and [Refed](./refed.md)\n"
+    writeAt "refed.md" "# Refed\n"
+    writeAt "assets/only.png" "ONLY"
+    writeAt "assets/shared.png" "SHARED"
+    writeAt "meta/lonely.meta/images.yaml" "- local_path: assets/only.png\n  short_title: 'O'\n  description: ''\n"
+
+trashRoot :: FilePath
+trashRoot = "build/tree-delete-trash"
 
 -- | The plan from a successful result, or a sentinel (so a wrong 'Left' fails an assertion below).
 planOr :: Either String MovePlan -> MovePlan
@@ -160,6 +179,57 @@ spec = do
             seedPageFixture
             writeAt "b/mover.md" "# Existing\n"
             result <- movePage root "a/mover.md" "b" "mover" True
+            isLeft result `shouldBe` True
+
+    describe "MicroHttp.TreeMove.deleteTarget" $ do
+        it "refuses a delete while another page links to the target, listing the referrer" $ do
+            seedDeleteFixture
+            removeTree trashRoot
+            result <- deleteTarget root trashRoot "refed.md" "0" 0
+            case result of
+                Right (Refused referrers) -> map fst referrers `shouldBe` ["other.md"]
+                other -> show other `shouldBe` "Right (Refused [...])"
+            doesFileExist (root ++ "/refed.md") `shouldReturn` True
+
+        it "moves an unreferenced page (md, meta, exclusive assets) to trash and removes its listing" $ do
+            seedDeleteFixture
+            removeTree trashRoot
+            result <- deleteTarget root trashRoot "lonely.md" "7" 0
+            case result of
+                Right (Deleted tid p k) -> (tid, p, k) `shouldBe` ("7", "lonely.md", "page")
+                other -> show other `shouldBe` "Right (Deleted ...)"
+            doesFileExist (root ++ "/lonely.md") `shouldReturn` False
+            -- Exclusive asset moved, shared asset kept.
+            doesFileExist (root ++ "/assets/only.png") `shouldReturn` False
+            doesFileExist (root ++ "/assets/shared.png") `shouldReturn` True
+            -- Sidecar meta moved out.
+            doesFileExist (root ++ "/meta/lonely.meta/images.yaml") `shouldReturn` False
+            -- Trash entry written with manifest and payload.
+            doesFileExist (trashRoot ++ "/7/manifest") `shouldReturn` True
+            doesFileExist (trashRoot ++ "/7/page.md") `shouldReturn` True
+            -- Listing bullet removed.
+            idx <- readAt "index.md"
+            ("Lonely" `notInfix` idx) `shouldBe` True
+
+    describe "MicroHttp.TreeMove.restoreFromTrash" $ do
+        it "restores a trashed page to its origin, re-adding the listing entry" $ do
+            seedDeleteFixture
+            removeTree trashRoot
+            _ <- deleteTarget root trashRoot "lonely.md" "7" 0
+            result <- restoreFromTrash root trashRoot "7"
+            result `shouldBe` Right ("lonely.md", "page")
+            doesFileExist (root ++ "/lonely.md") `shouldReturn` True
+            doesFileExist (root ++ "/assets/only.png") `shouldReturn` True
+            doesFileExist (root ++ "/meta/lonely.meta/images.yaml") `shouldReturn` True
+            idx <- readAt "index.md"
+            ("[Lonely](./lonely.md)" `infixOf` idx) `shouldBe` True
+
+        it "refuses to restore when the original location is occupied" $ do
+            seedDeleteFixture
+            removeTree trashRoot
+            _ <- deleteTarget root trashRoot "lonely.md" "7" 0
+            writeAt "lonely.md" "# Recreated\n"
+            result <- restoreFromTrash root trashRoot "7"
             isLeft result `shouldBe` True
 
 isLeft :: Either a b -> Bool

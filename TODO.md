@@ -2,10 +2,10 @@
 
 backend:
 
-- add navtree on LHS that supports drag + drop and renaming
 - make 404 page offer to create document at this location/URL
 - backend with versioning
 - add move, delete to navtree - re-implement part of tracker
+- add tags and tag navigation
 
 - would like to notify user when page they are viewing or editing has been modified by someone else; how?
   needs to handle when other users update too - what is the notification mechanism? websockets?

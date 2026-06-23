@@ -39,7 +39,7 @@ import MicroHttp.Iteratee (Iter, liftIO, readBodyStrict)
 import MicroHttp.Log (Logger, localTimestamp, rotatingAppender, rotatingFileLogfmtLogger)
 import MicroHttp.Middleware (logRequests, withErrorResponses)
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), fileSizeBytes)
-import MicroHttp.OperationLog (OpType (..), Operation (..), appendOperation, nextSeq)
+import MicroHttp.OperationLog (OpType (..), Operation (..), appendOperation, nextSeq, readOperations)
 import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
@@ -175,6 +175,7 @@ treeRoutes editorThemeDefault root logPath trashRoot =
     , Router.get "/tree/*path" (treeChildrenHandler root)
     , Router.post "/tree/*path" (treePostDispatch root logPath trashRoot)
     , Router.post "/trash/*id" (treeRestoreHandler root logPath trashRoot)
+    , Router.post "/undo" (treeUndoHandler root logPath trashRoot)
     , Router.post "/documents/*path" (treePost root)
     , Router.get "/documents/*path" (treeGet editorThemeDefault root)
     ]
@@ -333,6 +334,103 @@ referrersJson referrers =
         ++ "]}"
   where
     one (page, link) = "{\"page\":" ++ jsonString page ++ ",\"link\":" ++ jsonString link ++ "}"
+
+{- | The undo endpoint (RFC-0028 phase 3): @POST /undo@ applies the inverse of the
+latest logged operation and appends that inverse as a new record (undo is itself a
+logged operation, so a further undo is a redo). The inverse of a move is the reverse
+move; of a delete, a restore; of a restore, a delete. A @409@ when the log is empty
+or the inverse cannot be applied (e.g. its target is occupied or now referenced).
+-}
+treeUndoHandler :: FilePath -> FilePath -> FilePath -> Router.Handler
+treeUndoHandler root logPath trashRoot _ _ = liftIO $ do
+    ops <- readOperations logPath
+    case reverse ops of
+        [] -> pure (statusResponse 409 "Conflict" "nothing to undo\n")
+        (latest : _) -> do
+            result <- applyInverse root logPath trashRoot latest
+            pure (either (statusResponse 409 "Conflict" . (++ "\n")) jsonResponse result)
+
+{- | Applies the inverse of an operation through the move/trash machinery and appends
+the inverse record, returning the JSON body on success or an error reason.
+-}
+applyInverse :: FilePath -> FilePath -> FilePath -> Operation -> IO (Either String String)
+applyInverse root logPath trashRoot op = case opType op of
+    OpMove -> undoMove
+    OpDelete -> undoDelete
+    OpRestore -> undoRestore
+  where
+    from = fromMaybe "" (opFrom op)
+    to = fromMaybe "" (opTo op)
+
+    undoMove = do
+        let destParent = parentOfRel from
+            slug = slugForPath (opKind op) from
+            move = if opKind op == "page" then movePage else moveSection
+        result <- move root to destParent slug True
+        case result of
+            Left err -> pure (Left err)
+            Right plan
+                | planApplied plan -> do
+                    appendInverse (opKind op) OpMove (Just to) (Just from) Nothing
+                    pure (Right ("{\"undo\":\"move\",\"from\":" ++ jsonString to ++ ",\"to\":" ++ jsonString from ++ "}"))
+                | otherwise -> pure (Left "inverse move was not applied")
+
+    undoDelete = case opTrash op of
+        Nothing -> pure (Left "delete record has no trash id")
+        Just tid -> do
+            result <- restoreFromTrash root trashRoot tid
+            case result of
+                Left err -> pure (Left err)
+                Right (path, kind) -> do
+                    appendInverse kind OpRestore Nothing (Just path) (Just tid)
+                    pure (Right ("{\"undo\":\"delete\",\"restored\":" ++ jsonString path ++ "}"))
+
+    undoRestore = do
+        seqNo <- logSeq logPath
+        result <- deleteTarget root trashRoot to (show seqNo) seqNo
+        case result of
+            Left err -> pure (Left err)
+            Right (Refused _) -> pure (Left "cannot undo restore: the target is now referenced")
+            Right (Deleted tid path _) -> do
+                ts <- localTimestamp
+                appendOp logPath (Operation OpDelete (kindOf to) (Just path) Nothing seqNo ts (Just tid))
+                pure (Right ("{\"undo\":\"restore\",\"deleted\":" ++ jsonString path ++ ",\"trashId\":" ++ jsonString tid ++ "}"))
+
+    -- Appends an inverse record with a fresh seq and timestamp.
+    appendInverse kind typ opFrom' opTo' trash = do
+        seqNo <- logSeq logPath
+        ts <- localTimestamp
+        appendOp
+            logPath
+            Operation
+                { opType = typ
+                , opKind = kind
+                , opFrom = opFrom'
+                , opTo = opTo'
+                , opSeq = seqNo
+                , opTs = ts
+                , opTrash = trash
+                }
+
+-- | @"page"@ or @"section"@ for a tree path.
+kindOf :: String -> String
+kindOf path = kindLabel (isMarkdownPath path)
+
+-- | The parent tree path of a tree path (its segments minus the last; @""@ at the root).
+parentOfRel :: String -> String
+parentOfRel path = intercalate "/" (initOrEmpty (pathSegments path))
+  where
+    initOrEmpty [] = []
+    initOrEmpty xs = init xs
+
+-- | The destination slug to move a path back to: a page's basename without @.md@, a section's last segment.
+slugForPath :: String -> String -> String
+slugForPath kind path =
+    let name = lastOrEmpty (pathSegments path)
+     in if kind == "page" && ".md" `isSuffixOf` name then take (length name - length ".md") name else name
+  where
+    lastOrEmpty [] = ""
+    lastOrEmpty xs = last xs
 
 -- | A handler that redirects to a fixed location (a @303 See Other@ to a GET target).
 redirectTo :: String -> Router.Handler

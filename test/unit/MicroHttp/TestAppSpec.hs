@@ -294,6 +294,33 @@ spec =
                 logged <- readFile "build/tree-spec-oplog"
                 logged `shouldInclude` "\"type\":\"restore\""
 
+            it "given POST /undo after a move, when routed, then the move is reversed and the inverse is logged" $ do
+                appliedRoot <- setupMoveUndoFixture
+                let mv = (request POST ["tree", "x"]){requestQuery = [("move", "")]}
+                _ <- runTreeAppBody appliedRoot mv "to=y&slug=x&confirm=true"
+                doesDirectoryExist (appliedRoot ++ "/y/x") `shouldReturn` True
+                response <- runTreeAppBody appliedRoot (request POST ["undo"]) ""
+                statusCode (responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "\"undo\":\"move\""
+                doesDirectoryExist (appliedRoot ++ "/x") `shouldReturn` True
+                doesDirectoryExist (appliedRoot ++ "/y/x") `shouldReturn` False
+
+            it "given POST /undo after a delete, when routed, then the page is restored from trash" $ do
+                appliedRoot <- setupDeleteRouteFixture
+                _ <- runTreeAppBody appliedRoot ((request POST ["tree", "b.md"]){requestQuery = [("delete", "")]}) ""
+                doesFileExist (appliedRoot ++ "/b.md") `shouldReturn` False
+                response <- runTreeAppBody appliedRoot (request POST ["undo"]) ""
+                statusCode (responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "\"undo\":\"delete\""
+                doesFileExist (appliedRoot ++ "/b.md") `shouldReturn` True
+                logged <- readFile "build/tree-spec-oplog"
+                logged `shouldInclude` "\"type\":\"restore\""
+
+            it "given POST /undo with an empty log, when routed, then it is a 409" $ do
+                _ <- setupMoveUndoFixture
+                response <- runTreeAppBody "build/tree-undo-move" (request POST ["undo"]) ""
+                statusCode (responseStatus response) `shouldBe` 409
+
 nodeTuple :: TestApp.TreeNode -> (String, TestApp.NodeKind, String, Bool)
 nodeTuple nd =
     (TestApp.nodeName nd, TestApp.nodeKind nd, TestApp.nodePath nd, TestApp.nodeHasChildren nd)
@@ -337,6 +364,22 @@ setupDeleteRouteFixture = do
     writeFile (root ++ "/index.md") "# Root\n\n- [A](./a.md)\n- [B](./b.md)\n"
     writeFile (root ++ "/a.md") "# A\n"
     writeFile (root ++ "/b.md") "# B\n\n[A](./a.md)\n"
+    pure root
+
+{- | Builds an undo-of-move fixture (section @x@ at the root and an empty destination
+@y@) and resets the harness log/trash dirs. Returns the fixture root.
+-}
+setupMoveUndoFixture :: IO FilePath
+setupMoveUndoFixture = do
+    let root = "build/tree-undo-move"
+    removeTree root
+    cleanFile "build/tree-spec-oplog"
+    removeTree "build/tree-spec-trash"
+    createDirectoryIfMissing True (root ++ "/x")
+    createDirectoryIfMissing True (root ++ "/y")
+    writeFile (root ++ "/index.md") "# Root\n"
+    writeFile (root ++ "/x/index.md") "---\nname: X\n---\n\n# X\n"
+    writeFile (root ++ "/y/index.md") "# Y\n"
     pure root
 
 {- | Runs the tree-serving routes (RFC-0026) over a request head against a real

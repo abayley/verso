@@ -251,7 +251,11 @@ preferred.)
    op's seq); restore moves every item back to its origin, refuses if the origin is
    occupied, re-inserts the preserved listing entry, removes the entry, and logs a
    `restore` op. Endpoints `POST /tree/*path?delete` and `POST /trash/*id`.
-3. **Phase 3 -- Undo.** Inverse generation for move/delete/restore; apply-and-append.
+3. **Phase 3 -- Undo.** [DONE] `POST /undo` applies the inverse of the latest logged
+   operation through the existing machinery -- reverse move (`moveSection`/`movePage`),
+   `restoreFromTrash` for a delete, `deleteTarget` for a restore -- and appends the
+   inverse as a new record (undo is itself logged, so a further undo is a redo). A
+   @409@ when the log is empty or the inverse cannot apply (occupied/now-referenced).
 4. **Phase 4 -- Replay.** Ordered, best-effort replay onto a refreshed corpus with a
    report.
 5. **Phase 5 -- Client UX.** Undo affordance, a trash view with restore, and a

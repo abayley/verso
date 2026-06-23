@@ -26,6 +26,39 @@ it shows a humanised label and is expand-only (no landing page). A section's
 `index.md` is folded into the section, not shown as a separate child.
 _Avoid_: directory (filesystem term), category, subsection.
 
+**Index.md listing**:
+A **section**'s listing, in its `index.md`, of its direct members: **subsections**
+as `grid cards` (`- :icon: __[Title](./child/index.md)__` with a description span)
+and **pages** as plain bullets (`- [Title](./page.md)`). The section landing page's
+table of its children, kept in step as members are created, **moved**, or deleted.
+_Avoid_: contents listing, member listing, nav.
+
+**Move**:
+Relocating a **page** or **section** to a new parent **section** and/or a new
+slug (RFC-0027). The server keeps the tree consistent: relative links across the
+tree are rewritten, the item's **sidecar metadata** travels with it, **peer
+assets** are reconciled, and the parent sections' listings are updated. A move that
+keeps the parent (just a slug change) is the "rename" case; editing the **title**
+(frontmatter `name`) is not a move and changes no path (see **Title vs slug**).
+_Avoid_: rename (a UX label for the same-parent slug change, not a separate
+operation).
+
+**Operation log**:
+An append-only log, held outside the **document tree**, of the **navigation
+tree**'s structural operations -- **moves** and deletes -- as _logical_ records
+(the intent: kind and paths), not file-level diffs (RFC-0028). It is replayed on a
+refreshed corpus to re-apply the reorganisation; undo appends each operation's
+inverse (a move's reverse move, a delete's restore).
+_Avoid_: move log (it records deletes too), history, audit trail.
+
+**Trash**:
+The area outside the **document tree** (but on the same filesystem) a deleted
+**page** or **section** is moved to -- rather than destroyed -- with a provenance
+record of its original tree path, so it can be restored (RFC-0028). Browsed and
+recovered through a Trash view in the **navigation tree**; restore is refused if
+the original location is now occupied.
+_Avoid_: recycle bin, archive, bin.
+
 **Read view**:
 The default rendered, read-only presentation of a **page** (a plain `GET` of its
 URL). It is the **edit view**'s shell with editing switched off (RFC-0020,
@@ -80,6 +113,15 @@ A non-image asset, referenced as a download link `[name](assets/x.pdf)` (or not
 referenced at all) and listed in the page's `attachments.yaml`. An attachment
 may be **unlinked** -- present and recorded but not referenced from the body.
 _Avoid_: download, file.
+
+**Exclusive asset / shared asset**:
+Within a folder's shared **peer assets**, an **asset** referenced by only one
+**page** (exclusive to it) or by more than one (shared). Ownership is a folder-wide
+question -- the `assets/` folder is shared by every page at that level -- so it is
+settled by scanning all peer pages' bodies and **sidecar metadata**
+(`attachments.yaml`/`images.yaml`), not one page's. The distinction drives
+relocate-vs-copy when a page **moves** between folders.
+_Avoid_: owned asset, orphan asset.
 
 **Sidecar metadata**:
 Per-page metadata held outside the page body, in the page's **meta directory**,
@@ -155,8 +197,9 @@ _Avoid_: telemetry, access log (a different file, HTTP-request lifecycle).
   its slug is the filename/path segment (and so its URL). They are deliberately
   independent and not synced -- editing the title (ADR-057) never renames the
   file. A new page derives an initial slug from its title, after which they
-  diverge freely. The **navigation tree** and breadcrumbs show the title; the
-  filesystem and URLs use the slug.
+  diverge freely. Changing the slug is a **Move** (RFC-0027), not a title edit. The
+  **navigation tree** and breadcrumbs show the title; the filesystem and URLs use
+  the slug.
 - **Preview**: there is no rendered-preview pane anywhere in the editor. The
   **read view** and **Visual view** render via Tiptap; the **Split view**'s
   right pane is the live **Visual view**. "Preview" denotes nothing -- do not

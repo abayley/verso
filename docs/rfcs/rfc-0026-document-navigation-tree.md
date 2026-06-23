@@ -93,9 +93,10 @@ it as complete in the phase checklist.
 
 - **Rename, move, and delete** -- deferred to a follow-up RFC. All three change a
   path, so all three carry the same burden (fixing inbound links, reconciling the
-  page's sidecar **meta directory**) and lean on the owner's external-utility
-  workflow. They belong together, once the tree itself is proven in use. (Editing
-  a node's *title* is already possible in-page via ADR-057; the tree reflects it.)
+  page's sidecar **meta directory**). They belong together, once the tree itself is
+  proven in use. (Editing a node's *title* is already possible in-page via ADR-057;
+  the tree reflects it.) **Picked up by RFC-0027**, which implements them
+  in-server (reversing the earlier external-utility plan).
 - **A cached/materialised tree index** (in-memory or persisted) and the
   whole-tree search it would enable. The tree reads live (ADR-059). An index is a
   forward-compatible future RFC behind the same endpoint if search is wanted.

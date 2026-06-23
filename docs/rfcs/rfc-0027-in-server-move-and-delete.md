@@ -18,7 +18,7 @@ superseded_by: null
 |-----------|------------------|
 | Authored  | 2026-06-23       |
 | Started   | 2026-06-23       |
-| Completed |                  |
+| Completed | 2026-06-24       |
 
 ## Summary
 
@@ -372,8 +372,14 @@ later optimisation, not v1.
    is routed to RFC-0028's trash (page: `.md` + meta dir + exclusive assets; section:
    whole folder) with a provenance manifest, the listing entry removed, and a
    `delete` op logged. Endpoint `POST /tree/*path?delete`.
-5. **Phase 5 -- Client UX.** Rename/Move…/Delete actions, destination picker,
-   impact preview, referrer list, confirms.
+5. **Phase 5 -- Client UX.** [DONE] Per-node **Move** and **Delete** actions in the
+   nav tree (`nav-tree.ts`), hover-revealed like the create "+". Move prompts for a
+   destination folder and optional slug, previews the impact (the dry-run `?move`
+   reporting the count of files whose links change), and applies on confirmation;
+   Delete confirms, then surfaces the referrer list on a refused (referenced) delete
+   or moves to trash with an Undo hint. Wired to `?move`/`?delete` via editor-element
+   callbacks. (The destination is a prompt for now; a full tree-as-chooser picker is
+   a possible later refinement.) Browser-verified against a scratch tree.
 
 ### Rollout Plan Escape Hatch
 

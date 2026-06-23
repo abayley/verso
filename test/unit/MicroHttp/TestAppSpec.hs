@@ -305,6 +305,14 @@ spec =
                 doesDirectoryExist (appliedRoot ++ "/x") `shouldReturn` True
                 doesDirectoryExist (appliedRoot ++ "/y/x") `shouldReturn` False
 
+            it "given GET /trash after a delete, when routed, then the trashed entry is listed" $ do
+                appliedRoot <- setupDeleteRouteFixture
+                _ <- runTreeAppBody appliedRoot ((request POST ["tree", "b.md"]){requestQuery = [("delete", "")]}) ""
+                response <- runTreeApp appliedRoot (request GET ["trash"])
+                statusCode (responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "\"path\":\"b.md\""
+                bodyText response `shouldInclude` "\"kind\":\"page\""
+
             it "given POST /undo after a delete, when routed, then the page is restored from trash" $ do
                 appliedRoot <- setupDeleteRouteFixture
                 _ <- runTreeAppBody appliedRoot ((request POST ["tree", "b.md"]){requestQuery = [("delete", "")]}) ""

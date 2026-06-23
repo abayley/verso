@@ -107,7 +107,9 @@ markdown-editor {
 .markdown-editor__nav-toggle,
 .markdown-editor__nav-disclosure,
 .markdown-editor__nav-collapse-all,
-.markdown-editor__nav-create {
+.markdown-editor__nav-create,
+.markdown-editor__nav-op,
+.markdown-editor__nav-action {
   background: transparent;
   border: 0;
   color: inherit;
@@ -205,6 +207,46 @@ markdown-editor {
 .markdown-editor__nav-header:hover .markdown-editor__nav-create,
 .markdown-editor__nav-create:focus-visible {
   opacity: 1;
+}
+
+/* Per-row Move/Delete actions: hidden until the row is hovered or focused (like "+"). */
+.markdown-editor__nav-action {
+  font-size: 0.85rem;
+  opacity: 0;
+}
+
+.markdown-editor__nav-row:hover .markdown-editor__nav-action,
+.markdown-editor__nav-action:focus-visible {
+  opacity: 1;
+}
+
+/* Header operation buttons (undo/trash/replay) stay visible. */
+.markdown-editor__nav-op {
+  font-size: 1rem;
+}
+
+.markdown-editor__nav[data-collapsed="true"] .markdown-editor__nav-header .markdown-editor__nav-op {
+  display: none;
+}
+
+/* The Trash view, shown between the header and the tree when open. */
+.markdown-editor__nav-trash {
+  border-bottom: 1px solid var(--markdown-editor-code-background);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.35rem 0.2rem 0.5rem;
+}
+
+.markdown-editor__nav-trash-heading {
+  font-weight: 600;
+}
+
+.markdown-editor__nav-trash-row {
+  align-items: center;
+  display: flex;
+  gap: 0.4rem;
+  justify-content: space-between;
 }
 
 /* The inline new-page/new-section form, shown under the chosen parent. */

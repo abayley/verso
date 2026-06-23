@@ -27,7 +27,16 @@ import { INLINE_COMMANDS } from "./editor-toolbar-shared.js";
 import { frontmatterName, joinFrontmatter, setFrontmatterName, splitFrontmatter } from "./frontmatter.js";
 import { imageShortTitles } from "./image-metadata.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
-import { NavTreePanel, parseTreeChildren, parseTreeSpine, type TreeNodeData } from "./nav-tree.js";
+import {
+    type DeleteResult,
+    type MoveResult,
+    NavTreePanel,
+    type OpResult,
+    parseTreeChildren,
+    parseTreeSpine,
+    type TrashEntry,
+    type TreeNodeData,
+} from "./nav-tree.js";
 import { rawHtmlExtension } from "./raw-html-extension.js";
 import { SaveStateController, type SaveStateView } from "./save-state-controller.js";
 import { SlashMenuElement, type SlashSelectEventDetail } from "./slash-menu-element.js";
@@ -530,6 +539,55 @@ export class MarkdownEditorElement extends HTMLElement {
             registerTooltip: (target: HTMLElement, text: string): void =>
                 this.navTooltipController?.register(target, text),
             notify: (message: string, isError: boolean): void => this.showUploadNotice(message, isError),
+            deleteNode: async (path: string): Promise<DeleteResult> => {
+                const response = await fetch(`/tree/${encodePath(path)}?delete`, { method: "POST" });
+                if (response.status === 409) {
+                    const data: unknown = safeJson(await response.text());
+                    const referrers =
+                        data &&
+                        typeof data === "object" &&
+                        Array.isArray((data as Record<string, unknown>)["referrers"])
+                            ? ((data as Record<string, unknown>)["referrers"] as { page: string; link: string }[])
+                            : undefined;
+                    return referrers ? { status: "refused", referrers } : { status: "error" };
+                }
+                return response.ok ? { status: "deleted" } : { status: "error" };
+            },
+            moveNode: async (path: string, destParent: string, slug: string, confirm: boolean): Promise<MoveResult> => {
+                const body = new URLSearchParams({ to: destParent, slug, ...(confirm ? { confirm: "true" } : {}) });
+                const response = await fetch(`/tree/${encodePath(path)}?move`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: body.toString(),
+                });
+                if (!response.ok) {
+                    return { ok: false, message: (await response.text()).trim() || "Move failed." };
+                }
+                const data: unknown = safeJson(await response.text());
+                const changed =
+                    data && typeof data === "object" && Array.isArray((data as Record<string, unknown>)["changed"])
+                        ? ((data as Record<string, unknown>)["changed"] as unknown[]).length
+                        : 0;
+                return { ok: true, changed };
+            },
+            undo: async (): Promise<OpResult> =>
+                opResult(await fetch("/undo", { method: "POST" }), "Undone.", "Nothing to undo."),
+            listTrash: async (): Promise<TrashEntry[]> => {
+                const response = await fetch("/trash", { headers: { Accept: "application/json" } });
+                if (!response.ok) {
+                    return [];
+                }
+                const data: unknown = safeJson(await response.text());
+                return Array.isArray(data) ? (data as TrashEntry[]) : [];
+            },
+            restore: async (id: string): Promise<OpResult> =>
+                opResult(
+                    await fetch(`/trash/${encodeURIComponent(id)}`, { method: "POST" }),
+                    "Restored.",
+                    "Restore failed.",
+                ),
+            replay: async (): Promise<OpResult> =>
+                opResult(await fetch("/replay", { method: "POST" }), "Replayed the operation log.", "Replay failed."),
         });
     }
 
@@ -2234,6 +2292,28 @@ function firstUsableClientRect(rects: DOMRectList): DOMRect | null {
 }
 
 /** Reads the string value from an HTML or custom form control host. */
+/** Parses JSON, returning null on malformed input (for tolerant response handling). */
+function safeJson(text: string): unknown {
+    try {
+        return JSON.parse(text);
+    } catch {
+        return null;
+    }
+}
+
+/** Normalises a structural-operation response (undo/restore/replay) to an OpResult, using the body as the error message. */
+async function opResult(
+    response: Response,
+    okMessage: string,
+    failMessage: string,
+): Promise<{ ok: boolean; message: string }> {
+    if (response.ok) {
+        return { ok: true, message: okMessage };
+    }
+    const body = (await response.text()).trim();
+    return { ok: false, message: body || failMessage };
+}
+
 function elementValue(element: HTMLElement): string {
     const value = (element as HTMLElement & { value?: unknown }).value;
 

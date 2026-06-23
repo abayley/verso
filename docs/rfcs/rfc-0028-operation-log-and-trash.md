@@ -18,7 +18,7 @@ superseded_by: null
 |-----------|------------------|
 | Authored  | 2026-06-23       |
 | Started   | 2026-06-24       |
-| Completed |                  |
+| Completed | 2026-06-24       |
 
 ## Summary
 
@@ -262,8 +262,12 @@ preferred.)
    occupied, now-referenced) is skipped and recorded, replay continues. A delete
    reuses the op's recorded trash id so a later restore finds the entry; replay does
    not append to the log. Returns a JSON report of each op's seq/type/status.
-5. **Phase 5 -- Client UX.** Undo affordance, a trash view with restore, and a
-   replay trigger + report surface.
+5. **Phase 5 -- Client UX.** [DONE] Nav-tree header buttons: **Undo** (`POST /undo`),
+   **Trash** (toggles a view that lists `GET /trash` entries, each with a Restore
+   button calling `POST /trash/<id>`), and **Replay** (`POST /replay`, confirmed),
+   each surfacing the server's message in the notice area and refreshing the tree.
+   A `GET /trash` listing endpoint (`listTrash`) was added for the view.
+   Browser-verified against a scratch tree.
 
 ### Rollout Plan Escape Hatch
 

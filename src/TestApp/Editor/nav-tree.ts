@@ -93,7 +93,40 @@ function coerceChildren(parsed: unknown): TreeNodeData[] {
 const EXPANDED_KEY = "editor-nav-expanded";
 const COLLAPSED_KEY = "editor-nav-collapsed";
 
-/** The callbacks the panel needs from the editor element to fetch, create, and navigate. */
+/** The parent folder tree path of a node path (`a/b.md` -> `a`, `a/b` -> `a`, top-level -> ``). */
+function parentOfPath(path: string): string {
+    const index = path.lastIndexOf("/");
+    return index < 0 ? "" : path.slice(0, index);
+}
+
+/** A delete outcome from the server: moved to trash, refused with referrers, or an error. */
+export interface DeleteResult {
+    status: "deleted" | "refused" | "error";
+    referrers?: { page: string; link: string }[];
+    message?: string;
+}
+
+/** A move outcome: applied (or previewed) with the count of files whose links change, or an error. */
+export interface MoveResult {
+    ok: boolean;
+    changed?: number;
+    message?: string;
+}
+
+/** A generic operation outcome (undo/restore/replay) with a human message. */
+export interface OpResult {
+    ok: boolean;
+    message: string;
+}
+
+/** A trash entry for the Trash view. */
+export interface TrashEntry {
+    id: string;
+    path: string;
+    kind: string;
+}
+
+/** The callbacks the panel needs from the editor element to fetch, create, navigate, and reorganise. */
 export interface NavTreeOptions {
     /** The open document's tree-relative path (`data-document`). */
     documentPath: string;
@@ -109,6 +142,18 @@ export interface NavTreeOptions {
     registerTooltip: (target: HTMLElement, text: string) => void;
     /** Surface a transient message in the editor's standard notification area. */
     notify: (message: string, isError: boolean) => void;
+    /** Delete a page or section (routes to trash, or refuses with referrers). */
+    deleteNode: (path: string) => Promise<DeleteResult>;
+    /** Move a page/section: preview (confirm false) returns the impact; apply (confirm true) performs it. */
+    moveNode: (path: string, destParent: string, slug: string, confirm: boolean) => Promise<MoveResult>;
+    /** Undo the latest structural operation. */
+    undo: () => Promise<OpResult>;
+    /** List the trash entries for the Trash view. */
+    listTrash: () => Promise<TrashEntry[]>;
+    /** Restore a trash entry to its origin. */
+    restore: (id: string) => Promise<OpResult>;
+    /** Replay the operation log onto the (refreshed) corpus. */
+    replay: () => Promise<OpResult>;
 }
 
 /**
@@ -130,6 +175,11 @@ export class NavTreePanel {
     private creatingUnder: string | null = null;
     private createTitle = "";
     private createKind: "page" | "section" = "page";
+    /** Whether the Trash view is open (renders the trash list above the tree). */
+    private trashOpen = false;
+    private trashEntries: TrashEntry[] = [];
+    /** The container the Trash view renders into, between the header and the tree list. */
+    private readonly trashPanel: HTMLDivElement;
 
     constructor(options: NavTreeOptions) {
         this.options = options;
@@ -167,12 +217,20 @@ export class NavTreePanel {
         collapseAll.textContent = "⊟";
         collapseAll.addEventListener("click", (): void => this.collapseAll());
 
-        header.append(toggle, heading, collapseAll, this.createRootCreateButton());
+        const undo = this.createHeaderButton("⤺", "Undo last change", (): void => void this.undo());
+        const trash = this.createHeaderButton("🗑", "Trash", (): void => void this.toggleTrash());
+        const replay = this.createHeaderButton("↻", "Replay operation log", (): void => void this.replay());
+
+        header.append(toggle, heading, collapseAll, undo, trash, replay, this.createRootCreateButton());
+
+        this.trashPanel = document.createElement("div");
+        this.trashPanel.className = "markdown-editor__nav-trash";
+        this.trashPanel.hidden = true;
 
         this.list = document.createElement("ul");
         this.list.className = "markdown-editor__nav-list";
 
-        this.panel.append(header, this.list);
+        this.panel.append(header, this.trashPanel, this.list);
         this.applyCollapsed();
         this.render();
         // The spine only seeds the open page's ancestors; any other persisted-expanded folder has no cached
@@ -252,6 +310,8 @@ export class NavTreePanel {
         if (node.kind === "section") {
             row.append(this.createNodeCreateButton(node.path));
         }
+        row.append(this.createRowAction("⤴", "Move", node, (): void => void this.moveNode(node)));
+        row.append(this.createRowAction("✕", "Delete", node, (): void => void this.deleteNode(node)));
 
         item.append(row);
 
@@ -390,6 +450,148 @@ export class NavTreePanel {
     private closeCreate(): void {
         this.creatingUnder = null;
         this.render();
+    }
+
+    /** A small header action button (undo/trash/replay). */
+    private createHeaderButton(glyph: string, ariaLabel: string, onClick: () => void): HTMLButtonElement {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "markdown-editor__nav-op";
+        button.setAttribute("aria-label", ariaLabel);
+        button.title = ariaLabel;
+        button.textContent = glyph;
+        button.addEventListener("click", (event: MouseEvent): void => {
+            event.stopPropagation();
+            onClick();
+        });
+        return button;
+    }
+
+    /** A per-row action button (move/delete) for a node. */
+    private createRowAction(glyph: string, label: string, node: TreeNodeData, onClick: () => void): HTMLButtonElement {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "markdown-editor__nav-action";
+        button.setAttribute("aria-label", `${label} ${node.name}`);
+        button.title = label;
+        button.textContent = glyph;
+        button.addEventListener("click", (event: MouseEvent): void => {
+            event.stopPropagation();
+            onClick();
+        });
+        return button;
+    }
+
+    /** Prompts for a destination, previews the move's impact, and applies it on confirmation. */
+    private async moveNode(node: TreeNodeData): Promise<void> {
+        const currentParent = parentOfPath(node.path);
+        const destParent = window.prompt("Move to which folder? (tree path; blank = root)", currentParent);
+        if (destParent === null) {
+            return;
+        }
+        const slug = window.prompt("New slug? (blank keeps the current name)", "") ?? "";
+        const preview = await this.options.moveNode(node.path, destParent.trim(), slug.trim(), false);
+        if (!preview.ok) {
+            this.options.notify(preview.message ?? "Move not possible.", true);
+            return;
+        }
+        const count = preview.changed ?? 0;
+        if (!window.confirm(`Moving “${node.name}” will update links in ${count} file(s). Proceed?`)) {
+            return;
+        }
+        const applied = await this.options.moveNode(node.path, destParent.trim(), slug.trim(), true);
+        if (!applied.ok) {
+            this.options.notify(applied.message ?? "Move failed.", true);
+            return;
+        }
+        this.options.notify(`Moved “${node.name}”.`, false);
+        await this.refresh();
+    }
+
+    /** Confirms, then deletes a node (to trash); surfaces the referrer list on a refused delete. */
+    private async deleteNode(node: TreeNodeData): Promise<void> {
+        if (!window.confirm(`Delete “${node.name}”? It moves to the trash and can be restored.`)) {
+            return;
+        }
+        const result = await this.options.deleteNode(node.path);
+        if (result.status === "refused") {
+            const pages = (result.referrers ?? []).map((r): string => r.page).join(", ");
+            this.options.notify(`Cannot delete “${node.name}”: still linked from ${pages}.`, true);
+            return;
+        }
+        if (result.status === "error") {
+            this.options.notify(result.message ?? "Delete failed.", true);
+            return;
+        }
+        this.options.notify(`Deleted “${node.name}” (in trash). Use Undo or Trash to recover.`, false);
+        await this.refresh();
+    }
+
+    private async undo(): Promise<void> {
+        const result = await this.options.undo();
+        this.options.notify(result.message, !result.ok);
+        if (result.ok) {
+            await this.refresh();
+        }
+    }
+
+    private async replay(): Promise<void> {
+        if (!window.confirm("Replay the operation log onto the current corpus?")) {
+            return;
+        }
+        const result = await this.options.replay();
+        this.options.notify(result.message, !result.ok);
+        await this.refresh();
+    }
+
+    /** Opens or closes the Trash view, loading the entries when opening. */
+    private async toggleTrash(): Promise<void> {
+        this.trashOpen = !this.trashOpen;
+        if (this.trashOpen) {
+            this.trashEntries = await this.options.listTrash();
+        }
+        this.renderTrash();
+    }
+
+    /** Renders the Trash view (a list of trashed entries each with a Restore button). */
+    private renderTrash(): void {
+        this.trashPanel.hidden = !this.trashOpen;
+        if (!this.trashOpen) {
+            this.trashPanel.replaceChildren();
+            return;
+        }
+        const heading = document.createElement("div");
+        heading.className = "markdown-editor__nav-trash-heading";
+        heading.textContent = this.trashEntries.length === 0 ? "Trash is empty" : "Trash";
+        const rows = this.trashEntries.map((entry): HTMLElement => this.renderTrashEntry(entry));
+        this.trashPanel.replaceChildren(heading, ...rows);
+    }
+
+    private renderTrashEntry(entry: TrashEntry): HTMLElement {
+        const row = document.createElement("div");
+        row.className = "markdown-editor__nav-trash-row";
+        const label = document.createElement("span");
+        label.textContent = `${entry.path} (${entry.kind})`;
+        const restore = document.createElement("button");
+        restore.type = "button";
+        restore.className = "markdown-editor__nav-retry";
+        restore.textContent = "Restore";
+        restore.addEventListener("click", (event: MouseEvent): void => {
+            event.stopPropagation();
+            void this.restoreEntry(entry);
+        });
+        row.append(label, restore);
+        return row;
+    }
+
+    private async restoreEntry(entry: TrashEntry): Promise<void> {
+        const result = await this.options.restore(entry.id);
+        this.options.notify(result.message, !result.ok);
+        if (result.ok) {
+            this.trashEntries = await this.options.listTrash();
+            this.renderTrash();
+            await this.refresh();
+        }
     }
 
     private async submitCreate(parentPath: string): Promise<void> {

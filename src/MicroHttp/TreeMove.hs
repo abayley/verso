@@ -22,6 +22,8 @@ module MicroHttp.TreeMove (
     ReplayEntry (..),
     replayLog,
     replayReportJson,
+    listTrash,
+    trashListJson,
 ) where
 
 import Control.Monad (forM, forM_, void, when, zipWithM)
@@ -514,6 +516,36 @@ targetOccupied root path kind =
 -- | Writes a trash entry's provenance manifest.
 writeManifest :: FilePath -> Manifest -> IO ()
 writeManifest entryDir manifest = BS.writeFile (entryDir ++ "/manifest") (BS.pack (renderManifest manifest))
+
+{- | Lists the trash entries (RFC-0028) as @(id, originalPath, kind)@, newest-id last,
+reading each entry's manifest. Entries without a readable manifest are skipped.
+-}
+listTrash :: FilePath -> IO [(String, String, String)]
+listTrash trashRoot = do
+    exists <- doesDirectoryExist trashRoot
+    if not exists
+        then pure []
+        else do
+            ids <- listDirectory trashRoot
+            entries <- mapM entryFor ids
+            pure (catMaybes entries)
+  where
+    entryFor entryId = do
+        let manifestFile = trashRoot ++ "/" ++ entryId ++ "/manifest"
+        hasManifest <- doesFileExist manifestFile
+        if not hasManifest
+            then pure Nothing
+            else do
+                text <- fmap BS.unpack (BS.readFile manifestFile)
+                pure (fmap (\m -> (entryId, manPath m, manKind m)) (parseManifest text))
+
+-- | The trash listing as JSON @[{"id","path","kind"}]@.
+trashListJson :: [(String, String, String)] -> String
+trashListJson entries =
+    "[" ++ intercalate "," (map one entries) ++ "]"
+  where
+    one (entryId, path, kind) =
+        "{\"id\":" ++ jsonStr entryId ++ ",\"path\":" ++ jsonStr path ++ ",\"kind\":" ++ jsonStr kind ++ "}"
 
 -- | One operation's outcome during replay: its seq, type, and @applied@ or @skipped: <reason>@ status.
 data ReplayEntry = ReplayEntry

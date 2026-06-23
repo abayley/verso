@@ -44,7 +44,7 @@ import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
 import MicroHttp.Stream (StreamError (..))
-import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), deleteTarget, movePage, movePlanJson, moveSection, replayLog, replayReportJson, restoreFromTrash)
+import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), deleteTarget, listTrash, movePage, movePlanJson, moveSection, replayLog, replayReportJson, restoreFromTrash, trashListJson)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 
 data DocumentStore = DocumentStore
@@ -174,6 +174,7 @@ treeRoutes editorThemeDefault root logPath trashRoot =
     , Static.static "/static/editor" "static/editor"
     , Router.get "/tree/*path" (treeChildrenHandler root)
     , Router.post "/tree/*path" (treePostDispatch root logPath trashRoot)
+    , Router.get "/trash" (treeTrashListHandler trashRoot)
     , Router.post "/trash/*id" (treeRestoreHandler root logPath trashRoot)
     , Router.post "/undo" (treeUndoHandler root logPath trashRoot)
     , Router.post "/replay" (treeReplayHandler root logPath trashRoot)
@@ -412,6 +413,12 @@ applyInverse root logPath trashRoot op = case opType op of
                 , opTs = ts
                 , opTrash = trash
                 }
+
+-- | The trash listing endpoint (RFC-0028): @GET /trash@ returns the trash entries as JSON for the Trash view.
+treeTrashListHandler :: FilePath -> Router.Handler
+treeTrashListHandler trashRoot _ _ = do
+    entries <- liftIO (listTrash trashRoot)
+    pure (jsonResponse (trashListJson entries))
 
 {- | The replay endpoint (RFC-0028 phase 4): @POST /replay@ applies the operation log
 in order to the (refreshed) corpus and returns the best-effort report. Replay does

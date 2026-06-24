@@ -329,28 +329,6 @@ spec =
                 response <- runTreeAppBody "build/tree-undo-move" (request POST ["undo"]) ""
                 statusCode (responseStatus response) `shouldBe` 409
 
-            it "given POST /replay over a log, when routed, then applicable ops are applied and stale ops skipped" $ do
-                let appliedRoot = "build/tree-replay"
-                removeTree appliedRoot
-                removeTree "build/tree-spec-trash"
-                createDirectoryIfMissing True (appliedRoot ++ "/x")
-                createDirectoryIfMissing True (appliedRoot ++ "/y")
-                writeFile (appliedRoot ++ "/index.md") "# Root\n"
-                writeFile (appliedRoot ++ "/x/index.md") "# X\n"
-                writeFile (appliedRoot ++ "/y/index.md") "# Y\n"
-                writeFile
-                    "build/tree-spec-oplog"
-                    ( "{\"type\":\"move\",\"kind\":\"section\",\"from\":\"x\",\"to\":\"y/x\",\"seq\":0,\"ts\":\"t\"}\n"
-                        ++ "{\"type\":\"move\",\"kind\":\"section\",\"from\":\"ghost\",\"to\":\"y/ghost\",\"seq\":1,\"ts\":\"t\"}\n"
-                    )
-                response <- runTreeAppBody appliedRoot (request POST ["replay"]) ""
-                statusCode (responseStatus response) `shouldBe` 200
-                bodyText response `shouldInclude` "\"seq\":0"
-                bodyText response `shouldInclude` "\"status\":\"applied\""
-                bodyText response `shouldInclude` "\"status\":\"skipped"
-                doesDirectoryExist (appliedRoot ++ "/y/x") `shouldReturn` True
-                doesDirectoryExist (appliedRoot ++ "/x") `shouldReturn` False
-
 nodeTuple :: TestApp.TreeNode -> (String, TestApp.NodeKind, String, Bool)
 nodeTuple nd =
     (TestApp.nodeName nd, TestApp.nodeKind nd, TestApp.nodePath nd, TestApp.nodeHasChildren nd)

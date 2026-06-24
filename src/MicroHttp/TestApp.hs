@@ -44,7 +44,7 @@ import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
 import MicroHttp.Stream (StreamError (..))
-import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), deleteTarget, listTrash, movePage, movePlanJson, moveSection, replayLog, replayReportJson, restoreFromTrash, trashListJson)
+import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), deleteTarget, listTrash, movePage, movePlanJson, moveSection, restoreFromTrash, trashListJson)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 
 data DocumentStore = DocumentStore
@@ -177,7 +177,6 @@ treeRoutes editorThemeDefault root logPath trashRoot =
     , Router.get "/trash" (treeTrashListHandler trashRoot)
     , Router.post "/trash/*id" (treeRestoreHandler root logPath trashRoot)
     , Router.post "/undo" (treeUndoHandler root logPath trashRoot)
-    , Router.post "/replay" (treeReplayHandler root logPath trashRoot)
     , Router.post "/documents/*path" (treePost root)
     , Router.get "/documents/*path" (treeGet editorThemeDefault root)
     ]
@@ -420,15 +419,9 @@ treeTrashListHandler trashRoot _ _ = do
     entries <- liftIO (listTrash trashRoot)
     pure (jsonResponse (trashListJson entries))
 
-{- | The replay endpoint (RFC-0028 phase 4): @POST /replay@ applies the operation log
-in order to the (refreshed) corpus and returns the best-effort report. Replay does
-not append to the log.
--}
-treeReplayHandler :: FilePath -> FilePath -> FilePath -> Router.Handler
-treeReplayHandler root logPath trashRoot _ _ = liftIO $ do
-    ops <- readOperations logPath
-    report <- replayLog root trashRoot ops
-    pure (jsonResponse (replayReportJson report))
+-- Replay is an operator action run from the @replay-tool@ CLI (RFC-0028), not a web
+-- endpoint, so it is deliberately not surfaced under the routes; the logic lives in
+-- 'MicroHttp.TreeMove.replayLog'.
 
 -- | @"page"@ or @"section"@ for a tree path.
 kindOf :: String -> String

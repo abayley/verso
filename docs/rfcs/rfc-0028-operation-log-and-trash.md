@@ -256,18 +256,21 @@ preferred.)
    `restoreFromTrash` for a delete, `deleteTarget` for a restore -- and appends the
    inverse as a new record (undo is itself logged, so a further undo is a redo). A
    @409@ when the log is empty or the inverse cannot apply (occupied/now-referenced).
-4. **Phase 4 -- Replay.** [DONE] `MicroHttp.TreeMove.replayLog` + `POST /replay`:
-   applies the log in `seq` order through the move/delete/restore machinery,
-   best-effort -- an op whose precondition fails (source missing, destination
-   occupied, now-referenced) is skipped and recorded, replay continues. A delete
-   reuses the op's recorded trash id so a later restore finds the entry; replay does
-   not append to the log. Returns a JSON report of each op's seq/type/status.
-5. **Phase 5 -- Client UX.** [DONE] Nav-tree header buttons: **Undo** (`POST /undo`),
-   **Trash** (toggles a view that lists `GET /trash` entries, each with a Restore
-   button calling `POST /trash/<id>`), and **Replay** (`POST /replay`, confirmed),
-   each surfacing the server's message in the notice area and refreshing the tree.
-   A `GET /trash` listing endpoint (`listTrash`) was added for the view.
-   Browser-verified against a scratch tree.
+4. **Phase 4 -- Replay.** [DONE] `MicroHttp.TreeMove.replayLog`: applies the log in
+   `seq` order through the move/delete/restore machinery, best-effort -- an op whose
+   precondition fails (source missing, destination occupied, now-referenced) is
+   skipped and recorded, replay continues. A delete reuses the op's recorded trash id
+   so a later restore finds the entry; replay does not append to the log. Replay is an
+   **operator command-line action** (`make replay-tool` / `build/replay-tool`,
+   `src/ReplayTool.hs`), reading the same config as the server, **not** a web endpoint
+   -- it is run after a corpus refresh, typically with the server down, so it operates
+   on the filesystem directly and prints the report.
+5. **Phase 5 -- Client UX.** [DONE] Nav-tree header buttons: **Undo** and **Trash**
+   (toggles a view that lists `GET /trash` entries, each with a Restore button calling
+   `POST /trash/<id>`), each surfacing the server's message in the notice area and
+   refreshing the tree. A `GET /trash` listing endpoint (`listTrash`) was added for the
+   view. Replay is intentionally **not** in the UI (it is the `replay-tool` CLI, an
+   operator action). Browser-verified against a scratch tree.
 
 ### Rollout Plan Escape Hatch
 

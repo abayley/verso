@@ -158,8 +158,6 @@ export interface NavTreeOptions {
     listTrash: () => Promise<TrashEntry[]>;
     /** Restore a trash entry to its origin. */
     restore: (id: string) => Promise<OpResult>;
-    /** Replay the operation log onto the (refreshed) corpus. */
-    replay: () => Promise<OpResult>;
 }
 
 /**
@@ -227,9 +225,7 @@ export class NavTreePanel {
 
         const undo = this.createHeaderButton("⤺", "Undo last change", (): void => void this.undo());
         const trash = this.createHeaderButton("🗑", "Trash", (): void => void this.toggleTrash());
-        const replay = this.createHeaderButton("↻", "Replay operation log", (): void => void this.replay());
-
-        header.append(toggle, heading, collapseAll, undo, trash, replay, this.createRootCreateButton());
+        header.append(toggle, heading, collapseAll, undo, trash, this.createRootCreateButton());
 
         this.trashPanel = document.createElement("div");
         this.trashPanel.className = "markdown-editor__nav-trash";
@@ -646,15 +642,6 @@ export class NavTreePanel {
         if (result.ok) {
             await this.refresh();
         }
-    }
-
-    private async replay(): Promise<void> {
-        if (!window.confirm("Replay the operation log onto the current corpus?")) {
-            return;
-        }
-        const result = await this.options.replay();
-        this.options.notify(result.message, !result.ok);
-        await this.refresh();
     }
 
     /** Opens or closes the Trash view, loading the entries when opening. */

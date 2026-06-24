@@ -3,7 +3,8 @@ module MicroHttp.TreeMoveSpec (spec) where
 import Control.Monad (forM_, void, when)
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.FileOps (removeEmptyDir, removeFilePath)
-import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), deleteTarget, movePage, moveSection, restoreFromTrash)
+import MicroHttp.OperationLog (OpType (..), Operation (..))
+import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), ReplayEntry (..), deleteTarget, movePage, moveSection, replayLog, restoreFromTrash)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import Test.Hspec
 
@@ -231,6 +232,25 @@ spec = do
             writeAt "lonely.md" "# Recreated\n"
             result <- restoreFromTrash root trashRoot "7"
             isLeft result `shouldBe` True
+
+    describe "MicroHttp.TreeMove.replayLog" $ do
+        it "applies in-order ops onto a fresh corpus and skips ones whose precondition fails" $ do
+            removeTree root
+            removeTree trashRoot
+            createDirectoryIfMissing True (root ++ "/x")
+            createDirectoryIfMissing True (root ++ "/y")
+            writeAt "index.md" "# Root\n"
+            writeAt "x/index.md" "# X\n"
+            writeAt "y/index.md" "# Y\n"
+            let op t f to s =
+                    Operation{opType = t, opKind = "section", opFrom = Just f, opTo = Just to, opSeq = s, opTs = "t", opTrash = Nothing}
+            report <- replayLog root trashRoot [op OpMove "x" "y/x" 0, op OpMove "ghost" "y/ghost" 1]
+            map (\e -> (reSeq e, isApplied (reStatus e))) report `shouldBe` [(0, True), (1, False)]
+            doesDirectoryExist (root ++ "/y/x") `shouldReturn` True
+            doesDirectoryExist (root ++ "/x") `shouldReturn` False
+
+isApplied :: String -> Bool
+isApplied = (== "applied")
 
 isLeft :: Either a b -> Bool
 isLeft (Left _) = True

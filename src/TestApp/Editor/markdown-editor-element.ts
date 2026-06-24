@@ -595,8 +595,6 @@ export class MarkdownEditorElement extends HTMLElement {
             },
             restore: (id: string): Promise<OpResult> =>
                 opRequest(`/trash/${encodeURIComponent(id)}`, { method: "POST" }, "Restored.", "Restore failed."),
-            replay: (): Promise<OpResult> =>
-                opRequest("/replay", { method: "POST" }, "Replayed the operation log.", "Replay failed."),
         });
     }
 

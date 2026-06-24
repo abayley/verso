@@ -36,6 +36,7 @@ import qualified MicroHttp.Http as Http
 import MicroHttp.Http.Parse (ParseError (..))
 import MicroHttp.Http.PercentEncoding (decodeFormValue)
 import MicroHttp.Iteratee (Iter, liftIO, readBodyStrict)
+import MicroHttp.LinkIndexStore (newLinkIndexStore)
 import MicroHttp.Log (Logger, localTimestamp, rotatingAppender, rotatingFileLogfmtLogger)
 import MicroHttp.Middleware (logRequests, withErrorResponses)
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), fileSizeBytes)
@@ -44,7 +45,7 @@ import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
 import MicroHttp.Stream (StreamError (..))
-import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), deleteTarget, listTrash, movePage, movePlanJson, moveSection, restoreFromTrash, trashListJson)
+import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), RelevantPages, deleteTarget, indexRelevant, listTrash, movePage, movePlanJson, moveSection, restoreFromTrash, scanRelevant, trashListJson)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 
 data DocumentStore = DocumentStore
@@ -74,13 +75,17 @@ appFromConfig :: Server.Settings -> Config -> IO Server.Application
 appFromConfig settings cfg = do
     accessLogger <- rotatingFileLogfmtLogger logMaxBytes logKeep accessLogPath
     clientErrorSink <- rotatingAppender logMaxBytes logKeep clientErrorLogPath
+    -- The running server keeps a warm link index across requests (RFC-0029); move and
+    -- delete consult it via indexRelevant. Built lazily on first use, so flat-document
+    -- mode (which never touches it) pays nothing.
+    indexStore <- newLinkIndexStore
     pure
         ( logRequests
             accessLogger
             ( withErrorResponses
                 ( Router.serveRoutes
                     (Server.parseLimits settings)
-                    (configuredRoutes cfg clientErrorSink)
+                    (configuredRoutes (indexRelevant indexStore) cfg clientErrorSink)
                 )
             )
         )
@@ -107,8 +112,8 @@ configIntOr key def cfg = case configInt key def cfg of
 the filesystem-tree mode (a MkDocs-style tree served and edited in place, with
 per-page peer @assets/@); otherwise the flat single-document store is used.
 -}
-configuredRoutes :: Config -> (String -> IO ()) -> [Router.Route]
-configuredRoutes cfg clientErrorSink =
+configuredRoutes :: RelevantPages -> Config -> (String -> IO ()) -> [Router.Route]
+configuredRoutes findRelevant cfg clientErrorSink =
     clientErrorRoute clientErrorSink
         : case configString "document_tree_root" "" cfg of
             "" ->
@@ -116,7 +121,7 @@ configuredRoutes cfg clientErrorSink =
                     ++ attachmentRoutes (fileAttachmentStore (configString "attachment_root" "data/attachments" cfg))
                     ++ mounts
             treeRoot ->
-                treeRoutes editorTheme treeRoot logPath trashRoot ++ mounts
+                treeRoutes findRelevant editorTheme treeRoot logPath trashRoot ++ mounts
   where
     editorTheme = configString "editor_theme" "paper" cfg
     logPath = configString "operation_log" "data/operation_log" cfg
@@ -167,17 +172,17 @@ and every other tree file (images, attachments, raw Markdown) is served
 statically and path-safely (reusing 'Static.resolveStaticPath'). The document id
 is the tree-relative path including the @.md@ extension.
 -}
-treeRoutes :: String -> FilePath -> FilePath -> FilePath -> [Router.Route]
-treeRoutes editorThemeDefault root logPath trashRoot =
+treeRoutes :: RelevantPages -> String -> FilePath -> FilePath -> FilePath -> [Router.Route]
+treeRoutes findRelevant editorThemeDefault root logPath trashRoot =
     [ Router.get "/" (redirectTo "/documents/")
     , Router.get "/index.html" (redirectTo "/documents/")
     , Static.static "/static/editor" "static/editor"
     , Router.get "/tree/*path" (treeChildrenHandler root)
-    , Router.post "/tree/*path" (treePostDispatch root logPath trashRoot)
+    , Router.post "/tree/*path" (treePostDispatch findRelevant root logPath trashRoot)
     , Router.get "/trash" (treeTrashListHandler trashRoot)
     , Router.post "/trash/*id" (treeRestoreHandler root logPath trashRoot)
     , Router.get "/operations" (treeOperationsHandler logPath)
-    , Router.post "/undo" (treeUndoHandler root logPath trashRoot)
+    , Router.post "/undo" (treeUndoHandler findRelevant root logPath trashRoot)
     , Router.post "/documents/*path" (treePost root)
     , Router.get "/documents/*path" (treeGet editorThemeDefault root)
     ]
@@ -211,10 +216,10 @@ treeCreateHandler root captures _ = do
 {- | Dispatches a @POST /tree/*path@: a section/page move when the @?move@ flag is
 present (RFC-0027), otherwise a create (RFC-0026).
 -}
-treePostDispatch :: FilePath -> FilePath -> FilePath -> Router.Handler
-treePostDispatch root logPath trashRoot captures request
-    | hasQueryFlag "move" request = treeMoveHandler root logPath captures
-    | hasQueryFlag "delete" request = treeDeleteHandler root logPath trashRoot captures
+treePostDispatch :: RelevantPages -> FilePath -> FilePath -> FilePath -> Router.Handler
+treePostDispatch findRelevant root logPath trashRoot captures request
+    | hasQueryFlag "move" request = treeMoveHandler findRelevant root logPath captures
+    | hasQueryFlag "delete" request = treeDeleteHandler findRelevant root logPath trashRoot captures
     | otherwise = treeCreateHandler root captures request
 
 {- | The section-move endpoint (RFC-0027): @POST /tree/*path?move@ with form fields
@@ -222,15 +227,15 @@ treePostDispatch root logPath trashRoot captures request
 (@true@ to apply, otherwise a dry-run preview). Returns the impact plan as JSON, or a
 @409@ with the reason on refusal (root, cycle, collision, unsafe path).
 -}
-treeMoveHandler :: FilePath -> FilePath -> Router.Captures -> Iter StreamError Http.Response
-treeMoveHandler root logPath captures = do
+treeMoveHandler :: RelevantPages -> FilePath -> FilePath -> Router.Captures -> Iter StreamError Http.Response
+treeMoveHandler findRelevant root logPath captures = do
     bytes <- readBodyStrict (StreamParseError BodyTooLarge) treeCreateMaxBytes
     let fields = formFields (BS.unpack bytes)
         srcRel = capture "path" captures
         confirm = capture "confirm" fields == "true"
         isPage = isMarkdownPath srcRel
         move = if isPage then movePage else moveSection
-    result <- liftIO (move root srcRel (capture "to" fields) (capture "slug" fields) confirm)
+    result <- liftIO (move findRelevant root srcRel (capture "to" fields) (capture "slug" fields) confirm)
     liftIO (recordAppliedMove logPath isPage result)
     pure (either (statusResponse 409 "Conflict" . (++ "\n")) (jsonResponse . movePlanJson) result)
 
@@ -262,12 +267,12 @@ Refuses with @409@ and the referrer list when another page links in; otherwise m
 the target to trash, appends a @delete@ record to the operation log, and returns the
 trash id. The trash id is the delete record's @seq@.
 -}
-treeDeleteHandler :: FilePath -> FilePath -> FilePath -> Router.Captures -> Iter StreamError Http.Response
-treeDeleteHandler root logPath trashRoot captures = liftIO $ do
+treeDeleteHandler :: RelevantPages -> FilePath -> FilePath -> FilePath -> Router.Captures -> Iter StreamError Http.Response
+treeDeleteHandler findRelevant root logPath trashRoot captures = liftIO $ do
     let path = capture "path" captures
         isPage = isMarkdownPath path
     seqNo <- logSeq logPath
-    result <- deleteTarget root trashRoot path (show seqNo) seqNo
+    result <- deleteTarget findRelevant root trashRoot path (show seqNo) seqNo
     case result of
         Left err -> pure (statusResponse 409 "Conflict" (err ++ "\n"))
         Right (Refused referrers) -> pure (statusResponse 409 "Conflict" (referrersJson referrers))
@@ -352,8 +357,8 @@ the log is empty, the seq is unknown, or the inverse cannot be applied (its targ
 occupied, missing, or now referenced -- so inverting a non-latest move that has since
 moved refuses cleanly rather than corrupting the tree).
 -}
-treeUndoHandler :: FilePath -> FilePath -> FilePath -> Router.Handler
-treeUndoHandler root logPath trashRoot _ _ = do
+treeUndoHandler :: RelevantPages -> FilePath -> FilePath -> FilePath -> Router.Handler
+treeUndoHandler findRelevant root logPath trashRoot _ _ = do
     bytes <- readBodyStrict (StreamParseError BodyTooLarge) treeCreateMaxBytes
     let fields = formFields (BS.unpack bytes)
         wantedSeq = parseSeq (capture "seq" fields)
@@ -365,7 +370,7 @@ treeUndoHandler root logPath trashRoot _ _ = do
         case chosen of
             Nothing -> pure (statusResponse 409 "Conflict" "nothing to undo\n")
             Just op -> do
-                result <- applyInverse root logPath trashRoot op
+                result <- applyInverse findRelevant root logPath trashRoot op
                 pure (either (statusResponse 409 "Conflict" . (++ "\n")) jsonResponse result)
 
 -- | The first operation of a list, if any.
@@ -382,8 +387,8 @@ parseSeq value = case reads value of
 {- | Applies the inverse of an operation through the move/trash machinery and appends
 the inverse record, returning the JSON body on success or an error reason.
 -}
-applyInverse :: FilePath -> FilePath -> FilePath -> Operation -> IO (Either String String)
-applyInverse root logPath trashRoot op = case opType op of
+applyInverse :: RelevantPages -> FilePath -> FilePath -> FilePath -> Operation -> IO (Either String String)
+applyInverse findRelevant root logPath trashRoot op = case opType op of
     OpMove -> undoMove
     OpDelete -> undoDelete
     OpRestore -> undoRestore
@@ -395,7 +400,7 @@ applyInverse root logPath trashRoot op = case opType op of
         let destParent = parentOfRel from
             slug = slugForPath (opKind op) from
             move = if opKind op == "page" then movePage else moveSection
-        result <- move root to destParent slug True
+        result <- move findRelevant root to destParent slug True
         case result of
             Left err -> pure (Left err)
             Right plan
@@ -416,7 +421,7 @@ applyInverse root logPath trashRoot op = case opType op of
 
     undoRestore = do
         seqNo <- logSeq logPath
-        result <- deleteTarget root trashRoot to (show seqNo) seqNo
+        result <- deleteTarget findRelevant root trashRoot to (show seqNo) seqNo
         case result of
             Left err -> pure (Left err)
             Right (Refused _) -> pure (Left "cannot undo restore: the target is now referenced")
@@ -480,7 +485,7 @@ appWithDocumentTree :: String -> FilePath -> Server.Application
 appWithDocumentTree editorThemeDefault root =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
-        (treeRoutes editorThemeDefault root "data/operation_log" "data/trash")
+        (treeRoutes scanRelevant editorThemeDefault root "data/operation_log" "data/trash")
 
 {- | A GET under the tree: the editor page for @?edit@ on a Markdown file,
 otherwise the file served statically (raw Markdown, images, attachments).

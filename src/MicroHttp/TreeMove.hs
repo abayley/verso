@@ -12,6 +12,10 @@ rewrites are computed up front against the pre-move tree, then the directory is
 renamed and the rewritten pages and listings are written.
 -}
 module MicroHttp.TreeMove (
+    RelevantQuery (..),
+    RelevantPages,
+    scanRelevant,
+    indexRelevant,
     MovePlan (..),
     moveSection,
     movePage,
@@ -44,6 +48,8 @@ import MicroHttp.DocumentLinks (
 import MicroHttp.DocumentListing (addListingEntry, removeListingEntry)
 import MicroHttp.DocumentMeta (metaDirectoryFor)
 import MicroHttp.FileOps (removeEmptyDir, removeFilePath, renamePath)
+import MicroHttp.LinkIndex (rewriteCandidates)
+import MicroHttp.LinkIndexStore (LinkIndexStore, freshIndex)
 import MicroHttp.OperationLog (OpType (..), Operation (..))
 import MicroHttp.Static (resolveStaticPath)
 import MicroHttp.Trash (Manifest (..), TrashItem (..), parseManifest, renderManifest)
@@ -61,13 +67,57 @@ data MovePlan = MovePlan
     }
     deriving (Eq, Show)
 
+{- | How a move/delete finds the pages it must inspect and rewrite (RFC-0029): the
+target's byte @hint@ and an optional @subtree@ prefix for the byte-prefiltered scan,
+plus the resolved-path @region@ predicate for the link-index lookup. A backend uses the
+fields it needs -- the scan reads @hint@/@subtree@, the index reads @region@ -- so the
+same query drives either.
+-}
+data RelevantQuery = RelevantQuery
+    { rqHint :: BS.ByteString
+    , rqSubtree :: Maybe String
+    , rqRegion :: String -> Bool
+    }
+
+{- | A page source: the @(treePath, body)@ pages an operation must process for a query.
+'scanRelevant' (the byte-prefiltered whole-tree read) and 'indexRelevant' (the
+freshness-checked link index) are the two backends; the server uses the index,
+@replay-tool@ and the unit tests use the scan.
+-}
+type RelevantPages = FilePath -> RelevantQuery -> IO [(String, String)]
+
+-- | The scan backend: the byte-prefiltered whole-tree read (RFC-0027), unchanged. The index's rebuild fallback and @replay-tool@'s mechanism.
+scanRelevant :: RelevantPages
+scanRelevant root query = enumerateRelevant root (rqHint query) (rqSubtree query)
+
+{- | The index backend (RFC-0029): consult the freshness-checked link index for the
+candidate pages (the region's own pages plus everything linking into it), then read just
+those bodies. The pure planners ('planMoveRewrites'/'referrersMatching') then compute the
+exact edits/referrers over this candidate set -- identical to running over the whole
+tree, since a page outside the candidate set has no link into the region.
+-}
+indexRelevant :: LinkIndexStore -> RelevantPages
+indexRelevant store root query = do
+    (_, index) <- freshIndex root store
+    let paths = rewriteCandidates (rqRegion query) index
+    candidates <- mapM readCandidate paths
+    pure (catMaybes candidates)
+  where
+    readCandidate path = fmap (fmap (withPath path)) (readRel root path)
+    withPath path body = (path, body)
+
+-- | The subtree-membership predicate for a region path (the path itself and its descendants).
+inRegion :: String -> String -> Bool
+inRegion prefix path = path == prefix || (prefix ++ "/") `isPrefixOf` path
+
 {- | Moves the section at @srcRel@ under @destParentRel@ with slug @slug@ (the
 source's own slug when @slug@ is empty), previewing when @confirm@ is 'False' and
 applying when 'True'. Returns 'Left' with a reason on refusal (the root, a cycle,
-an unsafe path, a missing destination parent, or a destination collision).
+an unsafe path, a missing destination parent, or a destination collision). @findRelevant@
+supplies the pages to rewrite ('scanRelevant' or 'indexRelevant').
 -}
-moveSection :: FilePath -> String -> String -> String -> Bool -> IO (Either String MovePlan)
-moveSection root rawSrcRel rawDestParentRel rawSlug confirm
+moveSection :: RelevantPages -> FilePath -> String -> String -> String -> Bool -> IO (Either String MovePlan)
+moveSection findRelevant root rawSrcRel rawDestParentRel rawSlug confirm
     | null srcSegs = pure (Left "cannot move the root")
     | otherwise =
         case (resolveStaticPath root srcSegs, resolveStaticPath root newSegs, resolveStaticPath root destParentSegs) of
@@ -105,7 +155,7 @@ moveSection root rawSrcRel rawDestParentRel rawSlug confirm
                             else runMove srcFs newFs
 
     runMove srcFs newFs = do
-        pages <- enumerateRelevant root (BS.pack (last srcSegs)) (Just srcRel)
+        pages <- findRelevant root (RelevantQuery (BS.pack (last srcSegs)) (Just srcRel) (inRegion srcRel))
         let srcParentRel = parentRel srcRel
             srcIndexRel = indexRel srcParentRel
             destIndexRel = indexRel destParentRel
@@ -166,10 +216,11 @@ sidecar meta directory and runs the asset shared/exclusive analysis (ADR-062),
 relocating exclusive assets and copying shared ones. Refuses the root-of-page
 edge cases: an unsafe path, a missing source/destination parent, a destination
 collision, a no-op (destination is the source), or a destination asset name that
-already holds different content.
+already holds different content. @findRelevant@ supplies the pages to rewrite
+('scanRelevant' or 'indexRelevant').
 -}
-movePage :: FilePath -> String -> String -> String -> Bool -> IO (Either String MovePlan)
-movePage root rawSrcRel rawDestParentRel rawSlug confirm
+movePage :: RelevantPages -> FilePath -> String -> String -> String -> Bool -> IO (Either String MovePlan)
+movePage findRelevant root rawSrcRel rawDestParentRel rawSlug confirm
     | not (".md" `isSuffixOf` srcRel) = pure (Left "source is not a page")
     | otherwise =
         case (resolveStaticPath root srcSegs, resolveStaticPath root newSegs, resolveStaticPath root destParentSegs) of
@@ -214,7 +265,7 @@ movePage root rawSrcRel rawDestParentRel rawSlug confirm
         if not (null conflicts)
             then pure (Left ("destination asset already exists with different content: " ++ intercalate ", " conflicts))
             else do
-                pages <- enumerateRelevant root (BS.pack (last (pathSegmentsOf srcRel))) (Just srcRel)
+                pages <- findRelevant root (RelevantQuery (BS.pack (last (pathSegmentsOf srcRel))) (Just srcRel) (== srcRel))
                 let rewritePages = filter ((`notElem` excluded) . fst) pages
                     rewrites = planPageMove (srcRel, newPath) rewritePages
                     changed = map fst rewrites
@@ -363,10 +414,11 @@ section, any page outside the subtree links into it) the delete is 'Refused' wit
 referrer list and nothing is written (ADR-063). Otherwise the target -- a page's
 @.md@, sidecar meta dir, and exclusive assets, or a whole section folder -- is moved
 into the trash entry @trashId@ with a provenance manifest (ADR-065), the listing
-entry removed, and 'Deleted' returned for the caller to log.
+entry removed, and 'Deleted' returned for the caller to log. @findRelevant@ supplies the
+pages scanned for referrers ('scanRelevant' or 'indexRelevant').
 -}
-deleteTarget :: FilePath -> FilePath -> String -> String -> Int -> IO (Either String DeleteOutcome)
-deleteTarget root trashRoot relPathRaw trashId seqNo
+deleteTarget :: RelevantPages -> FilePath -> FilePath -> String -> String -> Int -> IO (Either String DeleteOutcome)
+deleteTarget findRelevant root trashRoot relPathRaw trashId seqNo
     | null segs = pure (Left "cannot delete the root")
     | otherwise = case resolveStaticPath root segs of
         Nothing -> pure (Left "unsafe path")
@@ -375,10 +427,13 @@ deleteTarget root trashRoot relPathRaw trashId seqNo
             if not exists
                 then pure (Left "not found")
                 else do
-                    -- Only files whose raw bytes mention the target's name can link to it, so the
-                    -- referrer scan parses just those (the byte pre-filter avoids parsing the whole
-                    -- corpus -- the difference between sub-second and ~90s on a large tree).
-                    pages <- enumerateRelevant root (BS.pack (last segs)) Nothing
+                    -- The referrer scan needs the region's pages (to exclude subtree-internal
+                    -- links) and everything linking into it. The index returns exactly that
+                    -- candidate set; the scan byte-prefilters on the target's name (only files
+                    -- whose raw bytes mention it can link to it) -- either way far less than the
+                    -- whole corpus, the difference between sub-second and ~90s on a large tree.
+                    let region = if isPage then (== relPath) else inRegion relPath
+                    pages <- findRelevant root (RelevantQuery (BS.pack (last segs)) Nothing region)
                     if isPage
                         then
                             let referrers = referrersMatching (== relPath) [parentIndexRel, relPath] pages
@@ -579,12 +634,13 @@ applyReplayOp root trashRoot op = case opType op of
         let from = fromMaybe "" (opFrom op)
             to = fromMaybe "" (opTo op)
             move = if opKind op == "page" then movePage else moveSection
-        result <- move root from (parentRel to) (slugOfPath (opKind op) to) True
+        -- replay-tool is a separate process with no warm index, so it uses the scan (ADR-066).
+        result <- move scanRelevant root from (parentRel to) (slugOfPath (opKind op) to) True
         pure (movePlanStatus result)
     OpDelete -> do
         let from = fromMaybe "" (opFrom op)
             trashId = fromMaybe (show (opSeq op)) (opTrash op)
-        result <- deleteTarget root trashRoot from trashId (opSeq op)
+        result <- deleteTarget scanRelevant root trashRoot from trashId (opSeq op)
         pure $ case result of
             Left err -> "skipped: " ++ err
             Right (Refused _) -> "skipped: referenced"

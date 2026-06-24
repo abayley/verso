@@ -3,8 +3,9 @@ module MicroHttp.TreeMoveSpec (spec) where
 import Control.Monad (forM_, void, when)
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.FileOps (removeEmptyDir, removeFilePath)
+import MicroHttp.LinkIndexStore (newLinkIndexStore)
 import MicroHttp.OperationLog (OpType (..), Operation (..))
-import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), ReplayEntry (..), deleteTarget, movePage, moveSection, replayLog, restoreFromTrash)
+import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), ReplayEntry (..), deleteTarget, indexRelevant, movePage, moveSection, replayLog, restoreFromTrash, scanRelevant)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import Test.Hspec
 
@@ -95,7 +96,7 @@ spec = do
     describe "MicroHttp.TreeMove.moveSection" $ do
         it "moves a section folder, rewrites inbound links, and relocates the listing card" $ do
             seedFixture
-            result <- moveSection root "sub" "dest" "sub" True
+            result <- moveSection scanRelevant root "sub" "dest" "sub" True
             isLeft result `shouldBe` False
             planApplied (planOr result) `shouldBe` True
             -- The folder moved.
@@ -116,7 +117,7 @@ spec = do
 
         it "previews without writing when confirm is False" $ do
             seedFixture
-            result <- moveSection root "sub" "dest" "sub" False
+            result <- moveSection scanRelevant root "sub" "dest" "sub" False
             isLeft result `shouldBe` False
             planApplied (planOr result) `shouldBe` False
             ("other.md" `elem` planChanged (planOr result)) `shouldBe` True
@@ -124,24 +125,24 @@ spec = do
 
         it "refuses to move the root" $ do
             seedFixture
-            result <- moveSection root "" "dest" "x" True
+            result <- moveSection scanRelevant root "" "dest" "x" True
             isLeft result `shouldBe` True
 
         it "refuses to move a section into itself or a descendant" $ do
             seedFixture
-            result <- moveSection root "sub" "sub" "inner" True
+            result <- moveSection scanRelevant root "sub" "sub" "inner" True
             isLeft result `shouldBe` True
 
         it "refuses when the destination already exists" $ do
             seedFixture
             createDirectoryIfMissing True (root ++ "/dest/sub")
-            result <- moveSection root "sub" "dest" "sub" True
+            result <- moveSection scanRelevant root "sub" "dest" "sub" True
             isLeft result `shouldBe` True
 
     describe "MicroHttp.TreeMove.movePage" $ do
         it "moves a page cross-folder: relocates exclusive, copies shared, co-moves meta, rewrites links" $ do
             seedPageFixture
-            result <- movePage root "a/mover.md" "b" "mover" True
+            result <- movePage scanRelevant root "a/mover.md" "b" "mover" True
             isLeft result `shouldBe` False
             doesFileExist (root ++ "/a/mover.md") `shouldReturn` False
             doesFileExist (root ++ "/b/mover.md") `shouldReturn` True
@@ -168,7 +169,7 @@ spec = do
 
         it "renames a page in the same folder, co-moving meta and fixing inbound links" $ do
             seedPageFixture
-            result <- movePage root "a/mover.md" "a" "renamed" True
+            result <- movePage scanRelevant root "a/mover.md" "a" "renamed" True
             isLeft result `shouldBe` False
             doesFileExist (root ++ "/a/mover.md") `shouldReturn` False
             doesFileExist (root ++ "/a/renamed.md") `shouldReturn` True
@@ -179,14 +180,14 @@ spec = do
         it "refuses when the destination page already exists" $ do
             seedPageFixture
             writeAt "b/mover.md" "# Existing\n"
-            result <- movePage root "a/mover.md" "b" "mover" True
+            result <- movePage scanRelevant root "a/mover.md" "b" "mover" True
             isLeft result `shouldBe` True
 
     describe "MicroHttp.TreeMove.deleteTarget" $ do
         it "refuses a delete while another page links to the target, listing the referrer" $ do
             seedDeleteFixture
             removeTree trashRoot
-            result <- deleteTarget root trashRoot "refed.md" "0" 0
+            result <- deleteTarget scanRelevant root trashRoot "refed.md" "0" 0
             case result of
                 Right (Refused referrers) -> map fst referrers `shouldBe` ["other.md"]
                 other -> show other `shouldBe` "Right (Refused [...])"
@@ -195,7 +196,7 @@ spec = do
         it "moves an unreferenced page (md, meta, exclusive assets) to trash and removes its listing" $ do
             seedDeleteFixture
             removeTree trashRoot
-            result <- deleteTarget root trashRoot "lonely.md" "7" 0
+            result <- deleteTarget scanRelevant root trashRoot "lonely.md" "7" 0
             case result of
                 Right (Deleted tid p k) -> (tid, p, k) `shouldBe` ("7", "lonely.md", "page")
                 other -> show other `shouldBe` "Right (Deleted ...)"
@@ -216,7 +217,7 @@ spec = do
         it "restores a trashed page to its origin, re-adding the listing entry" $ do
             seedDeleteFixture
             removeTree trashRoot
-            _ <- deleteTarget root trashRoot "lonely.md" "7" 0
+            _ <- deleteTarget scanRelevant root trashRoot "lonely.md" "7" 0
             result <- restoreFromTrash root trashRoot "7"
             result `shouldBe` Right ("lonely.md", "page")
             doesFileExist (root ++ "/lonely.md") `shouldReturn` True
@@ -228,7 +229,7 @@ spec = do
         it "refuses to restore when the original location is occupied" $ do
             seedDeleteFixture
             removeTree trashRoot
-            _ <- deleteTarget root trashRoot "lonely.md" "7" 0
+            _ <- deleteTarget scanRelevant root trashRoot "lonely.md" "7" 0
             writeAt "lonely.md" "# Recreated\n"
             result <- restoreFromTrash root trashRoot "7"
             isLeft result `shouldBe` True
@@ -248,6 +249,41 @@ spec = do
             map (\e -> (reSeq e, isApplied (reStatus e))) report `shouldBe` [(0, True), (1, False)]
             doesDirectoryExist (root ++ "/y/x") `shouldReturn` True
             doesDirectoryExist (root ++ "/x") `shouldReturn` False
+
+    -- The index backend (RFC-0029) must produce identical observable outcomes to the
+    -- scan: it only changes which pages are read, not what the planners compute.
+    describe "index-backed move/delete (RFC-0029, indexRelevant)" $ do
+        it "moves a section via the index, rewriting inbound links and the listing as the scan does" $ do
+            seedFixture
+            store <- newLinkIndexStore
+            result <- moveSection (indexRelevant store) root "sub" "dest" "sub" True
+            isLeft result `shouldBe` False
+            doesFileExist (root ++ "/dest/sub/index.md") `shouldReturn` True
+            other <- readAt "other.md"
+            other `shouldBe` "See [Sub](./dest/sub/index.md).\n"
+            destIndex <- readAt "dest/index.md"
+            ("[**Sub**](./sub/index.md)" `infixOf` destIndex) `shouldBe` True
+
+        it "refuses a referenced delete via the index, listing the same referrer" $ do
+            seedDeleteFixture
+            removeTree trashRoot
+            store <- newLinkIndexStore
+            result <- deleteTarget (indexRelevant store) root trashRoot "refed.md" "0" 0
+            case result of
+                Right (Refused referrers) -> map fst referrers `shouldBe` ["other.md"]
+                other -> show other `shouldBe` "Right (Refused [...])"
+            doesFileExist (root ++ "/refed.md") `shouldReturn` True
+
+        it "trashes an unreferenced page via the index, as the scan does" $ do
+            seedDeleteFixture
+            removeTree trashRoot
+            store <- newLinkIndexStore
+            result <- deleteTarget (indexRelevant store) root trashRoot "lonely.md" "7" 0
+            case result of
+                Right (Deleted tid p k) -> (tid, p, k) `shouldBe` ("7", "lonely.md", "page")
+                other -> show other `shouldBe` "Right (Deleted ...)"
+            doesFileExist (root ++ "/lonely.md") `shouldReturn` False
+            doesFileExist (trashRoot ++ "/7/manifest") `shouldReturn` True
 
 isApplied :: String -> Bool
 isApplied = (== "applied")

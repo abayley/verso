@@ -342,6 +342,13 @@ how a link resolves.
   and well within response time. No debounce needed at the current scale. Should the
   tree grow much larger, the recorded fallback is a short-TTL fingerprint debounce
   (accepting a tiny window) or a coarser directory-level pre-check.
+- (Resolved) **End-to-end speedup (Phase 4)**: on a synthetic 4,000-`.md`, 78 MB
+  link-dense tree (~20 KB bodies, like the real corpus's large pages), the page
+  enumeration a move/delete pays dropped from **~10.3 s/op** (scan: read + unpack every
+  matching body) to **~0.28 s/op** (warm index: a `stat` fingerprint pass plus reading
+  only the candidate set) -- roughly **36x**. The advantage is body-size-dependent: on
+  tiny bodies a `stat` costs about as much as a read, so the index's win is small to nil
+  there; it is large exactly where it matters, the read-dominated large-page corpus.
 - **`stat` granularity portability**: macOS gives sub-second `st_mtimespec`; the
   portability RFC must confirm the equivalent on other platforms (and that the
   equal-length-edit soundness argument holds there).

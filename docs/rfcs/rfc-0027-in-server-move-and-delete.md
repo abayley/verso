@@ -266,9 +266,16 @@ standard notice area (RFC-0026).
 
 ### Performance
 
-Finding inbound links scans the tree's pages (~3,900 reads + link-parse) per
-operation -- seconds, run behind the preview/confirm with progress. An index is a
-later optimisation, not v1.
+Finding inbound links (and the files a move must rewrite) needs every page, but
+**parsing** all ~3,900 pages' links on each operation is far too slow on the real
+corpus (~86s observed, with large link-dense pages). The scan therefore reads each
+`.md` as raw bytes and only unpacks and link-parses a page when its bytes contain
+the target's **name** -- the slug or filename that any relative link to it must
+contain -- plus the moved subtree's own pages (which need rewriting regardless). The
+byte pre-filter never drops a real referrer (false positives only cost a parse), and
+brings the same operation to ~3.5s (dominated by the unavoidable read of every
+`.md`, since there is no index -- ADR-059). A persisted index remains a later
+optimisation, not v1.
 
 ## Alternatives Considered
 
@@ -380,8 +387,9 @@ later optimisation, not v1.
    or moves to trash with an Undo hint. **Move is also a drag-and-drop gesture**:
    dragging a node onto a section drops into it (onto a page drops into that page's
    folder; onto the root list moves to the top level), with the same preview-confirm;
-   self/descendant/no-op drops are rejected. The Move button remains as a
-   keyboard-accessible alternative. Wired to `?move`/`?delete` via editor-element
+   self/descendant/no-op drops are rejected. Drag-and-drop is the sole move gesture
+   (the earlier Move button was removed at the owner's request). Wired to
+   `?move`/`?delete` via editor-element
    callbacks that catch network errors and surface a clear message (so a failed or
    unreachable request never silently does nothing). When the operation targets the
    **currently-open** document, the editor navigates away instead of stranding on a

@@ -105,7 +105,7 @@ moveSection root rawSrcRel rawDestParentRel rawSlug confirm
                             else runMove srcFs newFs
 
     runMove srcFs newFs = do
-        pages <- enumerateMarkdown root ""
+        pages <- enumerateRelevant root (BS.pack (last srcSegs)) (Just srcRel)
         let srcParentRel = parentRel srcRel
             srcIndexRel = indexRel srcParentRel
             destIndexRel = indexRel destParentRel
@@ -214,7 +214,7 @@ movePage root rawSrcRel rawDestParentRel rawSlug confirm
         if not (null conflicts)
             then pure (Left ("destination asset already exists with different content: " ++ intercalate ", " conflicts))
             else do
-                pages <- enumerateMarkdown root ""
+                pages <- enumerateRelevant root (BS.pack (last (pathSegmentsOf srcRel))) (Just srcRel)
                 let rewritePages = filter ((`notElem` excluded) . fst) pages
                     rewrites = planPageMove (srcRel, newPath) rewritePages
                     changed = map fst rewrites
@@ -375,7 +375,10 @@ deleteTarget root trashRoot relPathRaw trashId seqNo
             if not exists
                 then pure (Left "not found")
                 else do
-                    pages <- enumerateMarkdown root ""
+                    -- Only files whose raw bytes mention the target's name can link to it, so the
+                    -- referrer scan parses just those (the byte pre-filter avoids parsing the whole
+                    -- corpus -- the difference between sub-second and ~90s on a large tree).
+                    pages <- enumerateRelevant root (BS.pack (last segs)) Nothing
                     if isPage
                         then
                             let referrers = referrersMatching (== relPath) [parentIndexRel, relPath] pages
@@ -621,26 +624,38 @@ replayReportJson entries =
             ++ jsonStr (reStatus e)
             ++ "}"
 
--- | Reads every @.md@ page beneath the tree as @(treeRelPath, body)@, skipping dot-entries and @assets@/@meta@ folders.
-enumerateMarkdown :: FilePath -> String -> IO [(String, String)]
-enumerateMarkdown root rel = do
-    let dirFs = fromMaybe root (resolveStaticPath root (pathSegmentsOf rel))
-    names <- listDirectory dirFs
-    fmap concat (mapM (collect dirFs) names)
+{- | Reads the @.md@ pages /relevant/ to an operation, as @(treeRelPath, body)@, skipping
+dot-entries and @assets@/@meta@ folders. A page is returned only when its raw bytes contain
+@hint@ -- the target's name, which any relative link to it must contain -- or when it lies within
+@subtreePrefix@ (the moved subtree, whose own pages must be rewritten even when they do not mention
+the hint). Files matching neither are skipped __without unpacking or link-parsing__, which is the
+difference between a sub-second and a ~90-second scan on a large corpus (no index, ADR-059). The
+byte pre-filter never drops a real referrer (false positives only cost a parse), since a relative
+link's path always contains the slug/filename of what it points at.
+-}
+enumerateRelevant :: FilePath -> BS.ByteString -> Maybe String -> IO [(String, String)]
+enumerateRelevant root hint subtreePrefix = walk ""
   where
-    collect dirFs name
+    inSubtree path = case subtreePrefix of
+        Nothing -> False
+        Just prefix -> path == prefix || (prefix ++ "/") `isPrefixOf` path
+    walk rel = do
+        let dirFs = fromMaybe root (resolveStaticPath root (pathSegmentsOf rel))
+        names <- listDirectory dirFs
+        fmap concat (mapM (collect rel dirFs) names)
+    collect rel dirFs name
         | isDot name = pure []
         | otherwise = do
             let childRel = joinRel rel name
                 childFs = dirFs ++ "/" ++ name
             isDir <- doesDirectoryExist childFs
             if isDir
-                then if name == "assets" || name == "meta" then pure [] else enumerateMarkdown root childRel
+                then if name == "assets" || name == "meta" then pure [] else walk childRel
                 else
                     if ".md" `isSuffixOf` name
                         then do
-                            body <- fmap BS.unpack (BS.readFile childFs)
-                            pure [(childRel, body)]
+                            bytes <- BS.readFile childFs
+                            pure [(childRel, BS.unpack bytes) | BS.isInfixOf hint bytes || inSubtree childRel]
                         else pure []
     isDot ('.' : _) = True
     isDot _ = False

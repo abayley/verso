@@ -338,7 +338,6 @@ export class NavTreePanel {
         if (node.kind === "section") {
             row.append(this.createNodeCreateButton(node.path));
         }
-        row.append(this.createRowAction("⤴", "Move", node, (): void => void this.moveNode(node)));
         row.append(this.createRowAction("✕", "Delete", node, (): void => void this.deleteNode(node)));
         this.attachDragAndDrop(row, node);
 
@@ -511,17 +510,7 @@ export class NavTreePanel {
         return button;
     }
 
-    /** Prompts for a destination and slug, then runs the move (the keyboard-accessible alternative to drag-and-drop). */
-    private async moveNode(node: TreeNodeData): Promise<void> {
-        const destParent = window.prompt("Move to which folder? (tree path; blank = root)", parentOfPath(node.path));
-        if (destParent === null) {
-            return;
-        }
-        const slug = window.prompt("New slug? (blank keeps the current name)", "") ?? "";
-        await this.runMove(node.path, node.name, destParent.trim(), slug.trim());
-    }
-
-    /** Previews a move's impact, confirms, applies, and refreshes; surfaces any failure (shared by prompt and drag-drop). */
+    /** Previews a move's impact, confirms, applies, and refreshes; surfaces any failure (drives drag-and-drop moves). */
     private async runMove(path: string, name: string, destParent: string, slug: string): Promise<void> {
         const preview = await this.options.moveNode(path, destParent, slug, false);
         if (!preview.ok) {

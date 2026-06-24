@@ -336,10 +336,12 @@ how a link resolves.
   no back-stop dial.
 - (Resolved) **Build timing**: lazy on the first move/delete; no persisted cache.
 - (Resolved) **Data model**: the `.md`->`.md` link graph only (no assets, no titles).
-- **Per-operation `stat` cost at scale**: measure in Phase 2/3. If statting the whole
-  tree per move/delete is itself significant, fall back to a debounce (cache the
-  fingerprint for a short TTL) or a coarser pre-check -- accepting a tiny window only if
-  forced. Validate before relying on it.
+- (Resolved) **Per-operation `stat` cost at scale**: measured in Phase 2 on a synthetic
+  4,000-`.md` tree -- a single fingerprint pass (walk + 4,000 `stat`s) is ~0.25-0.3 s
+  warm (two passes ~0.57 s), versus the ~3.5 s read-and-parse it replaces (~10x cheaper)
+  and well within response time. No debounce needed at the current scale. Should the
+  tree grow much larger, the recorded fallback is a short-TTL fingerprint debounce
+  (accepting a tiny window) or a coarser directory-level pre-check.
 - **`stat` granularity portability**: macOS gives sub-second `st_mtimespec`; the
   portability RFC must confirm the equivalent on other platforms (and that the
   equal-length-edit soundness argument holds there).

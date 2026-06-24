@@ -2,7 +2,7 @@ module MicroHttp.FileOpsSpec (spec) where
 
 import Control.Monad (when)
 import qualified Data.ByteString.Char8 as BS
-import MicroHttp.FileOps (removeEmptyDir, removeFilePath, renamePath)
+import MicroHttp.FileOps (FileStat (..), fileStat, removeEmptyDir, removeFilePath, renamePath)
 import System.Directory (
     createDirectoryIfMissing,
     doesDirectoryExist,
@@ -93,3 +93,26 @@ spec =
                 writeText (d ++ "/k.md") "x"
                 ok <- removeEmptyDir d
                 ok `shouldBe` False
+
+        describe "fileStat" $ do
+            it "reports a file's byte size" $ do
+                freshDir
+                let f = ioDir ++ "/sized.md"
+                writeText f "hello"
+                st <- fileStat f
+                fmap fsSize st `shouldBe` Just 5
+
+            it "moves the modification time on an equal-length edit (sub-second)" $ do
+                freshDir
+                let f = ioDir ++ "/edited.md"
+                writeText f "aaaa"
+                before <- fileStat f
+                writeText f "bbbb"
+                after <- fileStat f
+                -- size is unchanged, so only the sub-second mtime distinguishes the edit
+                fmap fsSize before `shouldBe` fmap fsSize after
+                (before == after) `shouldBe` False
+
+            it "reports Nothing for a missing path" $ do
+                freshDir
+                fileStat (ioDir ++ "/absent.md") `shouldReturn` Nothing

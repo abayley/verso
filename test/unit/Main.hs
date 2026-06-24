@@ -15,6 +15,7 @@ import qualified MicroHttp.HttpSpec as HttpSpec
 import qualified MicroHttp.IterateeSpec as IterateeSpec
 import qualified MicroHttp.LinkFingerprintSpec as LinkFingerprintSpec
 import qualified MicroHttp.LinkIndexSpec as LinkIndexSpec
+import qualified MicroHttp.LinkIndexStoreSpec as LinkIndexStoreSpec
 import qualified MicroHttp.LogSpec as LogSpec
 import qualified MicroHttp.MiddlewareSpec as MiddlewareSpec
 import qualified MicroHttp.Network.SocketAddrSpec as SocketAddrSpec
@@ -42,6 +43,7 @@ main = hspec $ do
     HtmlSpec.spec
     LinkFingerprintSpec.spec
     LinkIndexSpec.spec
+    LinkIndexStoreSpec.spec
     HttpSpec.spec
     ParserSpec.spec
     ResponseSpec.spec

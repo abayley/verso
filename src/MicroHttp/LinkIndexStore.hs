@@ -19,14 +19,18 @@ module MicroHttp.LinkIndexStore (
     LinkIndexStore,
     newLinkIndexStore,
     freshIndex,
+    resync,
 ) where
 
-import Control.Concurrent.MVar (MVar, modifyMVar, newMVar)
+import Control.Concurrent.MVar (MVar, modifyMVar, modifyMVar_, newMVar)
+import Control.Monad (foldM)
 import qualified Data.ByteString.Char8 as BS
+import Data.List (foldl')
 import qualified Data.Map as Map
+import Data.Maybe (fromMaybe)
 import MicroHttp.FileOps (fileStat)
 import MicroHttp.LinkFingerprint (Fingerprint, fingerprintTree, markdownFiles)
-import MicroHttp.LinkIndex (LinkIndex, buildIndex)
+import MicroHttp.LinkIndex (LinkIndex, buildIndex, removePage, updatePage)
 import System.Directory (doesFileExist)
 
 -- | The graph and the fingerprint of the tree it was built from, held together.
@@ -74,9 +78,41 @@ buildFromTree root = do
     pure (IndexState (buildIndex pages) fingerprint)
   where
     readAndStat (rel, fs) = do
-        body <- readBody fs
+        body <- readPageBody fs
         st <- fileStat fs
         pure (rel, body, st)
-    readBody fs = do
-        exists <- doesFileExist fs
-        if exists then fmap (Just . BS.unpack) (BS.readFile fs) else pure Nothing
+
+{- | Re-syncs the held index to the tree __incrementally__ after an in-server mutation
+(RFC-0029 phase 5): re-fingerprints, then patches the graph for exactly the paths whose
+fingerprint changed -- re-reading a modified/added page (via 'updatePage'), dropping a
+removed one (via 'removePage') -- and stores the new fingerprint. Because the fingerprint
+is updated in lockstep with the writes, the next 'freshIndex' matches and does not see
+the server's own change as out-of-band drift; the patched graph equals a full rebuild
+(the anti-drift invariant). A no-op before the first build (the first 'freshIndex' builds).
+-}
+resync :: FilePath -> LinkIndexStore -> IO ()
+resync root (LinkIndexStore mv) = modifyMVar_ mv (resyncState root)
+
+-- | The incremental re-sync of one held state (a no-op before the first build).
+resyncState :: FilePath -> Maybe IndexState -> IO (Maybe IndexState)
+resyncState _ Nothing = pure Nothing
+resyncState root (Just state) = do
+    current <- fingerprintTree root
+    let old = stFingerprint state
+        changed = [rel | (rel, fp) <- Map.toList current, Map.lookup rel old /= Just fp]
+        removed = [rel | rel <- Map.keys old, not (Map.member rel current)]
+    patched <- foldM (patchPage root) (stIndex state) changed
+    let pruned = foldl' (flip removePage) patched removed
+    pure (Just (IndexState pruned current))
+
+-- | Patches one modified/added page into the graph by re-reading its current body.
+patchPage :: FilePath -> LinkIndex -> String -> IO LinkIndex
+patchPage root index rel = do
+    body <- readPageBody (root ++ "/" ++ rel)
+    pure (updatePage rel (fromMaybe "" body) index)
+
+-- | Reads a page body as a 'String', or 'Nothing' when the file is absent.
+readPageBody :: FilePath -> IO (Maybe String)
+readPageBody fs = do
+    exists <- doesFileExist fs
+    if exists then fmap (Just . BS.unpack) (BS.readFile fs) else pure Nothing

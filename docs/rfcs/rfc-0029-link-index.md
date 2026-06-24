@@ -18,7 +18,7 @@ superseded_by: null
 |-----------|------------------|
 | Authored  | 2026-06-24       |
 | Started   | 2026-06-24       |
-| Completed |                  |
+| Completed | 2026-06-24       |
 
 ## Summary
 

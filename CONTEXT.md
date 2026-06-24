@@ -184,6 +184,19 @@ failures ("Sentry-like" meaning the outcome -- queryable error visibility -- not
 the Sentry protocol). Selected by the `client_error_log` config key (RFC-0023).
 _Avoid_: telemetry, access log (a different file, HTTP-request lifecycle).
 
+**Link index**:
+The server's in-memory resolved `.md`->`.md` link graph of the **document tree**
+(each **page**'s outbound `.md` link targets and the inverted `tree path ->
+referring pages` map), consulted by **move** and delete to find referrers and
+rewrite sets without scanning every page. Kept correct by a per-operation
+freshness check -- a `(path, mtime, size)` fingerprint of every `.md`; an
+operation re-stats the tree and rebuilds the index if it changed out-of-band --
+so it never serves a stale answer (preserving the **navigation tree**'s
+always-correct contract, ADR-059). Built lazily on first use and re-synced in
+lockstep after each in-server mutation (RFC-0029, ADR-066/067).
+_Avoid_: cache (it never serves a stale answer), search index (titles/full text;
+a separate future system), sitemap.
+
 ## Flagged ambiguities
 
 - **Metadata**: unqualified, it is ambiguous. Use **frontmatter** for the

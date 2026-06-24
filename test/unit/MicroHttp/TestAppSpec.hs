@@ -9,7 +9,6 @@ import MicroHttp.Iteratee (Iter, run, strictEnumerator)
 import qualified MicroHttp.Router as Router
 import MicroHttp.Stream (StreamError)
 import qualified MicroHttp.TestApp as TestApp
-import MicroHttp.TreeMove (scanRelevant)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory, removeFile)
 import Test.Hspec
 
@@ -421,7 +420,7 @@ runTreeApp root head = runTreeAppBody root head ""
 -- | As 'runTreeApp', with a request body (for create posts).
 runTreeAppBody :: FilePath -> RequestHead -> String -> IO Response
 runTreeAppBody root head body = do
-    outcome <- strictEnumerator (BS.pack body) (Router.route (TestApp.treeRoutes scanRelevant "paper" root "build/tree-spec-oplog" "build/tree-spec-trash") head) >>= run
+    outcome <- strictEnumerator (BS.pack body) (Router.route (TestApp.treeRoutes Nothing "paper" root "build/tree-spec-oplog" "build/tree-spec-trash") head) >>= run
     case outcome of
         Right response -> return response
         Left err -> expectFailure err

@@ -5,7 +5,7 @@ import qualified Data.ByteString.Char8 as BS
 import Data.List (sort)
 import MicroHttp.FileOps (removeEmptyDir)
 import MicroHttp.LinkIndex (inboundOf)
-import MicroHttp.LinkIndexStore (freshIndex, newLinkIndexStore)
+import MicroHttp.LinkIndexStore (freshIndex, newLinkIndexStore, resync)
 import System.Directory (
     createDirectoryIfMissing,
     doesDirectoryExist,
@@ -82,3 +82,27 @@ spec =
             built `shouldBe` True
             inboundOf "b.md" ix2 `shouldBe` []
             sort (inboundOf "c.md" ix2) `shouldBe` ["a.md"]
+
+        it "re-syncs incrementally: no drift on the next check and the index equals a rebuild" $ do
+            freshTree
+            writeAt "a.md" "[B](./b.md)\n"
+            writeAt "b.md" "leaf b\n"
+            writeAt "c.md" "[B](./b.md)\n"
+            store <- newLinkIndexStore
+            (built, _) <- freshIndex root store
+            built `shouldBe` True
+            -- simulate an in-server mutation's write-set: modify, add, and remove pages
+            writeAt "a.md" "[C](./c.md)\n" -- modify (equal length)
+            writeAt "e.md" "[B](./b.md)\n" -- add
+            removeFile (root ++ "/c.md") -- remove
+            resync root store
+            (drifted, maintained) <- freshIndex root store
+            -- the lockstep fingerprint update means the server's own writes are not seen as drift
+            drifted `shouldBe` False
+            -- the incrementally maintained graph reflects the changes
+            sort (inboundOf "b.md" maintained) `shouldBe` ["e.md"]
+            sort (inboundOf "c.md" maintained) `shouldBe` ["a.md"]
+            -- and equals a full rebuild from the current tree (the anti-drift invariant)
+            store2 <- newLinkIndexStore
+            (_, rebuilt) <- freshIndex root store2
+            maintained `shouldBe` rebuilt

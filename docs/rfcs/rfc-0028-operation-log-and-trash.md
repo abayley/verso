@@ -82,9 +82,14 @@ it as complete in the phase checklist.
   git-based versioning store is separate.
 - **Replaying creates.** New pages are authored at the source; the log replays only
   moves and deletes.
-- **Out-of-order / arbitrary undo.** Undo appends the inverse of operations; this
-  RFC does not add dependency analysis to safely revert an arbitrary earlier
-  operation in isolation (it is reverted by appending its inverse like any other).
+- **Dependency-aware out-of-order undo.** The undo picker (Phase 3) lets the author
+  invert *any* logged move, not only the latest, by appending its inverse. This RFC
+  does **not** add dependency analysis: inverting an earlier move that later
+  operations depended on may not reproduce the intended net state, and an inverse
+  whose item has since moved or been deleted is **refused cleanly** (the move
+  machinery's collision/not-found guard) rather than forced. Choosing a still-valid
+  inverse is always well-defined; reasoning about interactions between non-adjacent
+  operations is left to the author.
 - **Automatic trash GC.** Trash retention/purge policy is future; trash grows until
   manually cleared.
 
@@ -121,9 +126,11 @@ RFC-0027, and append the inverse to the log.
 - Inverse of `restore(to)` is `delete(to)`.
 
 There is no separate undo state -- the inverse is just another logged operation, so
-"redo" is undoing the undo. (Out-of-order undo is a non-goal; appending an inverse
-is always well-defined, but reverting a non-latest operation may not produce the
-intent if later operations depended on it.)
+"redo" is undoing the undo. The undo picker lets the author invert any logged move,
+not only the latest (it selects the operation by `seq`); appending an inverse is
+always well-defined, but reverting a non-latest operation may not produce the intent
+if later operations depended on it, and an inverse whose item has since moved is
+refused cleanly (no dependency analysis -- see Non-Goals).
 
 ### Replay
 
@@ -251,11 +258,17 @@ preferred.)
    op's seq); restore moves every item back to its origin, refuses if the origin is
    occupied, re-inserts the preserved listing entry, removes the entry, and logs a
    `restore` op. Endpoints `POST /tree/*path?delete` and `POST /trash/*id`.
-3. **Phase 3 -- Undo.** [DONE] `POST /undo` applies the inverse of the latest logged
-   operation through the existing machinery -- reverse move (`moveSection`/`movePage`),
+3. **Phase 3 -- Undo.** [DONE] `POST /undo` applies the inverse of a logged operation
+   through the existing machinery -- reverse move (`moveSection`/`movePage`),
    `restoreFromTrash` for a delete, `deleteTarget` for a restore -- and appends the
    inverse as a new record (undo is itself logged, so a further undo is a redo). A
-   @409@ when the log is empty or the inverse cannot apply (occupied/now-referenced).
+   `seq` form field selects which operation to invert; the client surfaces this as an
+   **undo picker** (`GET /operations` lists the logged moves, most recent first; the
+   nav-tree Undo button opens a drop-down and choosing a move generates its inverse).
+   Without `seq` the latest operation is inverted. A `409` when the log is empty, the
+   seq is unknown, or the inverse cannot apply (occupied/missing/now-referenced) --
+   inverting a non-latest move whose item has since moved refuses cleanly rather than
+   corrupting the tree (see the relaxed Non-Goal below).
 4. **Phase 4 -- Replay.** [DONE] `MicroHttp.TreeMove.replayLog`: applies the log in
    `seq` order through the move/delete/restore machinery, best-effort -- an op whose
    precondition fails (source missing, destination occupied, now-referenced) is
@@ -265,12 +278,14 @@ preferred.)
    `src/ReplayTool.hs`), reading the same config as the server, **not** a web endpoint
    -- it is run after a corpus refresh, typically with the server down, so it operates
    on the filesystem directly and prints the report.
-5. **Phase 5 -- Client UX.** [DONE] Nav-tree header buttons: **Undo** and **Trash**
-   (toggles a view that lists `GET /trash` entries, each with a Restore button calling
-   `POST /trash/<id>`), each surfacing the server's message in the notice area and
-   refreshing the tree. A `GET /trash` listing endpoint (`listTrash`) was added for the
-   view. Replay is intentionally **not** in the UI (it is the `replay-tool` CLI, an
-   operator action). Browser-verified against a scratch tree.
+5. **Phase 5 -- Client UX.** [DONE] Nav-tree header buttons: **Undo** -- a drop-down
+   listing the logged moves most-recent-first (`GET /operations`), choosing one
+   generates and applies its inverse (`POST /undo` with that `seq`), following the open
+   document if it moved -- and **Trash** (a view listing `GET /trash` entries, each
+   with a Restore button calling `POST /trash/<id>`). Each surfaces the server's
+   message in the notice area and refreshes the tree. Replay is intentionally **not**
+   in the UI (it is the `replay-tool` CLI, an operator action). Browser-verified
+   against a scratch tree.
 
 ### Rollout Plan Escape Hatch
 

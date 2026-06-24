@@ -39,7 +39,7 @@ import MicroHttp.Iteratee (Iter, liftIO, readBodyStrict)
 import MicroHttp.Log (Logger, localTimestamp, rotatingAppender, rotatingFileLogfmtLogger)
 import MicroHttp.Middleware (logRequests, withErrorResponses)
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), fileSizeBytes)
-import MicroHttp.OperationLog (OpType (..), Operation (..), appendOperation, nextSeq, readOperations)
+import MicroHttp.OperationLog (OpType (..), Operation (..), appendOperation, nextSeq, readOperations, renderOperation)
 import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
@@ -176,6 +176,7 @@ treeRoutes editorThemeDefault root logPath trashRoot =
     , Router.post "/tree/*path" (treePostDispatch root logPath trashRoot)
     , Router.get "/trash" (treeTrashListHandler trashRoot)
     , Router.post "/trash/*id" (treeRestoreHandler root logPath trashRoot)
+    , Router.get "/operations" (treeOperationsHandler logPath)
     , Router.post "/undo" (treeUndoHandler root logPath trashRoot)
     , Router.post "/documents/*path" (treePost root)
     , Router.get "/documents/*path" (treeGet editorThemeDefault root)
@@ -336,20 +337,47 @@ referrersJson referrers =
   where
     one (page, link) = "{\"page\":" ++ jsonString page ++ ",\"link\":" ++ jsonString link ++ "}"
 
-{- | The undo endpoint (RFC-0028 phase 3): @POST /undo@ applies the inverse of the
-latest logged operation and appends that inverse as a new record (undo is itself a
-logged operation, so a further undo is a redo). The inverse of a move is the reverse
-move; of a delete, a restore; of a restore, a delete. A @409@ when the log is empty
-or the inverse cannot be applied (e.g. its target is occupied or now referenced).
+-- | The operations-list endpoint (RFC-0028): @GET /operations@ returns the log as JSON, for the undo picker.
+treeOperationsHandler :: FilePath -> Router.Handler
+treeOperationsHandler logPath _ _ = do
+    ops <- liftIO (readOperations logPath)
+    pure (jsonResponse ("[" ++ intercalate "," (map renderOperation ops) ++ "]"))
+
+{- | The undo endpoint (RFC-0028): @POST /undo@ applies the inverse of an operation and
+appends that inverse as a new record (undo is itself logged, so a further undo is a
+redo). A @seq@ form field selects which operation to invert (the undo picker lists
+moves and chooses one); without it, the latest operation is inverted. The inverse of a
+move is the reverse move; of a delete, a restore; of a restore, a delete. A @409@ when
+the log is empty, the seq is unknown, or the inverse cannot be applied (its target is
+occupied, missing, or now referenced -- so inverting a non-latest move that has since
+moved refuses cleanly rather than corrupting the tree).
 -}
 treeUndoHandler :: FilePath -> FilePath -> FilePath -> Router.Handler
-treeUndoHandler root logPath trashRoot _ _ = liftIO $ do
-    ops <- readOperations logPath
-    case reverse ops of
-        [] -> pure (statusResponse 409 "Conflict" "nothing to undo\n")
-        (latest : _) -> do
-            result <- applyInverse root logPath trashRoot latest
-            pure (either (statusResponse 409 "Conflict" . (++ "\n")) jsonResponse result)
+treeUndoHandler root logPath trashRoot _ _ = do
+    bytes <- readBodyStrict (StreamParseError BodyTooLarge) treeCreateMaxBytes
+    let fields = formFields (BS.unpack bytes)
+        wantedSeq = parseSeq (capture "seq" fields)
+    liftIO $ do
+        ops <- readOperations logPath
+        let chosen = case wantedSeq of
+                Just s -> listToMaybeOp [op | op <- ops, opSeq op == s]
+                Nothing -> listToMaybeOp (reverse ops)
+        case chosen of
+            Nothing -> pure (statusResponse 409 "Conflict" "nothing to undo\n")
+            Just op -> do
+                result <- applyInverse root logPath trashRoot op
+                pure (either (statusResponse 409 "Conflict" . (++ "\n")) jsonResponse result)
+
+-- | The first operation of a list, if any.
+listToMaybeOp :: [Operation] -> Maybe Operation
+listToMaybeOp (op : _) = Just op
+listToMaybeOp [] = Nothing
+
+-- | Parses a non-negative @seq@ form value, or 'Nothing' when absent/malformed.
+parseSeq :: String -> Maybe Int
+parseSeq value = case reads value of
+    [(n, "")] -> Just n
+    _ -> Nothing
 
 {- | Applies the inverse of an operation through the move/trash machinery and appends
 the inverse record, returning the JSON body on success or an error reason.

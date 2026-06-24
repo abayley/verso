@@ -132,6 +132,13 @@ export interface TrashEntry {
     kind: string;
 }
 
+/** A logged move, for the undo picker (most recent first). */
+export interface MoveOp {
+    seq: number;
+    from: string;
+    to: string;
+}
+
 /** The callbacks the panel needs from the editor element to fetch, create, navigate, and reorganise. */
 export interface NavTreeOptions {
     /** The open document's tree-relative path (`data-document`). */
@@ -152,8 +159,10 @@ export interface NavTreeOptions {
     deleteNode: (path: string) => Promise<DeleteResult>;
     /** Move a page/section: preview (confirm false) returns the impact; apply (confirm true) performs it. */
     moveNode: (path: string, destParent: string, slug: string, confirm: boolean) => Promise<MoveResult>;
-    /** Undo the latest structural operation. */
-    undo: () => Promise<OpResult>;
+    /** Undo a logged operation by its seq (generates and applies its inverse). */
+    undo: (seq: number) => Promise<OpResult>;
+    /** List the logged moves for the undo picker (most recent first). */
+    listMoves: () => Promise<MoveOp[]>;
     /** List the trash entries for the Trash view. */
     listTrash: () => Promise<TrashEntry[]>;
     /** Restore a trash entry to its origin. */
@@ -184,6 +193,11 @@ export class NavTreePanel {
     private trashEntries: TrashEntry[] = [];
     /** The container the Trash view renders into, between the header and the tree list. */
     private readonly trashPanel: HTMLDivElement;
+    /** Whether the undo picker is open (lists logged moves, most recent first). */
+    private undoOpen = false;
+    private moves: MoveOp[] = [];
+    /** The container the undo picker renders into, between the header and the tree list. */
+    private readonly undoPanel: HTMLDivElement;
     /** The tree path of the node currently being dragged (for drag-and-drop move), or null. */
     private draggingPath: string | null = null;
 
@@ -223,9 +237,13 @@ export class NavTreePanel {
         collapseAll.textContent = "⊟";
         collapseAll.addEventListener("click", (): void => this.collapseAll());
 
-        const undo = this.createHeaderButton("⤺", "Undo last change", (): void => void this.undo());
+        const undo = this.createHeaderButton("⤺", "Undo a move", (): void => void this.toggleUndo());
         const trash = this.createHeaderButton("🗑", "Trash", (): void => void this.toggleTrash());
         header.append(toggle, heading, collapseAll, undo, trash, this.createRootCreateButton());
+
+        this.undoPanel = document.createElement("div");
+        this.undoPanel.className = "markdown-editor__nav-trash";
+        this.undoPanel.hidden = true;
 
         this.trashPanel = document.createElement("div");
         this.trashPanel.className = "markdown-editor__nav-trash";
@@ -254,7 +272,7 @@ export class NavTreePanel {
             }
         });
 
-        this.panel.append(header, this.trashPanel, this.list);
+        this.panel.append(header, this.undoPanel, this.trashPanel, this.list);
         this.applyCollapsed();
         this.render();
         // The spine only seeds the open page's ancestors; any other persisted-expanded folder has no cached
@@ -636,10 +654,64 @@ export class NavTreePanel {
         return open.startsWith(`${oldPath}/`) ? open : null;
     }
 
-    private async undo(): Promise<void> {
-        const result = await this.options.undo();
+    /** Opens or closes the undo picker, loading the logged moves (most recent first) when opening. */
+    private async toggleUndo(): Promise<void> {
+        this.undoOpen = !this.undoOpen;
+        if (this.undoOpen) {
+            const moves = await this.options.listMoves();
+            this.moves = [...moves].reverse(); // most recent first
+        }
+        this.renderUndo();
+    }
+
+    /** Renders the undo picker: each logged move as "from -> to", choosing one applies its inverse. */
+    private renderUndo(): void {
+        this.undoPanel.hidden = !this.undoOpen;
+        if (!this.undoOpen) {
+            this.undoPanel.replaceChildren();
+            return;
+        }
+        const heading = document.createElement("div");
+        heading.className = "markdown-editor__nav-trash-heading";
+        heading.textContent = this.moves.length === 0 ? "No moves to undo" : "Undo a move";
+        const rows = this.moves.map((move): HTMLElement => this.renderUndoEntry(move));
+        this.undoPanel.replaceChildren(heading, ...rows);
+    }
+
+    private renderUndoEntry(move: MoveOp): HTMLElement {
+        const row = document.createElement("div");
+        row.className = "markdown-editor__nav-trash-row";
+        const label = document.createElement("span");
+        label.textContent = `${move.from} → ${move.to}`;
+        this.options.registerTooltip(label, `${move.from} → ${move.to}`);
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "markdown-editor__nav-retry";
+        button.textContent = "Undo";
+        button.addEventListener("click", (event: MouseEvent): void => {
+            event.stopPropagation();
+            void this.undoMove(move);
+        });
+        row.append(label, button);
+        return row;
+    }
+
+    /** Applies the inverse of a chosen move (the item at its destination goes back to its source). */
+    private async undoMove(move: MoveOp): Promise<void> {
+        this.options.notify("Undoing move…", false);
+        const result = await this.options.undo(move.seq);
         this.options.notify(result.message, !result.ok);
-        if (result.ok) {
+        if (!result.ok) {
+            return;
+        }
+        this.undoOpen = false;
+        this.renderUndo();
+        // The inverse sends the item at `move.to` back to `move.from`; follow the open
+        // document if it was there, otherwise refresh the tree in place.
+        const openUnder = this.openDocumentUnder(move.to);
+        if (openUnder !== null) {
+            this.options.navigate(move.from + openUnder.slice(move.to.length));
+        } else {
             await this.refresh();
         }
     }

@@ -329,6 +329,27 @@ spec =
                 response <- runTreeAppBody "build/tree-undo-move" (request POST ["undo"]) ""
                 statusCode (responseStatus response) `shouldBe` 409
 
+            it "given GET /operations after a move, when routed, then the move is listed" $ do
+                appliedRoot <- setupMoveUndoFixture
+                let mv = (request POST ["tree", "x"]){requestQuery = [("move", "")]}
+                _ <- runTreeAppBody appliedRoot mv "to=y&slug=x&confirm=true"
+                response <- runTreeApp appliedRoot (request GET ["operations"])
+                statusCode (responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "\"type\":\"move\""
+                bodyText response `shouldInclude` "\"from\":\"x\""
+                bodyText response `shouldInclude` "\"seq\":0"
+
+            it "given POST /undo with a seq, when routed, then that specific move is inverted" $ do
+                appliedRoot <- setupMoveUndoFixture
+                let mv = (request POST ["tree", "x"]){requestQuery = [("move", "")]}
+                _ <- runTreeAppBody appliedRoot mv "to=y&slug=x&confirm=true"
+                doesDirectoryExist (appliedRoot ++ "/y/x") `shouldReturn` True
+                response <- runTreeAppBody appliedRoot (request POST ["undo"]) "seq=0"
+                statusCode (responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "\"undo\":\"move\""
+                doesDirectoryExist (appliedRoot ++ "/x") `shouldReturn` True
+                doesDirectoryExist (appliedRoot ++ "/y/x") `shouldReturn` False
+
 nodeTuple :: TestApp.TreeNode -> (String, TestApp.NodeKind, String, Bool)
 nodeTuple nd =
     (TestApp.nodeName nd, TestApp.nodeKind nd, TestApp.nodePath nd, TestApp.nodeHasChildren nd)

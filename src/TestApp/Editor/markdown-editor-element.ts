@@ -29,6 +29,7 @@ import { imageShortTitles } from "./image-metadata.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
 import {
     type DeleteResult,
+    type MoveOp,
     type MoveResult,
     NavTreePanel,
     type OpResult,
@@ -580,7 +581,46 @@ export class MarkdownEditorElement extends HTMLElement {
                     return { ok: false, message: NETWORK_ERROR };
                 }
             },
-            undo: (): Promise<OpResult> => opRequest("/undo", { method: "POST" }, "Undone.", "Nothing to undo."),
+            undo: (seq: number): Promise<OpResult> =>
+                opRequest(
+                    "/undo",
+                    {
+                        method: "POST",
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                        body: new URLSearchParams({ seq: String(seq) }).toString(),
+                    },
+                    "Undone.",
+                    "Nothing to undo.",
+                ),
+            listMoves: async (): Promise<MoveOp[]> => {
+                try {
+                    const response = await fetch("/operations", { headers: { Accept: "application/json" } });
+                    if (!response.ok) {
+                        return [];
+                    }
+                    const data: unknown = safeJson(await response.text());
+                    if (!Array.isArray(data)) {
+                        return [];
+                    }
+                    return (data as Record<string, unknown>[])
+                        .filter(
+                            (op): boolean =>
+                                op["type"] === "move" &&
+                                typeof op["from"] === "string" &&
+                                typeof op["to"] === "string" &&
+                                typeof op["seq"] === "number",
+                        )
+                        .map(
+                            (op): MoveOp => ({
+                                seq: op["seq"] as number,
+                                from: op["from"] as string,
+                                to: op["to"] as string,
+                            }),
+                        );
+                } catch {
+                    return [];
+                }
+            },
             listTrash: async (): Promise<TrashEntry[]> => {
                 try {
                     const response = await fetch("/trash", { headers: { Accept: "application/json" } });

@@ -1874,6 +1874,66 @@ Consequences: deletes are recoverable and survive a refresh; the trash id is the
 delete operation's `seq`, so it is unique across move/delete/restore. Trash grows
 until manually purged (GC is a non-goal).
 
+### ADR-066: Whole-Tree Link Queries Are Served by an In-Memory Link Index
+
+Status: Accepted (RFC-0029).
+
+Context: RFC-0027's move and delete must find, across the whole tree, every page
+whose relative links resolve to the target (delete's refuse-if-referenced; move's
+link rewrite). ADR-059 deferred any index, so each operation reads and link-parses
+every `.md` -- a byte pre-filter brought this to ~3.5 s on the reference corpus, but
+that floor grows linearly and every move/delete pays it.
+
+Decision: whole-tree link queries are served by an in-memory **link index** -- the
+document tree's resolved `.md`->`.md` link graph (each **page**'s outbound in-tree
+`.md` link targets and the inverted `tree path -> referring pages` map), built from
+the tree by reusing the RFC-0027 link engine (`MicroHttp.DocumentLinks`) and
+maintained by in-server mutations. It carries no asset edges (asset ownership is a
+folder-local question, ADR-062, so a same-folder asset ref never crosses a moved or
+deleted subtree boundary) and no titles (search is a separate future system). This
+**amends ADR-059**, which deferred an index, while keeping the navigation tree's lazy
+per-folder live read unchanged. The byte-prefiltered scan
+(`TreeMove.enumerateRelevant`) is retained as the index's build/rebuild path, its
+cold-index fallback, and `replay-tool`'s mechanism, so the index and the scan cannot
+diverge in how a link resolves.
+
+Consequences: move and delete change *how* they find candidates, not their observable
+contract (same refusals, same rewrites). The index narrows *which* pages to process;
+the pure engines (`planMoveRewrites`/`referrersMatching`) still compute the exact
+edits, so it is a performance layer, not a second implementation. It is in-memory
+only (no persistence) and single-process.
+
+### ADR-067: The Link Index Is Kept Correct by a Per-Operation Stat Fingerprint
+
+Status: Accepted (RFC-0029).
+
+Context: ADR-059's drift concern is the crux of caching the tree: the served corpus
+is periodically re-exported from an authoritative source and may be edited
+out-of-band, so a materialised index can silently disagree with the filesystem. A
+cron-bounded rebuild leaves a staleness window in which a move/delete relies on a
+stale graph (a wrong delete, a dangling link).
+
+Decision: the index is kept correct by a **per-operation stat fingerprint** -- a
+`(path, mtime, size)` tuple over every `.md`, held alongside the graph. Before a
+move/delete the server re-stats the tree and compares: a match means the graph is
+provably consistent with the filesystem (serve the O(1) lookup); a mismatch means an
+out-of-band change happened (rebuild the graph and fingerprint, then run the
+operation against the fresh index). `mtime` uses sub-second precision (macOS
+`st_mtimespec`) so an equal-length link swap is still detected. In-server mutations
+update the graph *and* the fingerprint in lockstep, so they never look like drift.
+This **preserves** ADR-059's always-correct property (no staleness window) and removes
+the cron, persistence, operational-rebuild contract, and delete back-stop a
+never-checked cache would require. It depends on an **FFI `stat(2)` binding,
+macOS-first** (mhs's `System.Directory` exposes no modification time); cross-platform
+support is deferred to the portability RFC, with the binding kept isolated so that RFC
+can extend it.
+
+Consequences: each operation pays O(files) `stat` calls (metadata only, far cheaper
+than the ~3.5 s read-and-parse) plus an O(1) lookup, with a full rebuild only on
+detected out-of-band drift. Staleness ceases to be a correctness risk. The per-op
+`stat` cost at scale is validated empirically (RFC-0029 Open Questions); if it is
+itself significant, a short-TTL fingerprint debounce is the recorded fallback.
+
 ## ADR Registry Open Review Items
 
 - Verify socket layout assumptions on non-macOS platforms before treating

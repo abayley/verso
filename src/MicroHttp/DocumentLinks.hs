@@ -27,6 +27,7 @@ module MicroHttp.DocumentLinks (
     AssetClass (..),
     classifyAssets,
     referrersMatching,
+    dirOfPath,
 ) where
 
 import Data.List (intercalate, isPrefixOf, sortBy)

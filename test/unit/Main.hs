@@ -13,6 +13,7 @@ import qualified MicroHttp.Http.ParserSpec as ParserSpec
 import qualified MicroHttp.Http.ResponseSpec as ResponseSpec
 import qualified MicroHttp.HttpSpec as HttpSpec
 import qualified MicroHttp.IterateeSpec as IterateeSpec
+import qualified MicroHttp.LinkIndexSpec as LinkIndexSpec
 import qualified MicroHttp.LogSpec as LogSpec
 import qualified MicroHttp.MiddlewareSpec as MiddlewareSpec
 import qualified MicroHttp.Network.SocketAddrSpec as SocketAddrSpec
@@ -38,6 +39,7 @@ main = hspec $ do
     FileOpsSpec.spec
     FramingSpec.spec
     HtmlSpec.spec
+    LinkIndexSpec.spec
     HttpSpec.spec
     ParserSpec.spec
     ResponseSpec.spec

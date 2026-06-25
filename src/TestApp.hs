@@ -7,6 +7,7 @@ import qualified MicroHttp.Server as Server
 import qualified MicroHttp.TestApp as TestApp
 import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
+import System.IO (hFlush, stdout)
 
 {- | The default config file path, overridable by the @MICROHTTP_CONFIG@
 environment variable. A missing file means built-in defaults (RFC-0011).
@@ -21,8 +22,12 @@ main = do
     case loaded >>= withSettings of
         Left err -> failWith err
         Right (settings, cfg) -> do
-            putStrLn ("listening on " ++ listenAddress settings)
+            -- Build the application (which warms the link index, RFC-0029) before
+            -- announcing the listen address, so "listening on" appears once the server
+            -- is actually about to accept connections, after the index is ready.
             application <- TestApp.appFromConfig settings cfg
+            putStrLn ("listening on " ++ listenAddress settings)
+            hFlush stdout
             result <- Server.serve settings application
             case result of
                 Left err -> putStrLn ("server failed: " ++ show err)

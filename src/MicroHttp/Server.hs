@@ -13,6 +13,7 @@ module MicroHttp.Server (
 import Control.Concurrent (forkIO)
 import Control.Concurrent.QSem
 import qualified Data.ByteString.Char8 as BS
+import Foreign.Ptr (Ptr, nullPtr, plusPtr)
 import MicroHttp.Http (Application, Response)
 import MicroHttp.Http.Response (ResponseSink (..), ResponseWriter, serialiseFileHead, writeResponse)
 import MicroHttp.Iteratee (run, strictEnumerator)
@@ -28,8 +29,23 @@ data ServerError
     | ServerStreamFailed StreamError
     deriving (Eq, Show)
 
+-- signal(2): ignore SIGPIPE process-wide so that a client disconnecting mid-response
+-- (e.g. a browser that gave up on a slow operation) makes the socket write return an
+-- error -- already handled per-connection as a SocketError -- instead of killing the
+-- whole server with signal 13. SIG_IGN is the libc sentinel handler value @(void*)1@.
+foreign import ccall "signal" c_signal :: Int -> Ptr () -> IO (Ptr ())
+
+ignoreSigpipe :: IO ()
+ignoreSigpipe = do
+    _ <- c_signal sigPIPE sigIGN
+    pure ()
+  where
+    sigPIPE = 13
+    sigIGN = nullPtr `plusPtr` 1
+
 serve :: Settings -> Application -> IO (Either ServerError ())
 serve settings app = do
+    ignoreSigpipe
     opened <-
         listenTcp
             (settingsHost settings)

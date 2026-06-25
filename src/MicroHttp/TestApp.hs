@@ -36,7 +36,7 @@ import qualified MicroHttp.Http as Http
 import MicroHttp.Http.Parse (ParseError (..))
 import MicroHttp.Http.PercentEncoding (decodeFormValue)
 import MicroHttp.Iteratee (Iter, liftIO, readBodyStrict)
-import MicroHttp.LinkIndexStore (LinkIndexStore, newLinkIndexStore, resync)
+import MicroHttp.LinkIndexStore (LinkIndexStore, freshIndex, newLinkIndexStore, resync)
 import MicroHttp.Log (Logger, localTimestamp, rotatingAppender, rotatingFileLogfmtLogger)
 import MicroHttp.Middleware (logRequests, withErrorResponses)
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), fileSizeBytes)
@@ -47,6 +47,7 @@ import qualified MicroHttp.Static as Static
 import MicroHttp.Stream (StreamError (..))
 import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), RelevantPages, deleteTarget, indexRelevant, listTrash, movePage, movePlanJson, moveSection, restoreFromTrash, scanRelevant, trashListJson)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
+import System.IO (hFlush, stdout)
 
 data DocumentStore = DocumentStore
     { loadDocument :: String -> IO String
@@ -76,9 +77,11 @@ appFromConfig settings cfg = do
     accessLogger <- rotatingFileLogfmtLogger logMaxBytes logKeep accessLogPath
     clientErrorSink <- rotatingAppender logMaxBytes logKeep clientErrorLogPath
     -- The running server keeps a warm link index across requests (RFC-0029); move and
-    -- delete consult it, and each in-server mutation re-syncs it. Built lazily on first
-    -- use, so flat-document mode (which never touches it) pays nothing.
+    -- delete consult it, and each in-server mutation re-syncs it. Build it eagerly at
+    -- startup (tree mode only) so the whole-tree parse is paid once here, not in the
+    -- first move/delete's response path. Flat-document mode never touches it.
     indexStore <- newLinkIndexStore
+    warmLinkIndex indexStore (configString "document_tree_root" "" cfg)
     pure
         ( logRequests
             accessLogger
@@ -94,6 +97,19 @@ appFromConfig settings cfg = do
     clientErrorLogPath = configString "client_error_log" "build/client-errors.log" cfg
     logMaxBytes = configIntOr "log_max_bytes" defaultLogMaxBytes cfg
     logKeep = configIntOr "log_keep" defaultLogKeep cfg
+
+{- | Eagerly builds the link index from the tree at startup (RFC-0029), logging the
+build, so the whole-tree parse is paid here rather than in the first move/delete's
+response path. A no-op in flat-document mode (empty tree root).
+-}
+warmLinkIndex :: LinkIndexStore -> FilePath -> IO ()
+warmLinkIndex _ "" = pure ()
+warmLinkIndex store treeRoot = do
+    putStrLn "building link index..."
+    hFlush stdout -- the build can take many seconds; surface the pause even when piped
+    _ <- freshIndex treeRoot store
+    putStrLn "link index ready"
+    hFlush stdout
 
 -- | The default log-rotation threshold in bytes (10 MiB) and retained-file count (RFC-0024).
 defaultLogMaxBytes :: Int

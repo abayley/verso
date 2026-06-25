@@ -12,14 +12,16 @@ module MicroHttp.Server (
 
 import Control.Concurrent (forkIO)
 import Control.Concurrent.QSem
+import Control.Exception (SomeException, try)
 import qualified Data.ByteString.Char8 as BS
 import Foreign.Ptr (Ptr, nullPtr, plusPtr)
-import MicroHttp.Http (Application, Response)
+import MicroHttp.Http (Application, Response (..), ResponseBody (..), Status (..), normaliseHeaderName)
 import MicroHttp.Http.Response (ResponseSink (..), ResponseWriter, serialiseFileHead, writeResponse)
 import MicroHttp.Iteratee (run, strictEnumerator)
 import MicroHttp.Network.Socket
 import MicroHttp.Settings (Settings (..), defaultSettings, parseLimits)
 import MicroHttp.Stream (StreamError (..), socketEnumerator)
+import System.IO (hFlush, hPutStrLn, stderr)
 
 data ServerError
     = ServerListenFailed SocketError
@@ -113,18 +115,42 @@ connection with nothing written.
 -}
 handleClient :: Settings -> Application -> ClientSocket -> ConnectionInfo -> IO (Either ServerError ())
 handleClient settings app client conn = do
-    final <-
-        socketEnumerator
-            client
-            (settingsReadBufferBytes settings)
-            (settingsIdleReadTimeoutMicros settings)
-            (app conn)
-    outcome <- run final
+    -- Run the application under a catch: an exception thrown inside a handler (a partial
+    -- function, a failed file read, etc.) would otherwise kill this connection's thread
+    -- silently -- the request logs but no response is ever written, and the client hangs.
+    -- Instead, log it and return a 500 so the failure is visible and the connection closes.
+    driven <-
+        try
+            ( socketEnumerator
+                client
+                (settingsReadBufferBytes settings)
+                (settingsIdleReadTimeoutMicros settings)
+                (app conn)
+                >>= run
+            ) ::
+            IO (Either SomeException (Either StreamError Response))
+    outcome <- case driven of
+        Left ex -> reportHandlerError ex >> pure (Right internalErrorResponse)
+        Right produced -> pure produced
     result <- case outcome of
         Right response -> writeClientResponse settings client response
         Left err -> return (Left (streamFailure err))
     _ <- closeClientSocketGraceful client
     return result
+
+-- | Logs an uncaught handler exception to stderr (so it surfaces in the server console).
+reportHandlerError :: SomeException -> IO ()
+reportHandlerError ex = do
+    hPutStrLn stderr ("handler exception: " ++ show ex)
+    hFlush stderr
+
+-- | The 500 returned when a handler throws, so the client gets a response instead of a hung connection.
+internalErrorResponse :: Response
+internalErrorResponse =
+    Response
+        (Status 500 "Internal Server Error")
+        [(normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/plain")]
+        (StrictBody (BS.pack "internal server error\n"))
 
 writeClientResponse :: Settings -> ClientSocket -> Response -> IO (Either ServerError ())
 writeClientResponse settings client response = do

@@ -1,5 +1,7 @@
 module MicroHttp.LinkIndexSpec (spec) where
 
+import Data.ByteString.Char8 (ByteString)
+import qualified Data.ByteString.Char8 as BS
 import Data.List (sort)
 import MicroHttp.DocumentLinks (planMoveRewrites, referrersMatching)
 import MicroHttp.LinkIndex (
@@ -14,18 +16,22 @@ import MicroHttp.LinkIndex (
  )
 import Test.Hspec
 
+-- | A page body as bytes (the index/link engine works over 'ByteString', RFC-0029).
+bs :: String -> ByteString
+bs = BS.pack
+
 {- | A small document tree as @(treePath, body)@ pairs, with the in-tree cross-links
 the index and the scan must agree on. Links are @.md@ page links (the graph) plus one
 same-folder asset reference (excluded from the graph, ADR-066).
 -}
-pages :: [(String, String)]
+pages :: [(String, ByteString)]
 pages =
-    [ ("index.md", "- [Guide](./guide/index.md)\n- [Reference](./ref/index.md)\n")
-    , ("guide/index.md", "[Intro](./intro.md) [Setup](./setup.md) [API](../ref/api.md)\n")
-    , ("guide/intro.md", "[Setup](./setup.md) and [API](../ref/api.md)\n")
-    , ("guide/setup.md", "back to [Intro](./intro.md)\n")
-    , ("ref/index.md", "- [API](./api.md)\n")
-    , ("ref/api.md", "see [Intro](../guide/intro.md) ![d](assets/diagram.png)\n")
+    [ ("index.md", bs "- [Guide](./guide/index.md)\n- [Reference](./ref/index.md)\n")
+    , ("guide/index.md", bs "[Intro](./intro.md) [Setup](./setup.md) [API](../ref/api.md)\n")
+    , ("guide/intro.md", bs "[Setup](./setup.md) and [API](../ref/api.md)\n")
+    , ("guide/setup.md", bs "back to [Intro](./intro.md)\n")
+    , ("ref/index.md", bs "- [API](./api.md)\n")
+    , ("ref/api.md", bs "see [Intro](../guide/intro.md) ![d](assets/diagram.png)\n")
     ]
 
 -- | A subtree-membership predicate for a section path (the section and its descendants).
@@ -62,7 +68,7 @@ spec =
 
         describe "updatePage" $ do
             it "patches the inverse when a page's links change" $ do
-                let ix = updatePage "guide/setup.md" "now links [API](../ref/api.md)\n" (buildIndex pages)
+                let ix = updatePage "guide/setup.md" (bs "now links [API](../ref/api.md)\n") (buildIndex pages)
                 -- setup no longer links to intro, now links to api
                 sort (inboundOf "guide/intro.md" ix) `shouldBe` sort ["guide/index.md", "ref/api.md"]
                 sort (inboundOf "ref/api.md" ix)
@@ -70,12 +76,12 @@ spec =
 
             it "rebuilds equal to incremental updates (no drift)" $ do
                 let incremental =
-                        updatePage "ref/api.md" "[Guide](../guide/index.md)\n" $
-                            updatePage "guide/setup.md" "[API](../ref/api.md)\n" (buildIndex pages)
+                        updatePage "ref/api.md" (bs "[Guide](../guide/index.md)\n") $
+                            updatePage "guide/setup.md" (bs "[API](../ref/api.md)\n") (buildIndex pages)
                     rebuilt =
                         buildIndex
-                            ( ("guide/setup.md", "[API](../ref/api.md)\n")
-                                : ("ref/api.md", "[Guide](../guide/index.md)\n")
+                            ( ("guide/setup.md", bs "[API](../ref/api.md)\n")
+                                : ("ref/api.md", bs "[Guide](../guide/index.md)\n")
                                 : filter ((`notElem` ["guide/setup.md", "ref/api.md"]) . fst) pages
                             )
                 incremental `shouldBe` rebuilt
@@ -99,7 +105,7 @@ spec =
                         relocatePage
                             "guide/intro.md"
                             "ref/intro.md"
-                            "[Setup](../guide/setup.md) [API](./api.md)\n"
+                            (bs "[Setup](../guide/setup.md) [API](./api.md)\n")
                             (buildIndex pages)
                 outboundOf "guide/intro.md" ix `shouldBe` []
                 sort (outboundOf "ref/intro.md" ix)

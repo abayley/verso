@@ -35,6 +35,7 @@ module MicroHttp.LinkIndex (
     rewriteCandidates,
 ) where
 
+import Data.ByteString.Char8 (ByteString)
 import Data.List (foldl', isSuffixOf, nub)
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -64,7 +65,7 @@ emptyIndex = LinkIndex Map.empty Map.empty
 'updatePage' to each page over the empty index, so an incremental sequence converges to
 this rebuild.
 -}
-buildIndex :: [(PagePath, String)] -> LinkIndex
+buildIndex :: [(PagePath, ByteString)] -> LinkIndex
 buildIndex = foldl' (\ix (page, body) -> updatePage page body ix) emptyIndex
 
 -- | A page's recorded outbound @.md@ targets (empty when the page is absent or linkless).
@@ -80,7 +81,7 @@ body order. External and non-@.md@ (asset) targets are excluded -- the graph is
 @.md@->@.md@ only (ADR-066). Resolution reuses 'MicroHttp.DocumentLinks', so it matches
 the scan.
 -}
-pageTargets :: PagePath -> String -> [TreePath]
+pageTargets :: PagePath -> ByteString -> [TreePath]
 pageTargets page body =
     nub
         [ target
@@ -93,7 +94,7 @@ pageTargets page body =
 inverse: the page's previous edges are withdrawn from 'inbound' and its new edges added.
 Applied per page, this keeps the index equal to a rebuild from the same bodies.
 -}
-updatePage :: PagePath -> String -> LinkIndex -> LinkIndex
+updatePage :: PagePath -> ByteString -> LinkIndex -> LinkIndex
 updatePage page body ix =
     let cleared = clearSource page ix
         targets = pageTargets page body
@@ -114,7 +115,7 @@ from the (possibly rewritten) new body. Other pages whose links were rewritten t
 new path are maintained separately by re-deriving each (the move's write-set), so this
 handles only the moved page's own key.
 -}
-relocatePage :: PagePath -> PagePath -> String -> LinkIndex -> LinkIndex
+relocatePage :: PagePath -> PagePath -> ByteString -> LinkIndex -> LinkIndex
 relocatePage oldPath newPath newBody = updatePage newPath newBody . removePage oldPath
 
 {- | The pages that link to a target the predicate accepts, excluding the given paths.

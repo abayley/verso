@@ -16,6 +16,7 @@ module MicroHttp.DocumentListing (
     addListingEntry,
 ) where
 
+import qualified Data.ByteString.Char8 as BS
 import Data.List (isInfixOf, isPrefixOf)
 import MicroHttp.DocumentLinks (
     linkEnd,
@@ -58,11 +59,14 @@ addListingEntry destDir target entryLine text =
 -- | Repoints an entry's first inline link to reach @target@ from @destDir@, preserving its anchor suffix.
 repointEntry :: String -> String -> String -> String
 repointEntry destDir target line =
-    case pageLinks line of
-        [] -> line
-        (l : _) ->
-            let (_, suffix) = splitTargetSuffix (linkTarget l)
-             in rewriteLinks line [(linkStart l, linkEnd l, relativeBetween destDir target ++ suffix)]
+    -- The line is the byte-per-char form (from BS.unpack of the index.md bytes), so
+    -- BS.pack/BS.unpack round-trips it losslessly while pageLinks/rewriteLinks work on bytes.
+    let packed = BS.pack line
+     in case pageLinks packed of
+            [] -> line
+            (l : _) ->
+                let (_, suffix) = splitTargetSuffix (linkTarget l)
+                 in BS.unpack (rewriteLinks packed [(linkStart l, linkEnd l, relativeBetween destDir target ++ suffix)])
 
 {- | Inserts a card line into the first grid block, after the last existing card
 (so cards stay contiguous and a trailing blank line before @</div>@ is preserved),
@@ -120,7 +124,7 @@ isListItem line = "- " `isPrefixOf` dropSpaces line
 -- | Whether a line's inline link resolves (from @indexDir@) to @target@.
 matchesTarget :: String -> String -> String -> Bool
 matchesTarget indexDir target line =
-    isListItem line && any (\l -> resolveTarget indexDir (linkTarget l) == Just target) (pageLinks line)
+    isListItem line && any (\l -> resolveTarget indexDir (linkTarget l) == Just target) (pageLinks (BS.pack line))
 
 dropSpaces :: String -> String
 dropSpaces = dropWhile (== ' ')

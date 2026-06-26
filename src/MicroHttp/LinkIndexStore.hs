@@ -24,6 +24,7 @@ module MicroHttp.LinkIndexStore (
 
 import Control.Concurrent.MVar (MVar, modifyMVar, modifyMVar_, newMVar)
 import Control.Monad (foldM)
+import Data.ByteString.Char8 (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import Data.List (foldl')
 import qualified Data.Map as Map
@@ -109,10 +110,10 @@ resyncState root (Just state) = do
 patchPage :: FilePath -> LinkIndex -> String -> IO LinkIndex
 patchPage root index rel = do
     body <- readPageBody (root ++ "/" ++ rel)
-    pure (updatePage rel (fromMaybe "" body) index)
+    pure (updatePage rel (fromMaybe BS.empty body) index)
 
--- | Reads a page body as a 'String', or 'Nothing' when the file is absent.
-readPageBody :: FilePath -> IO (Maybe String)
+-- | Reads a page body as a 'ByteString' (no @String@ conversion), or 'Nothing' when the file is absent.
+readPageBody :: FilePath -> IO (Maybe ByteString)
 readPageBody fs = do
     exists <- doesFileExist fs
-    if exists then fmap (Just . BS.unpack) (BS.readFile fs) else pure Nothing
+    if exists then fmap Just (BS.readFile fs) else pure Nothing

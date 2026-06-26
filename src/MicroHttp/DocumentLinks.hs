@@ -1,7 +1,8 @@
 {- | The pure link engine for in-server move and delete (RFC-0027). It works over a
-page's Markdown text as a plain 'String' (the @ByteString.Char8.unpack@ form, one
-'Char' per byte, so offsets are byte offsets and ASCII link syntax is matched
-exactly regardless of UTF-8 content) and over tree-relative paths.
+page's Markdown body as a strict 'ByteString' (so offsets are byte offsets, ASCII link
+syntax is matched exactly regardless of UTF-8 content, and the whole-tree scan/index
+build never pays a @String@ conversion of every body -- RFC-0029) and over tree-relative
+paths as 'String' (link tokens and paths are short).
 
 The functions are pure and independently testable: 'pageLinks' extracts the inline
 link and image targets (with their spans), 'resolveTarget' resolves a relative
@@ -30,6 +31,8 @@ module MicroHttp.DocumentLinks (
     dirOfPath,
 ) where
 
+import Data.ByteString.Char8 (ByteString)
+import qualified Data.ByteString.Char8 as BS
 import Data.List (intercalate, isPrefixOf, sortBy)
 import Data.Maybe (fromMaybe)
 
@@ -50,49 +53,46 @@ data Link = Link
 blocks (``` and @~~~@). A title (@](path "title")@) is excluded from the target;
 the target token is the path plus any @#anchor@/@?query@.
 -}
-pageLinks :: String -> [Link]
-pageLinks text = concat (scanLines 0 False (linesWithOffsets text))
+pageLinks :: ByteString -> [Link]
+pageLinks text = concat (scanLines False (linesWithOffsets text))
   where
-    scanLines _ _ [] = []
-    scanLines off inFence ((lineOff, line) : rest)
-        | isFenceLine line = [] : scanLines (off + lineLen) (not inFence) rest
-        | inFence = [] : scanLines (off + lineLen) inFence rest
-        | otherwise = lineLinks lineOff line : scanLines (off + lineLen) inFence rest
-      where
-        lineLen = length line + 1
+    scanLines _ [] = []
+    scanLines inFence ((lineOff, line) : rest)
+        | isFenceLine line = [] : scanLines (not inFence) rest
+        | inFence = [] : scanLines inFence rest
+        | otherwise = lineLinks lineOff line : scanLines inFence rest
 
 {- | The links on one (non-fence) line, with absolute spans from the line's offset.
-Walks the line once (O(line length)): the earlier index form recomputed @length@ and
-@drop i@ on every character, which is quadratic per line and dominated the whole-tree
-parse on link-dense lines.
+Walks the line once with O(1) 'ByteString' indexing (@BS.index@/@BS.drop@), so no
+@length@/@drop@ rescan and no @String@ allocation.
 -}
-lineLinks :: Int -> String -> [Link]
-lineLinks = go
+lineLinks :: Int -> ByteString -> [Link]
+lineLinks lineOff line = go 0
   where
-    go _ [] = []
-    go _ [_] = []
-    go off (c0 : rest@(c1 : after))
-        | c0 == ']' && c1 == '(' =
-            case readTarget after of
+    len = BS.length line
+    go i
+        | i + 1 >= len = []
+        | BS.index line i == ']' && BS.index line (i + 1) == '(' =
+            case readTarget (BS.drop (i + 2) line) of
                 Just (token, tokenLen) ->
-                    Link (off + 2) (off + 2 + tokenLen) token : go (off + 2 + tokenLen) (drop tokenLen after)
-                Nothing -> go (off + 1) rest
-        | otherwise = go (off + 1) rest
+                    Link (lineOff + i + 2) (lineOff + i + 2 + tokenLen) token : go (i + 2 + tokenLen)
+                Nothing -> go (i + 1)
+        | otherwise = go (i + 1)
 
-{- | From the text just after @](@, the target token and its length in the source
+{- | From the bytes just after @](@, the target token and its length in the source
 (the raw path span, excluding any leading @<@/@>@, a following title, or the closing
-@)@). 'Nothing' if no closing @)@ is found on the line.
+@)@). 'Nothing' if no closing @)@ is found on the line. The token is returned as a
+'String' (it is short).
 -}
-readTarget :: String -> Maybe (String, Int)
-readTarget afterOpen =
-    case break (== ')') afterOpen of
-        (_, []) -> Nothing
-        (inner, _) -> Just (tokenOf inner, length (rawTokenOf inner))
+readTarget :: ByteString -> Maybe (String, Int)
+readTarget afterOpen = case BS.elemIndex ')' afterOpen of
+    Nothing -> Nothing
+    Just _ -> Just (BS.unpack (stripAngles raw), BS.length raw)
   where
-    rawTokenOf = takeWhile (\c -> c /= ' ' && c /= '\t')
-    tokenOf inner = stripAngles (rawTokenOf inner)
+    inner = BS.takeWhile (/= ')') afterOpen
+    raw = BS.takeWhile (\c -> c /= ' ' && c /= '\t') inner
     stripAngles t
-        | not (null t) && head t == '<' && not (null (drop 1 t)) && last t == '>' = init (drop 1 t)
+        | BS.length t >= 2 && BS.head t == '<' && BS.last t == '>' = BS.init (BS.drop 1 t)
         | otherwise = t
 
 {- | Splits a target token into its path part and a trailing @#anchor@/@?query@
@@ -146,16 +146,16 @@ relativeBetween fromDir toPath
     ups = length fromSegs - common
     downs = drop common toDirSegs
 
--- | Applies @(start, end, replacement)@ span edits to the text, preserving everything else.
-rewriteLinks :: String -> [(Int, Int, String)] -> String
-rewriteLinks text edits = go 0 (sortBy byStart edits)
+-- | Applies @(start, end, replacement)@ byte-span edits to the body, preserving everything else.
+rewriteLinks :: ByteString -> [(Int, Int, String)] -> ByteString
+rewriteLinks text edits = BS.concat (go 0 (sortBy byStart edits))
   where
     byStart (a, _, _) (b, _, _) = compare a b
-    go cursor [] = drop cursor text
+    go cursor [] = [BS.drop cursor text]
     go cursor ((start, end, replacement) : rest)
         | start < cursor = go cursor rest -- overlapping/out-of-order: skip
-        | otherwise = sliceBetween cursor start ++ replacement ++ go end rest
-    sliceBetween from to = take (to - from) (drop from text)
+        | otherwise = sliceBetween cursor start : BS.pack replacement : go end rest
+    sliceBetween from to = BS.take (to - from) (BS.drop from text)
 
 {- | Relocates a tree path that lies within a moved subtree: the subtree root
 @oldPrefix@ itself, or any descendant under it, maps to the same suffix beneath
@@ -180,7 +180,7 @@ renames additionally fixes internal links routing through the old name.
 The two parent index.md listings are reconciled separately (their membership entry
 relocates, not repoints) and so are excluded by the caller from the page set here.
 -}
-planMoveRewrites :: (String, String) -> [(String, String)] -> [(String, String)]
+planMoveRewrites :: (String, String) -> [(String, ByteString)] -> [(String, ByteString)]
 planMoveRewrites (oldPrefix, newPrefix) pages =
     [ (path, rewriteLinks text edits)
     | (path, text) <- pages
@@ -208,7 +208,7 @@ same relative token (the assets travel into the destination's @assets/@) -- whil
 every other page's inbound links to it are fixed by the subtree machinery (the file
 itself is the relocated prefix). The moved page's result is keyed by its new path.
 -}
-planPageMove :: (String, String) -> [(String, String)] -> [(String, String)]
+planPageMove :: (String, String) -> [(String, ByteString)] -> [(String, ByteString)]
 planPageMove (oldPath, newPath) pages =
     movedEntry ++ planMoveRewrites (oldPath, newPath) others
   where
@@ -244,7 +244,7 @@ assetsDir dir = dir ++ "/assets"
 @assets/@ prefix in inline link/image targets), in order, for the shared/exclusive
 analysis of a cross-folder page move (ADR-062).
 -}
-assetNamesIn :: String -> [String]
+assetNamesIn :: ByteString -> [String]
 assetNamesIn body =
     [ name
     | l <- pageLinks body
@@ -275,7 +275,7 @@ for a section delete it accepts the subtree (the folder and its descendants), an
 subtree's own pages are excluded. Used to refuse a referenced delete (RFC-0027,
 ADR-063) and list the referrers.
 -}
-referrersMatching :: (String -> Bool) -> [String] -> [(String, String)] -> [(String, String)]
+referrersMatching :: (String -> Bool) -> [String] -> [(String, ByteString)] -> [(String, String)]
 referrersMatching matches excluded pages =
     [ (path, linkTarget l)
     | (path, body) <- pages
@@ -318,18 +318,19 @@ commonPrefixLength (a : as) (b : bs)
     | a == b = 1 + commonPrefixLength as bs
 commonPrefixLength _ _ = 0
 
-{- | The page's lines as @(startOffset, lineText)@ pairs, split on @\\n@ (the line
-text excludes the newline; a trailing @\\r@ stays in the text so offsets are exact).
+{- | The page's lines as @(startOffset, lineBytes)@ pairs, split on @\\n@ (the line
+bytes exclude the newline; a trailing @\\r@ stays so offsets are exact). Uses O(1)
+@BS.take@/@BS.drop@ slices, so no copying.
 -}
-linesWithOffsets :: String -> [(Int, String)]
+linesWithOffsets :: ByteString -> [(Int, ByteString)]
 linesWithOffsets = go 0
   where
-    go off s = case break (== '\n') s of
-        (line, '\n' : rest) -> (off, line) : go (off + length line + 1) rest
-        (line, _) -> [(off, line)]
+    go off s = case BS.elemIndex '\n' s of
+        Just i -> (off, BS.take i s) : go (off + i + 1) (BS.drop (i + 1) s)
+        Nothing -> [(off, s)]
 
 -- | Whether a line opens or closes a fenced code block (``` or @~~~@ after optional indent).
-isFenceLine :: String -> Bool
+isFenceLine :: ByteString -> Bool
 isFenceLine line =
-    let trimmed = dropWhile (== ' ') line
-     in "```" `isPrefixOf` trimmed || "~~~" `isPrefixOf` trimmed
+    let trimmed = BS.dropWhile (== ' ') line
+     in BS.pack "```" `BS.isPrefixOf` trimmed || BS.pack "~~~" `BS.isPrefixOf` trimmed

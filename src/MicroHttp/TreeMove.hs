@@ -84,7 +84,7 @@ data RelevantQuery = RelevantQuery
 freshness-checked link index) are the two backends; the server uses the index,
 @replay-tool@ and the unit tests use the scan.
 -}
-type RelevantPages = FilePath -> RelevantQuery -> IO [(String, String)]
+type RelevantPages = FilePath -> RelevantQuery -> IO [(String, BS.ByteString)]
 
 -- | The scan backend: the byte-prefiltered whole-tree read (RFC-0027), unchanged. The index's rebuild fallback and @replay-tool@'s mechanism.
 scanRelevant :: RelevantPages
@@ -185,12 +185,12 @@ relocateEntry root srcParentRel destParentRel oldTarget newTarget synth = do
     srcText <- readRel root srcIndexRel
     removed <- case srcText of
         Just t ->
-            let (t', r) = removeListingEntry srcParentRel oldTarget t
-             in writeRel root srcIndexRel t' >> pure r
+            let (t', r) = removeListingEntry srcParentRel oldTarget (BS.unpack t)
+             in writeRel root srcIndexRel (BS.pack t') >> pure r
         Nothing -> pure Nothing
     let entry = fromMaybe synth removed
-    destBase <- fmap (fromMaybe "") (readRel root destIndexRel)
-    writeRel root destIndexRel (addListingEntry destParentRel newTarget entry destBase)
+    destBase <- fmap (maybe "" BS.unpack) (readRel root destIndexRel)
+    writeRel root destIndexRel (BS.pack (addListingEntry destParentRel newTarget entry destBase))
   where
     srcIndexRel = indexRel srcParentRel
     destIndexRel = indexRel destParentRel
@@ -296,12 +296,12 @@ dropDotMd name
 -- | The shared/exclusive classification of the moving page's assets against its source-folder peers (ADR-062).
 classifyMovingAssets :: FilePath -> String -> String -> IO [(String, AssetClass)]
 classifyMovingAssets root srcRel srcDir = do
-    movingBody <- fmap (fromMaybe "") (readRel root srcRel)
+    movingBody <- fmap (fromMaybe BS.empty) (readRel root srcRel)
     movingSidecar <- sidecarAssetNames root srcRel
     let movingAssets = nub (assetNamesIn movingBody ++ movingSidecar)
     peers <- siblingPages root srcDir srcRel
     peerRefs <- forM peers $ \peer -> do
-        body <- fmap (fromMaybe "") (readRel root peer)
+        body <- fmap (fromMaybe BS.empty) (readRel root peer)
         sidecar <- sidecarAssetNames root peer
         pure (nub (assetNamesIn body ++ sidecar))
     pure (classifyAssets movingAssets peerRefs)
@@ -547,8 +547,8 @@ removeParentListing root parentIndexRel parent target = do
     txt <- readRel root parentIndexRel
     case txt of
         Just t ->
-            let (t', removed) = removeListingEntry parent target t
-             in writeRel root parentIndexRel t' >> pure removed
+            let (t', removed) = removeListingEntry parent target (BS.unpack t)
+             in writeRel root parentIndexRel (BS.pack t') >> pure removed
         Nothing -> pure Nothing
 
 -- | Re-adds a restored item's listing entry to its parent index.md (the preserved line, or nothing when absent).
@@ -557,8 +557,8 @@ reAddListing root manifest =
     case manListing manifest of
         Nothing -> pure ()
         Just entry -> do
-            base <- fmap (fromMaybe "") (readRel root parentIndexRel)
-            writeRel root parentIndexRel (addListingEntry parent target entry base)
+            base <- fmap (maybe "" BS.unpack) (readRel root parentIndexRel)
+            writeRel root parentIndexRel (BS.pack (addListingEntry parent target entry base))
   where
     parent = parentRel (manPath manifest)
     parentIndexRel = indexRel parent
@@ -689,7 +689,7 @@ difference between a sub-second and a ~90-second scan on a large corpus (no inde
 byte pre-filter never drops a real referrer (false positives only cost a parse), since a relative
 link's path always contains the slug/filename of what it points at.
 -}
-enumerateRelevant :: FilePath -> BS.ByteString -> Maybe String -> IO [(String, String)]
+enumerateRelevant :: FilePath -> BS.ByteString -> Maybe String -> IO [(String, BS.ByteString)]
 enumerateRelevant root hint subtreePrefix = walk ""
   where
     inSubtree path = case subtreePrefix of
@@ -711,28 +711,28 @@ enumerateRelevant root hint subtreePrefix = walk ""
                     if ".md" `isSuffixOf` name
                         then do
                             bytes <- BS.readFile childFs
-                            pure [(childRel, BS.unpack bytes) | BS.isInfixOf hint bytes || inSubtree childRel]
+                            pure [(childRel, bytes) | BS.isInfixOf hint bytes || inSubtree childRel]
                         else pure []
     isDot ('.' : _) = True
     isDot _ = False
 
--- | Reads a tree-relative file, or 'Nothing' when it is absent or its path is unsafe.
-readRel :: FilePath -> String -> IO (Maybe String)
+-- | Reads a tree-relative file as bytes, or 'Nothing' when it is absent or its path is unsafe.
+readRel :: FilePath -> String -> IO (Maybe BS.ByteString)
 readRel root rel =
     case resolveStaticPath root (pathSegmentsOf rel) of
         Nothing -> pure Nothing
         Just fs -> do
             exists <- doesFileExist fs
-            if exists then fmap (Just . BS.unpack) (BS.readFile fs) else pure Nothing
+            if exists then fmap Just (BS.readFile fs) else pure Nothing
 
--- | Writes a tree-relative file (creating parent directories), ignoring an unsafe path.
-writeRel :: FilePath -> String -> String -> IO ()
+-- | Writes a tree-relative file's bytes (creating parent directories), ignoring an unsafe path.
+writeRel :: FilePath -> String -> BS.ByteString -> IO ()
 writeRel root rel content =
     case resolveStaticPath root (pathSegmentsOf rel) of
         Nothing -> pure ()
         Just fs -> do
             createDirectoryIfMissing True (parentDir fs)
-            BS.writeFile fs (BS.pack content)
+            BS.writeFile fs content
   where
     parentDir = reverse . drop 1 . dropWhile (/= '/') . reverse
 

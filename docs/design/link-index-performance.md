@@ -160,8 +160,10 @@ always-correct guarantee.
   startup, snappy once warm, no minute-long stall. Tradeoff: a window of scan-speed ops
   after start; concurrency to get right. Effort: moderate.
 - **E. Persist the index.** Serialise graph + fingerprint to disk; reload on restart
-  (the fingerprint check still validates it). Impact: pay the build once, not per
-  restart. Tradeoff: a serialise/validate path. Effort: moderate.
+  (the fingerprint check still validates it). Impact: saves the *parse* on restart, but
+  **not** the `Map`/inbound construction (which dominates in mhs and cannot be skipped
+  when deserialising `Data.Map`), so it helped less than expected -- ~40 s build vs ~25 s
+  reload (see Implemented outcome). Tradeoff: a serialise/validate path. Effort: moderate.
 - **Accept eager startup.** Force the graph at startup and live with ~80-130 s before
   serving. Simplest, but a poor operational experience that grows with the corpus.
 
@@ -187,6 +189,29 @@ always-correct guarantee.
 - **G. Revert to the scan.** Move/delete use `enumerateRelevant` (~3.5 s/op, 0 startup,
   always correct). Simplest and reliable; loses snappiness. The index code stays in the
   tree, dormant, re-enabled by one wiring change.
+
+## Implemented outcome (2026-06-26)
+
+C + E + F were implemented (the index is back in move/delete). Measured on the
+reference corpus:
+
+- **Operations are snappy: ~39 ms** for move/delete -- the warm index is read with no
+  filesystem walk (F), and maintenance is incremental (a move is a pure prefix
+  relocation; delete/save/create/restore re-read only their few touched paths).
+- **Startup build + persist: ~40 s** (a one-off; C's ByteString parse is fast, so this
+  is dominated by mhs `Map`/inbound construction).
+- **Reload from the persisted file: ~25 s.** Persistence (E) saves the *parse* but
+  **not** the `Map` construction -- `Data.Map` cannot be deserialised without re-inserting
+  every element, which is the dominant cost in the mhs interpreter. So persistence helps
+  less than hoped (~40 s -> ~25 s); it is kept because it still saves the parse and
+  validates correctness, but the startup cost is not sub-second.
+- **Refresh** (`POST /index/refresh`, for the re-export to call) rebuilds in ~the build
+  time.
+
+So the user-facing goal (snappy move/delete) is met; the residual cost is a ~25-40 s
+one-off at startup. If that startup cost matters, the lever is the `Map`/inbound build
+(e.g. a flatter in-memory representation, or building inbound unsorted) -- not the parse
+or persistence.
 
 ## Recommendation
 

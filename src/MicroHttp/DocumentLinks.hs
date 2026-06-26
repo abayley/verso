@@ -61,18 +61,23 @@ pageLinks text = concat (scanLines 0 False (linesWithOffsets text))
       where
         lineLen = length line + 1
 
--- | The links on one (non-fence) line, with absolute spans from the line's offset.
+{- | The links on one (non-fence) line, with absolute spans from the line's offset.
+Walks the line once (O(line length)): the earlier index form recomputed @length@ and
+@drop i@ on every character, which is quadratic per line and dominated the whole-tree
+parse on link-dense lines.
+-}
 lineLinks :: Int -> String -> [Link]
-lineLinks lineOff line = go 0
+lineLinks = go
   where
-    go i
-        | i + 1 >= length line = []
-        | take 2 (drop i line) == "](" =
-            case readTarget (drop (i + 2) line) of
+    go _ [] = []
+    go _ [_] = []
+    go off (c0 : rest@(c1 : after))
+        | c0 == ']' && c1 == '(' =
+            case readTarget after of
                 Just (token, tokenLen) ->
-                    Link (lineOff + i + 2) (lineOff + i + 2 + tokenLen) token : go (i + 2 + tokenLen)
-                Nothing -> go (i + 1)
-        | otherwise = go (i + 1)
+                    Link (off + 2) (off + 2 + tokenLen) token : go (off + 2 + tokenLen) (drop tokenLen after)
+                Nothing -> go (off + 1) rest
+        | otherwise = go (off + 1) rest
 
 {- | From the text just after @](@, the target token and its length in the source
 (the raw path span, excluding any leading @<@/@>@, a following title, or the closing

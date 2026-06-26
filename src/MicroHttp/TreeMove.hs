@@ -49,7 +49,7 @@ import MicroHttp.DocumentListing (addListingEntry, removeListingEntry)
 import MicroHttp.DocumentMeta (metaDirectoryFor)
 import MicroHttp.FileOps (removeEmptyDir, removeFilePath, renamePath)
 import MicroHttp.LinkIndex (rewriteCandidates)
-import MicroHttp.LinkIndexStore (LinkIndexStore, freshIndex)
+import MicroHttp.LinkIndexStore (LinkIndexStore, currentIndex)
 import MicroHttp.OperationLog (OpType (..), Operation (..))
 import MicroHttp.Static (resolveStaticPath)
 import MicroHttp.Trash (Manifest (..), TrashItem (..), parseManifest, renderManifest)
@@ -90,15 +90,16 @@ type RelevantPages = FilePath -> RelevantQuery -> IO [(String, BS.ByteString)]
 scanRelevant :: RelevantPages
 scanRelevant root query = enumerateRelevant root (rqHint query) (rqSubtree query)
 
-{- | The index backend (RFC-0029): consult the freshness-checked link index for the
-candidate pages (the region's own pages plus everything linking into it), then read just
-those bodies. The pure planners ('planMoveRewrites'/'referrersMatching') then compute the
-exact edits/referrers over this candidate set -- identical to running over the whole
-tree, since a page outside the candidate set has no link into the region.
+{- | The index backend (RFC-0029): consult the warm in-memory link index (no
+per-operation filesystem walk) for the candidate pages (the region's own pages plus
+everything linking into it), then read just those bodies. The pure planners
+('planMoveRewrites'/'referrersMatching') then compute the exact edits/referrers over this
+candidate set -- identical to running over the whole tree, since a page outside the
+candidate set has no link into the region.
 -}
 indexRelevant :: LinkIndexStore -> RelevantPages
 indexRelevant store root query = do
-    (_, index) <- freshIndex root store
+    index <- currentIndex store
     let paths = rewriteCandidates (rqRegion query) index
     candidates <- mapM readCandidate paths
     pure (catMaybes candidates)

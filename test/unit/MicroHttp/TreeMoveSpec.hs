@@ -3,7 +3,7 @@ module MicroHttp.TreeMoveSpec (spec) where
 import Control.Monad (forM_, void, when)
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.FileOps (removeEmptyDir, removeFilePath)
-import MicroHttp.LinkIndexStore (newLinkIndexStore)
+import MicroHttp.LinkIndexStore (newLinkIndexStore, openLinkIndex)
 import MicroHttp.OperationLog (OpType (..), Operation (..))
 import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), ReplayEntry (..), deleteTarget, indexRelevant, movePage, moveSection, replayLog, restoreFromTrash, scanRelevant)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
@@ -256,6 +256,7 @@ spec = do
         it "moves a section via the index, rewriting inbound links and the listing as the scan does" $ do
             seedFixture
             store <- newLinkIndexStore
+            openLinkIndex root "build/tree-move-spec.idx" store
             result <- moveSection (indexRelevant store) root "sub" "dest" "sub" True
             isLeft result `shouldBe` False
             doesFileExist (root ++ "/dest/sub/index.md") `shouldReturn` True
@@ -268,6 +269,7 @@ spec = do
             seedDeleteFixture
             removeTree trashRoot
             store <- newLinkIndexStore
+            openLinkIndex root "build/tree-move-spec.idx" store
             result <- deleteTarget (indexRelevant store) root trashRoot "refed.md" "0" 0
             case result of
                 Right (Refused referrers) -> map fst referrers `shouldBe` ["other.md"]
@@ -278,6 +280,7 @@ spec = do
             seedDeleteFixture
             removeTree trashRoot
             store <- newLinkIndexStore
+            openLinkIndex root "build/tree-move-spec.idx" store
             result <- deleteTarget (indexRelevant store) root trashRoot "lonely.md" "7" 0
             case result of
                 Right (Deleted tid p k) -> (tid, p, k) `shouldBe` ("7", "lonely.md", "page")

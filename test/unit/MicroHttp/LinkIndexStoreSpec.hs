@@ -4,8 +4,16 @@ import Control.Monad (when)
 import qualified Data.ByteString.Char8 as BS
 import Data.List (sort)
 import MicroHttp.FileOps (removeEmptyDir)
-import MicroHttp.LinkIndex (inboundOf)
-import MicroHttp.LinkIndexStore (freshIndex, newLinkIndexStore, resync)
+import MicroHttp.LinkIndex (inboundOf, outboundOf)
+import MicroHttp.LinkIndexStore (
+    addSubtreeToIndex,
+    applyChanges,
+    currentIndex,
+    newLinkIndexStore,
+    openLinkIndex,
+    relocateInIndex,
+    removeSubtreeInIndex,
+ )
 import System.Directory (
     createDirectoryIfMissing,
     doesDirectoryExist,
@@ -19,8 +27,16 @@ import Test.Hspec
 root :: FilePath
 root = "build/link-index-store-spec"
 
+-- | The persisted index file, kept outside the tree root so the walk never sees it.
+indexPath :: FilePath
+indexPath = "build/link-index-store-spec.idx"
+
 freshTree :: IO ()
-freshTree = removeTree root >> createDirectoryIfMissing True root
+freshTree = do
+    removeTree root
+    createDirectoryIfMissing True root
+    exists <- doesFileExist indexPath
+    when exists (removeFile indexPath)
 
 removeTree :: FilePath -> IO ()
 removeTree path = do
@@ -43,66 +59,97 @@ writeAt rel content = do
   where
     parentDir = reverse . drop 1 . dropWhile (/= '/') . reverse
 
+removeAt :: String -> IO ()
+removeAt rel = removeFile (root ++ "/" ++ rel)
+
 spec :: Spec
 spec =
     describe "MicroHttp.LinkIndexStore" $ do
-        it "builds lazily on first access and answers referrer queries" $ do
+        it "builds the index from the tree and answers referrer queries with no walk" $ do
             freshTree
             writeAt "a.md" "[B](./b.md) [C](./c.md)\n"
             writeAt "b.md" "leaf b\n"
             writeAt "c.md" "leaf c\n"
             store <- newLinkIndexStore
-            (built, ix) <- freshIndex root store
-            built `shouldBe` True
+            openLinkIndex root indexPath store
+            ix <- currentIndex store
             sort (inboundOf "b.md" ix) `shouldBe` ["a.md"]
             sort (inboundOf "c.md" ix) `shouldBe` ["a.md"]
 
-        it "trusts the cached index without rebuilding when the tree is unchanged" $ do
+        it "persists and reloads, and rebuilds when the persisted file is stale" $ do
             freshTree
             writeAt "a.md" "[B](./b.md)\n"
             writeAt "b.md" "leaf b\n"
-            store <- newLinkIndexStore
-            (first, _) <- freshIndex root store
-            (second, _) <- freshIndex root store
-            first `shouldBe` True
-            second `shouldBe` False
+            store1 <- newLinkIndexStore
+            openLinkIndex root indexPath store1 -- builds and persists
+            doesFileExist indexPath `shouldReturn` True
+            -- a fresh store loads the persisted index (tree unchanged -> fingerprint matches)
+            store2 <- newLinkIndexStore
+            openLinkIndex root indexPath store2
+            ix2 <- currentIndex store2
+            sort (inboundOf "b.md" ix2) `shouldBe` ["a.md"]
+            -- change the tree out-of-band, then a fresh open detects the stale fingerprint and rebuilds
+            writeAt "a.md" "[C](./c.md)\n"
+            writeAt "c.md" "leaf c\n"
+            store3 <- newLinkIndexStore
+            openLinkIndex root indexPath store3
+            ix3 <- currentIndex store3
+            inboundOf "b.md" ix3 `shouldBe` []
+            sort (inboundOf "c.md" ix3) `shouldBe` ["a.md"]
 
-        it "rebuilds after an out-of-band equal-length edit" $ do
+        it "applyChanges patches a modified, added, or removed page (no walk)" $ do
             freshTree
-            writeAt "a.md" "[X](./b.md)\n"
+            writeAt "a.md" "[B](./b.md)\n"
             writeAt "b.md" "leaf b\n"
             writeAt "c.md" "leaf c\n"
             store <- newLinkIndexStore
-            (_, ix1) <- freshIndex root store
-            sort (inboundOf "b.md" ix1) `shouldBe` ["a.md"]
-            inboundOf "c.md" ix1 `shouldBe` []
-            -- repoint a's only link, same byte length: only the sub-second mtime moves
-            writeAt "a.md" "[X](./c.md)\n"
-            (built, ix2) <- freshIndex root store
-            built `shouldBe` True
-            inboundOf "b.md" ix2 `shouldBe` []
-            sort (inboundOf "c.md" ix2) `shouldBe` ["a.md"]
+            openLinkIndex root indexPath store
+            -- modify a (now links c), add d (links b), remove c
+            writeAt "a.md" "[C](./c.md)\n"
+            writeAt "d.md" "[B](./b.md)\n"
+            removeAt "c.md"
+            applyChanges root ["a.md", "d.md", "c.md"] store
+            ix <- currentIndex store
+            sort (inboundOf "b.md" ix) `shouldBe` ["d.md"]
+            sort (inboundOf "c.md" ix) `shouldBe` ["a.md"]
+            outboundOf "c.md" ix `shouldBe` []
 
-        it "re-syncs incrementally: no drift on the next check and the index equals a rebuild" $ do
+        it "relocateInIndex relocates a moved subtree's keys and targets" $ do
             freshTree
-            writeAt "a.md" "[B](./b.md)\n"
-            writeAt "b.md" "leaf b\n"
-            writeAt "c.md" "[B](./b.md)\n"
+            writeAt "index.md" "[Guide](./guide/index.md)\n"
+            writeAt "guide/index.md" "# Guide\n"
+            writeAt "guide/page.md" "up [Home](../index.md)\n"
             store <- newLinkIndexStore
-            (built, _) <- freshIndex root store
-            built `shouldBe` True
-            -- simulate an in-server mutation's write-set: modify, add, and remove pages
-            writeAt "a.md" "[C](./c.md)\n" -- modify (equal length)
-            writeAt "e.md" "[B](./b.md)\n" -- add
-            removeFile (root ++ "/c.md") -- remove
-            resync root store
-            (drifted, maintained) <- freshIndex root store
-            -- the lockstep fingerprint update means the server's own writes are not seen as drift
-            drifted `shouldBe` False
-            -- the incrementally maintained graph reflects the changes
-            sort (inboundOf "b.md" maintained) `shouldBe` ["e.md"]
-            sort (inboundOf "c.md" maintained) `shouldBe` ["a.md"]
-            -- and equals a full rebuild from the current tree (the anti-drift invariant)
-            store2 <- newLinkIndexStore
-            (_, rebuilt) <- freshIndex root store2
-            maintained `shouldBe` rebuilt
+            openLinkIndex root indexPath store
+            relocateInIndex "guide" "manual" store
+            ix <- currentIndex store
+            -- the subtree pages are re-keyed
+            outboundOf "guide/page.md" ix `shouldBe` []
+            sort (outboundOf "manual/page.md" ix) `shouldBe` ["index.md"]
+            -- the inbound to index.md now comes from the relocated page
+            sort (inboundOf "index.md" ix) `shouldBe` ["manual/page.md"]
+
+        it "removeSubtreeInIndex drops every page under a deleted section" $ do
+            freshTree
+            writeAt "index.md" "root\n"
+            writeAt "sec/index.md" "# Sec\n"
+            writeAt "sec/a.md" "[Home](../index.md)\n"
+            store <- newLinkIndexStore
+            openLinkIndex root indexPath store
+            removeSubtreeInIndex "sec" store
+            ix <- currentIndex store
+            outboundOf "sec/a.md" ix `shouldBe` []
+            inboundOf "index.md" ix `shouldBe` []
+
+        it "addSubtreeToIndex re-reads a restored subtree's pages" $ do
+            freshTree
+            writeAt "index.md" "root\n"
+            store <- newLinkIndexStore
+            openLinkIndex root indexPath store
+            -- restore a section out-of-band, then add it to the index
+            writeAt "sec/index.md" "# Sec\n"
+            writeAt "sec/a.md" "[Home](../index.md)\n"
+            addSubtreeToIndex root "sec" store
+            ix <- currentIndex store
+            sort (outboundOf "sec/a.md" ix) `shouldBe` ["index.md"]
+            sort (inboundOf "index.md" ix) `shouldBe` ["sec/a.md"]

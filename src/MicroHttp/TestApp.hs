@@ -24,6 +24,7 @@ module MicroHttp.TestApp (
     treeRoutes,
 ) where
 
+import Control.Monad (unless)
 import qualified Data.ByteString.Char8 as BS
 import Data.Char (digitToInt, isAsciiLower, isAsciiUpper, isDigit, isSpace, toLower, toUpper)
 import Data.List (intercalate, isSuffixOf, sortBy)
@@ -36,7 +37,7 @@ import qualified MicroHttp.Http as Http
 import MicroHttp.Http.Parse (ParseError (..))
 import MicroHttp.Http.PercentEncoding (decodeFormValue)
 import MicroHttp.Iteratee (Iter, liftIO, readBodyStrict)
-import MicroHttp.LinkIndexStore (LinkIndexStore, resync)
+import MicroHttp.LinkIndexStore (LinkIndexStore, addSubtreeToIndex, applyChanges, newLinkIndexStore, openLinkIndex, refreshLinkIndex, relocateInIndex, removeSubtreeInIndex)
 import MicroHttp.Log (Logger, localTimestamp, rotatingAppender, rotatingFileLogfmtLogger)
 import MicroHttp.Middleware (logRequests, withErrorResponses)
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), fileSizeBytes)
@@ -47,6 +48,7 @@ import qualified MicroHttp.Static as Static
 import MicroHttp.Stream (StreamError (..))
 import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), RelevantPages, deleteTarget, indexRelevant, listTrash, movePage, movePlanJson, moveSection, restoreFromTrash, scanRelevant, trashListJson)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
+import System.IO (hFlush, stdout)
 
 data DocumentStore = DocumentStore
     { loadDocument :: String -> IO String
@@ -75,16 +77,23 @@ appFromConfig :: Server.Settings -> Config -> IO Server.Application
 appFromConfig settings cfg = do
     accessLogger <- rotatingFileLogfmtLogger logMaxBytes logKeep accessLogPath
     clientErrorSink <- rotatingAppender logMaxBytes logKeep clientErrorLogPath
-    -- Move/delete use the byte-prefiltered scan ('Nothing' = no link index). The
-    -- RFC-0029 index is reverted from the request path pending a ByteString link engine,
-    -- persistence, and refresh-based freshness (docs/design/link-index-performance.md).
+    -- Open the link index at startup in tree mode (RFC-0029): load the persisted index if
+    -- its fingerprint still matches the tree, else build and persist. Move/delete then read
+    -- it warm with no per-request walk, and re-export calls POST /index/refresh.
+    indexStore <- newLinkIndexStore
+    unless (null treeRoot) $ do
+        putStrLn "opening link index..."
+        hFlush stdout
+        openLinkIndex treeRoot indexPath indexStore
+        putStrLn "link index ready"
+        hFlush stdout
     pure
         ( logRequests
             accessLogger
             ( withErrorResponses
                 ( Router.serveRoutes
                     (Server.parseLimits settings)
-                    (configuredRoutes Nothing cfg clientErrorSink)
+                    (configuredRoutes (Just indexStore) cfg clientErrorSink)
                 )
             )
         )
@@ -93,6 +102,8 @@ appFromConfig settings cfg = do
     clientErrorLogPath = configString "client_error_log" "build/client-errors.log" cfg
     logMaxBytes = configIntOr "log_max_bytes" defaultLogMaxBytes cfg
     logKeep = configIntOr "log_keep" defaultLogKeep cfg
+    treeRoot = configString "document_tree_root" "" cfg
+    indexPath = configString "link_index" "data/link_index" cfg
 
 -- | The default log-rotation threshold in bytes (10 MiB) and retained-file count (RFC-0024).
 defaultLogMaxBytes :: Int
@@ -120,11 +131,12 @@ configuredRoutes indexStore cfg clientErrorSink =
                     ++ attachmentRoutes (fileAttachmentStore (configString "attachment_root" "data/attachments" cfg))
                     ++ mounts
             treeRoot ->
-                treeRoutes indexStore editorTheme treeRoot logPath trashRoot ++ mounts
+                treeRoutes indexStore editorTheme treeRoot logPath trashRoot indexPath ++ mounts
   where
     editorTheme = configString "editor_theme" "paper" cfg
     logPath = configString "operation_log" "data/operation_log" cfg
     trashRoot = configString "trash_root" "data/trash" cfg
+    indexPath = configString "link_index" "data/link_index" cfg
     mounts = [Static.static prefix root | (prefix, root) <- configMounts "static_mounts" cfg]
 
 appWithDocumentRoot :: FilePath -> Server.Application
@@ -171,26 +183,69 @@ and every other tree file (images, attachments, raw Markdown) is served
 statically and path-safely (reusing 'Static.resolveStaticPath'). The document id
 is the tree-relative path including the @.md@ extension.
 -}
-treeRoutes :: Maybe LinkIndexStore -> String -> FilePath -> FilePath -> FilePath -> [Router.Route]
-treeRoutes indexStore editorThemeDefault root logPath trashRoot =
+treeRoutes :: Maybe LinkIndexStore -> String -> FilePath -> FilePath -> FilePath -> FilePath -> [Router.Route]
+treeRoutes indexStore editorThemeDefault root logPath trashRoot indexPath =
     [ Router.get "/" (redirectTo "/documents/")
     , Router.get "/index.html" (redirectTo "/documents/")
     , Static.static "/static/editor" "static/editor"
     , Router.get "/tree/*path" (treeChildrenHandler root)
-    , Router.post "/tree/*path" (treePostDispatch findRelevant maintain root logPath trashRoot)
+    , Router.post "/tree/*path" (treePostDispatch findRelevant maint root logPath trashRoot)
     , Router.get "/trash" (treeTrashListHandler trashRoot)
-    , Router.post "/trash/*id" (treeRestoreHandler maintain root logPath trashRoot)
+    , Router.post "/trash/*id" (treeRestoreHandler maint root logPath trashRoot)
     , Router.get "/operations" (treeOperationsHandler logPath)
-    , Router.post "/undo" (treeUndoHandler findRelevant maintain root logPath trashRoot)
-    , Router.post "/documents/*path" (treePost maintain root)
+    , Router.post "/undo" (treeUndoHandler findRelevant maint root logPath trashRoot)
+    , Router.post "/index/refresh" (treeRefreshHandler refresh)
+    , Router.post "/documents/*path" (treePost maint root)
     , Router.get "/documents/*path" (treeGet editorThemeDefault root)
     ]
   where
-    -- The server backs page lookups with the warm index and re-syncs it after each
-    -- in-server write; without a store (tests, replay) the scan is used and the
-    -- maintenance hook is a no-op (RFC-0029).
+    -- The server backs page lookups with the warm index (no per-request walk) and
+    -- maintains it incrementally after each in-server write; an explicit refresh rebuilds
+    -- after a re-export. Without a store (tests, replay) the scan is used and maintenance
+    -- is a no-op (RFC-0029).
     findRelevant = maybe scanRelevant indexRelevant indexStore
-    maintain = maybe (pure ()) (resync root) indexStore
+    maint = maybe noIndexMaintenance (storeMaintenance root) indexStore
+    refresh = maybe (pure ()) (refreshLinkIndex root indexPath) indexStore
+
+{- | The link-index maintenance hooks a tree mutation calls (RFC-0029): each keeps the
+warm in-memory graph correct without a whole-tree walk. 'noIndexMaintenance' is the
+no-op used without a store (tests, scan mode).
+-}
+data IndexMaintenance = IndexMaintenance
+    { onMove :: String -> String -> IO ()
+    , onDelete :: String -> IO ()
+    , onCreate :: String -> IO ()
+    , onRestore :: String -> IO ()
+    , onSave :: String -> IO ()
+    }
+
+noIndexMaintenance :: IndexMaintenance
+noIndexMaintenance =
+    IndexMaintenance (\_ _ -> pure ()) (const (pure ())) (const (pure ())) (const (pure ())) (const (pure ()))
+
+{- | The maintenance hooks backed by a live store: a move relocates the subtree's keys
+and targets in place (pure, no re-read); a delete drops the subtree and re-reads the
+parent listing; create/save re-read the written page; restore re-reads the restored
+page/subtree and the parent listing. None walk the whole tree.
+-}
+storeMaintenance :: FilePath -> LinkIndexStore -> IndexMaintenance
+storeMaintenance root store =
+    IndexMaintenance
+        { onMove = \from to -> relocateInIndex from to store
+        , onDelete = \path -> removeSubtreeInIndex path store >> applyChanges root [parentIndexPath path] store
+        , onCreate = \path -> applyChanges root [path] store
+        , onRestore = \path -> addSubtreeToIndex root path store >> applyChanges root [parentIndexPath path] store
+        , onSave = \path -> applyChanges root [path] store
+        }
+  where
+    parentIndexPath p = let par = parentOfRel p in if null par then "index.md" else par ++ "/index.md"
+
+{- | The index refresh endpoint (RFC-0029): @POST /index/refresh@ rebuilds the link index
+from the tree and re-persists it, to be called after the corpus is re-exported. A no-op
+(still 200) without a store.
+-}
+treeRefreshHandler :: IO () -> Router.Handler
+treeRefreshHandler refresh _ _ = liftIO refresh >> pure (jsonResponse "{\"refreshed\":true}")
 
 {- | The navigation-tree children endpoint (RFC-0026): @GET /tree/*path@ returns
 the immediate children of the folder at the tree-relative path (empty for the
@@ -211,31 +266,31 @@ new page or section under the parent section at the path, from form fields @kind
 frontmatter; the response carries the new node and the page to open for editing,
 or a @400@ for a bad request.
 -}
-treeCreateHandler :: IO () -> FilePath -> Router.Handler
-treeCreateHandler maintain root captures _ = do
+treeCreateHandler :: IndexMaintenance -> FilePath -> Router.Handler
+treeCreateHandler maint root captures _ = do
     bytes <- readBodyStrict (StreamParseError BodyTooLarge) treeCreateMaxBytes
     let fields = formFields (BS.unpack bytes)
     result <- liftIO (createTreeNode root (capture "path" captures) (capture "kind" fields) (capture "title" fields))
     case result of
         Left err -> pure (statusResponse 400 "Bad Request" err)
-        Right response -> liftIO maintain >> pure response
+        Right (response, newPath) -> liftIO (onCreate maint newPath) >> pure response
 
 {- | Dispatches a @POST /tree/*path@: a section/page move when the @?move@ flag is
 present (RFC-0027), otherwise a create (RFC-0026).
 -}
-treePostDispatch :: RelevantPages -> IO () -> FilePath -> FilePath -> FilePath -> Router.Handler
-treePostDispatch findRelevant maintain root logPath trashRoot captures request
-    | hasQueryFlag "move" request = treeMoveHandler findRelevant maintain root logPath captures
-    | hasQueryFlag "delete" request = treeDeleteHandler findRelevant maintain root logPath trashRoot captures
-    | otherwise = treeCreateHandler maintain root captures request
+treePostDispatch :: RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> FilePath -> Router.Handler
+treePostDispatch findRelevant maint root logPath trashRoot captures request
+    | hasQueryFlag "move" request = treeMoveHandler findRelevant maint root logPath captures
+    | hasQueryFlag "delete" request = treeDeleteHandler findRelevant maint root logPath trashRoot captures
+    | otherwise = treeCreateHandler maint root captures request
 
 {- | The section-move endpoint (RFC-0027): @POST /tree/*path?move@ with form fields
 @to@ (destination parent tree path), @slug@ (optional new slug), and @confirm@
 (@true@ to apply, otherwise a dry-run preview). Returns the impact plan as JSON, or a
 @409@ with the reason on refusal (root, cycle, collision, unsafe path).
 -}
-treeMoveHandler :: RelevantPages -> IO () -> FilePath -> FilePath -> Router.Captures -> Iter StreamError Http.Response
-treeMoveHandler findRelevant maintain root logPath captures = do
+treeMoveHandler :: RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> Router.Captures -> Iter StreamError Http.Response
+treeMoveHandler findRelevant maint root logPath captures = do
     bytes <- readBodyStrict (StreamParseError BodyTooLarge) treeCreateMaxBytes
     let fields = formFields (BS.unpack bytes)
         srcRel = capture "path" captures
@@ -244,8 +299,8 @@ treeMoveHandler findRelevant maintain root logPath captures = do
         move = if isPage then movePage else moveSection
     result <- liftIO (move findRelevant root srcRel (capture "to" fields) (capture "slug" fields) confirm)
     liftIO (recordAppliedMove logPath isPage result)
-    -- An applied move rewrote pages; re-sync the index so the next op sees no drift.
-    liftIO (maintainWhenApplied maintain result)
+    -- An applied move relocates its subtree; maintain the index in place (no walk).
+    liftIO (maintainMove maint result)
     pure (either (statusResponse 409 "Conflict" . (++ "\n")) (jsonResponse . movePlanJson) result)
 
 {- | Appends a @move@ record to the operation log after a move was applied
@@ -271,18 +326,18 @@ recordAppliedMove logPath isPage (Right plan)
                 }
 recordAppliedMove _ _ _ = pure ()
 
--- | Runs the index maintenance hook only when a move was actually applied (a preview or refusal changes nothing).
-maintainWhenApplied :: IO () -> Either String MovePlan -> IO ()
-maintainWhenApplied maintain (Right plan) | planApplied plan = maintain
-maintainWhenApplied _ _ = pure ()
+-- | Relocates the moved subtree in the index, only when a move was actually applied (a preview/refusal changes nothing).
+maintainMove :: IndexMaintenance -> Either String MovePlan -> IO ()
+maintainMove maint (Right plan) | planApplied plan = onMove maint (planFrom plan) (planTo plan)
+maintainMove _ _ = pure ()
 
 {- | The delete endpoint (RFC-0027 phase 4 + RFC-0028 trash): @POST /tree/*path?delete@.
 Refuses with @409@ and the referrer list when another page links in; otherwise moves
 the target to trash, appends a @delete@ record to the operation log, and returns the
 trash id. The trash id is the delete record's @seq@.
 -}
-treeDeleteHandler :: RelevantPages -> IO () -> FilePath -> FilePath -> FilePath -> Router.Captures -> Iter StreamError Http.Response
-treeDeleteHandler findRelevant maintain root logPath trashRoot captures = liftIO $ do
+treeDeleteHandler :: RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> FilePath -> Router.Captures -> Iter StreamError Http.Response
+treeDeleteHandler findRelevant maint root logPath trashRoot captures = liftIO $ do
     let path = capture "path" captures
         isPage = isMarkdownPath path
     seqNo <- logSeq logPath
@@ -292,7 +347,7 @@ treeDeleteHandler findRelevant maintain root logPath trashRoot captures = liftIO
         Right (Refused referrers) -> pure (statusResponse 409 "Conflict" (referrersJson referrers))
         Right (Deleted tid p _) -> do
             ts <- localTimestamp
-            maintain
+            onDelete maint p
             appendOp
                 logPath
                 Operation
@@ -310,8 +365,8 @@ treeDeleteHandler findRelevant maintain root logPath trashRoot captures = liftIO
 its origin (re-adding the listing), appends a @restore@ record, and returns the
 restored path; a @409@ if the origin is now occupied or the entry is missing.
 -}
-treeRestoreHandler :: IO () -> FilePath -> FilePath -> FilePath -> Router.Handler
-treeRestoreHandler maintain root logPath trashRoot captures _ = liftIO $ do
+treeRestoreHandler :: IndexMaintenance -> FilePath -> FilePath -> FilePath -> Router.Handler
+treeRestoreHandler maint root logPath trashRoot captures _ = liftIO $ do
     let trashId = capture "id" captures
     result <- restoreFromTrash root trashRoot trashId
     case result of
@@ -319,7 +374,7 @@ treeRestoreHandler maintain root logPath trashRoot captures _ = liftIO $ do
         Right (path, kind) -> do
             seqNo <- logSeq logPath
             ts <- localTimestamp
-            maintain
+            onRestore maint path
             appendOp
                 logPath
                 Operation
@@ -373,8 +428,8 @@ the log is empty, the seq is unknown, or the inverse cannot be applied (its targ
 occupied, missing, or now referenced -- so inverting a non-latest move that has since
 moved refuses cleanly rather than corrupting the tree).
 -}
-treeUndoHandler :: RelevantPages -> IO () -> FilePath -> FilePath -> FilePath -> Router.Handler
-treeUndoHandler findRelevant maintain root logPath trashRoot _ _ = do
+treeUndoHandler :: RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> FilePath -> Router.Handler
+treeUndoHandler findRelevant maint root logPath trashRoot _ _ = do
     bytes <- readBodyStrict (StreamParseError BodyTooLarge) treeCreateMaxBytes
     let fields = formFields (BS.unpack bytes)
         wantedSeq = parseSeq (capture "seq" fields)
@@ -386,7 +441,7 @@ treeUndoHandler findRelevant maintain root logPath trashRoot _ _ = do
         case chosen of
             Nothing -> pure (statusResponse 409 "Conflict" "nothing to undo\n")
             Just op -> do
-                result <- applyInverse findRelevant maintain root logPath trashRoot op
+                result <- applyInverse findRelevant maint root logPath trashRoot op
                 pure (either (statusResponse 409 "Conflict" . (++ "\n")) jsonResponse result)
 
 -- | The first operation of a list, if any.
@@ -403,15 +458,11 @@ parseSeq value = case reads value of
 {- | Applies the inverse of an operation through the move/trash machinery and appends
 the inverse record, returning the JSON body on success or an error reason.
 -}
-applyInverse :: RelevantPages -> IO () -> FilePath -> FilePath -> FilePath -> Operation -> IO (Either String String)
-applyInverse findRelevant maintain root logPath trashRoot op = do
-    result <- case opType op of
-        OpMove -> undoMove
-        OpDelete -> undoDelete
-        OpRestore -> undoRestore
-    -- A successful inverse wrote to the tree; re-sync the index in lockstep.
-    either (const (pure ())) (const maintain) result
-    pure result
+applyInverse :: RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> FilePath -> Operation -> IO (Either String String)
+applyInverse findRelevant maint root logPath trashRoot op = case opType op of
+    OpMove -> undoMove
+    OpDelete -> undoDelete
+    OpRestore -> undoRestore
   where
     from = fromMaybe "" (opFrom op)
     to = fromMaybe "" (opTo op)
@@ -425,6 +476,7 @@ applyInverse findRelevant maintain root logPath trashRoot op = do
             Left err -> pure (Left err)
             Right plan
                 | planApplied plan -> do
+                    onMove maint to from
                     appendInverse (opKind op) OpMove (Just to) (Just from) Nothing
                     pure (Right ("{\"undo\":\"move\",\"from\":" ++ jsonString to ++ ",\"to\":" ++ jsonString from ++ "}"))
                 | otherwise -> pure (Left "inverse move was not applied")
@@ -436,6 +488,7 @@ applyInverse findRelevant maintain root logPath trashRoot op = do
             case result of
                 Left err -> pure (Left err)
                 Right (path, kind) -> do
+                    onRestore maint path
                     appendInverse kind OpRestore Nothing (Just path) (Just tid)
                     pure (Right ("{\"undo\":\"delete\",\"restored\":" ++ jsonString path ++ "}"))
 
@@ -447,6 +500,7 @@ applyInverse findRelevant maintain root logPath trashRoot op = do
             Right (Refused _) -> pure (Left "cannot undo restore: the target is now referenced")
             Right (Deleted tid path _) -> do
                 ts <- localTimestamp
+                onDelete maint to
                 appendOp logPath (Operation OpDelete (kindOf to) (Just path) Nothing seqNo ts (Just tid))
                 pure (Right ("{\"undo\":\"restore\",\"deleted\":" ++ jsonString path ++ ",\"trashId\":" ++ jsonString tid ++ "}"))
 
@@ -505,7 +559,7 @@ appWithDocumentTree :: String -> FilePath -> Server.Application
 appWithDocumentTree editorThemeDefault root =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
-        (treeRoutes Nothing editorThemeDefault root "data/operation_log" "data/trash")
+        (treeRoutes Nothing editorThemeDefault root "data/operation_log" "data/trash" "data/link_index")
 
 {- | A GET under the tree: the editor page for @?edit@ on a Markdown file,
 otherwise the file served statically (raw Markdown, images, attachments).
@@ -580,10 +634,10 @@ treeServeFile root path =
 {- | A POST under the tree: an asset upload (@?asset@, a raw-body file) into the
 document's peer @assets/@ folder, or otherwise a document save.
 -}
-treePost :: IO () -> FilePath -> Router.Handler
-treePost maintain root captures request
+treePost :: IndexMaintenance -> FilePath -> Router.Handler
+treePost maint root captures request
     | hasQueryFlag "asset" request = treeUpload root captures request
-    | otherwise = treeSave maintain root captures request
+    | otherwise = treeSave maint root captures request
 
 -- | The maximum accepted tree asset upload size in bytes.
 treeAssetMaxBytes :: Int
@@ -976,7 +1030,7 @@ or the created-node JSON response ('Right'). The filename is a slug derived from
 the title, suffixed numerically on collision; the title is preserved verbatim in
 the frontmatter @name@. A section is a directory plus a seeded @index.md@.
 -}
-createTreeNode :: FilePath -> String -> String -> String -> IO (Either String Http.Response)
+createTreeNode :: FilePath -> String -> String -> String -> IO (Either String (Http.Response, String))
 createTreeNode root parentRel kind title
     | null (trimSpace title) = pure (Left "missing title\n")
     | kind /= "page" && kind /= "section" = pure (Left "unknown kind\n")
@@ -995,10 +1049,10 @@ createTreeNode root parentRel kind title
                             then do
                                 createDirectoryIfMissing True (parentFs ++ "/" ++ slug)
                                 writeDocumentText (parentFs ++ "/" ++ slug ++ "/index.md") seedBody
-                                pure (Right (jsonResponse (createdJson title childRel "section" (childRel ++ "/index.md"))))
+                                pure (Right (jsonResponse (createdJson title childRel "section" (childRel ++ "/index.md")), childRel ++ "/index.md"))
                             else do
                                 writeDocumentText (parentFs ++ "/" ++ slug ++ ".md") seedBody
-                                pure (Right (jsonResponse (createdJson title (childRel ++ ".md") "page" (childRel ++ ".md"))))
+                                pure (Right (jsonResponse (createdJson title (childRel ++ ".md") "page" (childRel ++ ".md")), childRel ++ ".md"))
 
 -- | Joins a parent tree-relative path and a child segment (the segment alone at the root).
 joinRel :: String -> String -> String
@@ -1157,8 +1211,8 @@ raw HTML would block legitimate saves -- the editor preserves it verbatim, and
 nothing renders it as live HTML (the trust boundary that guard defends does not
 apply to first-party files).
 -}
-treeSave :: IO () -> FilePath -> Router.Handler
-treeSave maintain root captures request = do
+treeSave :: IndexMaintenance -> FilePath -> Router.Handler
+treeSave maint root captures request = do
     bodyBytes <- readBodyStrict (StreamParseError BodyTooLarge) formBodyLimit
     let fields = formFields (BS.unpack bodyBytes)
         markdown = normaliseNewlines (capture "markdown" fields)
@@ -1169,8 +1223,8 @@ treeSave maintain root captures request = do
             liftIO (createDirectoryIfMissing True (parentDirectory fsPath))
             liftIO (writeDocumentText fsPath markdown)
             liftIO (syncImageTitles root path fields)
-            -- The page's body (and so its outbound links) changed; re-sync the index.
-            liftIO maintain
+            -- The page's body (and so its outbound links) changed; maintain its index entry.
+            liftIO (onSave maint path)
             if isHtmxRequest request
                 then pure (htmlResponseChunks (saveStatusFragment markdown))
                 else pure (seeOtherResponse ("/documents/" ++ path ++ "?edit"))

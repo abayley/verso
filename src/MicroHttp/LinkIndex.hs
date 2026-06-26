@@ -26,6 +26,11 @@ module MicroHttp.LinkIndex (
     LinkIndex,
     emptyIndex,
     buildIndex,
+    forceIndex,
+    outboundEdges,
+    indexFromEdges,
+    relocateIndex,
+    removeSubtree,
     outboundOf,
     inboundOf,
     updatePage,
@@ -36,10 +41,11 @@ module MicroHttp.LinkIndex (
 ) where
 
 import Data.ByteString.Char8 (ByteString)
-import Data.List (foldl', isSuffixOf, nub)
+import Data.List (foldl', isPrefixOf, isSuffixOf, nub)
 import Data.Map (Map)
 import qualified Data.Map as Map
-import MicroHttp.DocumentLinks (dirOfPath, linkTarget, pageLinks, resolveTarget)
+import Data.Maybe (fromMaybe)
+import MicroHttp.DocumentLinks (dirOfPath, linkTarget, pageLinks, relocatePath, resolveTarget)
 
 -- | A page's tree-relative path (the body's location); a graph source.
 type PagePath = String
@@ -67,6 +73,51 @@ this rebuild.
 -}
 buildIndex :: [(PagePath, ByteString)] -> LinkIndex
 buildIndex = foldl' (\ix (page, body) -> updatePage page body ix) emptyIndex
+
+{- | Forces the graph's adjacency lists so the deferred link parse (the comprehension in
+'pageTargets') runs /now/, where the index is built or maintained, rather than being left
+a thunk for whatever first reads the graph (RFC-0029).
+-}
+forceIndex :: LinkIndex -> LinkIndex
+forceIndex ix = edgeCount `seq` ix
+  where
+    edgeCount =
+        sum (map length (Map.elems (idxOutbound ix)))
+            + sum (map length (Map.elems (idxInbound ix)))
+
+-- | The graph's outbound edges (every page, including linkless ones), for persistence.
+outboundEdges :: LinkIndex -> [(PagePath, [TreePath])]
+outboundEdges = Map.toList . idxOutbound
+
+{- | Rebuilds the index from already-resolved outbound edges (re-deriving 'inbound'),
+without re-parsing bodies. Used to load a persisted index and to relocate by prefix.
+-}
+indexFromEdges :: [(PagePath, [TreePath])] -> LinkIndex
+indexFromEdges = foldl' addPageEdges emptyIndex
+  where
+    addPageEdges ix (page, targets) =
+        LinkIndex
+            (Map.insert page targets (idxOutbound ix))
+            (foldl' (\m t -> addInbound t page m) (idxInbound ix) targets)
+
+{- | Relocates a moved subtree within the graph (RFC-0029): renames every page key and
+every resolved target that lies under @oldPrefix@ to sit under @newPrefix@. This is the
+exact effect a move has on the graph -- a page at @S/x@ becomes @S'/x@ and its links into
+the subtree resolve to @S'/...@ -- so a move is maintained by a pure transform, with no
+re-read. Equivalent to a rebuild from the post-move bodies.
+-}
+relocateIndex :: String -> String -> LinkIndex -> LinkIndex
+relocateIndex oldPrefix newPrefix ix =
+    indexFromEdges [(reloc page, map reloc targets) | (page, targets) <- outboundEdges ix]
+  where
+    reloc p = fromMaybe p (relocatePath oldPrefix newPrefix p)
+
+-- | Removes a deleted page or whole section subtree from the graph as a source (every key at or under @prefix@).
+removeSubtree :: String -> LinkIndex -> LinkIndex
+removeSubtree prefix ix = foldl' (flip removePage) ix underPrefix
+  where
+    underPrefix =
+        [page | page <- Map.keys (idxOutbound ix), page == prefix || (prefix ++ "/") `isPrefixOf` page]
 
 -- | A page's recorded outbound @.md@ targets (empty when the page is absent or linkless).
 outboundOf :: PagePath -> LinkIndex -> [TreePath]

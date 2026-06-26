@@ -48,7 +48,7 @@ import qualified MicroHttp.Static as Static
 import MicroHttp.Stream (StreamError (..))
 import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), RelevantPages, deleteTarget, indexRelevant, listTrash, movePage, movePlanJson, moveSection, restoreFromTrash, scanRelevant, trashListJson)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
-import System.IO (hFlush, stdout)
+import System.IO (hFlush, hPutStrLn, stderr, stdout)
 
 data DocumentStore = DocumentStore
     { loadDocument :: String -> IO String
@@ -84,8 +84,8 @@ appFromConfig settings cfg = do
     unless (null treeRoot) $ do
         putStrLn "opening link index..."
         hFlush stdout
-        openLinkIndex treeRoot indexPath indexStore
-        putStrLn "link index ready"
+        opened <- openLinkIndex treeRoot indexPath indexStore
+        putStrLn (either ("link index FAILED (move/delete degraded until refresh): " ++) (const "link index ready") opened)
         hFlush stdout
     pure
         ( logRequests
@@ -205,7 +205,7 @@ treeRoutes indexStore editorThemeDefault root logPath trashRoot indexPath =
     -- is a no-op (RFC-0029).
     findRelevant = maybe scanRelevant indexRelevant indexStore
     maint = maybe noIndexMaintenance (storeMaintenance root) indexStore
-    refresh = maybe (pure ()) (refreshLinkIndex root indexPath) indexStore
+    refresh = maybe (pure (Right ())) (refreshLinkIndex root indexPath) indexStore
 
 {- | The link-index maintenance hooks a tree mutation calls (RFC-0029): each keeps the
 warm in-memory graph correct without a whole-tree walk. 'noIndexMaintenance' is the
@@ -232,20 +232,33 @@ storeMaintenance :: FilePath -> LinkIndexStore -> IndexMaintenance
 storeMaintenance root store =
     IndexMaintenance
         { onMove = \from to -> relocateInIndex from to store
-        , onDelete = \path -> removeSubtreeInIndex path store >> applyChanges root [parentIndexPath path] store
-        , onCreate = \path -> applyChanges root [path] store
-        , onRestore = \path -> addSubtreeToIndex root path store >> applyChanges root [parentIndexPath path] store
-        , onSave = \path -> applyChanges root [path] store
+        , onDelete = \path -> removeSubtreeInIndex path store >> reportIndexError (applyChanges root [parentIndexPath path] store)
+        , onCreate = \path -> reportIndexError (applyChanges root [path] store)
+        , onRestore = \path -> reportIndexError (addSubtreeToIndex root path store) >> reportIndexError (applyChanges root [parentIndexPath path] store)
+        , onSave = \path -> reportIndexError (applyChanges root [path] store)
         }
   where
     parentIndexPath p = let par = parentOfRel p in if null par then "index.md" else par ++ "/index.md"
 
-{- | The index refresh endpoint (RFC-0029): @POST /index/refresh@ rebuilds the link index
-from the tree and re-persists it, to be called after the corpus is re-exported. A no-op
-(still 200) without a store.
+{- | Logs an index-maintenance failure (a vanished file etc.) to stderr. The mutation
+itself already succeeded; the index may be slightly stale until the next refresh, which
+is the Either-policy alternative to a thrown exception killing the handler thread.
 -}
-treeRefreshHandler :: IO () -> Router.Handler
-treeRefreshHandler refresh _ _ = liftIO refresh >> pure (jsonResponse "{\"refreshed\":true}")
+reportIndexError :: IO (Either String ()) -> IO ()
+reportIndexError action = do
+    result <- action
+    case result of
+        Left err -> hPutStrLn stderr ("link index maintenance error: " ++ err)
+        Right () -> pure ()
+
+{- | The index refresh endpoint (RFC-0029): @POST /index/refresh@ rebuilds the link index
+from the tree and re-persists it, to be called after the corpus is re-exported. A failed
+rebuild is a 500 with the reason; without a store it is a 200 no-op.
+-}
+treeRefreshHandler :: IO (Either String ()) -> Router.Handler
+treeRefreshHandler refresh _ _ = do
+    result <- liftIO refresh
+    pure (either (statusResponse 500 "Internal Server Error" . (++ "\n")) (const (jsonResponse "{\"refreshed\":true}")) result)
 
 {- | The navigation-tree children endpoint (RFC-0026): @GET /tree/*path@ returns
 the immediate children of the folder at the tree-relative path (empty for the

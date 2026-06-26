@@ -19,6 +19,33 @@ superseded_by: null
 | Authored  | 2026-06-24       |
 | Started   | 2026-06-24       |
 | Completed | 2026-06-24       |
+| Revised   | 2026-06-26       |
+
+## Revision (2026-06-26): freshness and persistence reversed
+
+The design below was implemented (phases 1-5) and then **reverted from the move/delete
+path**: on the real corpus the per-operation stat-fingerprint walk made operations
+*slower* than the scan it replaced, and the whole-tree graph build is ~80-130 s of
+`String` processing in the mhs interpreter (a lazy-build bug additionally made the first
+operation appear to hang). The measured cost model is in
+[link-index-performance.md](../design/link-index-performance.md).
+
+Two load-bearing decisions are reversed in the revised design (the sections below are
+annotated **(revised)** where they no longer hold):
+
+- **Freshness is no longer a per-operation whole-tree stat check.** The running server
+  *owns* the document tree (the only routine out-of-band writer is the periodic
+  re-export, RFC-0028). So the index is built at startup, maintained incrementally for
+  in-server mutations, and rebuilt on an **explicit refresh** after a re-export -- no
+  per-operation walk, so an operation is the O(1) lookup. This accepts a bounded
+  staleness window for *ad-hoc* on-disk edits between refreshes, which the original
+  per-op check eliminated (ADR-067 is amended accordingly).
+- **The index is persisted** (graph + fingerprint), reload-and-validated on startup, so
+  the build is a one-off rather than paid on every restart. Persistence was an original
+  Non-Goal; it is now in scope.
+
+- **The link engine becomes ByteString-native** so the build (and the scan) stop paying
+  the `String` conversion of every body.
 
 ## Summary
 
@@ -101,12 +128,15 @@ as complete in the phase checklist.
 
 ## Non-Goals
 
-- **Persistence.** The index is in-memory only, (re)built from the tree. No on-disk
-  format, no load/validate path. A restart pays one build (lazily, on the first
-  move/delete). The fingerprint design makes a persisted cache unnecessary.
-- **A periodic rebuild cron, a rebuild endpoint, or an operational "rebuild after
-  edits" contract.** Drift is detected per operation, not on a schedule, so none of
-  that machinery is needed.
+- ~~**Persistence.**~~ **(revised)** The index is now persisted (graph + fingerprint)
+  and reload-and-validated on startup, so the build is a one-off rather than paid on
+  every restart. The original in-memory-only stance assumed the build was cheap; it is
+  not (~80-130 s) until the ByteString engine lands, so persistence earns its keep.
+- ~~**A periodic rebuild cron, a rebuild endpoint, or an operational "rebuild after
+  edits" contract.**~~ **(revised)** There is now an **explicit refresh** (a rebuild
+  trigger) invoked after the periodic re-export, since freshness is no longer checked
+  per operation. Still no *cron* -- the refresh is event-driven (the re-export signals
+  it), not scheduled.
 - **Search of any kind.** Whole-tree/full-text/semantic search is a separate, future
   system (an embedding-vector + full-text store), not this link graph. No titles, no
   body text.
@@ -141,6 +171,15 @@ prefix query over `inbound` keys (S and its descendants), exactly the predicate
 `referrersMatching` already encodes. The index carries no titles.
 
 ### Freshness: the stat fingerprint
+
+> **(revised 2026-06-26)** The per-operation stat-fingerprint check below is *not* in
+> the revised design: it was the dominant per-op cost (a whole-tree walk, twice per
+> operation) and made operations slower than the scan. Freshness is now handled off the
+> request path -- build at startup, maintain incrementally for in-server mutations,
+> rebuild on an explicit refresh after a re-export -- because the server owns the tree
+> (no ad-hoc out-of-band writers). The fingerprint is retained only to *validate a
+> persisted index* on load. See [link-index-performance.md](../design/link-index-performance.md)
+> and ADR-067 (amended).
 
 Held alongside the graph is a **fingerprint** of the tree the graph was built from:
 each `.md`'s `(tree path, mtime, size)`. `mtime` uses sub-second precision

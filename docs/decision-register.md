@@ -1900,12 +1900,29 @@ diverge in how a link resolves.
 Consequences: move and delete change *how* they find candidates, not their observable
 contract (same refusals, same rewrites). The index narrows *which* pages to process;
 the pure engines (`planMoveRewrites`/`referrersMatching`) still compute the exact
-edits, so it is a performance layer, not a second implementation. It is in-memory
-only (no persistence) and single-process.
+edits, so it is a performance layer, not a second implementation. Single-process;
+**persisted** to disk and reload-validated on startup (see ADR-067 as amended -- the
+original "in-memory only" stance was reversed once the build proved expensive).
 
 ### ADR-067: The Link Index Is Kept Correct by a Per-Operation Stat Fingerprint
 
-Status: Accepted (RFC-0029).
+Status: **Amended (2026-06-26)**. The per-operation stat-fingerprint check was
+implemented and then reverted: on the reference corpus it was the dominant per-op cost
+(a whole-tree walk, run twice per operation) and made move/delete *slower* than the
+scan, while the graph build is ~80-130 s of `String` processing in mhs
+(`docs/design/link-index-performance.md`). Revised decision: the running server **owns**
+the document tree -- the only routine out-of-band writer is the periodic re-export
+(RFC-0028) -- so freshness is handled **off the request path**: the index is built at
+startup, **persisted** (graph + fingerprint) and reload-and-validated on restart,
+maintained **incrementally** for in-server mutations, and rebuilt on an **explicit
+refresh** invoked after a re-export. An operation is then the O(1) lookup with no walk.
+This accepts a bounded staleness window for *ad-hoc* on-disk edits between refreshes
+(the original per-op check eliminated that, at a cost that proved too high); it does not
+apply to in-server edits, which are maintained in lockstep. The FFI `stat` binding is
+retained -- now to fingerprint the tree for **validating the persisted index on load**
+and for the explicit rebuild, rather than per operation. The link engine is also made
+ByteString-native so the build stops paying the per-body `String` conversion. The
+original per-operation design is recorded below for history.
 
 Context: ADR-059's drift concern is the crux of caching the tree: the served corpus
 is periodically re-exported from an authoritative source and may be edited

@@ -204,6 +204,8 @@ export class NavTreePanel {
     private draggingPath: string | null = null;
     /** A drop zone shown during a drag for moving an item out to the top level (always reachable, unlike the list's empty space). */
     private readonly rootDrop: HTMLDivElement;
+    /** An in-context status line shown while a move is in flight (the server round-trip can take seconds). */
+    private readonly busyLine: HTMLDivElement;
 
     constructor(options: NavTreeOptions) {
         this.options = options;
@@ -294,7 +296,12 @@ export class NavTreePanel {
             }
         });
 
-        this.panel.append(header, this.rootDrop, this.trashPanel, this.list);
+        this.busyLine = document.createElement("div");
+        this.busyLine.className = "markdown-editor__nav-busy";
+        this.busyLine.setAttribute("role", "status");
+        this.busyLine.hidden = true;
+
+        this.panel.append(header, this.rootDrop, this.trashPanel, this.busyLine, this.list);
         this.applyCollapsed();
         this.render();
         // The spine only seeds the open page's ancestors; any other persisted-expanded folder has no cached
@@ -324,10 +331,9 @@ export class NavTreePanel {
     async refresh(): Promise<void> {
         this.cache.clear();
         this.errors.clear();
-        await this.loadInto("");
-        for (const path of this.expanded) {
-            await this.loadInto(path);
-        }
+        // Re-fetch the root and every expanded folder concurrently rather than one-by-one: a move on a
+        // large tree with many open folders was waiting on a chain of sequential round-trips.
+        await Promise.all([this.loadInto(""), ...[...this.expanded].map((path): Promise<void> => this.loadInto(path))]);
         this.render();
     }
 
@@ -563,9 +569,13 @@ export class NavTreePanel {
         if (!confirmed) {
             return;
         }
+        // Immediate, in-context feedback: the server round-trip (and the refresh) can take seconds on
+        // a large tree, and the footer notice is easy to miss while looking at the nav.
+        this.setBusy(`Moving “${name}”…`);
         this.options.notify(`Moving “${name}”…`, false);
         const applied = await this.options.moveNode(path, destParent, slug, true);
         if (!applied.ok) {
+            this.setBusy(null);
             this.options.notify(applied.message ?? "Move failed.", true);
             return;
         }
@@ -580,7 +590,20 @@ export class NavTreePanel {
         } else {
             this.expandFolder(destParent);
             await this.refresh();
+            this.setBusy(null);
         }
+    }
+
+    /** Shows or clears the in-context busy status line, dimming the tree while an operation is in flight. */
+    private setBusy(message: string | null): void {
+        if (message === null) {
+            this.busyLine.hidden = true;
+            delete this.list.dataset["busy"];
+            return;
+        }
+        this.busyLine.textContent = message;
+        this.busyLine.hidden = false;
+        this.list.dataset["busy"] = "true";
     }
 
     /** Marks a folder and its ancestors expanded, so a moved item lands visible rather than hidden inside a collapsed destination. */

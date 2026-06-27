@@ -188,6 +188,20 @@ markdown-editor {
   visibility: visible;
 }
 
+/* In-context feedback while a move/delete is in flight: a status line, with the tree dimmed and
+   non-interactive until the operation completes and the tree refreshes. */
+.markdown-editor__nav-busy {
+  color: var(--markdown-editor-muted);
+  font-size: 12px;
+  font-style: italic;
+  padding: 0.2rem;
+}
+
+.markdown-editor__nav-list[data-busy="true"] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 .markdown-editor__nav-disclosure,
 .markdown-editor__nav-spacer {
   flex: 0 0 1.5rem;
@@ -254,7 +268,12 @@ markdown-editor {
   display: none;
 }
 
-/* The Trash view, shown between the header and the tree when open. */
+/* The Trash view, shown between the header and the tree when open. The display:flex below would
+   otherwise override the [hidden] attribute, leaving an empty box (and flex gaps) when closed. */
+.markdown-editor__nav-trash[hidden] {
+  display: none;
+}
+
 .markdown-editor__nav-trash {
   border-bottom: 1px solid var(--markdown-editor-code-background);
   display: flex;

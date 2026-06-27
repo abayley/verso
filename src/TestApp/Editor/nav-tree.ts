@@ -4,6 +4,9 @@
 // load-time fetches (ADR-059). This module parses that data, builds the panel DOM, expands folders on demand
 // (caching fetched children for the session), navigates on click, and creates new pages/sections.
 
+import { themedConfirm } from "./confirm-dialog.js";
+import { elementValue, type WaDropdownSelectEvent } from "./editor-toolbar-shared.js";
+
 /** A navigation-tree node as the server serialises it: a section (folder) or page, with its tree-relative path. */
 export interface TreeNodeData {
     name: string;
@@ -193,11 +196,10 @@ export class NavTreePanel {
     private trashEntries: TrashEntry[] = [];
     /** The container the Trash view renders into, between the header and the tree list. */
     private readonly trashPanel: HTMLDivElement;
-    /** Whether the undo picker is open (lists logged moves, most recent first). */
-    private undoOpen = false;
+    /** The logged moves backing the undo dropdown (most recent first), loaded when it opens. */
     private moves: MoveOp[] = [];
-    /** The container the undo picker renders into, between the header and the tree list. */
-    private readonly undoPanel: HTMLDivElement;
+    /** The undo dropdown (a `wa-dropdown` anchored to its header button). */
+    private readonly undoDropdown: HTMLElement;
     /** The tree path of the node currently being dragged (for drag-and-drop move), or null. */
     private draggingPath: string | null = null;
 
@@ -237,13 +239,9 @@ export class NavTreePanel {
         collapseAll.textContent = "⊟";
         collapseAll.addEventListener("click", (): void => this.collapseAll());
 
-        const undo = this.createHeaderButton("⤺", "Undo a move", (): void => void this.toggleUndo());
+        this.undoDropdown = this.createUndoDropdown();
         const trash = this.createHeaderButton("🗑", "Trash", (): void => void this.toggleTrash());
-        header.append(toggle, heading, collapseAll, undo, trash, this.createRootCreateButton());
-
-        this.undoPanel = document.createElement("div");
-        this.undoPanel.className = "markdown-editor__nav-trash";
-        this.undoPanel.hidden = true;
+        header.append(toggle, heading, collapseAll, this.undoDropdown, trash, this.createRootCreateButton());
 
         this.trashPanel = document.createElement("div");
         this.trashPanel.className = "markdown-editor__nav-trash";
@@ -272,7 +270,7 @@ export class NavTreePanel {
             }
         });
 
-        this.panel.append(header, this.undoPanel, this.trashPanel, this.list);
+        this.panel.append(header, this.trashPanel, this.list);
         this.applyCollapsed();
         this.render();
         // The spine only seeds the open page's ancestors; any other persisted-expanded folder has no cached
@@ -524,16 +522,21 @@ export class NavTreePanel {
         return button;
     }
 
-    /** Previews a move's impact, confirms, applies, and refreshes; surfaces any failure (drives drag-and-drop moves). */
+    /**
+     * Confirms a move (themed dialog, shown immediately), applies it, and refreshes; surfaces any
+     * failure (drives drag-and-drop moves). The confirmation is shown without a server round-trip --
+     * the old preview call that computed the changed-file count took seconds on a large folder, so
+     * the dialog appears at once and the count is reported afterward, from the applied move's result
+     * (the move validates and refuses on its own, so the preview was only ever informational).
+     */
     private async runMove(path: string, name: string, destParent: string, slug: string): Promise<void> {
-        const preview = await this.options.moveNode(path, destParent, slug, false);
-        if (!preview.ok) {
-            this.options.notify(preview.message ?? "Move not possible.", true);
-            return;
-        }
-        const count = preview.changed ?? 0;
         const into = destParent === "" ? "the top level" : `“${destParent}”`;
-        if (!window.confirm(`Move “${name}” into ${into}? This updates links in ${count} file(s).`)) {
+        const confirmed = await themedConfirm({
+            title: "Move",
+            message: `Move “${name}” into ${into}? Links in any affected pages will be updated.`,
+            confirmLabel: "Move",
+        });
+        if (!confirmed) {
             return;
         }
         this.options.notify(`Moving “${name}”…`, false);
@@ -542,7 +545,8 @@ export class NavTreePanel {
             this.options.notify(applied.message ?? "Move failed.", true);
             return;
         }
-        this.options.notify(`Moved “${name}”.`, false);
+        const count = applied.changed ?? 0;
+        this.options.notify(`Moved “${name}” — updated links in ${count} file(s).`, false);
         // If the open document moved (the item itself, or a page inside a moved section), follow it to
         // its new location instead of leaving the editor on the old path; otherwise refresh in place.
         const openMoved = this.openDocumentUnder(path);
@@ -616,7 +620,13 @@ export class NavTreePanel {
 
     /** Confirms, then deletes a node (to trash); surfaces the referrer list on a refused delete. */
     private async deleteNode(node: TreeNodeData): Promise<void> {
-        if (!window.confirm(`Delete “${node.name}”? It moves to the trash and can be restored.`)) {
+        const confirmed = await themedConfirm({
+            title: "Delete",
+            message: `Delete “${node.name}”? It moves to the trash and can be restored.`,
+            confirmLabel: "Delete",
+            danger: true,
+        });
+        if (!confirmed) {
             return;
         }
         this.options.notify(`Deleting “${node.name}”…`, false);
@@ -654,46 +664,66 @@ export class NavTreePanel {
         return open.startsWith(`${oldPath}/`) ? open : null;
     }
 
-    /** Opens or closes the undo picker, loading the logged moves (most recent first) when opening. */
-    private async toggleUndo(): Promise<void> {
-        this.undoOpen = !this.undoOpen;
-        if (this.undoOpen) {
-            const moves = await this.options.listMoves();
-            this.moves = [...moves].reverse(); // most recent first
-        }
-        this.renderUndo();
-    }
+    /**
+     * Builds the undo dropdown: a `wa-dropdown` whose trigger is the header's undo button and whose
+     * items are the logged moves (most recent first), loaded each time it opens. Choosing an item
+     * applies that move's inverse. A floating menu, rather than an inline panel, so it does not push
+     * the tree down and reads as a normal dropdown.
+     */
+    private createUndoDropdown(): HTMLElement {
+        const dropdown = document.createElement("wa-dropdown");
+        dropdown.className = "markdown-editor__undo-dropdown";
+        dropdown.setAttribute("placement", "bottom-start");
 
-    /** Renders the undo picker: each logged move as "from -> to", choosing one applies its inverse. */
-    private renderUndo(): void {
-        this.undoPanel.hidden = !this.undoOpen;
-        if (!this.undoOpen) {
-            this.undoPanel.replaceChildren();
-            return;
-        }
-        const heading = document.createElement("div");
-        heading.className = "markdown-editor__nav-trash-heading";
-        heading.textContent = this.moves.length === 0 ? "No moves to undo" : "Undo a move";
-        const rows = this.moves.map((move): HTMLElement => this.renderUndoEntry(move));
-        this.undoPanel.replaceChildren(heading, ...rows);
-    }
+        // A plain trigger button (not createHeaderButton, whose click handler would stop the event
+        // wa-dropdown needs to toggle); styled as a header op button.
+        const trigger = document.createElement("button");
+        trigger.type = "button";
+        trigger.slot = "trigger";
+        trigger.className = "markdown-editor__nav-op";
+        trigger.setAttribute("aria-label", "Undo a move");
+        trigger.title = "Undo a move";
+        trigger.textContent = "⤺";
+        dropdown.append(trigger);
 
-    private renderUndoEntry(move: MoveOp): HTMLElement {
-        const row = document.createElement("div");
-        row.className = "markdown-editor__nav-trash-row";
-        const label = document.createElement("span");
-        label.textContent = `${move.from} → ${move.to}`;
-        this.options.registerTooltip(label, `${move.from} → ${move.to}`);
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "markdown-editor__nav-retry";
-        button.textContent = "Undo";
-        button.addEventListener("click", (event: MouseEvent): void => {
-            event.stopPropagation();
-            void this.undoMove(move);
+        dropdown.addEventListener("wa-show", (): void => void this.loadUndoItems());
+        dropdown.addEventListener("wa-select", (event: Event): void => {
+            const item = (event as WaDropdownSelectEvent).detail.item;
+            if (!(item instanceof HTMLElement)) {
+                return;
+            }
+            const move = this.moves.find((candidate): boolean => String(candidate.seq) === elementValue(item));
+            if (move) {
+                void this.undoMove(move);
+            }
         });
-        row.append(label, button);
-        return row;
+        return dropdown;
+    }
+
+    /** Loads the logged moves and renders them as dropdown items (keeping the trigger). */
+    private async loadUndoItems(): Promise<void> {
+        const moves = await this.options.listMoves();
+        this.moves = [...moves].reverse(); // most recent first
+        const trigger = this.undoDropdown.querySelector('[slot="trigger"]');
+        const items =
+            this.moves.length === 0
+                ? [this.createUndoEmptyItem()]
+                : this.moves.map((move): HTMLElement => this.createUndoItem(move));
+        this.undoDropdown.replaceChildren(...(trigger ? [trigger] : []), ...items);
+    }
+
+    private createUndoItem(move: MoveOp): HTMLElement {
+        const item = document.createElement("wa-dropdown-item");
+        item.setAttribute("value", String(move.seq));
+        item.textContent = `${move.from} → ${move.to}`;
+        return item;
+    }
+
+    private createUndoEmptyItem(): HTMLElement {
+        const item = document.createElement("wa-dropdown-item");
+        item.setAttribute("disabled", "");
+        item.textContent = "No moves to undo";
+        return item;
     }
 
     /** Applies the inverse of a chosen move (the item at its destination goes back to its source). */
@@ -704,8 +734,6 @@ export class NavTreePanel {
         if (!result.ok) {
             return;
         }
-        this.undoOpen = false;
-        this.renderUndo();
         // The inverse sends the item at `move.to` back to `move.from`; follow the open
         // document if it was there, otherwise refresh the tree in place.
         const openUnder = this.openDocumentUnder(move.to);

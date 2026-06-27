@@ -188,18 +188,34 @@ markdown-editor {
   visibility: visible;
 }
 
-/* In-context feedback while a move/delete is in flight: a status line, with the tree dimmed and
-   non-interactive until the operation completes and the tree refreshes. */
-.markdown-editor__nav-busy {
-  color: var(--markdown-editor-muted);
-  font-size: 12px;
-  font-style: italic;
-  padding: 0.2rem;
+/* Full-viewport blocking overlay while a move/delete/undo/restore is in flight: the operation is
+   slow and parts of the UI refresh underneath, so all interaction is blocked until it completes. */
+.markdown-editor__blocking-overlay {
+  align-items: center;
+  background: color-mix(in srgb, var(--markdown-editor-background, #000) 55%, transparent);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  position: fixed;
+  z-index: 1000;
 }
 
-.markdown-editor__nav-list[data-busy="true"] {
-  opacity: 0.5;
-  pointer-events: none;
+.markdown-editor__blocking-card {
+  align-items: center;
+  background: var(--markdown-editor-background, #fff);
+  border: 1px solid var(--markdown-editor-divider);
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  color: var(--markdown-editor-text, inherit);
+  display: flex;
+  flex-direction: column;
+  font: 14px system-ui, sans-serif;
+  gap: 0.75rem;
+  padding: 1.25rem 1.75rem;
+}
+
+.markdown-editor__blocking-spinner {
+  font-size: 1.75rem;
 }
 
 .markdown-editor__nav-disclosure,

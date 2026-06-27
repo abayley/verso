@@ -4,6 +4,7 @@
 // load-time fetches (ADR-059). This module parses that data, builds the panel DOM, expands folders on demand
 // (caching fetched children for the session), navigates on click, and creates new pages/sections.
 
+import { hideBlockingOverlay, showBlockingOverlay } from "./blocking-overlay.js";
 import { themedConfirm } from "./confirm-dialog.js";
 import { elementValue, type WaDropdownSelectEvent } from "./editor-toolbar-shared.js";
 
@@ -204,8 +205,6 @@ export class NavTreePanel {
     private draggingPath: string | null = null;
     /** A drop zone shown during a drag for moving an item out to the top level (always reachable, unlike the list's empty space). */
     private readonly rootDrop: HTMLDivElement;
-    /** An in-context status line shown while a move is in flight (the server round-trip can take seconds). */
-    private readonly busyLine: HTMLDivElement;
 
     constructor(options: NavTreeOptions) {
         this.options = options;
@@ -296,12 +295,7 @@ export class NavTreePanel {
             }
         });
 
-        this.busyLine = document.createElement("div");
-        this.busyLine.className = "markdown-editor__nav-busy";
-        this.busyLine.setAttribute("role", "status");
-        this.busyLine.hidden = true;
-
-        this.panel.append(header, this.rootDrop, this.trashPanel, this.busyLine, this.list);
+        this.panel.append(header, this.rootDrop, this.trashPanel, this.list);
         this.applyCollapsed();
         this.render();
         // The spine only seeds the open page's ancestors; any other persisted-expanded folder has no cached
@@ -569,41 +563,47 @@ export class NavTreePanel {
         if (!confirmed) {
             return;
         }
-        // Immediate, in-context feedback: the server round-trip (and the refresh) can take seconds on
-        // a large tree, and the footer notice is easy to miss while looking at the nav.
-        this.setBusy(`Moving “${name}”…`);
+        // The move (server round-trip) and the tree refresh can take seconds on a large tree, and
+        // parts of the UI change underneath; block the whole UI with an obvious overlay until done.
         this.options.notify(`Moving “${name}”…`, false);
-        const applied = await this.options.moveNode(path, destParent, slug, true);
-        if (!applied.ok) {
-            this.setBusy(null);
-            this.options.notify(applied.message ?? "Move failed.", true);
-            return;
-        }
-        const count = applied.changed ?? 0;
-        this.options.notify(`Moved “${name}” — updated links in ${count} file(s).`, false);
-        // If the open document moved (the item itself, or a page inside a moved section), follow it to
-        // its new location instead of leaving the editor on the old path; otherwise refresh in place,
-        // expanding the destination first so the moved item is visible at its new location.
-        const openMoved = this.openDocumentUnder(path);
-        if (openMoved !== null && applied.to) {
-            this.options.navigate(applied.to + openMoved.slice(path.length));
-        } else {
+        await this.withBlockedUI(`Moving “${name}”…`, async (): Promise<boolean> => {
+            const applied = await this.options.moveNode(path, destParent, slug, true);
+            if (!applied.ok) {
+                this.options.notify(applied.message ?? "Move failed.", true);
+                return false;
+            }
+            const count = applied.changed ?? 0;
+            this.options.notify(`Moved “${name}” — updated links in ${count} file(s).`, false);
+            // If the open document moved (the item itself, or a page inside a moved section), follow it
+            // to its new location; the navigation reloads the page, so keep the overlay up (return true).
+            const openMoved = this.openDocumentUnder(path);
+            if (openMoved !== null && applied.to) {
+                this.options.navigate(applied.to + openMoved.slice(path.length));
+                return true;
+            }
+            // Otherwise refresh in place, expanding the destination so the moved item is visible.
             this.expandFolder(destParent);
             await this.refresh();
-            this.setBusy(null);
-        }
+            return false;
+        });
     }
 
-    /** Shows or clears the in-context busy status line, dimming the tree while an operation is in flight. */
-    private setBusy(message: string | null): void {
-        if (message === null) {
-            this.busyLine.hidden = true;
-            delete this.list.dataset["busy"];
-            return;
+    /**
+     * Runs a tree-mutating operation behind a full-UI blocking overlay (the operation is slow and the
+     * tree refreshes underneath). The action returns 'true' when it has triggered a navigation -- the
+     * overlay is then left up so the page reload clears it, avoiding a flash of unblocked UI; otherwise
+     * the overlay is removed when the action settles (including on a thrown error).
+     */
+    private async withBlockedUI(message: string, action: () => Promise<boolean>): Promise<void> {
+        showBlockingOverlay(message);
+        let navigating = false;
+        try {
+            navigating = await action();
+        } finally {
+            if (!navigating) {
+                hideBlockingOverlay();
+            }
         }
-        this.busyLine.textContent = message;
-        this.busyLine.hidden = false;
-        this.list.dataset["busy"] = "true";
     }
 
     /** Marks a folder and its ancestors expanded, so a moved item lands visible rather than hidden inside a collapsed destination. */
@@ -699,25 +699,28 @@ export class NavTreePanel {
             return;
         }
         this.options.notify(`Deleting “${node.name}”…`, false);
-        const result = await this.options.deleteNode(node.path);
-        if (result.status === "refused") {
-            const pages = (result.referrers ?? []).map((r): string => r.page).join(", ");
-            this.options.notify(`Cannot delete “${node.name}”: still linked from ${pages}.`, true);
-            return;
-        }
-        if (result.status === "error") {
-            this.options.notify(result.message ?? "Delete failed.", true);
-            return;
-        }
-        this.options.notify(`Deleted “${node.name}” (in trash). Use Undo or Trash to recover.`, false);
-        // If the open document was just deleted (the page itself, or anything inside a deleted
-        // section), navigate to the parent folder's index rather than leaving the editor on a
-        // vanished file; otherwise refresh the tree in place.
-        if (this.openDocumentUnder(node.path) !== null) {
-            this.options.navigate(folderIndexPath(parentOfPath(node.path)));
-        } else {
+        await this.withBlockedUI(`Deleting “${node.name}”…`, async (): Promise<boolean> => {
+            const result = await this.options.deleteNode(node.path);
+            if (result.status === "refused") {
+                const pages = (result.referrers ?? []).map((r): string => r.page).join(", ");
+                this.options.notify(`Cannot delete “${node.name}”: still linked from ${pages}.`, true);
+                return false;
+            }
+            if (result.status === "error") {
+                this.options.notify(result.message ?? "Delete failed.", true);
+                return false;
+            }
+            this.options.notify(`Deleted “${node.name}” (in trash). Use Undo or Trash to recover.`, false);
+            // If the open document was just deleted (the page itself, or anything inside a deleted
+            // section), navigate to the parent folder's index rather than leaving the editor on a
+            // vanished file (keep the overlay up for the reload); otherwise refresh the tree in place.
+            if (this.openDocumentUnder(node.path) !== null) {
+                this.options.navigate(folderIndexPath(parentOfPath(node.path)));
+                return true;
+            }
             await this.refresh();
-        }
+            return false;
+        });
     }
 
     /**
@@ -798,19 +801,22 @@ export class NavTreePanel {
     /** Applies the inverse of a chosen move (the item at its destination goes back to its source). */
     private async undoMove(move: MoveOp): Promise<void> {
         this.options.notify("Undoing move…", false);
-        const result = await this.options.undo(move.seq);
-        this.options.notify(result.message, !result.ok);
-        if (!result.ok) {
-            return;
-        }
-        // The inverse sends the item at `move.to` back to `move.from`; follow the open
-        // document if it was there, otherwise refresh the tree in place.
-        const openUnder = this.openDocumentUnder(move.to);
-        if (openUnder !== null) {
-            this.options.navigate(move.from + openUnder.slice(move.to.length));
-        } else {
+        await this.withBlockedUI("Undoing move…", async (): Promise<boolean> => {
+            const result = await this.options.undo(move.seq);
+            this.options.notify(result.message, !result.ok);
+            if (!result.ok) {
+                return false;
+            }
+            // The inverse sends the item at `move.to` back to `move.from`; follow the open
+            // document if it was there (keep the overlay for the reload), otherwise refresh in place.
+            const openUnder = this.openDocumentUnder(move.to);
+            if (openUnder !== null) {
+                this.options.navigate(move.from + openUnder.slice(move.to.length));
+                return true;
+            }
             await this.refresh();
-        }
+            return false;
+        });
     }
 
     /** Opens or closes the Trash view, loading the entries when opening. */
@@ -854,13 +860,16 @@ export class NavTreePanel {
     }
 
     private async restoreEntry(entry: TrashEntry): Promise<void> {
-        const result = await this.options.restore(entry.id);
-        this.options.notify(result.message, !result.ok);
-        if (result.ok) {
-            this.trashEntries = await this.options.listTrash();
-            this.renderTrash();
-            await this.refresh();
-        }
+        await this.withBlockedUI("Restoring…", async (): Promise<boolean> => {
+            const result = await this.options.restore(entry.id);
+            this.options.notify(result.message, !result.ok);
+            if (result.ok) {
+                this.trashEntries = await this.options.listTrash();
+                this.renderTrash();
+                await this.refresh();
+            }
+            return false;
+        });
     }
 
     private async submitCreate(parentPath: string): Promise<void> {

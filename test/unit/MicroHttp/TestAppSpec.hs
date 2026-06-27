@@ -420,7 +420,7 @@ runTreeApp root head = runTreeAppBody root head ""
 -- | As 'runTreeApp', with a request body (for create posts).
 runTreeAppBody :: FilePath -> RequestHead -> String -> IO Response
 runTreeAppBody root head body = do
-    outcome <- strictEnumerator (BS.pack body) (Router.route (TestApp.treeRoutes Nothing "paper" root "build/tree-spec-oplog" "build/tree-spec-trash" "build/tree-spec-index") head) >>= run
+    outcome <- strictEnumerator (BS.pack body) (Router.route (TestApp.treeRoutes Nothing Nothing "paper" root "build/tree-spec-oplog" "build/tree-spec-trash" "build/tree-spec-index") head) >>= run
     case outcome of
         Right response -> return response
         Left err -> expectFailure err

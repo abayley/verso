@@ -213,6 +213,51 @@ one-off at startup. If that startup cost matters, the lever is the `Map`/inbound
 (e.g. a flatter in-memory representation, or building inbound unsorted) -- not the parse
 or persistence.
 
+## Profiling outcome (2026-06-27) -- the startup bottleneck, measured per phase
+
+The 2026-06-26 outcome above **mis-attributed the startup cost to the `Map`/inbound
+build.** Per-phase timing (forced at each phase boundary so laziness cannot shift cost
+between phases; emitted at startup via `openLinkIndexWith`) shows the `Map` build is
+~1.6 s and was never the bottleneck. There are two slow paths, with two *different*
+dominant costs, neither of them the `Map`:
+
+### Reload path (persisted index valid): `BS.lines` was O(n^2) -- fixed
+
+| phase | before | after |
+| --- | --- | --- |
+| read index file | 1 ms | 1 ms |
+| split + parse rows | **23,307 ms** | **729 ms** |
+| build graph from edges (`Map`/inbound) | 1,645 ms | 1,610 ms |
+| build stored fingerprint | 86 ms | 179 ms |
+| fingerprint tree (stat walk) | 869 ms | 957 ms |
+
+Decomposing the 23.3 s parse: `BS.lines` alone was **22,089 ms**; `BS.split '\t'` 100 ms;
+`BS.unpack` of every field (the `String` conversion) **7 ms**; `parseRow` 396 ms. mhs's
+`Data.ByteString.Char8.lines` is O(n^2). The fix is one line -- `BS.lines` ->
+`BS.split '\n'` (the `null` filter drops the trailing empty element, so the rows are
+identical). **Reload startup ~26 s -> ~3.7 s.** (A reported 65 s startup was this same
+O(n^2) under heavier machine load.) Note the `String` conversion the persistence layer
+still does is *not* a cost (7 ms); a ByteString-keyed graph/persistence would not help.
+
+### Cold build / refresh path: the body parse dominates (~36 s) -- open
+
+| phase | time |
+| --- | --- |
+| walk tree (list .md) | 238 ms |
+| read + stat files | 683 ms |
+| parse bodies + build graph | **36,607 ms** |
+| build fingerprint map | 376 ms |
+| persist (write index) | 258 ms |
+
+`buildFromBodies` = parse + `Map` build; the reload path's "build graph from edges" does
+the *same* `Map` build from pre-resolved edges in ~1.6 s. So the ~35 s delta is the
+**body link-parsing** (`DocumentLinks.pageLinks` + `resolveTarget` in `updatePage`),
+~9 ms/file over 3,917 files. This contradicts the earlier "the lever is the `Map` build,
+NOT the parse" -- it is the parse. `unlines` on write (persist) is fine at 258 ms. This
+path runs on first start and on every `POST /index/refresh` after a re-export; making it
+fast means profiling `pageLinks` for a remaining per-file hotspot (a prior O(line^2) fix
+in `lineLinks` landed in `8a376f6`; there may be another).
+
 ## Recommendation
 
 The two cost centres are independent and need different fixes:

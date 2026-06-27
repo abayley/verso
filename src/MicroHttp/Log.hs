@@ -15,6 +15,7 @@ module MicroHttp.Log (
     Logger,
     nullLogger,
     formatLogfmt,
+    consoleLog,
     localTimestamp,
     logfmtTo,
     fileLogfmtLogger,
@@ -33,6 +34,7 @@ import MicroHttp.FileOps (removeFilePath, renamePath)
 import MicroHttp.Http (Status (..))
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), Port (..))
 import System.Directory (doesFileExist)
+import System.IO (hFlush, stdout)
 import System.IO.TimeMilli (getTimeMilli)
 
 -- Log rotation reuses the libc rename/unlink wrappers from MicroHttp.FileOps
@@ -101,6 +103,16 @@ localTimestamp = do
         base <- strftimeWith "%Y-%m-%dT%H:%M:%S" tmPtr
         zone <- strftimeWith "%z" tmPtr
         return (base ++ "." ++ pad3 (millis `mod` 1000) ++ zone)
+
+{- | Writes a line to stdout prefixed with the local timestamp (the same format
+as the access log), then flushes. Used for startup/operational console output so
+each step is timestamped and slow steps are visible.
+-}
+consoleLog :: String -> IO ()
+consoleLog message = do
+    ts <- localTimestamp
+    putStrLn (ts ++ " " ++ message)
+    hFlush stdout
 
 -- | Renders a broken-down time with a strftime format into a fresh buffer.
 strftimeWith :: String -> Ptr () -> IO String

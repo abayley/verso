@@ -37,8 +37,8 @@ import qualified MicroHttp.Http as Http
 import MicroHttp.Http.Parse (ParseError (..))
 import MicroHttp.Http.PercentEncoding (decodeFormValue)
 import MicroHttp.Iteratee (Iter, liftIO, readBodyStrict)
-import MicroHttp.LinkIndexStore (LinkIndexStore, addSubtreeToIndex, applyChanges, newLinkIndexStore, openLinkIndex, refreshLinkIndex, relocateInIndex, removeSubtreeInIndex)
-import MicroHttp.Log (Logger, localTimestamp, rotatingAppender, rotatingFileLogfmtLogger)
+import MicroHttp.LinkIndexStore (LinkIndexStore, addSubtreeToIndex, applyChanges, newLinkIndexStore, openLinkIndexWith, refreshLinkIndexWith, relocateInIndex, removeSubtreeInIndex)
+import MicroHttp.Log (Logger, consoleLog, localTimestamp, rotatingAppender, rotatingFileLogfmtLogger)
 import MicroHttp.Middleware (logRequests, withErrorResponses)
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), fileSizeBytes)
 import MicroHttp.OperationLog (OpType (..), Operation (..), appendOperation, nextSeq, readOperations, renderOperation)
@@ -48,7 +48,7 @@ import qualified MicroHttp.Static as Static
 import MicroHttp.Stream (StreamError (..))
 import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), RelevantPages, deleteTarget, indexRelevant, listTrash, movePage, movePlanJson, moveSection, restoreFromTrash, scanRelevant, trashListJson)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
-import System.IO (hFlush, hPutStrLn, stderr, stdout)
+import System.IO (hPutStrLn, stderr)
 
 data DocumentStore = DocumentStore
     { loadDocument :: String -> IO String
@@ -82,11 +82,9 @@ appFromConfig settings cfg = do
     -- it warm with no per-request walk, and re-export calls POST /index/refresh.
     indexStore <- newLinkIndexStore
     unless (null treeRoot) $ do
-        putStrLn "opening link index..."
-        hFlush stdout
-        opened <- openLinkIndex treeRoot indexPath indexStore
-        putStrLn (either ("link index FAILED (move/delete degraded until refresh): " ++) (const "link index ready") opened)
-        hFlush stdout
+        consoleLog "opening link index..."
+        opened <- openLinkIndexWith consoleLog treeRoot indexPath indexStore
+        consoleLog (either ("link index FAILED (move/delete degraded until refresh): " ++) (const "link index ready") opened)
     pure
         ( logRequests
             accessLogger
@@ -205,7 +203,7 @@ treeRoutes indexStore editorThemeDefault root logPath trashRoot indexPath =
     -- is a no-op (RFC-0029).
     findRelevant = maybe scanRelevant indexRelevant indexStore
     maint = maybe noIndexMaintenance (storeMaintenance root) indexStore
-    refresh = maybe (pure (Right ())) (refreshLinkIndex root indexPath) indexStore
+    refresh = maybe (pure (Right ())) (refreshLinkIndexWith consoleLog root indexPath) indexStore
 
 {- | The link-index maintenance hooks a tree mutation calls (RFC-0029): each keeps the
 warm in-memory graph correct without a whole-tree walk. 'noIndexMaintenance' is the

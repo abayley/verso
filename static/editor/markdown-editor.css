@@ -171,7 +171,9 @@ markdown-editor {
   outline-offset: -2px;
 }
 
-/* The top-level drop target, shown only while dragging an item that can move to the top level. */
+/* The top-level drop target. Its space is reserved permanently (so revealing it never reflows the
+   list); only its visibility toggles while dragging an item that can move to the top level, so the
+   box never changes size -- a layout change during a drag would cancel it. */
 .markdown-editor__nav-root-drop {
   border: 1px dashed var(--markdown-editor-divider);
   border-radius: 0.25rem;
@@ -179,6 +181,11 @@ markdown-editor {
   font-size: 12px;
   padding: 0.4rem 0.5rem;
   text-align: center;
+  visibility: hidden;
+}
+
+.markdown-editor__nav-root-drop[data-active="true"] {
+  visibility: visible;
 }
 
 .markdown-editor__nav-disclosure,

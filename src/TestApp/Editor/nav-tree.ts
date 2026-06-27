@@ -249,13 +249,13 @@ export class NavTreePanel {
         this.trashPanel.className = "markdown-editor__nav-trash";
         this.trashPanel.hidden = true;
 
-        // A top-level drop target, revealed only while dragging an item that isn't already at the
-        // top level. The root list's empty background is also a target, but it may not exist when the
-        // tree fills (or scrolls past) the panel; this zone is always reachable.
+        // A top-level drop target. Its space is reserved permanently (so it never reflows the list
+        // mid-drag -- a box change during dragstart cancels the native drag); the branded box is only
+        // made visible while dragging an item that isn't already at the top level. The root list's
+        // empty background is also a target, but it may not exist when the tree fills the panel.
         this.rootDrop = document.createElement("div");
         this.rootDrop.className = "markdown-editor__nav-root-drop";
         this.rootDrop.textContent = "Move to top level";
-        this.rootDrop.hidden = true;
         this.rootDrop.addEventListener("dragover", (event: DragEvent): void => {
             if (this.canDropInto(this.draggingPath, "")) {
                 event.preventDefault();
@@ -572,13 +572,28 @@ export class NavTreePanel {
         const count = applied.changed ?? 0;
         this.options.notify(`Moved “${name}” — updated links in ${count} file(s).`, false);
         // If the open document moved (the item itself, or a page inside a moved section), follow it to
-        // its new location instead of leaving the editor on the old path; otherwise refresh in place.
+        // its new location instead of leaving the editor on the old path; otherwise refresh in place,
+        // expanding the destination first so the moved item is visible at its new location.
         const openMoved = this.openDocumentUnder(path);
         if (openMoved !== null && applied.to) {
             this.options.navigate(applied.to + openMoved.slice(path.length));
         } else {
+            this.expandFolder(destParent);
             await this.refresh();
         }
+    }
+
+    /** Marks a folder and its ancestors expanded, so a moved item lands visible rather than hidden inside a collapsed destination. */
+    private expandFolder(folder: string): void {
+        if (folder === "") {
+            return; // the top level is always visible
+        }
+        let prefix = "";
+        for (const segment of folder.split("/")) {
+            prefix = prefix === "" ? segment : `${prefix}/${segment}`;
+            this.expanded.add(prefix);
+        }
+        this.saveExpanded();
     }
 
     /**
@@ -592,23 +607,16 @@ export class NavTreePanel {
         row.addEventListener("dragstart", (event: DragEvent): void => {
             this.draggingPath = node.path;
             event.dataTransfer?.setData("text/plain", node.path);
-            // Reveal the top-level drop zone (only for items not already at the top level), but
-            // DEFER it: the zone sits above the list, so un-hiding it synchronously here shifts the
-            // dragged row's box mid-dragstart, which cancels the native drag in Chrome -- that made
-            // nested rows (the only ones that trigger the reveal) appear undraggable. Showing it on a
-            // later tick, once the drag is committed, avoids the cancellation.
+            // Make the (always-space-reserved) top-level drop zone visible, for items not already at
+            // the top level. This toggles visibility/colour only -- no box change -- so it is safe to
+            // do synchronously in dragstart (a layout change here would cancel the native drag).
             if (this.canDropInto(node.path, "")) {
-                const dragged = node.path;
-                window.setTimeout((): void => {
-                    if (this.draggingPath === dragged) {
-                        this.rootDrop.hidden = false;
-                    }
-                }, 0);
+                this.rootDrop.dataset["active"] = "true";
             }
         });
         row.addEventListener("dragend", (): void => {
             this.draggingPath = null;
-            this.rootDrop.hidden = true;
+            delete this.rootDrop.dataset["active"];
             this.clearDropTargets();
         });
         row.addEventListener("dragover", (event: DragEvent): void => {

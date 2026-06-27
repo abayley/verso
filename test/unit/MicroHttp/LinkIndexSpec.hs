@@ -3,12 +3,16 @@ module MicroHttp.LinkIndexSpec (spec) where
 import Data.ByteString.Char8 (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import Data.List (sort)
-import MicroHttp.DocumentLinks (planMoveRewrites, referrersMatching)
+import Data.Maybe (fromMaybe)
+import MicroHttp.DocumentLinks (planMoveRewrites, referrersMatching, relocatePath)
 import MicroHttp.LinkIndex (
     buildIndex,
     inboundOf,
+    indexFromEdges,
+    outboundEdges,
     outboundOf,
     referrers,
+    relocateIndex,
     relocatePage,
     removePage,
     rewriteCandidates,
@@ -112,6 +116,13 @@ spec =
                     `shouldBe` sort ["guide/setup.md", "ref/api.md"]
                 sort (inboundOf "ref/api.md" ix)
                     `shouldBe` sort ["guide/index.md", "ref/index.md", "ref/intro.md"]
+
+        describe "relocateIndex" $ do
+            it "equals a rebuild from the relocated edges (no drift)" $ do
+                let ix = buildIndex pages
+                    reloc p = fromMaybe p (relocatePath "guide" "ref/guide" p)
+                    oracle = indexFromEdges [(reloc p, map reloc ts) | (p, ts) <- outboundEdges ix]
+                relocateIndex "guide" "ref/guide" ix `shouldBe` oracle
 
         describe "referrers (agrees with referrersMatching)" $ do
             it "finds the referrers of a page delete target" $ do

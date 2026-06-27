@@ -41,7 +41,7 @@ module MicroHttp.LinkIndex (
 ) where
 
 import Data.ByteString.Char8 (ByteString)
-import Data.List (foldl', isPrefixOf, isSuffixOf, nub)
+import Data.List (foldl', isPrefixOf, isSuffixOf, nub, sort)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
@@ -105,10 +105,19 @@ every resolved target that lies under @oldPrefix@ to sit under @newPrefix@. This
 exact effect a move has on the graph -- a page at @S/x@ becomes @S'/x@ and its links into
 the subtree resolve to @S'/...@ -- so a move is maintained by a pure transform, with no
 re-read. Equivalent to a rebuild from the post-move bodies.
+
+Both maps are remapped directly rather than re-derived edge-by-edge through 'indexFromEdges':
+relocation is an injective rename (the destination is fresh), so the inverse map is just the
+old 'inbound' with the same rename applied to keys and values, each list re-sorted. That
+avoids rebuilding 'inbound' with per-edge 'insertSorted' inserts (which dominated a move's
+index maintenance on a large tree); the result is identical to the rebuild (asserted in the
+spec).
 -}
 relocateIndex :: String -> String -> LinkIndex -> LinkIndex
 relocateIndex oldPrefix newPrefix ix =
-    indexFromEdges [(reloc page, map reloc targets) | (page, targets) <- outboundEdges ix]
+    LinkIndex
+        (Map.fromList [(reloc page, map reloc targets) | (page, targets) <- Map.toList (idxOutbound ix)])
+        (Map.fromList [(reloc target, sort (map reloc pages)) | (target, pages) <- Map.toList (idxInbound ix)])
   where
     reloc p = fromMaybe p (relocatePath oldPrefix newPrefix p)
 
@@ -178,16 +187,32 @@ referrers :: (TreePath -> Bool) -> [PagePath] -> LinkIndex -> [PagePath]
 referrers matches excluded ix =
     nub [page | page <- linkersInto matches ix, page `notElem` excluded]
 
-{- | The pages a move must consider rewriting: the moved subtree's own pages plus every
-page linking into the subtree (ADR-066). A superset of the pages
-'MicroHttp.DocumentLinks.planMoveRewrites' actually changes, so restricting the plan to
-these candidates drops no rewrite while avoiding a whole-tree read.
+{- | The pages a move must consider rewriting (ADR-066): the only pages whose links a
+section move changes are those with a link that /crosses the subtree boundary/ --
+(1) a page inside the subtree that links /out/ of it (the page moves deeper, so the relative
+link to an outside target changes), and (2) a page outside the subtree that links /into/ it
+(it must repoint to the new location). A subtree page that links only within the subtree
+moves together with its targets, so its relative links are unchanged and it needs no rewrite.
+
+This is computed from the index's resolved edges alone -- without reading any bodies -- and is
+still a superset of the pages 'MicroHttp.DocumentLinks.planMoveRewrites' actually changes
+(a crossing link may happen to need no textual edit), so restricting the plan to these
+candidates drops no rewrite. Earlier this returned /every/ subtree page; narrowing it to the
+out-linkers avoids reading and parsing the (often many) subtree pages with only internal
+links. Asset edges are excluded from the index (ADR-066/062, folder-local assets travel with
+the page), which is why an asset link never makes a subtree page a candidate.
 -}
 rewriteCandidates :: (TreePath -> Bool) -> LinkIndex -> [PagePath]
 rewriteCandidates inSubtree ix =
-    nub (subtreePages ++ linkersInto inSubtree ix)
+    nub (subtreeOutLinkers ++ externalInLinkers)
   where
-    subtreePages = [page | page <- Map.keys (idxOutbound ix), inSubtree page]
+    subtreeOutLinkers =
+        [ page
+        | (page, targets) <- Map.toList (idxOutbound ix)
+        , inSubtree page
+        , not (all inSubtree targets)
+        ]
+    externalInLinkers = [page | page <- linkersInto inSubtree ix, not (inSubtree page)]
 
 -- | The pages with an outbound edge to some target the predicate accepts (the inbound scan shared by the two queries).
 linkersInto :: (TreePath -> Bool) -> LinkIndex -> [PagePath]

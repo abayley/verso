@@ -336,6 +336,39 @@ ones are objectively poor) rather than maintain a fork. **No action until someth
 slow.** Code sites carrying these considerations: `DocumentLinks.linesWithOffsets`/
 `rewriteLinks`, `LinkIndexStore.parseRows`, `Iteratee.readBodyStrict`, `Html.Builder`.
 
+## Move profiling and optimisation (2026-06-27)
+
+Profiling a section move on the reference corpus -- the `engineering/` folder (785 pages)
+moved in and out of `hr/` -- showed **~6.6 s** per move, per phase:
+
+| phase | time |
+| --- | --- |
+| find (read candidate bodies) | ~1.7-2.0 s (935 files read) |
+| plan rewrites (parse + edit) | ~3.0 s (935 parsed, 175 rewritten) |
+| write changed files | ~0.06 s (175) |
+| relocate listing | ~0.01 s |
+| index maintenance (`relocateInIndex`) | ~1.6-1.9 s |
+
+Two levers, both implemented (each verified to leave the move's output byte-identical -- a
+corpus in/out round-trip leaves the tree unchanged, plus the spec invariants below):
+
+- **Lever 1 -- narrow the candidate set (`LinkIndex.rewriteCandidates`).** Only pages with a
+  link that *crosses the subtree boundary* can change: subtree pages that link *out*, and
+  outside pages that link *in*. A subtree page linking only within the subtree moves with its
+  targets unchanged. This is read from the index's resolved edges (no body reads), cutting the
+  935-file read+parse to ~175. Still a superset of what `planMoveRewrites` changes (the spec's
+  "rewriteCandidates ... drops no page planMoveRewrites changes" test). **~6.6 s -> ~2.4 s.**
+- **Lever 2 -- direct index relocate (`LinkIndex.relocateIndex`).** Relocation is an injective
+  rename, so the inverse map is the old `inbound` with the rename applied to keys and values
+  and each list re-sorted -- no need to rebuild `inbound` edge-by-edge with `insertSorted`
+  (which dominated the maintenance). Identical to the rebuild (the spec's "relocateIndex equals
+  a rebuild from the relocated edges" test). **~2.4 s -> ~1.4-1.6 s.**
+
+Net: a large-folder move went **~6.6 s -> ~1.4-1.6 s (~4.5x)**. The residual is the
+(now-narrowed) read+parse of the genuinely-affected pages plus `relocateIndex`'s O(edges)
+remap; further gains would need a fully surgical relocate (touch only affected entries) and
+parallel/cheaper candidate reads -- not worth it unless a move profiles slow again.
+
 ## Recommendation
 
 The two cost centres are independent and need different fixes:

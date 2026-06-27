@@ -1904,6 +1904,15 @@ edits, so it is a performance layer, not a second implementation. Single-process
 **persisted** to disk and reload-validated on startup (see ADR-067 as amended -- the
 original "in-memory only" stance was reversed once the build proved expensive).
 
+A section move's candidate set (`rewriteCandidates`) was later tightened (2026-06-27) to the
+pages whose links *cross the subtree boundary* -- subtree pages linking out plus outside
+pages linking in -- rather than every subtree page, since a page linking only within the
+moved subtree needs no rewrite. Still a superset of what `planMoveRewrites` changes, so the
+observable contract is unchanged; it avoids reading/parsing the (often many) internal-only
+subtree pages. With a direct `relocateIndex` (the inverse map is the old one re-keyed and
+re-sorted, not rebuilt edge-by-edge), a large-folder move dropped ~6.6 s -> ~1.5 s on the
+reference corpus (see `docs/design/link-index-performance.md`).
+
 ### ADR-067: The Link Index Is Kept Correct by a Per-Operation Stat Fingerprint
 
 Status: **Amended (2026-06-26)**. The per-operation stat-fingerprint check was

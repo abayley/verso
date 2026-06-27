@@ -311,6 +311,29 @@ Rule of thumb on mhs: to scan/split a whole `ByteString`, **unpack once** (use `
 `unpack` and work on the list); never loop an `unpack`-based function down the tail; and for
 assembling output prefer a Builder / single-allocation concat over repeated `append`.
 
+### Decision: do not vendor a ByteString library (2026-06-27)
+
+We considered vendoring/forking `Data.ByteString` to "fix" the slow operations. **Decision:
+do not, for now.** Rationale:
+
+- The slicing core (`take`/`drop`/`splitAt`/`index`/`length`) is already O(1) -- there is
+  nothing to fix in the part most worth fixing.
+- The weak spots (the `unpack`-based search/split family, and `foldr`-`append` `concat`) are
+  avoidable by usage discipline we already follow: use `split`/`splitWith` (one unpack)
+  instead of looping `elemIndex`; build output with the difference-list `Html.Builder`.
+- A full fork is high-maintenance (track upstream MicroHs, re-apply patches) for a library
+  that is otherwise fine.
+
+If a *specific profiled* hot path needs it, the proportionate step is a small
+`MicroHttp.ByteString` helper with just the op that matters -- most likely a
+**single-allocation `concat`** (sum the lengths, `primBSnew` once, write each piece,
+`primBSfreeze`: O(total) instead of O(total x pieces)), which would also de-risk
+`Iteratee.readBodyStrict` / `Html.coalesce` for very large many-chunk inputs. Better still,
+upstream a one-pass `concat` and a `memchr`-based `elemIndex`/`lines` to MicroHs (the current
+ones are objectively poor) rather than maintain a fork. **No action until something profiles
+slow.** Code sites carrying these considerations: `DocumentLinks.linesWithOffsets`/
+`rewriteLinks`, `LinkIndexStore.parseRows`, `Iteratee.readBodyStrict`, `Html.Builder`.
+
 ## Recommendation
 
 The two cost centres are independent and need different fixes:

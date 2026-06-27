@@ -259,9 +259,12 @@ serialiseState st = BS.pack (unlines (edgeLines ++ fpLines))
 
 {- | Parses a serialised index into rows; 'Nothing' if any line is malformed (treated as
 corrupt -> rebuild). Lines are split with @BS.split '\n'@, not @BS.lines@: mhs's
-'Data.ByteString.Char8.lines' is O(n^2) and dominated startup (~22 s on the corpus index),
-whereas 'BS.split' is linear. The trailing empty element @split@ leaves after the final
-newline is dropped by the @null@ filter, so the row set is identical.
+'Data.ByteString.Char8.lines' is a recursive @BS.elemIndex '\n'@ loop, and @elemIndex@ is
+@elemIndex . unpack@ -- it unpacks the whole remaining string on every call, so @lines@
+re-unpacks the shrinking tail and is O(n^2) (it dominated reload, ~22 s on the corpus
+index). 'BS.split' unpacks once and is linear. The trailing empty element @split@ leaves
+after the final newline is dropped by the @null@ filter, so the row set is identical. (mhs
+ByteString cost model: docs/design/link-index-performance.md.)
 -}
 parseRows :: ByteString -> Maybe [Row]
 parseRows bytes =

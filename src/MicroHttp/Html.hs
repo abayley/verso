@@ -71,6 +71,11 @@ import Prelude hiding (div, head, span)
 {- | A difference list of 'ByteString' chunks: O(1) append by composition, run
 to a chunk list in document order (RFC-0013). Constant tag and escape fragments
 are pre-packed CAFs; only dynamic text packs per render.
+
+The difference-list representation matters in mhs: @BS.append@ memcpys into a fresh
+buffer, so building output by repeated @append@ would be O(n^2). Appending chunks to a
+list (O(1)) and concatenating once at the socket boundary keeps it linear. (mhs ByteString
+cost model: docs/design/link-index-performance.md.)
 -}
 newtype Builder = Builder ([ByteString] -> [ByteString])
 

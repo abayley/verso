@@ -136,6 +136,13 @@ takeN = go
 error if the accumulated size would exceed the bound. The over-limit error
 is a parameter so the core stays free of any domain vocabulary; a transport
 failure delivered at end of stream is propagated unchanged.
+
+Chunks are accumulated by @cons@ (O(1)) and joined with a single 'BS.concat' at the end,
+never by appending onto a growing buffer per chunk: in mhs @append@ memcpys, so a
+per-chunk append would be O(bodySize * chunkCount). 'BS.concat' over k pieces is still
+@foldr append@ (O(total * k)); for very large bodies arriving in very many chunks that
+itself is superlinear -- if request ingest ever profiles slow, a single-allocation concat
+is the fix (mhs ByteString cost model: docs/design/link-index-performance.md).
 -}
 readBodyStrict :: e -> Int -> Iter e BS.ByteString
 readBodyStrict tooLarge limit = go 0 []

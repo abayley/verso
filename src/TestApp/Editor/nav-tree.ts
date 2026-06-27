@@ -202,6 +202,8 @@ export class NavTreePanel {
     private readonly undoDropdown: HTMLElement;
     /** The tree path of the node currently being dragged (for drag-and-drop move), or null. */
     private draggingPath: string | null = null;
+    /** A drop zone shown during a drag for moving an item out to the top level (always reachable, unlike the list's empty space). */
+    private readonly rootDrop: HTMLDivElement;
 
     constructor(options: NavTreeOptions) {
         this.options = options;
@@ -247,6 +249,28 @@ export class NavTreePanel {
         this.trashPanel.className = "markdown-editor__nav-trash";
         this.trashPanel.hidden = true;
 
+        // A top-level drop target, revealed only while dragging an item that isn't already at the
+        // top level. The root list's empty background is also a target, but it may not exist when the
+        // tree fills (or scrolls past) the panel; this zone is always reachable.
+        this.rootDrop = document.createElement("div");
+        this.rootDrop.className = "markdown-editor__nav-root-drop";
+        this.rootDrop.textContent = "Move to top level";
+        this.rootDrop.hidden = true;
+        this.rootDrop.addEventListener("dragover", (event: DragEvent): void => {
+            if (this.canDropInto(this.draggingPath, "")) {
+                event.preventDefault();
+                this.rootDrop.dataset["dropTarget"] = "true";
+            }
+        });
+        this.rootDrop.addEventListener("dragleave", (): void => {
+            delete this.rootDrop.dataset["dropTarget"];
+        });
+        this.rootDrop.addEventListener("drop", (event: DragEvent): void => {
+            event.preventDefault();
+            delete this.rootDrop.dataset["dropTarget"];
+            void this.dropInto("");
+        });
+
         this.list = document.createElement("ul");
         this.list.className = "markdown-editor__nav-list";
         // The root list's own background is a drop target for moving an item out to the top level
@@ -270,7 +294,7 @@ export class NavTreePanel {
             }
         });
 
-        this.panel.append(header, this.trashPanel, this.list);
+        this.panel.append(header, this.rootDrop, this.trashPanel, this.list);
         this.applyCollapsed();
         this.render();
         // The spine only seeds the open page's ancestors; any other persisted-expanded folder has no cached
@@ -568,9 +592,12 @@ export class NavTreePanel {
         row.addEventListener("dragstart", (event: DragEvent): void => {
             this.draggingPath = node.path;
             event.dataTransfer?.setData("text/plain", node.path);
+            // Reveal the top-level drop zone unless the item is already at the top level.
+            this.rootDrop.hidden = !this.canDropInto(node.path, "");
         });
         row.addEventListener("dragend", (): void => {
             this.draggingPath = null;
+            this.rootDrop.hidden = true;
             this.clearDropTargets();
         });
         row.addEventListener("dragover", (event: DragEvent): void => {

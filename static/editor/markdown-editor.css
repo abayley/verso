@@ -163,11 +163,22 @@ markdown-editor {
   font-weight: 600;
 }
 
-/* Drag-and-drop move: the row (or root list) currently under the dragged item. */
+/* Drag-and-drop move: the row, root list, or top-level drop zone currently under the dragged item. */
 .markdown-editor__nav-row[data-drop-target="true"],
-.markdown-editor__nav-list[data-drop-target="true"] {
+.markdown-editor__nav-list[data-drop-target="true"],
+.markdown-editor__nav-root-drop[data-drop-target="true"] {
   outline: 2px dashed var(--markdown-editor-accent, currentColor);
   outline-offset: -2px;
+}
+
+/* The top-level drop target, shown only while dragging an item that can move to the top level. */
+.markdown-editor__nav-root-drop {
+  border: 1px dashed var(--markdown-editor-divider);
+  border-radius: 0.25rem;
+  color: var(--markdown-editor-muted);
+  font-size: 12px;
+  padding: 0.4rem 0.5rem;
+  text-align: center;
 }
 
 .markdown-editor__nav-disclosure,

@@ -146,7 +146,17 @@ relativeBetween fromDir toPath
     ups = length fromSegs - common
     downs = drop common toDirSegs
 
--- | Applies @(start, end, replacement)@ byte-span edits to the body, preserving everything else.
+{- | Applies @(start, end, replacement)@ byte-span edits to the body, preserving everything else.
+
+LATENT PERF (low priority): the final 'BS.concat' over the ~2N slice/replacement pieces is,
+in mhs, @foldr append@ where @append@ memcpys into a fresh buffer, so it re-copies the
+growing accumulator -> O(totalOutput * pieceCount) ~= O(len*N) for N edits. ('sliceBetween'
+itself is fine -- @BS.take@/@BS.drop@ are O(1) buffer-views.) This only runs on the
+move/delete rewrite path (rare; the rewrite set is small; measured ~39 ms warm), so it is
+not a problem today. It would become O(len) with a single-allocation concat (sum the
+lengths, allocate once, write each piece). See the mhs BS cost model in
+docs/design/link-index-performance.md.
+-}
 rewriteLinks :: ByteString -> [(Int, Int, String)] -> ByteString
 rewriteLinks text edits = BS.concat (go 0 (sortBy byStart edits))
   where
@@ -322,11 +332,14 @@ commonPrefixLength _ _ = 0
 bytes exclude the newline; a trailing @\\r@ stays so offsets are exact). Each line's
 offset is the running sum of the preceding lines' lengths plus their newline byte.
 
-Splits with a single 'BS.split' pass rather than recursing with @BS.elemIndex@ +
-@BS.drop@: in mhs @BS.drop@ is __not__ O(1) (it copies), so the recurse-on-the-tail
-form was O(n^2) and dominated the whole-tree index build (~23 s of a ~27 s parse on the
-reference corpus). 'BS.split' is one linear pass (~2 s), making the parser ~5.8x faster
-with byte-identical output.
+Splits with a single 'BS.split' pass rather than recursing with @BS.elemIndex@: in mhs
+@BS.elemIndex@ is @elemIndex . unpack@, so it unpacks the __whole remaining ByteString__
+to a list on every call; recursing it down the tail therefore re-unpacks O(n) bytes per
+line -> O(n^2) overall, which dominated the whole-tree index build (~23 s of a ~27 s parse
+on the reference corpus). ('BS.drop'/'BS.take' here are O(1) buffer-views, not the cost.)
+'BS.split' unpacks once and splits the list in a single linear pass (~2 s), making the
+parser ~5.8x faster with byte-identical output. (mhs BS cost model: see
+docs/design/link-index-performance.md.)
 -}
 linesWithOffsets :: ByteString -> [(Int, ByteString)]
 linesWithOffsets text = withOffsets 0 (BS.split '\n' text)

@@ -273,15 +273,43 @@ the **line splitter**, not the link scan:
 | `BS.split '\n'` only | **2,295 ms** |
 | `pageLinks` with a `BS.split`-based splitter (byte-identical output) | **4,688 ms** |
 
-**Root cause: in mhs `BS.drop` is O(n) (it copies), so recursing on `BS.drop (i+1) s`
-made the splitter O(n^2).** `BS.split '\n'` is one linear pass. **Fixed**:
+**Root cause: in mhs `BS.elemIndex` is `elemIndex . unpack` -- it unpacks the whole
+remaining `ByteString` to a list on every call.** The hand-rolled splitter recursed
+`BS.elemIndex '\n'` down the tail, re-unpacking O(n) bytes per line -> O(n^2). (`BS.drop`/
+`BS.take` in it are O(1) buffer-views and were *not* the cost -- an earlier note here
+claiming "`BS.drop` copies" was wrong; see "mhs ByteString cost model" below.) `BS.split
+'\n'` unpacks **once** and splits the list in a single linear pass. **Fixed**:
 `linesWithOffsets` now splits with `BS.split '\n'` and recovers each line's offset from the
 running sum of preceding line lengths (+1 per newline). Measured outcome: the build's
 "parse bodies + build graph" phase **36,607 ms -> 10,211 ms**, cold startup **~38 s ->
 ~11.8 s**, with `DocumentLinksSpec` (span pins) still green. (The byte-by-byte `lineLinks`
-scan is *not* a cost -- an `elemIndex`-based variant measured the same -- so it was left as
-is.) This is the same class of trap as the reload-path `BS.lines` O(n^2): on mhs, prefer
-`BS.split`/`BS.elemIndex` (single primitive pass) over recursing with `BS.drop`.
+scan is *not* a cost -- it uses O(1) `BS.index` -- so it was left as is.) Same class of trap
+as the reload-path `BS.lines` O(n^2) (`Char8.lines` is itself a recursive `elemIndex` loop).
+
+## mhs ByteString cost model (verified from the MicroHs source)
+
+Both startup bugs above traced to the same misunderstanding, so the actual cost model is
+worth recording (from `MicroHs/lib/Data/ByteString*.hs` and the C runtime `eval.c`). A
+`ByteString` is a primitive heap buffer (a `forptr` + size).
+
+- **O(1), shares the buffer (no copy):** `length`, `index`, and crucially
+  `take`/`drop`/`splitAt`/`substr` -- all route through the `bssubstr` primitive, which is
+  `addForPtr(fp, offs)` with a new size, i.e. a zero-copy view. **So slicing is cheap; the
+  earlier "drop copies" claim was false.**
+- **O(n) per call, allocates a list via `unpack`:** `elemIndex`, `elemIndices`, `findIndex`,
+  `takeWhile`, `dropWhile`, `span`, `break`, `split`, `splitWith`, `lines`, `words`,
+  `isPrefixOf`, `sort`, `intercalate`; `breakSubstring` is worse (it builds `tails`). Fine
+  called once -- **O(n^2) when called repeatedly down a shrinking tail** (the `lines` /
+  manual-`elemIndex` splitter trap; fixed by using `split`, which unpacks once).
+- **O(total x pieceCount), copies repeatedly:** `concat`/`append`. `bsappend` memcpys into a
+  fresh buffer and `concat = foldr append`, so concatenating many small pieces re-copies the
+  growing accumulator. (This is the latent cost in `DocumentLinks.rewriteLinks`; avoid by a
+  single-allocation concat, or by building output with the difference-list `Html.Builder`.)
+- `pack` is O(n) (amortised buffer growth).
+
+Rule of thumb on mhs: to scan/split a whole `ByteString`, **unpack once** (use `split`, or
+`unpack` and work on the list); never loop an `unpack`-based function down the tail; and for
+assembling output prefer a Builder / single-allocation concat over repeated `append`.
 
 ## Recommendation
 

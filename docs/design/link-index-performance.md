@@ -253,10 +253,35 @@ still does is *not* a cost (7 ms); a ByteString-keyed graph/persistence would no
 the *same* `Map` build from pre-resolved edges in ~1.6 s. So the ~35 s delta is the
 **body link-parsing** (`DocumentLinks.pageLinks` + `resolveTarget` in `updatePage`),
 ~9 ms/file over 3,917 files. This contradicts the earlier "the lever is the `Map` build,
-NOT the parse" -- it is the parse. `unlines` on write (persist) is fine at 258 ms. This
-path runs on first start and on every `POST /index/refresh` after a re-export; making it
-fast means profiling `pageLinks` for a remaining per-file hotspot (a prior O(line^2) fix
-in `lineLinks` landed in `8a376f6`; there may be another).
+NOT the parse" -- it is the parse. `unlines` on write (persist) is fine at 258 ms.
+
+Drilling into the parse (standalone harness, corpus bodies loaded once):
+
+| step | time | delta |
+| --- | --- | --- |
+| `pageLinks` (parse only) | 27,137 ms | 27,137 ms |
+| + `resolveTarget` | 28,549 ms | ~1,800 ms |
+| + filter + `nub` | 29,803 ms | ~1,300 ms |
+| + `Map`/inbound build (full `buildIndex`) | 37,042 ms | ~7,200 ms |
+
+So `pageLinks` is ~72% of the build. Decomposing `pageLinks` further isolated the cost to
+the **line splitter**, not the link scan:
+
+| experiment | time |
+| --- | --- |
+| `linesWithOffsets` only (current: `elemIndex`+`take`+`drop` recursion) | **23,377 ms** |
+| `BS.split '\n'` only | **2,295 ms** |
+| `pageLinks` with a `BS.split`-based splitter (byte-identical output) | **4,688 ms** |
+
+**Root cause: in mhs `BS.drop` is O(n) (it copies), so recursing on `BS.drop (i+1) s`
+made the splitter O(n^2).** `BS.split '\n'` is one linear pass. **Fixed**:
+`linesWithOffsets` now splits with `BS.split '\n'` and recovers each line's offset from the
+running sum of preceding line lengths (+1 per newline). Measured outcome: the build's
+"parse bodies + build graph" phase **36,607 ms -> 10,211 ms**, cold startup **~38 s ->
+~11.8 s**, with `DocumentLinksSpec` (span pins) still green. (The byte-by-byte `lineLinks`
+scan is *not* a cost -- an `elemIndex`-based variant measured the same -- so it was left as
+is.) This is the same class of trap as the reload-path `BS.lines` O(n^2): on mhs, prefer
+`BS.split`/`BS.elemIndex` (single primitive pass) over recursing with `BS.drop`.
 
 ## Recommendation
 

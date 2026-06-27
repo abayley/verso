@@ -592,8 +592,19 @@ export class NavTreePanel {
         row.addEventListener("dragstart", (event: DragEvent): void => {
             this.draggingPath = node.path;
             event.dataTransfer?.setData("text/plain", node.path);
-            // Reveal the top-level drop zone unless the item is already at the top level.
-            this.rootDrop.hidden = !this.canDropInto(node.path, "");
+            // Reveal the top-level drop zone (only for items not already at the top level), but
+            // DEFER it: the zone sits above the list, so un-hiding it synchronously here shifts the
+            // dragged row's box mid-dragstart, which cancels the native drag in Chrome -- that made
+            // nested rows (the only ones that trigger the reveal) appear undraggable. Showing it on a
+            // later tick, once the drag is committed, avoids the cancellation.
+            if (this.canDropInto(node.path, "")) {
+                const dragged = node.path;
+                window.setTimeout((): void => {
+                    if (this.draggingPath === dragged) {
+                        this.rootDrop.hidden = false;
+                    }
+                }, 0);
+            }
         });
         row.addEventListener("dragend", (): void => {
             this.draggingPath = null;

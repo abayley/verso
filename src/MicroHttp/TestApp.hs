@@ -37,7 +37,7 @@ import qualified MicroHttp.Http as Http
 import MicroHttp.Http.Parse (ParseError (..))
 import MicroHttp.Http.PercentEncoding (decodeFormValue)
 import MicroHttp.Iteratee (Iter, liftIO, readBodyStrict)
-import MicroHttp.LinkIndexStore (LinkIndexStore, addSubtreeToIndex, applyChanges, newLinkIndexStore, openLinkIndexWith, refreshLinkIndexWith, relocateInIndex, removeSubtreeInIndex)
+import MicroHttp.LinkIndexStore (LinkIndexStore, addSubtreeToIndex, applyChanges, newLinkIndexStore, openLinkIndex, refreshLinkIndex, relocateInIndex, removeSubtreeInIndex)
 import MicroHttp.Log (Logger, consoleLog, localTimestamp, rotatingAppender, rotatingFileLogfmtLogger)
 import MicroHttp.Middleware (logRequests, withErrorResponses)
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), fileSizeBytes)
@@ -83,7 +83,7 @@ appFromConfig settings cfg = do
     indexStore <- newLinkIndexStore
     unless (null treeRoot) $ do
         consoleLog "opening link index..."
-        opened <- openLinkIndexWith consoleLog treeRoot indexPath indexStore
+        opened <- openLinkIndex treeRoot indexPath indexStore
         consoleLog (either ("link index FAILED (move/delete degraded until refresh): " ++) (const "link index ready") opened)
     pure
         ( logRequests
@@ -203,7 +203,7 @@ treeRoutes indexStore editorThemeDefault root logPath trashRoot indexPath =
     -- is a no-op (RFC-0029).
     findRelevant = maybe scanRelevant indexRelevant indexStore
     maint = maybe noIndexMaintenance (storeMaintenance root) indexStore
-    refresh = maybe (pure (Right ())) (refreshLinkIndexWith consoleLog root indexPath) indexStore
+    refresh = maybe (pure (Right ())) (refreshLinkIndex root indexPath) indexStore
 
 {- | The link-index maintenance hooks a tree mutation calls (RFC-0029): each keeps the
 warm in-memory graph correct without a whole-tree walk. 'noIndexMaintenance' is the

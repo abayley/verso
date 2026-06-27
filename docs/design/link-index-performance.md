@@ -216,9 +216,11 @@ or persistence.
 ## Profiling outcome (2026-06-27) -- the startup bottleneck, measured per phase
 
 The 2026-06-26 outcome above **mis-attributed the startup cost to the `Map`/inbound
-build.** Per-phase timing (forced at each phase boundary so laziness cannot shift cost
-between phases; emitted at startup via `openLinkIndexWith`) shows the `Map` build is
-~1.6 s and was never the bottleneck. There are two slow paths, with two *different*
+build.** Temporary per-phase timing instrumentation in `openLinkIndex` (each phase's result
+forced at its boundary so laziness could not shift cost between phases) showed the `Map`
+build is ~1.6 s and was never the bottleneck. (That instrumentation was removed once the two
+bugs below were fixed; startup now logs only `opening link index...` / `link index ready`.
+The numbers below are what it measured.) There are two slow paths, with two *different*
 dominant costs, neither of them the `Map`:
 
 ### Reload path (persisted index valid): `BS.lines` was O(n^2) -- fixed

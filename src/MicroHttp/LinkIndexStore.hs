@@ -18,9 +18,7 @@ module MicroHttp.LinkIndexStore (
     LinkIndexStore,
     newLinkIndexStore,
     openLinkIndex,
-    openLinkIndexWith,
     refreshLinkIndex,
-    refreshLinkIndexWith,
     currentIndex,
     applyChanges,
     relocateInIndex,
@@ -52,10 +50,6 @@ import MicroHttp.LinkIndex (
     updatePage,
  )
 import System.Directory (doesFileExist)
-import System.IO.TimeMilli (getTimeMilli)
-
--- | A line sink for the startup phase-timing breakdown (RFC-0029). 'const (pure ())' for callers that want none.
-type PhaseLog = String -> IO ()
 
 -- | The graph and the fingerprint of the tree it was built from, held together.
 data IndexState = IndexState
@@ -82,53 +76,22 @@ way the result is persisted and held. The build is forced so its cost is paid he
 in the first move/delete.
 -}
 openLinkIndex :: FilePath -> FilePath -> LinkIndexStore -> IO (Either String ())
-openLinkIndex = openLinkIndexWith (const (pure ()))
-
-{- | As 'openLinkIndex', but emitting a per-phase timing breakdown to the given sink so a
-slow startup can be attributed to a specific phase (read/parse/graph/fingerprint, or the
-cold-build phases). Each phase's result is forced before its time is taken, so laziness
-cannot defer a phase's cost into a later one or into the first request.
--}
-openLinkIndexWith :: PhaseLog -> FilePath -> FilePath -> LinkIndexStore -> IO (Either String ())
-openLinkIndexWith logp root indexPath store = runExceptT $ do
-    loaded <- loadValidState logp root indexPath
+openLinkIndex root indexPath store = runExceptT $ do
+    loaded <- loadValidState root indexPath
     st <- case loaded of
-        Just s -> do
-            liftIO (logp "index: loaded persisted index (fingerprint matched)")
-            pure s
+        Just s -> pure s
         Nothing -> do
-            liftIO (logp "index: persisted index absent/stale/corrupt -- building from tree")
-            built <- buildFromTree logp root
-            phase logp "persist: write index file" (const 0) (persistState indexPath built)
+            built <- buildFromTree root
+            persistState indexPath built
             pure built
     liftIO (storeState store st)
 
 -- | Rebuilds the index from the tree and re-persists it (the explicit refresh after a re-export).
 refreshLinkIndex :: FilePath -> FilePath -> LinkIndexStore -> IO (Either String ())
-refreshLinkIndex = refreshLinkIndexWith (const (pure ()))
-
--- | As 'refreshLinkIndex', with a per-phase timing breakdown to the given sink.
-refreshLinkIndexWith :: PhaseLog -> FilePath -> FilePath -> LinkIndexStore -> IO (Either String ())
-refreshLinkIndexWith logp root indexPath store = runExceptT $ do
-    built <- buildFromTree logp root
-    phase logp "persist: write index file" (const 0) (persistState indexPath built)
+refreshLinkIndex root indexPath store = runExceptT $ do
+    built <- buildFromTree root
+    persistState indexPath built
     liftIO (storeState store built)
-
-{- | Runs a phase, forces its result to attribute the cost honestly, and logs the elapsed
-milliseconds. The @size@ projection is the forcing witness: it must traverse enough of the
-result that no thunk survives into a later phase (e.g. the full edge count for the graph).
--}
-phase :: PhaseLog -> String -> (a -> Int) -> ExceptT String IO a -> ExceptT String IO a
-phase logp label size act = do
-    t0 <- liftIO getTimeMilli
-    x <- act
-    t1 <- size x `seq` liftIO getTimeMilli
-    liftIO (logp (label ++ ": " ++ show (t1 - t0) ++ " ms"))
-    pure x
-
--- | Forcing witness for a graph: 'forceIndex' walks both adjacency maps, so forcing its result to WHNF pays the whole parse.
-indexSize :: LinkIndex -> Int
-indexSize ix = forceIndex ix `seq` 0
 
 {- | Incremental maintenance for an in-server mutation: re-read each given @.md@ path and
 patch the graph -- 'updatePage' when it now exists, 'removePage' when it is gone. No walk,
@@ -188,15 +151,14 @@ storeState (LinkIndexStore mv) st = modifyMVar_ mv (\_ -> pure (Just st))
 whole-tree parse is paid here, not lazily in the first request. Filesystem exceptions
 become 'Left' via 'tryIO'.
 -}
-buildFromTree :: PhaseLog -> FilePath -> ExceptT String IO IndexState
-buildFromTree logp root = do
-    files <- phase logp "build: walk tree (list .md)" length (tryIO (markdownFiles root))
-    entries <- phase logp "build: read + stat files" length (tryIO (mapM readAndStat files))
+buildFromTree :: FilePath -> ExceptT String IO IndexState
+buildFromTree root = do
+    files <- tryIO (markdownFiles root)
+    entries <- tryIO (mapM readAndStat files)
     let pages = [(rel, body) | (rel, Just body, _) <- entries]
         fingerprint = Map.fromList [(rel, st) | (rel, _, Just st) <- entries]
-    graph <- phase logp "build: parse bodies + build graph" indexSize (pure (buildFromBodies pages))
-    _ <- phase logp "build: build fingerprint map" Map.size (pure fingerprint)
-    pure (IndexState graph fingerprint)
+        graph = forceIndex (buildFromBodies pages)
+    graph `seq` pure (IndexState graph fingerprint)
   where
     readAndStat (rel, fs) = do
         body <- readPageBody fs
@@ -218,22 +180,24 @@ readPageBody fs = do
 {- | Loads the persisted index and returns it only if its stored fingerprint still
 matches the tree (one stat-walk). 'Nothing' when the file is absent, corrupt, or stale.
 -}
-loadValidState :: PhaseLog -> FilePath -> FilePath -> ExceptT String IO (Maybe IndexState)
-loadValidState logp root indexPath = do
+loadValidState :: FilePath -> FilePath -> ExceptT String IO (Maybe IndexState)
+loadValidState root indexPath = do
     exists <- tryIO (doesFileExist indexPath)
     if not exists
         then pure Nothing
         else do
-            bytes <- phase logp "load: read index file" BS.length (tryIO (BS.readFile indexPath))
-            mrows <- phase logp "load: split + parse rows" (maybe 0 length) (pure (parseRows bytes))
-            case mrows of
+            bytes <- tryIO (BS.readFile indexPath)
+            case parseRows bytes of
                 Nothing -> pure Nothing
                 Just rows -> do
-                    graph <- phase logp "load: build graph from edges" indexSize (pure (edgesToIndex rows))
-                    storedFp <- phase logp "load: build stored fingerprint" Map.size (pure (rowsToFingerprint rows))
-                    current <- phase logp "load: fingerprint tree (stat walk)" Map.size (tryIO (fingerprintTree root))
-                    matched <- phase logp "load: compare fingerprints" (const 0) (pure (storedFp == current))
-                    pure (if matched then Just (IndexState graph storedFp) else Nothing)
+                    -- Force the loaded graph here so the Map/inbound construction is paid at load,
+                    -- not deferred to the first move/delete (forceIndex walks both adjacency maps).
+                    let graph = forceIndex (edgesToIndex rows)
+                        storedFp = rowsToFingerprint rows
+                    current <- tryIO (fingerprintTree root)
+                    if storedFp == current
+                        then pure (graph `seq` Just (IndexState graph storedFp))
+                        else pure Nothing
 
 -- | Writes the index to a temp file then atomically renames it into place, so a partial write never corrupts it.
 persistState :: FilePath -> IndexState -> ExceptT String IO ()

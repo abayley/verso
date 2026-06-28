@@ -1,34 +1,21 @@
 module Verso.LinkIndexSpec (spec) where
 
-import Data.ByteString.Char8 (ByteString)
 import qualified Data.ByteString.Char8 as BS
-import Data.List (sort)
-import Data.Maybe (fromMaybe)
+import qualified Data.List as List
+import qualified Data.Maybe as Maybe
 import Test.Hspec
-import Verso.DocumentLinks (planMoveRewrites, referrersMatching, relocatePath)
-import Verso.LinkIndex (
-    buildIndex,
-    inboundOf,
-    indexFromEdges,
-    outboundEdges,
-    outboundOf,
-    referrers,
-    relocateIndex,
-    relocatePage,
-    removePage,
-    rewriteCandidates,
-    updatePage,
- )
+import qualified Verso.DocumentLinks as DocumentLinks
+import qualified Verso.LinkIndex as LinkIndex
 
 -- | A page body as bytes (the index/link engine works over 'ByteString', RFC-0029).
-bs :: String -> ByteString
+bs :: String -> BS.ByteString
 bs = BS.pack
 
 {- | A small document tree as @(treePath, body)@ pairs, with the in-tree cross-links
 the index and the scan must agree on. Links are @.md@ page links (the graph) plus one
 same-folder asset reference (excluded from the graph, ADR-066).
 -}
-pages :: [(String, ByteString)]
+pages :: [(String, BS.ByteString)]
 pages =
     [ ("index.md", bs "- [Guide](./guide/index.md)\n- [Reference](./ref/index.md)\n")
     , ("guide/index.md", bs "[Intro](./intro.md) [Setup](./setup.md) [API](../ref/api.md)\n")
@@ -52,38 +39,38 @@ spec =
     describe "Verso.LinkIndex" $ do
         describe "buildIndex" $ do
             it "records each page's resolved in-tree .md link targets (no asset edges)" $ do
-                let ix = buildIndex pages
-                sort (outboundOf "guide/index.md" ix)
-                    `shouldBe` sort ["guide/intro.md", "guide/setup.md", "ref/api.md"]
+                let ix = LinkIndex.buildIndex pages
+                List.sort (LinkIndex.outboundOf "guide/index.md" ix)
+                    `shouldBe` List.sort ["guide/intro.md", "guide/setup.md", "ref/api.md"]
                 -- the asset reference is not an edge
-                sort (outboundOf "ref/api.md" ix) `shouldBe` ["guide/intro.md"]
+                List.sort (LinkIndex.outboundOf "ref/api.md" ix) `shouldBe` ["guide/intro.md"]
 
             it "inverts the graph into a referrer map" $ do
-                let ix = buildIndex pages
-                sort (inboundOf "ref/api.md" ix)
-                    `shouldBe` sort ["guide/index.md", "guide/intro.md", "ref/index.md"]
-                sort (inboundOf "guide/intro.md" ix)
-                    `shouldBe` sort ["guide/index.md", "guide/setup.md", "ref/api.md"]
+                let ix = LinkIndex.buildIndex pages
+                List.sort (LinkIndex.inboundOf "ref/api.md" ix)
+                    `shouldBe` List.sort ["guide/index.md", "guide/intro.md", "ref/index.md"]
+                List.sort (LinkIndex.inboundOf "guide/intro.md" ix)
+                    `shouldBe` List.sort ["guide/index.md", "guide/setup.md", "ref/api.md"]
 
             it "yields no inbound entry for a never-linked or asset target" $ do
-                let ix = buildIndex pages
-                inboundOf "assets/diagram.png" ix `shouldBe` []
-                inboundOf "index.md" ix `shouldBe` []
+                let ix = LinkIndex.buildIndex pages
+                LinkIndex.inboundOf "assets/diagram.png" ix `shouldBe` []
+                LinkIndex.inboundOf "index.md" ix `shouldBe` []
 
         describe "updatePage" $ do
             it "patches the inverse when a page's links change" $ do
-                let ix = updatePage "guide/setup.md" (bs "now links [API](../ref/api.md)\n") (buildIndex pages)
+                let ix = LinkIndex.updatePage "guide/setup.md" (bs "now links [API](../ref/api.md)\n") (LinkIndex.buildIndex pages)
                 -- setup no longer links to intro, now links to api
-                sort (inboundOf "guide/intro.md" ix) `shouldBe` sort ["guide/index.md", "ref/api.md"]
-                sort (inboundOf "ref/api.md" ix)
-                    `shouldBe` sort ["guide/index.md", "guide/intro.md", "guide/setup.md", "ref/index.md"]
+                List.sort (LinkIndex.inboundOf "guide/intro.md" ix) `shouldBe` List.sort ["guide/index.md", "ref/api.md"]
+                List.sort (LinkIndex.inboundOf "ref/api.md" ix)
+                    `shouldBe` List.sort ["guide/index.md", "guide/intro.md", "guide/setup.md", "ref/index.md"]
 
             it "rebuilds equal to incremental updates (no drift)" $ do
                 let incremental =
-                        updatePage "ref/api.md" (bs "[Guide](../guide/index.md)\n") $
-                            updatePage "guide/setup.md" (bs "[API](../ref/api.md)\n") (buildIndex pages)
+                        LinkIndex.updatePage "ref/api.md" (bs "[Guide](../guide/index.md)\n") $
+                            LinkIndex.updatePage "guide/setup.md" (bs "[API](../ref/api.md)\n") (LinkIndex.buildIndex pages)
                     rebuilt =
-                        buildIndex
+                        LinkIndex.buildIndex
                             ( ("guide/setup.md", bs "[API](../ref/api.md)\n")
                                 : ("ref/api.md", bs "[Guide](../guide/index.md)\n")
                                 : filter ((`notElem` ["guide/setup.md", "ref/api.md"]) . fst) pages
@@ -92,61 +79,61 @@ spec =
 
         describe "removePage" $ do
             it "drops the page's outbound edges from the inverse" $ do
-                let ix = removePage "guide/intro.md" (buildIndex pages)
-                outboundOf "guide/intro.md" ix `shouldBe` []
+                let ix = LinkIndex.removePage "guide/intro.md" (LinkIndex.buildIndex pages)
+                LinkIndex.outboundOf "guide/intro.md" ix `shouldBe` []
                 -- intro's outbound edges withdrawn, but guide/index.md still links to setup and api
-                sort (inboundOf "guide/setup.md" ix) `shouldBe` ["guide/index.md"]
-                sort (inboundOf "ref/api.md" ix) `shouldBe` sort ["guide/index.md", "ref/index.md"]
+                List.sort (LinkIndex.inboundOf "guide/setup.md" ix) `shouldBe` ["guide/index.md"]
+                List.sort (LinkIndex.inboundOf "ref/api.md" ix) `shouldBe` List.sort ["guide/index.md", "ref/index.md"]
 
             it "equals a rebuild without the removed page as a source" $ do
-                let removed = removePage "guide/intro.md" (buildIndex pages)
-                    rebuilt = buildIndex (filter ((/= "guide/intro.md") . fst) pages)
+                let removed = LinkIndex.removePage "guide/intro.md" (LinkIndex.buildIndex pages)
+                    rebuilt = LinkIndex.buildIndex (filter ((/= "guide/intro.md") . fst) pages)
                 removed `shouldBe` rebuilt
 
         describe "relocatePage" $ do
             it "re-keys a moved page to its new path and body" $ do
                 let ix =
-                        relocatePage
+                        LinkIndex.relocatePage
                             "guide/intro.md"
                             "ref/intro.md"
                             (bs "[Setup](../guide/setup.md) [API](./api.md)\n")
-                            (buildIndex pages)
-                outboundOf "guide/intro.md" ix `shouldBe` []
-                sort (outboundOf "ref/intro.md" ix)
-                    `shouldBe` sort ["guide/setup.md", "ref/api.md"]
-                sort (inboundOf "ref/api.md" ix)
-                    `shouldBe` sort ["guide/index.md", "ref/index.md", "ref/intro.md"]
+                            (LinkIndex.buildIndex pages)
+                LinkIndex.outboundOf "guide/intro.md" ix `shouldBe` []
+                List.sort (LinkIndex.outboundOf "ref/intro.md" ix)
+                    `shouldBe` List.sort ["guide/setup.md", "ref/api.md"]
+                List.sort (LinkIndex.inboundOf "ref/api.md" ix)
+                    `shouldBe` List.sort ["guide/index.md", "ref/index.md", "ref/intro.md"]
 
         describe "relocateIndex" $ do
             it "equals a rebuild from the relocated edges (no drift)" $ do
-                let ix = buildIndex pages
-                    reloc p = fromMaybe p (relocatePath "guide" "ref/guide" p)
-                    oracle = indexFromEdges [(reloc p, map reloc ts) | (p, ts) <- outboundEdges ix]
-                relocateIndex "guide" "ref/guide" ix `shouldBe` oracle
+                let ix = LinkIndex.buildIndex pages
+                    reloc p = Maybe.fromMaybe p (DocumentLinks.relocatePath "guide" "ref/guide" p)
+                    oracle = LinkIndex.indexFromEdges [(reloc p, map reloc ts) | (p, ts) <- LinkIndex.outboundEdges ix]
+                LinkIndex.relocateIndex "guide" "ref/guide" ix `shouldBe` oracle
 
         describe "referrers (agrees with referrersMatching)" $ do
             it "finds the referrers of a page delete target" $ do
-                let ix = buildIndex pages
+                let ix = LinkIndex.buildIndex pages
                     matches = (== "ref/api.md")
                     excluded = ["ref/index.md", "ref/api.md"]
-                sort (referrers matches excluded ix)
-                    `shouldBe` sort (dedup (map fst (referrersMatching matches excluded pages)))
+                List.sort (LinkIndex.referrers matches excluded ix)
+                    `shouldBe` List.sort (dedup (map fst (DocumentLinks.referrersMatching matches excluded pages)))
 
             it "finds the referrers into a section delete subtree" $ do
-                let ix = buildIndex pages
+                let ix = LinkIndex.buildIndex pages
                     matches = inSubtree "ref"
                     excluded = "index.md" : ["ref/index.md", "ref/api.md"]
-                sort (referrers matches excluded ix)
-                    `shouldBe` sort (dedup (map fst (referrersMatching matches excluded pages)))
+                List.sort (LinkIndex.referrers matches excluded ix)
+                    `shouldBe` List.sort (dedup (map fst (DocumentLinks.referrersMatching matches excluded pages)))
 
         describe "rewriteCandidates (agrees with planMoveRewrites)" $ do
             it "is a superset that drops no page planMoveRewrites changes" $ do
-                let ix = buildIndex pages
+                let ix = LinkIndex.buildIndex pages
                     move = ("guide", "ref/guide")
-                    candidates = rewriteCandidates (inSubtree "guide") ix
+                    candidates = LinkIndex.rewriteCandidates (inSubtree "guide") ix
                     candidatePages = filter ((`elem` candidates) . fst) pages
-                sort (map fst (planMoveRewrites move candidatePages))
-                    `shouldBe` sort (map fst (planMoveRewrites move pages))
+                List.sort (map fst (DocumentLinks.planMoveRewrites move candidatePages))
+                    `shouldBe` List.sort (map fst (DocumentLinks.planMoveRewrites move pages))
 
 -- | Order-independent dedup (the index returns a page set; the scan returns a row per link).
 dedup :: [String] -> [String]

@@ -1,13 +1,13 @@
 module Verso.TreeMoveSpec (spec) where
 
-import Control.Monad (forM_, void, when)
+import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
-import MicroHttp.FileSystem (removeEmptyDir, removeFilePath)
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
+import qualified MicroHttp.FileSystem as FileSystem
+import qualified System.Directory as Directory
 import Test.Hspec
-import Verso.LinkIndexStore (newLinkIndexStore, openLinkIndex)
-import Verso.OperationLog (OpType (..), Operation (..))
-import Verso.TreeMove (DeleteOutcome (..), MovePlan (..), ReplayEntry (..), deleteTarget, indexRelevant, movePage, moveSection, replayLog, restoreFromTrash, scanRelevant)
+import qualified Verso.LinkIndexStore as LinkIndexStore
+import qualified Verso.OperationLog as OperationLog
+import qualified Verso.TreeMove as TreeMove
 
 root :: FilePath
 root = "build/tree-move-spec"
@@ -15,20 +15,20 @@ root = "build/tree-move-spec"
 -- | Recursively empties and recreates the fixture tree (no runIO/beforeAll here).
 removeTree :: FilePath -> IO ()
 removeTree dir = do
-    isDir <- doesDirectoryExist dir
-    when isDir $ do
-        names <- listDirectory dir
-        forM_ names $ \name -> do
+    isDir <- Directory.doesDirectoryExist dir
+    Monad.when isDir $ do
+        names <- Directory.listDirectory dir
+        Monad.forM_ names $ \name -> do
             let path = dir ++ "/" ++ name
-            sub <- doesDirectoryExist path
-            if sub then removeTree path else void (removeFilePath path)
-        _ <- removeEmptyDir dir
+            sub <- Directory.doesDirectoryExist path
+            if sub then removeTree path else Monad.void (FileSystem.removeFilePath path)
+        _ <- FileSystem.removeEmptyDir dir
         pure ()
 
 writeAt :: FilePath -> String -> IO ()
 writeAt rel content = do
     let path = root ++ "/" ++ rel
-    createDirectoryIfMissing True (parentOf path)
+    Directory.createDirectoryIfMissing True (parentOf path)
     BS.writeFile path (BS.pack content)
   where
     parentOf = reverse . drop 1 . dropWhile (/= '/') . reverse
@@ -42,7 +42,7 @@ an outside page linking into @sub@. The root index.md lists @sub@ as a grid card
 seedFixture :: IO ()
 seedFixture = do
     removeTree root
-    createDirectoryIfMissing True root
+    Directory.createDirectoryIfMissing True root
     writeAt
         "index.md"
         "# Root\n\n<div class=\"grid cards\" markdown>\n\n- :material-x: [**Sub**](./sub/index.md) <span class=\"oracle-card-description\">d</span>\n\n</div>\n"
@@ -58,7 +58,7 @@ mover); @mover.md@ has a sidecar image entry. Folder @b@ is the destination.
 seedPageFixture :: IO ()
 seedPageFixture = do
     removeTree root
-    createDirectoryIfMissing True root
+    Directory.createDirectoryIfMissing True root
     writeAt "a/index.md" "# A\n\n- [Mover](./mover.md)\n- [Sibling](./sib.md)\n"
     writeAt "a/mover.md" "# Mover\n\n![e](assets/excl.png) and ![s](assets/shared.png) and [Sib](./sib.md)\n"
     writeAt "a/sib.md" "# Sib\n\n![s](assets/shared.png) and [Mover](./mover.md)\n"
@@ -74,7 +74,7 @@ links to @refed.md@. The root index.md lists @lonely@ and @other@ as bullets.
 seedDeleteFixture :: IO ()
 seedDeleteFixture = do
     removeTree root
-    createDirectoryIfMissing True root
+    Directory.createDirectoryIfMissing True root
     writeAt "index.md" "# Root\n\n- [Lonely](./lonely.md)\n- [Other](./other.md)\n"
     writeAt "lonely.md" "# Lonely\n\n![o](assets/only.png) and ![s](assets/shared.png)\n"
     writeAt "other.md" "# Other\n\n![s](assets/shared.png) and [Refed](./refed.md)\n"
@@ -87,21 +87,21 @@ trashRoot :: FilePath
 trashRoot = "build/tree-delete-trash"
 
 -- | The plan from a successful result, or a sentinel (so a wrong 'Left' fails an assertion below).
-planOr :: Either String MovePlan -> MovePlan
+planOr :: Either String TreeMove.MovePlan -> TreeMove.MovePlan
 planOr (Right plan) = plan
-planOr (Left _) = MovePlan "" "" [] False
+planOr (Left _) = TreeMove.MovePlan "" "" [] False
 
 spec :: Spec
 spec = do
     describe "Verso.TreeMove.moveSection" $ do
         it "moves a section folder, rewrites inbound links, and relocates the listing card" $ do
             seedFixture
-            result <- moveSection scanRelevant root "sub" "dest" "sub" True
+            result <- TreeMove.moveSection TreeMove.scanRelevant root "sub" "dest" "sub" True
             isLeft result `shouldBe` False
-            planApplied (planOr result) `shouldBe` True
+            TreeMove.planApplied (planOr result) `shouldBe` True
             -- The folder moved.
-            doesDirectoryExist (root ++ "/sub") `shouldReturn` False
-            doesFileExist (root ++ "/dest/sub/index.md") `shouldReturn` True
+            Directory.doesDirectoryExist (root ++ "/sub") `shouldReturn` False
+            Directory.doesFileExist (root ++ "/dest/sub/index.md") `shouldReturn` True
             -- The outside inbound link is repointed.
             other <- readAt "other.md"
             other `shouldBe` "See [Sub](./dest/sub/index.md).\n"
@@ -117,44 +117,44 @@ spec = do
 
         it "previews without writing when confirm is False" $ do
             seedFixture
-            result <- moveSection scanRelevant root "sub" "dest" "sub" False
+            result <- TreeMove.moveSection TreeMove.scanRelevant root "sub" "dest" "sub" False
             isLeft result `shouldBe` False
-            planApplied (planOr result) `shouldBe` False
-            ("other.md" `elem` planChanged (planOr result)) `shouldBe` True
-            doesDirectoryExist (root ++ "/sub") `shouldReturn` True
+            TreeMove.planApplied (planOr result) `shouldBe` False
+            ("other.md" `elem` TreeMove.planChanged (planOr result)) `shouldBe` True
+            Directory.doesDirectoryExist (root ++ "/sub") `shouldReturn` True
 
         it "refuses to move the root" $ do
             seedFixture
-            result <- moveSection scanRelevant root "" "dest" "x" True
+            result <- TreeMove.moveSection TreeMove.scanRelevant root "" "dest" "x" True
             isLeft result `shouldBe` True
 
         it "refuses to move a section into itself or a descendant" $ do
             seedFixture
-            result <- moveSection scanRelevant root "sub" "sub" "inner" True
+            result <- TreeMove.moveSection TreeMove.scanRelevant root "sub" "sub" "inner" True
             isLeft result `shouldBe` True
 
         it "refuses when the destination already exists" $ do
             seedFixture
-            createDirectoryIfMissing True (root ++ "/dest/sub")
-            result <- moveSection scanRelevant root "sub" "dest" "sub" True
+            Directory.createDirectoryIfMissing True (root ++ "/dest/sub")
+            result <- TreeMove.moveSection TreeMove.scanRelevant root "sub" "dest" "sub" True
             isLeft result `shouldBe` True
 
     describe "Verso.TreeMove.movePage" $ do
         it "moves a page cross-folder: relocates exclusive, copies shared, co-moves meta, rewrites links" $ do
             seedPageFixture
-            result <- movePage scanRelevant root "a/mover.md" "b" "mover" True
+            result <- TreeMove.movePage TreeMove.scanRelevant root "a/mover.md" "b" "mover" True
             isLeft result `shouldBe` False
-            doesFileExist (root ++ "/a/mover.md") `shouldReturn` False
-            doesFileExist (root ++ "/b/mover.md") `shouldReturn` True
+            Directory.doesFileExist (root ++ "/a/mover.md") `shouldReturn` False
+            Directory.doesFileExist (root ++ "/b/mover.md") `shouldReturn` True
             -- Exclusive asset relocated (gone from source, present at destination).
-            doesFileExist (root ++ "/a/assets/excl.png") `shouldReturn` False
-            doesFileExist (root ++ "/b/assets/excl.png") `shouldReturn` True
+            Directory.doesFileExist (root ++ "/a/assets/excl.png") `shouldReturn` False
+            Directory.doesFileExist (root ++ "/b/assets/excl.png") `shouldReturn` True
             -- Shared asset copied (stays at source, present at destination).
-            doesFileExist (root ++ "/a/assets/shared.png") `shouldReturn` True
-            doesFileExist (root ++ "/b/assets/shared.png") `shouldReturn` True
+            Directory.doesFileExist (root ++ "/a/assets/shared.png") `shouldReturn` True
+            Directory.doesFileExist (root ++ "/b/assets/shared.png") `shouldReturn` True
             -- Sidecar meta directory co-moved.
-            doesFileExist (root ++ "/a/meta/mover.meta/images.yaml") `shouldReturn` False
-            doesFileExist (root ++ "/b/meta/mover.meta/images.yaml") `shouldReturn` True
+            Directory.doesFileExist (root ++ "/a/meta/mover.meta/images.yaml") `shouldReturn` False
+            Directory.doesFileExist (root ++ "/b/meta/mover.meta/images.yaml") `shouldReturn` True
             -- Moved page keeps bare asset refs and repoints its outward link.
             moved <- readAt "b/mover.md"
             moved `shouldBe` "# Mover\n\n![e](assets/excl.png) and ![s](assets/shared.png) and [Sib](../a/sib.md)\n"
@@ -169,46 +169,46 @@ spec = do
 
         it "renames a page in the same folder, co-moving meta and fixing inbound links" $ do
             seedPageFixture
-            result <- movePage scanRelevant root "a/mover.md" "a" "renamed" True
+            result <- TreeMove.movePage TreeMove.scanRelevant root "a/mover.md" "a" "renamed" True
             isLeft result `shouldBe` False
-            doesFileExist (root ++ "/a/mover.md") `shouldReturn` False
-            doesFileExist (root ++ "/a/renamed.md") `shouldReturn` True
-            doesFileExist (root ++ "/a/meta/renamed.meta/images.yaml") `shouldReturn` True
+            Directory.doesFileExist (root ++ "/a/mover.md") `shouldReturn` False
+            Directory.doesFileExist (root ++ "/a/renamed.md") `shouldReturn` True
+            Directory.doesFileExist (root ++ "/a/meta/renamed.meta/images.yaml") `shouldReturn` True
             sib <- readAt "a/sib.md"
             sib `shouldBe` "# Sib\n\n![s](assets/shared.png) and [Mover](./renamed.md)\n"
 
         it "refuses when the destination page already exists" $ do
             seedPageFixture
             writeAt "b/mover.md" "# Existing\n"
-            result <- movePage scanRelevant root "a/mover.md" "b" "mover" True
+            result <- TreeMove.movePage TreeMove.scanRelevant root "a/mover.md" "b" "mover" True
             isLeft result `shouldBe` True
 
     describe "Verso.TreeMove.deleteTarget" $ do
         it "refuses a delete while another page links to the target, listing the referrer" $ do
             seedDeleteFixture
             removeTree trashRoot
-            result <- deleteTarget scanRelevant root trashRoot "refed.md" "0" 0
+            result <- TreeMove.deleteTarget TreeMove.scanRelevant root trashRoot "refed.md" "0" 0
             case result of
-                Right (Refused referrers) -> map fst referrers `shouldBe` ["other.md"]
+                Right (TreeMove.Refused referrers) -> map fst referrers `shouldBe` ["other.md"]
                 other -> show other `shouldBe` "Right (Refused [...])"
-            doesFileExist (root ++ "/refed.md") `shouldReturn` True
+            Directory.doesFileExist (root ++ "/refed.md") `shouldReturn` True
 
         it "moves an unreferenced page (md, meta, exclusive assets) to trash and removes its listing" $ do
             seedDeleteFixture
             removeTree trashRoot
-            result <- deleteTarget scanRelevant root trashRoot "lonely.md" "7" 0
+            result <- TreeMove.deleteTarget TreeMove.scanRelevant root trashRoot "lonely.md" "7" 0
             case result of
-                Right (Deleted tid p k) -> (tid, p, k) `shouldBe` ("7", "lonely.md", "page")
+                Right (TreeMove.Deleted tid p k) -> (tid, p, k) `shouldBe` ("7", "lonely.md", "page")
                 other -> show other `shouldBe` "Right (Deleted ...)"
-            doesFileExist (root ++ "/lonely.md") `shouldReturn` False
+            Directory.doesFileExist (root ++ "/lonely.md") `shouldReturn` False
             -- Exclusive asset moved, shared asset kept.
-            doesFileExist (root ++ "/assets/only.png") `shouldReturn` False
-            doesFileExist (root ++ "/assets/shared.png") `shouldReturn` True
+            Directory.doesFileExist (root ++ "/assets/only.png") `shouldReturn` False
+            Directory.doesFileExist (root ++ "/assets/shared.png") `shouldReturn` True
             -- Sidecar meta moved out.
-            doesFileExist (root ++ "/meta/lonely.meta/images.yaml") `shouldReturn` False
+            Directory.doesFileExist (root ++ "/meta/lonely.meta/images.yaml") `shouldReturn` False
             -- Trash entry written with manifest and payload.
-            doesFileExist (trashRoot ++ "/7/manifest") `shouldReturn` True
-            doesFileExist (trashRoot ++ "/7/page.md") `shouldReturn` True
+            Directory.doesFileExist (trashRoot ++ "/7/manifest") `shouldReturn` True
+            Directory.doesFileExist (trashRoot ++ "/7/page.md") `shouldReturn` True
             -- Listing bullet removed.
             idx <- readAt "index.md"
             ("Lonely" `notInfix` idx) `shouldBe` True
@@ -217,49 +217,49 @@ spec = do
         it "restores a trashed page to its origin, re-adding the listing entry" $ do
             seedDeleteFixture
             removeTree trashRoot
-            _ <- deleteTarget scanRelevant root trashRoot "lonely.md" "7" 0
-            result <- restoreFromTrash root trashRoot "7"
+            _ <- TreeMove.deleteTarget TreeMove.scanRelevant root trashRoot "lonely.md" "7" 0
+            result <- TreeMove.restoreFromTrash root trashRoot "7"
             result `shouldBe` Right ("lonely.md", "page")
-            doesFileExist (root ++ "/lonely.md") `shouldReturn` True
-            doesFileExist (root ++ "/assets/only.png") `shouldReturn` True
-            doesFileExist (root ++ "/meta/lonely.meta/images.yaml") `shouldReturn` True
+            Directory.doesFileExist (root ++ "/lonely.md") `shouldReturn` True
+            Directory.doesFileExist (root ++ "/assets/only.png") `shouldReturn` True
+            Directory.doesFileExist (root ++ "/meta/lonely.meta/images.yaml") `shouldReturn` True
             idx <- readAt "index.md"
             ("[Lonely](./lonely.md)" `infixOf` idx) `shouldBe` True
 
         it "refuses to restore when the original location is occupied" $ do
             seedDeleteFixture
             removeTree trashRoot
-            _ <- deleteTarget scanRelevant root trashRoot "lonely.md" "7" 0
+            _ <- TreeMove.deleteTarget TreeMove.scanRelevant root trashRoot "lonely.md" "7" 0
             writeAt "lonely.md" "# Recreated\n"
-            result <- restoreFromTrash root trashRoot "7"
+            result <- TreeMove.restoreFromTrash root trashRoot "7"
             isLeft result `shouldBe` True
 
     describe "Verso.TreeMove.replayLog" $ do
         it "applies in-order ops onto a fresh corpus and skips ones whose precondition fails" $ do
             removeTree root
             removeTree trashRoot
-            createDirectoryIfMissing True (root ++ "/x")
-            createDirectoryIfMissing True (root ++ "/y")
+            Directory.createDirectoryIfMissing True (root ++ "/x")
+            Directory.createDirectoryIfMissing True (root ++ "/y")
             writeAt "index.md" "# Root\n"
             writeAt "x/index.md" "# X\n"
             writeAt "y/index.md" "# Y\n"
             let op t f to s =
-                    Operation{opType = t, opKind = "section", opFrom = Just f, opTo = Just to, opSeq = s, opTs = "t", opTrash = Nothing}
-            report <- replayLog root trashRoot [op OpMove "x" "y/x" 0, op OpMove "ghost" "y/ghost" 1]
-            map (\e -> (reSeq e, isApplied (reStatus e))) report `shouldBe` [(0, True), (1, False)]
-            doesDirectoryExist (root ++ "/y/x") `shouldReturn` True
-            doesDirectoryExist (root ++ "/x") `shouldReturn` False
+                    OperationLog.Operation{OperationLog.opType = t, OperationLog.opKind = "section", OperationLog.opFrom = Just f, OperationLog.opTo = Just to, OperationLog.opSeq = s, OperationLog.opTs = "t", OperationLog.opTrash = Nothing}
+            report <- TreeMove.replayLog root trashRoot [op OperationLog.OpMove "x" "y/x" 0, op OperationLog.OpMove "ghost" "y/ghost" 1]
+            map (\e -> (TreeMove.reSeq e, isApplied (TreeMove.reStatus e))) report `shouldBe` [(0, True), (1, False)]
+            Directory.doesDirectoryExist (root ++ "/y/x") `shouldReturn` True
+            Directory.doesDirectoryExist (root ++ "/x") `shouldReturn` False
 
     -- The index backend (RFC-0029) must produce identical observable outcomes to the
     -- scan: it only changes which pages are read, not what the planners compute.
     describe "index-backed move/delete (RFC-0029, indexRelevant)" $ do
         it "moves a section via the index, rewriting inbound links and the listing as the scan does" $ do
             seedFixture
-            store <- newLinkIndexStore
-            openLinkIndex root "build/tree-move-spec.idx" store
-            result <- moveSection (indexRelevant store) root "sub" "dest" "sub" True
+            store <- LinkIndexStore.newLinkIndexStore
+            LinkIndexStore.openLinkIndex root "build/tree-move-spec.idx" store
+            result <- TreeMove.moveSection (TreeMove.indexRelevant store) root "sub" "dest" "sub" True
             isLeft result `shouldBe` False
-            doesFileExist (root ++ "/dest/sub/index.md") `shouldReturn` True
+            Directory.doesFileExist (root ++ "/dest/sub/index.md") `shouldReturn` True
             other <- readAt "other.md"
             other `shouldBe` "See [Sub](./dest/sub/index.md).\n"
             destIndex <- readAt "dest/index.md"
@@ -268,25 +268,25 @@ spec = do
         it "refuses a referenced delete via the index, listing the same referrer" $ do
             seedDeleteFixture
             removeTree trashRoot
-            store <- newLinkIndexStore
-            openLinkIndex root "build/tree-move-spec.idx" store
-            result <- deleteTarget (indexRelevant store) root trashRoot "refed.md" "0" 0
+            store <- LinkIndexStore.newLinkIndexStore
+            LinkIndexStore.openLinkIndex root "build/tree-move-spec.idx" store
+            result <- TreeMove.deleteTarget (TreeMove.indexRelevant store) root trashRoot "refed.md" "0" 0
             case result of
-                Right (Refused referrers) -> map fst referrers `shouldBe` ["other.md"]
+                Right (TreeMove.Refused referrers) -> map fst referrers `shouldBe` ["other.md"]
                 other -> show other `shouldBe` "Right (Refused [...])"
-            doesFileExist (root ++ "/refed.md") `shouldReturn` True
+            Directory.doesFileExist (root ++ "/refed.md") `shouldReturn` True
 
         it "trashes an unreferenced page via the index, as the scan does" $ do
             seedDeleteFixture
             removeTree trashRoot
-            store <- newLinkIndexStore
-            openLinkIndex root "build/tree-move-spec.idx" store
-            result <- deleteTarget (indexRelevant store) root trashRoot "lonely.md" "7" 0
+            store <- LinkIndexStore.newLinkIndexStore
+            LinkIndexStore.openLinkIndex root "build/tree-move-spec.idx" store
+            result <- TreeMove.deleteTarget (TreeMove.indexRelevant store) root trashRoot "lonely.md" "7" 0
             case result of
-                Right (Deleted tid p k) -> (tid, p, k) `shouldBe` ("7", "lonely.md", "page")
+                Right (TreeMove.Deleted tid p k) -> (tid, p, k) `shouldBe` ("7", "lonely.md", "page")
                 other -> show other `shouldBe` "Right (Deleted ...)"
-            doesFileExist (root ++ "/lonely.md") `shouldReturn` False
-            doesFileExist (trashRoot ++ "/7/manifest") `shouldReturn` True
+            Directory.doesFileExist (root ++ "/lonely.md") `shouldReturn` False
+            Directory.doesFileExist (trashRoot ++ "/7/manifest") `shouldReturn` True
 
 isApplied :: String -> Bool
 isApplied = (== "applied")

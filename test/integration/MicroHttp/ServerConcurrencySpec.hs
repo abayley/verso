@@ -1,13 +1,13 @@
 module MicroHttp.ServerConcurrencySpec (spec) where
 
-import Control.Concurrent (forkIO)
-import Control.Concurrent.MVar
-import Control.Monad (void)
+import qualified Control.Concurrent as Concurrent
+import qualified Control.Concurrent.MVar as MVar
+import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
-import MicroHttp.Http
-import MicroHttp.Network.Socket
-import MicroHttp.Router (get, serveRoutes)
-import MicroHttp.Server (Application, defaultSettings, handleClient, parseLimits)
+import qualified MicroHttp.Http as Http
+import qualified MicroHttp.Network.Socket as Socket
+import qualified MicroHttp.Router as Router
+import qualified MicroHttp.Server as Server
 import Test.Hspec
 
 -- | Enough connections to interleave, kept small so the example stays fast.
@@ -34,30 +34,30 @@ forked client drives it, and collects whether each response came back whole.
 -}
 runConcurrentHandlers :: Int -> IO [Bool]
 runConcurrentHandlers count = do
-    opened <- listenTcp HostAny (Port 0) 16
+    opened <- Socket.listenTcp Socket.HostAny (Socket.Port 0) 16
     case opened of
         Left err -> fail' ("listenTcp failed: " ++ show err)
         Right lsock -> do
-            queried <- boundPort lsock
+            queried <- Socket.boundPort lsock
             case queried of
                 Left err -> fail' ("boundPort failed: " ++ show err)
                 Right port -> do
                     slots <- mapM (startPair lsock port) [0 .. count - 1]
-                    results <- mapM takeMVar slots
-                    _ <- closeListenSocket lsock
+                    results <- mapM MVar.takeMVar slots
+                    _ <- Socket.closeListenSocket lsock
                     return results
 
 -- | Connects and accepts one pair, then forks the handler and the client.
-startPair :: ListenSocket -> Port -> Int -> IO (MVar Bool)
+startPair :: Socket.ListenSocket -> Socket.Port -> Int -> IO (MVar.MVar Bool)
 startPair lsock port index = do
     let tag = toEnum (fromEnum 'a' + index)
-    connected <- connectTcp loopback port
-    accepted <- accept lsock
+    connected <- Socket.connectTcp loopback port
+    accepted <- Socket.accept lsock
     case (connected, accepted) of
         (Right client, Right (served, conn)) -> do
-            slot <- newEmptyMVar
-            _ <- forkIO (void (handleClient defaultSettings (taggedApp tag) served conn))
-            _ <- forkIO (runClient client tag slot)
+            slot <- MVar.newEmptyMVar
+            _ <- Concurrent.forkIO (Monad.void (Server.handleClient Server.defaultSettings (taggedApp tag) served conn))
+            _ <- Concurrent.forkIO (runClient client tag slot)
             return slot
         _ -> fail' "connect/accept failed"
 
@@ -65,26 +65,26 @@ startPair lsock port index = do
 It frames the request first (like a real application), so the large lazily
 built body is forced after the read, matching the production path.
 -}
-taggedApp :: Char -> Application
+taggedApp :: Char -> Http.Application
 taggedApp tag =
-    serveRoutes
-        (parseLimits defaultSettings)
-        [get "/" (\_ _ -> pure (Response okStatus [] (StrictBody (BS.pack (replicate bodySize tag)))))]
+    Router.serveRoutes
+        (Server.parseLimits Server.defaultSettings)
+        [Router.get "/" (\_ _ -> pure (Http.Response Http.okStatus [] (Http.StrictBody (BS.pack (replicate bodySize tag)))))]
 
 {- | Sends a minimal request, reads the whole response, and reports whether
 the body is exactly @bodySize@ bytes of @tag@.
 -}
-runClient :: ClientSocket -> Char -> MVar Bool -> IO ()
+runClient :: Socket.ClientSocket -> Char -> MVar.MVar Bool -> IO ()
 runClient client tag slot = do
-    _ <- sendAll client (BS.pack "GET / HTTP/1.1\r\n\r\n")
+    _ <- Socket.sendAll client (BS.pack "GET / HTTP/1.1\r\n\r\n")
     response <- readAll client BS.empty
     let body = afterHeaders response
-    putMVar slot (BS.length body == bodySize && BS.all (== tag) body)
+    MVar.putMVar slot (BS.length body == bodySize && BS.all (== tag) body)
 
 -- | Reads to end of stream.
-readAll :: ClientSocket -> BS.ByteString -> IO BS.ByteString
+readAll :: Socket.ClientSocket -> BS.ByteString -> IO BS.ByteString
 readAll client acc = do
-    received <- recv client 16384
+    received <- Socket.recv client 16384
     case received of
         Left _ -> return acc
         Right bytes
@@ -96,8 +96,8 @@ afterHeaders response =
     case BS.breakSubstring (BS.pack "\r\n\r\n") response of
         (_, rest) -> BS.drop 4 rest
 
-loopback :: Host
-loopback = HostIPv4 127 0 0 1
+loopback :: Socket.Host
+loopback = Socket.HostIPv4 127 0 0 1
 
 fail' :: String -> IO a
 fail' message = do

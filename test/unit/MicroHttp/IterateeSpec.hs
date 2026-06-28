@@ -1,8 +1,8 @@
 module MicroHttp.IterateeSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
-import Data.IORef
-import MicroHttp.Iteratee
+import qualified Data.IORef as IORef
+import qualified MicroHttp.Iteratee as Iteratee
 import Test.Hspec
 
 {- | A domain-free error type, proving the core carries no HTTP or socket
@@ -28,56 +28,56 @@ spec =
             (result, _) <- drive ["", "ABC"] (takeExactly 3)
             result `shouldBe` Right (BS.pack "ABC")
         it "given end of stream delivered twice, when an iteratee has resolved, then the result is stable" $ do
-            let once = step (EndOfStream Nothing) collectAll
-                twice = step (EndOfStream Nothing) once
+            let once = step (Iteratee.EndOfStream Nothing) collectAll
+                twice = step (Iteratee.EndOfStream Nothing) once
             isDone once `shouldBe` True
             extract once `shouldBe` extract twice
             extract twice `shouldBe` Right (BS.pack "")
         it "given end of stream, when a consumer needs more input, then it resolves to a failure rather than NeedInput" $ do
-            let result = step (EndOfStream Nothing) (takeExactly 5)
+            let result = step (Iteratee.EndOfStream Nothing) (takeExactly 5)
             isFailed result `shouldBe` True
             isNeedInput result `shouldBe` False
         it "given a failing iteratee, when it fails mid-chunk, then IterFailed carries the unconsumed residue" $ do
-            let result = step (Chunk (BS.pack "LEFTOVER")) failOnInput
-            residueOf result `shouldBe` Just (Chunk (BS.pack "LEFTOVER"))
+            let result = step (Iteratee.Chunk (BS.pack "LEFTOVER")) failOnInput
+            residueOf result `shouldBe` Just (Iteratee.Chunk (BS.pack "LEFTOVER"))
         it "given a body within the bound, when reading strictly, then the whole body is returned" $ do
-            (result, _) <- drive ["hello", " world"] (readBodyStrict TooLarge 100)
+            (result, _) <- drive ["hello", " world"] (Iteratee.readBodyStrict TooLarge 100)
             result `shouldBe` Right (BS.pack "hello world")
         it "given a bound below the body size, when reading strictly, then the iteratee fails with the supplied error" $ do
-            (result, _) <- drive ["hello", " world"] (readBodyStrict TooLarge 3)
+            (result, _) <- drive ["hello", " world"] (Iteratee.readBodyStrict TooLarge 3)
             result `shouldBe` Left TooLarge
         it "given a takeN bound, when the inner iteratee consumes, then it sees exactly n bytes and outer residue is preserved" $ do
-            (result, _) <- drive ["AAAAABBB"] (pair (takeN 5 collectAll) collectAll)
+            (result, _) <- drive ["AAAAABBB"] (pair (Iteratee.takeN 5 collectAll) collectAll)
             result `shouldBe` Right (BS.pack "AAAAA", BS.pack "BBB")
         it "given a takeN bound, when the inner iteratee completes early, then the unread remainder stays in the outer residue" $ do
-            (result, _) <- drive ["AAABBBBBB"] (pair (takeN 10 (takeExactly 3)) collectAll)
+            (result, _) <- drive ["AAABBBBBB"] (pair (Iteratee.takeN 10 (takeExactly 3)) collectAll)
             result `shouldBe` Right (BS.pack "AAA", BS.pack "BBBBBB")
         it "given a strict enumerator, when run into a collecting consumer, then the value round-trips" $ do
-            final <- strictEnumerator (BS.pack "payload bytes") (readBodyStrict TooLarge 1000)
-            result <- run final
+            final <- Iteratee.strictEnumerator (BS.pack "payload bytes") (Iteratee.readBodyStrict TooLarge 1000)
+            result <- Iteratee.run final
             result `shouldBe` Right (BS.pack "payload bytes")
         it "given a bracketed resource enumerator, when the consumer completes, then the resource is released exactly once" $ do
             (acquire, release, readChunk, closeCount) <- fakeResource ["AB", "CD"]
-            final <- resourceEnumerator acquire release readChunk Boom (readBodyStrict TooLarge 1000)
-            result <- run final
+            final <- Iteratee.resourceEnumerator acquire release readChunk Boom (Iteratee.readBodyStrict TooLarge 1000)
+            result <- Iteratee.run final
             result `shouldBe` Right (BS.pack "ABCD")
             closeCount `shouldReturn` 1
         it "given a bracketed resource enumerator, when the consumer fails mid-stream, then the resource is still released" $ do
             (acquire, release, readChunk, closeCount) <- fakeResource ["AB", "CD"]
-            final <- resourceEnumerator acquire release readChunk Boom failOnInput
-            result <- run final
+            final <- Iteratee.resourceEnumerator acquire release readChunk Boom failOnInput
+            result <- Iteratee.run final
             isLeft result `shouldBe` True
             closeCount `shouldReturn` 1
         it "given a bracketed resource enumerator, when the consumer stops early, then the resource is released" $ do
             (acquire, release, readChunk, closeCount) <- fakeResource ["AAAA", "BBBB"]
-            final <- resourceEnumerator acquire release readChunk Boom (takeN 2 (readBodyStrict TooLarge 1000))
-            result <- run final
+            final <- Iteratee.resourceEnumerator acquire release readChunk Boom (Iteratee.takeN 2 (Iteratee.readBodyStrict TooLarge 1000))
+            result <- Iteratee.run final
             result `shouldBe` Right (BS.pack "AA")
             closeCount `shouldReturn` 1
         it "given a resource that fails to acquire, when enumerated, then the consumer sees the acquire error and nothing is released" $ do
             (_, release, readChunk, closeCount) <- fakeResource ["AB"]
-            final <- resourceEnumerator (return Nothing) release readChunk Boom (readBodyStrict TooLarge 1000)
-            result <- run final
+            final <- Iteratee.resourceEnumerator (return Nothing) release readChunk Boom (Iteratee.readBodyStrict TooLarge 1000)
+            result <- Iteratee.run final
             result `shouldBe` Left Boom
             closeCount `shouldReturn` 0
 
@@ -86,45 +86,45 @@ spec =
 {- | Reads exactly @total@ bytes, keeping any surplus as residue; fails if the
 stream ends first.
 -}
-takeExactly :: Int -> Iter TestError BS.ByteString
+takeExactly :: Int -> Iteratee.Iter TestError BS.ByteString
 takeExactly total = go total []
   where
     go remaining acc
-        | remaining <= 0 = Done (BS.concat (reverse acc)) (Chunk BS.empty)
-        | otherwise = NeedInput (consume remaining acc)
+        | remaining <= 0 = Iteratee.Done (BS.concat (reverse acc)) (Iteratee.Chunk BS.empty)
+        | otherwise = Iteratee.NeedInput (consume remaining acc)
     consume remaining acc s = case s of
-        Chunk bytes
+        Iteratee.Chunk bytes
             | BS.null bytes -> go remaining acc
             | BS.length bytes <= remaining -> go (remaining - BS.length bytes) (bytes : acc)
             | otherwise ->
                 let (taken, rest) = BS.splitAt remaining bytes
-                 in Done (BS.concat (reverse (taken : acc))) (Chunk rest)
-        EndOfStream merr -> IterFailed (incompleteError merr) (EndOfStream merr)
+                 in Iteratee.Done (BS.concat (reverse (taken : acc))) (Iteratee.Chunk rest)
+        Iteratee.EndOfStream merr -> Iteratee.IterFailed (incompleteError merr) (Iteratee.EndOfStream merr)
 
 -- | Reads to end of stream, returning the concatenation.
-collectAll :: Iter TestError BS.ByteString
+collectAll :: Iteratee.Iter TestError BS.ByteString
 collectAll = go []
   where
-    go acc = NeedInput (consume acc)
+    go acc = Iteratee.NeedInput (consume acc)
     consume acc s = case s of
-        Chunk bytes
+        Iteratee.Chunk bytes
             | BS.null bytes -> go acc
             | otherwise -> go (bytes : acc)
-        EndOfStream _ -> Done (BS.concat (reverse acc)) (EndOfStream Nothing)
+        Iteratee.EndOfStream _ -> Iteratee.Done (BS.concat (reverse acc)) (Iteratee.EndOfStream Nothing)
 
 -- | Fails on the first input, keeping it as residue.
-failOnInput :: Iter TestError ()
-failOnInput = NeedInput consume
+failOnInput :: Iteratee.Iter TestError ()
+failOnInput = Iteratee.NeedInput consume
   where
     consume s = case s of
-        Chunk bytes -> IterFailed Boom (Chunk bytes)
-        EndOfStream merr -> IterFailed (incompleteError merr) (EndOfStream merr)
+        Iteratee.Chunk bytes -> Iteratee.IterFailed Boom (Iteratee.Chunk bytes)
+        Iteratee.EndOfStream merr -> Iteratee.IterFailed (incompleteError merr) (Iteratee.EndOfStream merr)
 
 incompleteError :: Maybe TestError -> TestError
 incompleteError (Just err) = err
 incompleteError Nothing = Incomplete
 
-pair :: Iter e a -> Iter e b -> Iter e (a, b)
+pair :: Iteratee.Iter e a -> Iteratee.Iter e b -> Iteratee.Iter e (a, b)
 pair left right = do
     a <- left
     b <- right
@@ -136,82 +136,82 @@ reliance on garbage collection.
 -}
 fakeResource :: [String] -> IO (IO (Maybe ()), () -> IO (), () -> IO BS.ByteString, IO Int)
 fakeResource chunks = do
-    remaining <- newIORef (map BS.pack chunks)
-    closes <- newIORef (0 :: Int)
+    remaining <- IORef.newIORef (map BS.pack chunks)
+    closes <- IORef.newIORef (0 :: Int)
     let acquire = return (Just ())
         release () = do
-            count <- readIORef closes
-            writeIORef closes (count + 1)
+            count <- IORef.readIORef closes
+            IORef.writeIORef closes (count + 1)
         readChunk () = do
-            queued <- readIORef remaining
+            queued <- IORef.readIORef remaining
             case queued of
                 [] -> return BS.empty
                 chunk : rest -> do
-                    writeIORef remaining rest
+                    IORef.writeIORef remaining rest
                     return chunk
-    return (acquire, release, readChunk, readIORef closes)
+    return (acquire, release, readChunk, IORef.readIORef closes)
 
 -- Test harness.
 
 -- | Hands one stream value to an iteratee, mirroring the bind-time feed.
-step :: Stream e -> Iter e a -> Iter e a
+step :: Iteratee.Stream e -> Iteratee.Iter e a -> Iteratee.Iter e a
 step s it = case it of
-    NeedInput k -> k s
-    Done a _ -> Done a s
-    IterFailed err _ -> IterFailed err s
-    IterM _ -> it
+    Iteratee.NeedInput k -> k s
+    Iteratee.Done a _ -> Iteratee.Done a s
+    Iteratee.IterFailed err _ -> Iteratee.IterFailed err s
+    Iteratee.IterM _ -> it
 
 {- | Drives an iteratee with a scripted chunk list and reports the result with
 the number of times the producer was asked for input.
 -}
-drive :: [String] -> Iter TestError a -> IO (Either TestError a, Int)
+drive :: [String] -> Iteratee.Iter TestError a -> IO (Either TestError a, Int)
 drive chunks iter = do
-    remaining <- newIORef (map BS.pack chunks)
-    pulls <- newIORef (0 :: Int)
+    remaining <- IORef.newIORef (map BS.pack chunks)
+    pulls <- IORef.newIORef (0 :: Int)
     let enum it = case it of
-            Done _ _ -> return it
-            IterFailed _ _ -> return it
-            IterM m -> m >>= enum
-            NeedInput k -> do
-                count <- readIORef pulls
-                writeIORef pulls (count + 1)
-                queued <- readIORef remaining
+            Iteratee.Done _ _ -> return it
+            Iteratee.IterFailed _ _ -> return it
+            Iteratee.IterM m -> m >>= enum
+            Iteratee.NeedInput k -> do
+                count <- IORef.readIORef pulls
+                IORef.writeIORef pulls (count + 1)
+                queued <- IORef.readIORef remaining
                 case queued of
-                    [] -> enum (k (EndOfStream Nothing))
+                    [] -> enum (k (Iteratee.EndOfStream Nothing))
                     chunk : rest -> do
-                        writeIORef remaining rest
-                        enum (k (Chunk chunk))
+                        IORef.writeIORef remaining rest
+                        enum (k (Iteratee.Chunk chunk))
     final <- enum iter
-    result <- run final
-    pullCount <- readIORef pulls
+    result <- Iteratee.run final
+    pullCount <- IORef.readIORef pulls
     return (result, pullCount)
 
-extract :: Iter e a -> Either e a
+extract :: Iteratee.Iter e a -> Either e a
 extract it = case it of
-    Done a _ -> Right a
-    IterFailed err _ -> Left err
-    NeedInput _ -> error "extract: still needs input"
-    IterM _ -> error "extract: unresolved effect"
+    Iteratee.Done a _ -> Right a
+    Iteratee.IterFailed err _ -> Left err
+    Iteratee.NeedInput _ -> error "extract: still needs input"
+    Iteratee.IterM _ -> error "extract: unresolved effect"
 
-residueOf :: Iter e a -> Maybe (Stream e)
+residueOf :: Iteratee.Iter e a -> Maybe (Iteratee.Stream e)
 residueOf it = case it of
-    Done _ s -> Just s
-    IterFailed _ s -> Just s
+    Iteratee.Done _ s -> Just s
+    Iteratee.IterFailed _ s -> Just s
     _ -> Nothing
 
-isDone :: Iter e a -> Bool
+isDone :: Iteratee.Iter e a -> Bool
 isDone it = case it of
-    Done _ _ -> True
+    Iteratee.Done _ _ -> True
     _ -> False
 
-isFailed :: Iter e a -> Bool
+isFailed :: Iteratee.Iter e a -> Bool
 isFailed it = case it of
-    IterFailed _ _ -> True
+    Iteratee.IterFailed _ _ -> True
     _ -> False
 
-isNeedInput :: Iter e a -> Bool
+isNeedInput :: Iteratee.Iter e a -> Bool
 isNeedInput it = case it of
-    NeedInput _ -> True
+    Iteratee.NeedInput _ -> True
     _ -> False
 
 isLeft :: Either e a -> Bool

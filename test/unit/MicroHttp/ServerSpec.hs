@@ -1,28 +1,28 @@
 module MicroHttp.ServerSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
-import MicroHttp.Http
-import MicroHttp.Middleware (Application, withErrorResponses)
-import MicroHttp.Router (get, serveRoutes)
-import MicroHttp.Server
+import qualified MicroHttp.Http as Http
+import qualified MicroHttp.Middleware as Middleware
+import qualified MicroHttp.Router as Router
+import qualified MicroHttp.Server as Server
 import Test.Hspec
 
 spec :: Spec
 spec =
     describe "MicroHttp.Server" $ do
         it "given valid request bytes, when responding, then the application response is returned" $ do
-            ok <- respondToRequestBytes app (bs "GET /hello HTTP/1.1\r\n\r\n")
-            fmap responseBody ok `shouldBe` Right (StrictBody (bs "hello"))
+            ok <- Server.respondToRequestBytes app (bs "GET /hello HTTP/1.1\r\n\r\n")
+            fmap Http.responseBody ok `shouldBe` Right (Http.StrictBody (bs "hello"))
         it "given a parse failure under withErrorResponses, when responding, then a 400 is returned" $ do
-            bad <- respondToRequestBytes (withErrorResponses app) (bs "TRACE /hello HTTP/1.1\r\n\r\n")
-            fmap (statusCode . responseStatus) bad `shouldBe` Right 400
+            bad <- Server.respondToRequestBytes (Middleware.withErrorResponses app) (bs "TRACE /hello HTTP/1.1\r\n\r\n")
+            fmap (Http.statusCode . Http.responseStatus) bad `shouldBe` Right 400
 
 -- | A routed application: the framing and parsing happen inside serveRoutes.
-app :: Application
+app :: Middleware.Application
 app =
-    serveRoutes
-        (parseLimits defaultSettings)
-        [get "/hello" (\_ _ -> pure (Response okStatus [] (StrictBody (bs "hello"))))]
+    Router.serveRoutes
+        (Server.parseLimits Server.defaultSettings)
+        [Router.get "/hello" (\_ _ -> pure (Http.Response Http.okStatus [] (Http.StrictBody (bs "hello"))))]
 
 bs :: String -> BS.ByteString
 bs = BS.pack

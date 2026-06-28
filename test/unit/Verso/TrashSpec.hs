@@ -1,40 +1,40 @@
 module Verso.TrashSpec (spec) where
 
 import Test.Hspec
-import Verso.Trash (Manifest (..), TrashItem (..), parseManifest, renderManifest)
+import qualified Verso.Trash as Trash
 
-pageManifest :: Manifest
+pageManifest :: Trash.Manifest
 pageManifest =
-    Manifest
-        { manPath = "a/old.md"
-        , manKind = "page"
-        , manSeq = 5
-        , manListing = Just "- [Old](./old.md)"
-        , manItems =
-            [ TrashItem "f0" False "a/old.md"
-            , TrashItem "f1" True "a/meta/old.meta"
-            , TrashItem "f2" False "a/assets/excl.png"
+    Trash.Manifest
+        { Trash.manPath = "a/old.md"
+        , Trash.manKind = "page"
+        , Trash.manSeq = 5
+        , Trash.manListing = Just "- [Old](./old.md)"
+        , Trash.manItems =
+            [ Trash.TrashItem "f0" False "a/old.md"
+            , Trash.TrashItem "f1" True "a/meta/old.meta"
+            , Trash.TrashItem "f2" False "a/assets/excl.png"
             ]
         }
 
-sectionManifest :: Manifest
+sectionManifest :: Trash.Manifest
 sectionManifest =
-    Manifest
-        { manPath = "a/sub"
-        , manKind = "section"
-        , manSeq = 9
-        , manListing = Nothing
-        , manItems = [TrashItem "payload" True "a/sub"]
+    Trash.Manifest
+        { Trash.manPath = "a/sub"
+        , Trash.manKind = "section"
+        , Trash.manSeq = 9
+        , Trash.manListing = Nothing
+        , Trash.manItems = [Trash.TrashItem "payload" True "a/sub"]
         }
 
 spec :: Spec
 spec =
     describe "Verso.Trash" $ do
         it "round-trips a page manifest with multiple items" $
-            parseManifest (renderManifest pageManifest) `shouldBe` Just pageManifest
+            Trash.parseManifest (Trash.renderManifest pageManifest) `shouldBe` Just pageManifest
 
         it "round-trips a section manifest" $
-            parseManifest (renderManifest sectionManifest) `shouldBe` Just sectionManifest
+            Trash.parseManifest (Trash.renderManifest sectionManifest) `shouldBe` Just sectionManifest
 
         it "is Nothing when a required header is missing" $
-            parseManifest "kind: page\nseq: 1\n" `shouldBe` Nothing
+            Trash.parseManifest "kind: page\nseq: 1\n" `shouldBe` Nothing

@@ -164,8 +164,11 @@ Each phase/group is one commit, `make format` + `make check` green first.
    TreeMove) + the executables (Main, ReplayTool) qualified with aliases
    (MicroHttp.Config=Config, Verso.Config=VConfig) and Haddock added. The
    `Verso.Editor` TypeScript tree is out of scope (not Haskell).
-4. **Phase 4 -- Qualify tests.** Qualify module/stdlib imports across `test/`
-   (`Test.Hspec` stays unqualified). No Haddock added to tests.
+4. **[DONE] Phase 4 -- Qualify tests.** Module/stdlib imports qualified across all
+   38 spec files in `test/{unit,integration}` (`Test.Hspec` left unqualified as
+   the DSL exception). The two `Main.hs` drivers already used qualified spec
+   imports. No Haddock added to tests. The `test/ghc-compat/` shims (GHC-coverage
+   API stubs, not built by `make check`) are out of scope as compatibility infra.
 5. **Phase 5 -- Docs + memory.** ADR for the Http inlining + the qualified-import
    convention; update memory. Mark RFC Implemented.
 

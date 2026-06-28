@@ -3,42 +3,42 @@
 module MicroHttp.HtmlSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
-import qualified MicroHttp.Html as H
+import qualified MicroHttp.Html as Html
 import Test.Hspec
 
 spec :: Spec
 spec =
     describe "MicroHttp.Html" $ do
         it "given htmx custom element, when rendering, then escaped HTML is returned" $
-            H.renderHtml todoItem `shouldBe` expected
+            Html.renderHtml todoItem `shouldBe` expected
         it "given common document elements, when rendering, then matching HTML is returned" $
-            H.renderHtml document `shouldBe` documentExpected
+            Html.renderHtml document `shouldBe` documentExpected
         it "given blaze-style elements and overloaded strings, when rendering, then text is escaped" $
-            H.renderHtml blazeStyleDocument `shouldBe` blazeStyleExpected
+            Html.renderHtml blazeStyleDocument `shouldBe` blazeStyleExpected
         it "given a rendered document, when chunked, then the concatenated chunks equal the string render" $
-            BS.unpack (BS.concat (H.renderChunks todoItem)) `shouldBe` H.renderHtml todoItem
+            BS.unpack (BS.concat (Html.renderChunks todoItem)) `shouldBe` Html.renderHtml todoItem
         it "given UTF-8 bytes, when rendering bytesText, then specials are escaped and other bytes pass through verbatim" $
-            BS.concat (H.renderChunks (H.bytesText (BS.pack "caf\xc3\xa9 <b> & \xf0\x9f\x98\x80")))
+            BS.concat (Html.renderChunks (Html.bytesText (BS.pack "caf\xc3\xa9 <b> & \xf0\x9f\x98\x80")))
                 `shouldBe` BS.pack "caf\xc3\xa9 &lt;b&gt; &amp; \xf0\x9f\x98\x80"
         it "given a small page, when chunked, then it coalesces to a single segment" $
-            length (H.renderChunks document) `shouldBe` 1
+            length (Html.renderChunks document) `shouldBe` 1
         it "given a page larger than the coalescing buffer, when chunked, then it splits into bounded segments" $ do
-            let segments = H.renderChunks largeDocument
+            let segments = Html.renderChunks largeDocument
             (length segments > 1) `shouldBe` True
             (BS.length (head segments) >= 16384) `shouldBe` True
 
-todoItem :: H.Html ()
+todoItem :: Html.Html ()
 todoItem =
-    H.custom "todo-item" [H.attr "data-id" "42", H.hxTarget "#todos"] $ do
-        H.div_ [H.class_ "todo-title"] $
-            H.text "A <dangerous> & useful item"
-        H.input_ [H.attr "value" "quoted \"value\""]
-        H.rawTrusted "<span data-safe=\"true\"></span>"
-        H.button_
-            [ H.hxDelete "/todos/42"
-            , H.hxSwap "outerHTML"
+    Html.custom "todo-item" [Html.attr "data-id" "42", Html.hxTarget "#todos"] $ do
+        Html.div_ [Html.class_ "todo-title"] $
+            Html.text "A <dangerous> & useful item"
+        Html.input_ [Html.attr "value" "quoted \"value\""]
+        Html.rawTrusted "<span data-safe=\"true\"></span>"
+        Html.button_
+            [ Html.hxDelete "/todos/42"
+            , Html.hxSwap "outerHTML"
             ]
-            (H.text "Delete")
+            (Html.text "Delete")
 
 expected :: String
 expected =
@@ -49,21 +49,21 @@ expected =
         ++ "<button hx-delete=\"/todos/42\" hx-swap=\"outerHTML\">Delete</button>"
         ++ "</todo-item>"
 
-document :: H.Html ()
+document :: Html.Html ()
 document =
-    H.html_ [H.attr "lang" "en"] $ do
-        H.head_ [] $
-            H.title_ [] (H.text "MicroHttp")
-        H.body_ [] $ do
-            H.main_ [] $ do
-                H.h1_ [] (H.text "Hello")
-                H.h2_ [] (H.text "Subheading")
-                H.p_ [] (H.text "A paragraph")
-                H.a_ [H.href "/todos"] (H.text "Todos")
-                H.ul_ [] $ do
-                    H.li_ [] (H.text "one")
-                    H.li_ [] (H.text "two")
-                H.span_ [H.class_ "badge"] (H.text "ready")
+    Html.html_ [Html.attr "lang" "en"] $ do
+        Html.head_ [] $
+            Html.title_ [] (Html.text "MicroHttp")
+        Html.body_ [] $ do
+            Html.main_ [] $ do
+                Html.h1_ [] (Html.text "Hello")
+                Html.h2_ [] (Html.text "Subheading")
+                Html.p_ [] (Html.text "A paragraph")
+                Html.a_ [Html.href "/todos"] (Html.text "Todos")
+                Html.ul_ [] $ do
+                    Html.li_ [] (Html.text "one")
+                    Html.li_ [] (Html.text "two")
+                Html.span_ [Html.class_ "badge"] (Html.text "ready")
 
 documentExpected :: String
 documentExpected =
@@ -75,15 +75,15 @@ documentExpected =
         ++ "<span class=\"badge\">ready</span></main></body>"
         ++ "</html>"
 
-blazeStyleDocument :: H.Html ()
+blazeStyleDocument :: Html.Html ()
 blazeStyleDocument =
-    H.html [H.lang "en"] $ do
-        H.head [] $
-            H.title [] "MicroHttp"
-        H.body [] $
-            H.main [] $ do
-                H.h1 [] "Hello <MicroHttp>"
-                H.p [] "Overloaded strings render escaped text"
+    Html.html [Html.lang "en"] $ do
+        Html.head [] $
+            Html.title [] "MicroHttp"
+        Html.body [] $
+            Html.main [] $ do
+                Html.h1 [] "Hello <MicroHttp>"
+                Html.p [] "Overloaded strings render escaped text"
 
 blazeStyleExpected :: String
 blazeStyleExpected =
@@ -92,6 +92,6 @@ blazeStyleExpected =
         ++ "<p>Overloaded strings render escaped text</p></main></body></html>"
 
 -- | A document large enough to exceed the coalescing buffer (16 KB).
-largeDocument :: H.Html ()
+largeDocument :: Html.Html ()
 largeDocument =
-    mapM_ (\_ -> H.p_ [] (H.text "A padding paragraph used to exceed the coalescing buffer.")) [1 .. (800 :: Int)]
+    mapM_ (\_ -> Html.p_ [] (Html.text "A padding paragraph used to exceed the coalescing buffer.")) [1 .. (800 :: Int)]

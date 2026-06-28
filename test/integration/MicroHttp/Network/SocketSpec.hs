@@ -1,8 +1,8 @@
 module MicroHttp.Network.SocketSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
-import MicroHttp.Network.Socket
-import System.Directory (removeFile)
+import qualified MicroHttp.Network.Socket as Socket
+import qualified System.Directory as Directory
 import Test.Hspec
 
 -- Concurrent sender and receiver threads polling the same connection hang
@@ -22,37 +22,37 @@ spec :: Spec
 spec =
     describe "MicroHttp.Network.Socket" $ do
         it "given port zero, when listening and closing, then both operations succeed" $ do
-            opened <- listenTcp HostAny (Port 0) 1
+            opened <- Socket.listenTcp Socket.HostAny (Socket.Port 0) 1
             case opened of
                 Left err ->
                     expect ("listenTcp failed: " ++ show err) False
                 Right socket -> do
-                    closed <- closeListenSocket socket
+                    closed <- Socket.closeListenSocket socket
                     closed `shouldBe` Right ()
         it "given a listening socket on port zero, when querying the bound port, then a non-zero port is returned" $
             withListeningSocket $ \socket -> do
-                queried <- boundPort socket
+                queried <- Socket.boundPort socket
                 case queried of
                     Left err -> expect ("boundPort failed: " ++ show err) False
-                    Right (Port port) -> expect ("expected non-zero port, got " ++ show port) (port > 0)
+                    Right (Socket.Port port) -> expect ("expected non-zero port, got " ++ show port) (port > 0)
         it "given a listening socket, when a client connects to the bound port, then accept returns a client socket" $
             withListeningSocket $ \socket -> do
-                queried <- boundPort socket
+                queried <- Socket.boundPort socket
                 case queried of
                     Left err -> expect ("boundPort failed: " ++ show err) False
                     Right port -> do
-                        connected <- connectTcp loopback port
+                        connected <- Socket.connectTcp loopback port
                         case connected of
                             Left err -> expect ("connectTcp failed: " ++ show err) False
                             Right client -> do
-                                accepted <- accept socket
+                                accepted <- Socket.accept socket
                                 case accepted of
                                     Left err -> do
-                                        _ <- closeClientSocket client
+                                        _ <- Socket.closeClientSocket client
                                         expect ("accept failed: " ++ show err) False
                                     Right (served, _conn) -> do
-                                        closedServed <- closeClientSocket served
-                                        closedClient <- closeClientSocket client
+                                        closedServed <- Socket.closeClientSocket served
+                                        closedClient <- Socket.closeClientSocket client
                                         closedServed `shouldBe` Right ()
                                         closedClient `shouldBe` Right ()
         it "given a payload larger than one read buffer, when sent in rounds, then the receiver reads every byte" $
@@ -62,92 +62,92 @@ spec =
                 total `shouldBe` largePayloadBytes
         it "given a connected pair, when each side sends, then the other side receives the same bytes" $
             withConnectedPair $ \client served -> do
-                sentToServer <- sendAll client (BS.pack "hello server")
+                sentToServer <- Socket.sendAll client (BS.pack "hello server")
                 sentToServer `shouldBe` Right ()
-                fromClient <- recv served 64
+                fromClient <- Socket.recv served 64
                 fromClient `shouldBe` Right (BS.pack "hello server")
-                sentToClient <- sendAll served (BS.pack "hello client")
+                sentToClient <- Socket.sendAll served (BS.pack "hello client")
                 sentToClient `shouldBe` Right ()
-                fromServer <- recv client 64
+                fromServer <- Socket.recv client 64
                 fromServer `shouldBe` Right (BS.pack "hello client")
         it "given a peer that closed its socket, when receiving, then an empty result is returned" $
             withConnectedPair $ \client served -> do
-                closed <- closeClientSocket client
+                closed <- Socket.closeClientSocket client
                 closed `shouldBe` Right ()
-                received <- recv served 64
+                received <- Socket.recv served 64
                 received `shouldBe` Right BS.empty
         it "given a closed socket, when receiving or sending, then a socket error is returned" $
             withConnectedPair $ \_ served -> do
-                closed <- closeClientSocket served
+                closed <- Socket.closeClientSocket served
                 closed `shouldBe` Right ()
-                received <- recv served 16
+                received <- Socket.recv served 16
                 case received of
-                    Left (SocketError operation _) -> operation `shouldBe` "recv"
+                    Left (Socket.SocketError operation _) -> operation `shouldBe` "recv"
                     Right bytes -> expect ("expected recv failure, got " ++ show bytes) False
-                sent <- sendAll served (BS.pack "x")
+                sent <- Socket.sendAll served (BS.pack "x")
                 case sent of
-                    Left (SocketError operation _) -> operation `shouldBe` "send"
+                    Left (Socket.SocketError operation _) -> operation `shouldBe` "send"
                     Right () -> expect "expected send failure" False
         it "given an existing file, when its size is queried, then the byte count is returned" $ do
             BS.writeFile sendFileTestFile (BS.pack "0123456789")
-            size <- fileSizeBytes sendFileTestFile
-            removeFile sendFileTestFile
+            size <- Socket.fileSizeBytes sendFileTestFile
+            Directory.removeFile sendFileTestFile
             size `shouldBe` Just 10
         it "given a missing file, when its size is queried, then Nothing is returned" $ do
-            size <- fileSizeBytes "no-such-sendfile-test-file.tmp"
+            size <- Socket.fileSizeBytes "no-such-sendfile-test-file.tmp"
             size `shouldBe` Nothing
         it "given a file, when sent over a connected pair via sendfile, then the receiver reads the file bytes" $
             withConnectedPair $ \client served -> do
                 let payload = BS.pack "zero-copy file send"
                 BS.writeFile sendFileTestFile payload
-                opened <- openFileRead sendFileTestFile
+                opened <- Socket.openFileRead sendFileTestFile
                 case opened of
                     Nothing -> expect "openFileRead failed" False
                     Just fd -> do
-                        sent <- sendFileWithin 0 served fd 0 (BS.length payload)
-                        closeFileFd fd
-                        removeFile sendFileTestFile
+                        sent <- Socket.sendFileWithin 0 served fd 0 (BS.length payload)
+                        Socket.closeFileFd fd
+                        Directory.removeFile sendFileTestFile
                         sent `shouldBe` Right ()
-                        received <- recv client 64
+                        received <- Socket.recv client 64
                         received `shouldBe` Right payload
         it "given a free port with no listener, when connecting, then a socket error is returned" $ do
-            opened <- listenTcp HostAny (Port 0) 1
+            opened <- Socket.listenTcp Socket.HostAny (Socket.Port 0) 1
             case opened of
                 Left err -> expect ("listenTcp failed: " ++ show err) False
                 Right socket -> do
-                    queried <- boundPort socket
-                    closed <- closeListenSocket socket
+                    queried <- Socket.boundPort socket
+                    closed <- Socket.closeListenSocket socket
                     closed `shouldBe` Right ()
                     case queried of
                         Left err -> expect ("boundPort failed: " ++ show err) False
                         Right port -> do
-                            connected <- connectTcp loopback port
+                            connected <- Socket.connectTcp loopback port
                             case connected of
-                                Left (SocketError operation _) -> operation `shouldBe` "connect"
+                                Left (Socket.SocketError operation _) -> operation `shouldBe` "connect"
                                 Right client -> do
-                                    _ <- closeClientSocket client
+                                    _ <- Socket.closeClientSocket client
                                     expect "expected connect failure" False
 
-loopback :: Host
-loopback = HostIPv4 127 0 0 1
+loopback :: Socket.Host
+loopback = Socket.HostIPv4 127 0 0 1
 
 sendFileTestFile :: FilePath
 sendFileTestFile = "sendfile-socket-test.tmp"
 
-transferRounds :: ClientSocket -> ClientSocket -> [BS.ByteString] -> IO Int
+transferRounds :: Socket.ClientSocket -> Socket.ClientSocket -> [BS.ByteString] -> IO Int
 transferRounds _ _ [] = return 0
 transferRounds sender receiver (piece : rest) = do
-    sent <- sendAll sender piece
+    sent <- Socket.sendAll sender piece
     sent `shouldBe` Right ()
     received <- drainExactly receiver (BS.length piece)
     remaining <- transferRounds sender receiver rest
     return (received + remaining)
 
-drainExactly :: ClientSocket -> Int -> IO Int
+drainExactly :: Socket.ClientSocket -> Int -> IO Int
 drainExactly socket remaining
     | remaining <= 0 = return 0
     | otherwise = do
-        received <- recv socket remaining
+        received <- Socket.recv socket remaining
         case received of
             Left err -> do
                 expect ("recv failed: " ++ show err) False
@@ -158,34 +158,34 @@ drainExactly socket remaining
                     more <- drainExactly socket (remaining - BS.length bytes)
                     return (BS.length bytes + more)
 
-withConnectedPair :: (ClientSocket -> ClientSocket -> IO ()) -> IO ()
+withConnectedPair :: (Socket.ClientSocket -> Socket.ClientSocket -> IO ()) -> IO ()
 withConnectedPair use =
     withListeningSocket $ \socket -> do
-        queried <- boundPort socket
+        queried <- Socket.boundPort socket
         case queried of
             Left err -> expect ("boundPort failed: " ++ show err) False
             Right port -> do
-                connected <- connectTcp loopback port
+                connected <- Socket.connectTcp loopback port
                 case connected of
                     Left err -> expect ("connectTcp failed: " ++ show err) False
                     Right client -> do
-                        accepted <- accept socket
+                        accepted <- Socket.accept socket
                         case accepted of
                             Left err -> do
-                                _ <- closeClientSocket client
+                                _ <- Socket.closeClientSocket client
                                 expect ("accept failed: " ++ show err) False
                             Right (served, _conn) -> do
                                 use client served
-                                _ <- closeClientSocket served
-                                _ <- closeClientSocket client
+                                _ <- Socket.closeClientSocket served
+                                _ <- Socket.closeClientSocket client
                                 return ()
 
-withListeningSocket :: (ListenSocket -> IO ()) -> IO ()
+withListeningSocket :: (Socket.ListenSocket -> IO ()) -> IO ()
 withListeningSocket use = do
-    opened <- listenTcp HostAny (Port 0) 1
+    opened <- Socket.listenTcp Socket.HostAny (Socket.Port 0) 1
     case opened of
         Left err -> expect ("listenTcp failed: " ++ show err) False
         Right socket -> do
             use socket
-            closed <- closeListenSocket socket
+            closed <- Socket.closeListenSocket socket
             closed `shouldBe` Right ()

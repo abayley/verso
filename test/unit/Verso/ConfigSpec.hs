@@ -1,44 +1,44 @@
 module Verso.ConfigSpec (spec) where
 
-import MicroHttp.Config (Config, applyEnvironment, configInt, parseConfig)
+import qualified MicroHttp.Config as Config
 import Test.Hspec
-import Verso.Config (VersoConfig (..), appEnvKeys, fromConfig)
+import qualified Verso.Config as VConfig
 
 spec :: Spec
 spec =
     describe "Verso.Config" $ do
         describe "fromConfig" $ do
             it "given application keys, when read, then the record holds their values" $
-                case fromConfig (parsed "document_tree_root = /docs\neditor_theme = studio\nlog_keep = 9") of
+                case VConfig.fromConfig (parsed "document_tree_root = /docs\neditor_theme = studio\nlog_keep = 9") of
                     Left err -> expect ("unexpected config error: " ++ show err) False
                     Right vc -> do
-                        documentTreeRoot vc `shouldBe` "/docs"
-                        editorTheme vc `shouldBe` "studio"
-                        logKeep vc `shouldBe` 9
+                        VConfig.documentTreeRoot vc `shouldBe` "/docs"
+                        VConfig.editorTheme vc `shouldBe` "studio"
+                        VConfig.logKeep vc `shouldBe` 9
             it "given an empty config, when read, then the documented defaults apply" $
-                case fromConfig (parsed "") of
+                case VConfig.fromConfig (parsed "") of
                     Left err -> expect ("unexpected config error: " ++ show err) False
                     Right vc -> do
-                        documentTreeRoot vc `shouldBe` ""
-                        documentRoot vc `shouldBe` "data/documents"
-                        editorTheme vc `shouldBe` "paper"
-                        trashRoot vc `shouldBe` "data/trash"
-                        logMaxBytes vc `shouldBe` 10485760
-                        logKeep vc `shouldBe` 5
+                        VConfig.documentTreeRoot vc `shouldBe` ""
+                        VConfig.documentRoot vc `shouldBe` "data/documents"
+                        VConfig.editorTheme vc `shouldBe` "paper"
+                        VConfig.trashRoot vc `shouldBe` "data/trash"
+                        VConfig.logMaxBytes vc `shouldBe` 10485760
+                        VConfig.logKeep vc `shouldBe` 5
             it "given a malformed integer key, when read, then it fails" $
-                isLeft (fromConfig (parsed "log_max_bytes = lots")) `shouldBe` True
+                isLeft (VConfig.fromConfig (parsed "log_max_bytes = lots")) `shouldBe` True
         describe "VERSO_ overlay" $ do
             it "given a VERSO_ override of an owned key, when applied, then it beats the file value" $
-                case fromConfig (applyEnvironment "VERSO_" appEnvKeys [("VERSO_EDITOR_THEME", "studio")] (parsed "editor_theme = paper")) of
+                case VConfig.fromConfig (Config.applyEnvironment "VERSO_" VConfig.appEnvKeys [("VERSO_EDITOR_THEME", "studio")] (parsed "editor_theme = paper")) of
                     Left err -> expect ("unexpected config error: " ++ show err) False
-                    Right vc -> editorTheme vc `shouldBe` "studio"
+                    Right vc -> VConfig.editorTheme vc `shouldBe` "studio"
             it "given a VERSO_ override of a server key, when applied, then it does not leak into that key" $ do
-                let cfg = applyEnvironment "VERSO_" appEnvKeys [("VERSO_PORT", "9999")] (parsed "port = 8080")
-                configInt "port" 0 cfg `shouldBe` Right 8080
+                let cfg = Config.applyEnvironment "VERSO_" VConfig.appEnvKeys [("VERSO_PORT", "9999")] (parsed "port = 8080")
+                Config.configInt "port" 0 cfg `shouldBe` Right 8080
 
-parsed :: String -> Config
+parsed :: String -> Config.Config
 parsed text =
-    case parseConfig text of
+    case Config.parseConfig text of
         Right cfg -> cfg
         Left err -> error ("test config failed to parse: " ++ show err)
 

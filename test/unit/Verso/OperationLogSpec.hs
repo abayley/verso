@@ -1,48 +1,40 @@
 module Verso.OperationLogSpec (spec) where
 
-import Control.Monad (when)
-import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
+import qualified Control.Monad as Monad
+import qualified System.Directory as Directory
 import Test.Hspec
-import Verso.OperationLog (
-    OpType (..),
-    Operation (..),
-    appendOperation,
-    nextSeq,
-    parseOperation,
-    readOperations,
-    renderOperation,
- )
+import qualified Verso.OperationLog as OperationLog
 
 logPath :: FilePath
 logPath = "build/operation-log-spec/log"
 
 cleanLog :: IO ()
 cleanLog = do
-    exists <- doesFileExist logPath
-    when exists (removeFile logPath)
+    exists <- Directory.doesFileExist logPath
+    Monad.when exists (Directory.removeFile logPath)
 
-moveOp :: Operation
+moveOp :: OperationLog.Operation
 moveOp =
-    Operation
-        { opType = OpMove
-        , opKind = "section"
-        , opFrom = Just "a/b"
-        , opTo = Just "c/b"
-        , opSeq = 0
-        , opTs = "2026-06-24T09:00:00.000+1200"
-        , opTrash = Nothing
+    OperationLog.Operation
+        { OperationLog.opType = OperationLog.OpMove
+        , OperationLog.opKind = "section"
+        , OperationLog.opFrom = Just "a/b"
+        , OperationLog.opTo = Just "c/b"
+        , OperationLog.opSeq = 0
+        , OperationLog.opTs = "2026-06-24T09:00:00.000+1200"
+        , OperationLog.opTrash = Nothing
         }
 
-deleteOp :: Operation
+deleteOp :: OperationLog.Operation
 deleteOp =
-    Operation
-        { opType = OpDelete
-        , opKind = "page"
-        , opFrom = Just "a/old.md"
-        , opTo = Nothing
-        , opSeq = 1
-        , opTs = "2026-06-24T09:01:00.000+1200"
-        , opTrash = Just "trash-7"
+    OperationLog.Operation
+        { OperationLog.opType = OperationLog.OpDelete
+        , OperationLog.opKind = "page"
+        , OperationLog.opFrom = Just "a/old.md"
+        , OperationLog.opTo = Nothing
+        , OperationLog.opSeq = 1
+        , OperationLog.opTs = "2026-06-24T09:01:00.000+1200"
+        , OperationLog.opTrash = Just "trash-7"
         }
 
 spec :: Spec
@@ -50,31 +42,31 @@ spec =
     describe "Verso.OperationLog" $ do
         describe "render/parse round-trip" $ do
             it "round-trips a move operation" $
-                parseOperation (renderOperation moveOp) `shouldBe` Just moveOp
+                OperationLog.parseOperation (OperationLog.renderOperation moveOp) `shouldBe` Just moveOp
 
             it "round-trips a delete operation with a trash id and no 'to'" $
-                parseOperation (renderOperation deleteOp) `shouldBe` Just deleteOp
+                OperationLog.parseOperation (OperationLog.renderOperation deleteOp) `shouldBe` Just deleteOp
 
             it "is Nothing for a malformed line" $
-                parseOperation "{not json}" `shouldBe` Nothing
+                OperationLog.parseOperation "{not json}" `shouldBe` Nothing
 
         describe "append/read and nextSeq" $ do
             it "appends operations and reads them back in order" $ do
                 createParent
                 cleanLog
-                appendOperation logPath moveOp
-                appendOperation logPath deleteOp
-                ops <- readOperations logPath
+                OperationLog.appendOperation logPath moveOp
+                OperationLog.appendOperation logPath deleteOp
+                ops <- OperationLog.readOperations logPath
                 ops `shouldBe` [moveOp, deleteOp]
 
             it "gives seq 0 for an empty log and one past the maximum otherwise" $ do
                 createParent
                 cleanLog
-                empty <- nextSeq logPath
+                empty <- OperationLog.nextSeq logPath
                 empty `shouldBe` 0
-                appendOperation logPath moveOp
-                appendOperation logPath deleteOp
-                next <- nextSeq logPath
+                OperationLog.appendOperation logPath moveOp
+                OperationLog.appendOperation logPath deleteOp
+                next <- OperationLog.nextSeq logPath
                 next `shouldBe` 2
   where
-    createParent = createDirectoryIfMissing True "build/operation-log-spec"
+    createParent = Directory.createDirectoryIfMissing True "build/operation-log-spec"

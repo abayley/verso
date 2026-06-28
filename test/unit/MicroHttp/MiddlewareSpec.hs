@@ -1,83 +1,83 @@
 module MicroHttp.MiddlewareSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
-import Data.IORef
-import MicroHttp.Http
-import MicroHttp.Iteratee (byteSinkI, readBodyStrict, run, strictEnumerator, takeN)
-import MicroHttp.Middleware
-import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), Port (..))
-import MicroHttp.Stream (StreamError (..))
+import qualified Data.IORef as IORef
+import qualified MicroHttp.Http as Http
+import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Middleware as Middleware
+import qualified MicroHttp.Network.Socket as Socket
+import qualified MicroHttp.Stream as Stream
 import Test.Hspec
 
 spec :: Spec
 spec =
     describe "MicroHttp.Middleware" $ do
         it "given head-level middleware, when wrapping an application, then the response is transformed" $ do
-            response <- runApp "" (mapResponse withMarker echoStatus)
-            fmap responseHeaders response `shouldBe` Right [(normaliseHeaderName (bs "X-Marker"), bs "on")]
+            response <- runApp "" (Middleware.mapResponse withMarker echoStatus)
+            fmap Http.responseHeaders response `shouldBe` Right [(Http.normaliseHeaderName (bs "X-Marker"), bs "on")]
         it "given ingress middleware bounding the body, when the handler reads, then it sees only the bounded bytes" $ do
-            response <- runApp "hello" (ingress (takeN 2) echoBody)
-            fmap responseBody response `shouldBe` Right (StrictBody (bs "he"))
+            response <- runApp "hello" (Middleware.ingress (Iteratee.takeN 2) echoBody)
+            fmap Http.responseBody response `shouldBe` Right (Http.StrictBody (bs "he"))
         it "given egress middleware bounding the body, when the response streams, then the sink sees only the bounded bytes" $ do
-            response <- runApp "" (egress (takeN 3) streamHello)
+            response <- runApp "" (Middleware.egress (Iteratee.takeN 3) streamHello)
             case response of
                 Left err -> expect ("unexpected failure: " ++ show err) False
                 Right ok -> do
                     chunks <- recordBody ok
                     chunks `shouldBe` Right [bs "hel"]
         it "given failure-handling middleware, when the application fails, then the replacement response is returned" $ do
-            response <- runApp "x" (catchIter (const errorResponse) alwaysFails)
-            fmap (statusCode . responseStatus) response `shouldBe` Right 500
+            response <- runApp "x" (Middleware.catchIter (const errorResponse) alwaysFails)
+            fmap (Http.statusCode . Http.responseStatus) response `shouldBe` Right 500
 
 -- Applications under test. Each ignores the connection and reads the stream.
 
-echoStatus :: Application
-echoStatus _ = pure (Response okStatus [] (StrictBody (bs "ok")))
+echoStatus :: Http.Application
+echoStatus _ = pure (Http.Response Http.okStatus [] (Http.StrictBody (bs "ok")))
 
-echoBody :: Application
+echoBody :: Http.Application
 echoBody _ = do
-    body <- readBodyStrict (StreamParseError (BadRequest "too large")) 100
-    pure (Response okStatus [] (StrictBody body))
+    body <- Iteratee.readBodyStrict (Stream.StreamParseError (Http.BadRequest "too large")) 100
+    pure (Http.Response Http.okStatus [] (Http.StrictBody body))
 
-streamHello :: Application
-streamHello _ = pure (Response okStatus [] (StreamBody (strictEnumerator (bs "hello"))))
+streamHello :: Http.Application
+streamHello _ = pure (Http.Response Http.okStatus [] (Http.StreamBody (Iteratee.strictEnumerator (bs "hello"))))
 
-alwaysFails :: Application
-alwaysFails _ = readBodyStrict (StreamParseError (BadRequest "boom")) 0 >> pure (Response okStatus [] (StrictBody (bs "unreached")))
+alwaysFails :: Http.Application
+alwaysFails _ = Iteratee.readBodyStrict (Stream.StreamParseError (Http.BadRequest "boom")) 0 >> pure (Http.Response Http.okStatus [] (Http.StrictBody (bs "unreached")))
 
-withMarker :: Response -> Response
+withMarker :: Http.Response -> Http.Response
 withMarker response =
-    response{responseHeaders = [(normaliseHeaderName (bs "X-Marker"), bs "on")]}
+    response{Http.responseHeaders = [(Http.normaliseHeaderName (bs "X-Marker"), bs "on")]}
 
-errorResponse :: Response
+errorResponse :: Http.Response
 errorResponse =
-    Response (Status 500 "Internal Server Error") [] (StrictBody (bs "error"))
+    Http.Response (Http.Status 500 "Internal Server Error") [] (Http.StrictBody (bs "error"))
 
 -- Harness.
 
-runApp :: String -> Application -> IO (Either StreamError Response)
-runApp body app = strictEnumerator (bs body) (app conn) >>= run
+runApp :: String -> Http.Application -> IO (Either Stream.StreamError Http.Response)
+runApp body app = Iteratee.strictEnumerator (bs body) (app conn) >>= Iteratee.run
 
-conn :: ConnectionInfo
-conn = ConnectionInfo (HostIPv4 127 0 0 1) (Port 0)
+conn :: Socket.ConnectionInfo
+conn = Socket.ConnectionInfo (Socket.HostIPv4 127 0 0 1) (Socket.Port 0)
 
-recordBody :: Response -> IO (Either StreamError [BS.ByteString])
+recordBody :: Http.Response -> IO (Either Stream.StreamError [BS.ByteString])
 recordBody response =
-    case responseBody response of
-        StrictBody _ -> return (Right [])
-        StreamBody enumerator -> do
-            chunks <- newIORef []
-            final <- enumerator (byteSinkI (recordChunk chunks))
-            outcome <- run final
+    case Http.responseBody response of
+        Http.StrictBody _ -> return (Right [])
+        Http.StreamBody enumerator -> do
+            chunks <- IORef.newIORef []
+            final <- enumerator (Iteratee.byteSinkI (recordChunk chunks))
+            outcome <- Iteratee.run final
             case outcome of
                 Left err -> return (Left err)
                 Right () -> do
-                    values <- readIORef chunks
+                    values <- IORef.readIORef chunks
                     return (Right (reverse values))
 
-recordChunk :: IORef [BS.ByteString] -> BS.ByteString -> IO (Either StreamError ())
+recordChunk :: IORef.IORef [BS.ByteString] -> BS.ByteString -> IO (Either Stream.StreamError ())
 recordChunk chunks chunk = do
-    modifyIORef chunks (chunk :)
+    IORef.modifyIORef chunks (chunk :)
     return (Right ())
 
 bs :: String -> BS.ByteString

@@ -8,13 +8,13 @@ import qualified MicroHttp.ServerLoggingSpec as ServerLoggingSpec
 import qualified MicroHttp.ServerSocketSpec as ServerSocketSpec
 import qualified MicroHttp.StaticSpec as StaticSpec
 import qualified MicroHttp.StreamSpec as StreamSpec
-import System.IO
+import qualified System.IO as IO
 import Test.Hspec
 import qualified Verso.AppSpec as AppSpec
 
 main :: IO ()
 main = do
-    hSetBuffering stdout LineBuffering
+    IO.hSetBuffering IO.stdout IO.LineBuffering
     hspec $ do
         ConfigSpec.spec
         ResponseFileSpec.spec

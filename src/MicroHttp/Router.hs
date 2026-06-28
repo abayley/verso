@@ -14,8 +14,6 @@ import qualified Data.ByteString.Char8 as BS
 import Data.Char (isDigit)
 import Data.List (intercalate)
 import MicroHttp.Http
-import MicroHttp.Http.Framing (frameHeadersI)
-import MicroHttp.Http.Parser (ParseError (..), ParseLimits (..), parseRequestHead)
 import MicroHttp.Iteratee (Iter (..), Stream (..), takeN)
 import MicroHttp.Stream (StreamError (..))
 

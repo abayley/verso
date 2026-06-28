@@ -10,7 +10,7 @@ module MicroHttp.Settings (
     parseLimits,
 ) where
 
-import MicroHttp.Http.Parser (ParseLimits (..))
+import MicroHttp.Http.Parse (ParseLimits (..))
 import MicroHttp.Network.Socket (Host (..), Port (..))
 
 {- | Server configuration. Pure, inert data: framing limits, the handler cap,

@@ -2,8 +2,7 @@ module MicroHttp.Http.FramingSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import Data.IORef
-import MicroHttp.Http.Framing
-import MicroHttp.Http.Parser (ParseError (..), ParseLimits (..), defaultParseLimits)
+import MicroHttp.Http (ParseError (..), ParseLimits (..), defaultParseLimits, frameHeadersI)
 import MicroHttp.Iteratee (Iter (..), Stream (..))
 import MicroHttp.Stream (StreamError (..))
 import Test.Hspec

@@ -14,8 +14,7 @@ import Control.Concurrent (forkIO)
 import Control.Concurrent.QSem
 import qualified Data.ByteString.Char8 as BS
 import Foreign.Ptr (Ptr, nullPtr, plusPtr)
-import MicroHttp.Http (Application, Response)
-import MicroHttp.Http.Response (ResponseSink (..), ResponseWriter, serialiseFileHead, writeResponse)
+import MicroHttp.Http (Application, Response, ResponseSink (..), ResponseWriter, serialiseFileHead, writeResponse)
 import MicroHttp.Iteratee (run, strictEnumerator)
 import MicroHttp.Network.Socket
 import MicroHttp.Settings (Settings (..), defaultSettings, parseLimits)

@@ -29,8 +29,7 @@ module MicroHttp.Middleware (
 
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BS
-import MicroHttp.Http (Application, Response (..), ResponseBody (..), Status (..), normaliseHeaderName)
-import MicroHttp.Http.Response (serialiseFileHead, serialiseHead, serialiseResponse)
+import MicroHttp.Http (Application, Response (..), ResponseBody (..), Status (..), normaliseHeaderName, serialiseFileHead, serialiseHead, serialiseResponse)
 import MicroHttp.Iteratee (Enumerator, Iter (..), Stream (..))
 import MicroHttp.Log (AccessEvent (..), Logger, RequestLine (..))
 import MicroHttp.Stream (StreamError (..))

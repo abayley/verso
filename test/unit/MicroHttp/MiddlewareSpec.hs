@@ -3,7 +3,6 @@ module MicroHttp.MiddlewareSpec (spec) where
 import qualified Data.ByteString.Char8 as BS
 import Data.IORef
 import MicroHttp.Http
-import MicroHttp.Http.Parser (ParseError (..))
 import MicroHttp.Iteratee (byteSinkI, readBodyStrict, run, strictEnumerator, takeN)
 import MicroHttp.Middleware
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), Port (..))

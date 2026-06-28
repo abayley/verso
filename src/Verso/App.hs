@@ -31,9 +31,9 @@ import Data.Char (digitToInt, isAsciiLower, isAsciiUpper, isDigit, isSpace, toLo
 import Data.List (intercalate, isSuffixOf, sortBy)
 import Data.Maybe (catMaybes, fromMaybe)
 import qualified MicroHttp.Html as Html
+import MicroHttp.Http (decodeFormValue)
 import qualified MicroHttp.Http as Http
 import MicroHttp.Http.Parse (ParseError (..))
-import MicroHttp.Http.PercentEncoding (decodeFormValue)
 import MicroHttp.Iteratee (Iter, liftIO, readBodyStrict)
 import MicroHttp.Log (Logger, consoleLog, localTimestamp, rotatingAppender, rotatingFileLogfmtLogger)
 import MicroHttp.Middleware (logRequests, withErrorResponses)

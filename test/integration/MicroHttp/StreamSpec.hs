@@ -1,7 +1,7 @@
 module MicroHttp.StreamSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
-import MicroHttp.Http.Parser (ParseError (..))
+import MicroHttp.Http.Parse (ParseError (..))
 import MicroHttp.Iteratee (readBodyStrict, run, strictEnumerator, takeN)
 import MicroHttp.Network.Socket
 import MicroHttp.Stream

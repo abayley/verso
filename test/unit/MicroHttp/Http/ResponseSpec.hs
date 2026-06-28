@@ -3,7 +3,6 @@ module MicroHttp.Http.ResponseSpec (spec) where
 import qualified Data.ByteString.Char8 as BS
 import Data.IORef
 import MicroHttp.Http
-import MicroHttp.Http.Response
 import MicroHttp.Iteratee (strictEnumerator)
 import MicroHttp.Stream (StreamError)
 import Test.Hspec

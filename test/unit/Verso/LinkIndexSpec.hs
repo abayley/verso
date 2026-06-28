@@ -1,11 +1,12 @@
-module MicroHttp.LinkIndexSpec (spec) where
+module Verso.LinkIndexSpec (spec) where
 
 import Data.ByteString.Char8 (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import Data.List (sort)
 import Data.Maybe (fromMaybe)
-import MicroHttp.DocumentLinks (planMoveRewrites, referrersMatching, relocatePath)
-import MicroHttp.LinkIndex (
+import Test.Hspec
+import Verso.DocumentLinks (planMoveRewrites, referrersMatching, relocatePath)
+import Verso.LinkIndex (
     buildIndex,
     inboundOf,
     indexFromEdges,
@@ -18,7 +19,6 @@ import MicroHttp.LinkIndex (
     rewriteCandidates,
     updatePage,
  )
-import Test.Hspec
 
 -- | A page body as bytes (the index/link engine works over 'ByteString', RFC-0029).
 bs :: String -> ByteString
@@ -49,7 +49,7 @@ isPrefixOf (x : xs) (y : ys) = x == y && isPrefixOf xs ys
 
 spec :: Spec
 spec =
-    describe "MicroHttp.LinkIndex" $ do
+    describe "Verso.LinkIndex" $ do
         describe "buildIndex" $ do
             it "records each page's resolved in-tree .md link targets (no asset edges)" $ do
                 let ix = buildIndex pages

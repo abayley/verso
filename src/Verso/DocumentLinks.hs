@@ -12,7 +12,7 @@ path), and 'rewriteLinks' applies span replacements byte-for-byte elsewhere.
 Reference-style and raw-HTML links are not matched (the corpus has none in-tree);
 fenced code blocks are skipped.
 -}
-module MicroHttp.DocumentLinks (
+module Verso.DocumentLinks (
     Link (..),
     pageLinks,
     splitTargetSuffix,

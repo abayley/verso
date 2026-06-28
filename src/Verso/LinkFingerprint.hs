@@ -7,12 +7,12 @@ is provably consistent with the filesystem, an unequal one means rebuild first
 
 The walk ('markdownFiles') enumerates the same @.md@ pages the whole-tree scan
 considers -- skipping dot-entries and the @assets@/@meta@ folders, exactly as
-'MicroHttp.TreeMove.enumerateRelevant' does -- so the fingerprint and the graph cover
+'Verso.TreeMove.enumerateRelevant' does -- so the fingerprint and the graph cover
 the same file set. 'markdownFiles' is shared with the index build (RFC-0029 phase 3),
 which reads each file's body while the fingerprint stats it, so a single walk feeds
 both.
 -}
-module MicroHttp.LinkFingerprint (
+module Verso.LinkFingerprint (
     Fingerprint,
     markdownFiles,
     fingerprintTree,
@@ -30,7 +30,7 @@ type Fingerprint = Map String FileStat
 
 {- | Every @.md@ file in the tree as @(treeRelPath, filesystemPath)@, skipping
 dot-entries and the @assets@/@meta@ folders (mirroring
-'MicroHttp.TreeMove.enumerateRelevant'). Filesystem paths are built from the walk, not
+'Verso.TreeMove.enumerateRelevant'). Filesystem paths are built from the walk, not
 re-resolved, since they come from @listDirectory@ rather than untrusted input.
 -}
 markdownFiles :: FilePath -> IO [(String, FilePath)]

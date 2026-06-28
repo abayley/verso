@@ -1,10 +1,10 @@
-module MicroHttp.DocumentLinksSpec (spec) where
+module Verso.DocumentLinksSpec (spec) where
 
 import Data.ByteString.Char8 (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import Data.List (isPrefixOf)
-import MicroHttp.DocumentLinks
 import Test.Hspec
+import Verso.DocumentLinks
 
 -- | A page body as bytes (the link engine works over 'ByteString' now, RFC-0029).
 bs :: String -> ByteString
@@ -16,7 +16,7 @@ spanText text link = BS.unpack (BS.take (linkEnd link - linkStart link) (BS.drop
 
 spec :: Spec
 spec =
-    describe "MicroHttp.DocumentLinks" $ do
+    describe "Verso.DocumentLinks" $ do
         describe "pageLinks" $ do
             it "extracts inline link and image targets with accurate spans" $ do
                 let text = bs "See [Runbook](./runbook.md) and ![diagram](assets/d.png).\n"

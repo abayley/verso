@@ -1,7 +1,7 @@
-module MicroHttp.DocumentListingSpec (spec) where
+module Verso.DocumentListingSpec (spec) where
 
-import MicroHttp.DocumentListing (addListingEntry, removeListingEntry)
 import Test.Hspec
+import Verso.DocumentListing (addListingEntry, removeListingEntry)
 
 cardIndex :: String
 cardIndex =
@@ -39,7 +39,7 @@ bulletIndex =
 
 spec :: Spec
 spec =
-    describe "MicroHttp.DocumentListing" $ do
+    describe "Verso.DocumentListing" $ do
         describe "removeListingEntry" $ do
             it "removes the card whose link resolves to the target and returns it" $ do
                 let (newText, removed) = removeListingEntry "" "beta/index.md" cardIndex

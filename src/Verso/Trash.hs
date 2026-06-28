@@ -8,7 +8,7 @@ The manifest render/parse is pure and round-trips. The format is a simple line-b
 one (not nested JSON) so it parses without a JSON object parser: a @path@/@kind@/@seq@
 header then one @item:@ line per stored file or directory.
 -}
-module MicroHttp.Trash (
+module Verso.Trash (
     TrashItem (..),
     Manifest (..),
     renderManifest,

@@ -1,19 +1,9 @@
-module MicroHttp.LinkIndexStoreSpec (spec) where
+module Verso.LinkIndexStoreSpec (spec) where
 
 import Control.Monad (when)
 import qualified Data.ByteString.Char8 as BS
 import Data.List (sort)
 import MicroHttp.FileSystem (removeEmptyDir)
-import MicroHttp.LinkIndex (inboundOf, outboundOf)
-import MicroHttp.LinkIndexStore (
-    addSubtreeToIndex,
-    applyChanges,
-    currentIndex,
-    newLinkIndexStore,
-    openLinkIndex,
-    relocateInIndex,
-    removeSubtreeInIndex,
- )
 import System.Directory (
     createDirectoryIfMissing,
     doesDirectoryExist,
@@ -22,6 +12,16 @@ import System.Directory (
     removeFile,
  )
 import Test.Hspec
+import Verso.LinkIndex (inboundOf, outboundOf)
+import Verso.LinkIndexStore (
+    addSubtreeToIndex,
+    applyChanges,
+    currentIndex,
+    newLinkIndexStore,
+    openLinkIndex,
+    relocateInIndex,
+    removeSubtreeInIndex,
+ )
 
 -- | A scratch document tree under build/, reset at the start of each IO test.
 root :: FilePath
@@ -64,7 +64,7 @@ removeAt rel = removeFile (root ++ "/" ++ rel)
 
 spec :: Spec
 spec =
-    describe "MicroHttp.LinkIndexStore" $ do
+    describe "Verso.LinkIndexStore" $ do
         it "builds the index from the tree and answers referrer queries with no walk" $ do
             freshTree
             writeAt "a.md" "[B](./b.md) [C](./c.md)\n"

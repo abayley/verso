@@ -1,7 +1,9 @@
-module MicroHttp.DocumentMetaSpec (spec) where
+module Verso.DocumentMetaSpec (spec) where
 
 import Control.Monad (when)
-import MicroHttp.DocumentMeta (
+import System.Directory (doesFileExist, removeFile)
+import Test.Hspec
+import Verso.DocumentMeta (
     AttachmentEntry (..),
     addEntryDedup,
     appendAttachment,
@@ -14,8 +16,6 @@ import MicroHttp.DocumentMeta (
     setImageShortTitle,
     updateImageShortTitle,
  )
-import System.Directory (doesFileExist, removeFile)
-import Test.Hspec
 
 -- | A meta directory under build/, cleaned per IO test by removing its two list files.
 ioDir :: FilePath
@@ -41,7 +41,7 @@ sampleAttachment =
 
 spec :: Spec
 spec =
-    describe "MicroHttp.DocumentMeta" $ do
+    describe "Verso.DocumentMeta" $ do
         describe "metaDirectoryFor" $ do
             it "derives a nested page's meta directory" $
                 metaDirectoryFor "root" "tenants/anzco/overview.md"

@@ -1,7 +1,9 @@
-module MicroHttp.OperationLogSpec (spec) where
+module Verso.OperationLogSpec (spec) where
 
 import Control.Monad (when)
-import MicroHttp.OperationLog (
+import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
+import Test.Hspec
+import Verso.OperationLog (
     OpType (..),
     Operation (..),
     appendOperation,
@@ -10,8 +12,6 @@ import MicroHttp.OperationLog (
     readOperations,
     renderOperation,
  )
-import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
-import Test.Hspec
 
 logPath :: FilePath
 logPath = "build/operation-log-spec/log"
@@ -47,7 +47,7 @@ deleteOp =
 
 spec :: Spec
 spec =
-    describe "MicroHttp.OperationLog" $ do
+    describe "Verso.OperationLog" $ do
         describe "render/parse round-trip" $ do
             it "round-trips a move operation" $
                 parseOperation (renderOperation moveOp) `shouldBe` Just moveOp

@@ -4,21 +4,21 @@ folder's @index.md@ lists its members: subsections as grid cards inside a
 bullets. When a page or section moves, its entry is /relocated/ -- removed from the
 source listing and added to the destination's -- rather than repointed in place
 (those two files are excluded from the generic link rewrite of
-'MicroHttp.DocumentLinks.planMoveRewrites'); a delete removes the entry so it is
+'Verso.DocumentLinks.planMoveRewrites'); a delete removes the entry so it is
 never counted as a blocking inbound reference.
 
 The functions are pure over the @index.md@ text. Entry matching and link repointing
 reuse the link engine, so an entry is matched by where its link /resolves/ (robust
 to @./@ vs bare relative forms) and repointed with 'relativeBetween'.
 -}
-module MicroHttp.DocumentListing (
+module Verso.DocumentListing (
     removeListingEntry,
     addListingEntry,
 ) where
 
 import qualified Data.ByteString.Char8 as BS
 import Data.List (isInfixOf, isPrefixOf)
-import MicroHttp.DocumentLinks (
+import Verso.DocumentLinks (
     linkEnd,
     linkStart,
     linkTarget,

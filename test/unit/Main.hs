@@ -1,11 +1,7 @@
 module Main (main) where
 
-import qualified MicroHttp.AttachmentSpec as AttachmentSpec
 import qualified MicroHttp.ClientErrorSpec as ClientErrorSpec
 import qualified MicroHttp.ConfigSpec as ConfigSpec
-import qualified MicroHttp.DocumentLinksSpec as DocumentLinksSpec
-import qualified MicroHttp.DocumentListingSpec as DocumentListingSpec
-import qualified MicroHttp.DocumentMetaSpec as DocumentMetaSpec
 import qualified MicroHttp.FileSystemSpec as FileSystemSpec
 import qualified MicroHttp.HtmlSpec as HtmlSpec
 import qualified MicroHttp.Http.FramingSpec as FramingSpec
@@ -13,22 +9,26 @@ import qualified MicroHttp.Http.ParserSpec as ParserSpec
 import qualified MicroHttp.Http.ResponseSpec as ResponseSpec
 import qualified MicroHttp.HttpSpec as HttpSpec
 import qualified MicroHttp.IterateeSpec as IterateeSpec
-import qualified MicroHttp.LinkFingerprintSpec as LinkFingerprintSpec
-import qualified MicroHttp.LinkIndexSpec as LinkIndexSpec
-import qualified MicroHttp.LinkIndexStoreSpec as LinkIndexStoreSpec
 import qualified MicroHttp.LogSpec as LogSpec
 import qualified MicroHttp.MiddlewareSpec as MiddlewareSpec
 import qualified MicroHttp.Network.SocketAddrSpec as SocketAddrSpec
-import qualified MicroHttp.OperationLogSpec as OperationLogSpec
 import qualified MicroHttp.RouterSpec as RouterSpec
 import qualified MicroHttp.ServerSpec as ServerSpec
 import qualified MicroHttp.StaticSpec as StaticSpec
 import qualified MicroHttp.TestAppSpec as TestAppSpec
-import qualified MicroHttp.TrashSpec as TrashSpec
-import qualified MicroHttp.TreeMoveSpec as TreeMoveSpec
 import qualified MicroHttpSpec as FacadeSpec
 import Test.Hspec
+import qualified Verso.AttachmentSpec as AttachmentSpec
 import qualified Verso.ConfigSpec as VersoConfigSpec
+import qualified Verso.DocumentLinksSpec as DocumentLinksSpec
+import qualified Verso.DocumentListingSpec as DocumentListingSpec
+import qualified Verso.DocumentMetaSpec as DocumentMetaSpec
+import qualified Verso.LinkFingerprintSpec as LinkFingerprintSpec
+import qualified Verso.LinkIndexSpec as LinkIndexSpec
+import qualified Verso.LinkIndexStoreSpec as LinkIndexStoreSpec
+import qualified Verso.OperationLogSpec as OperationLogSpec
+import qualified Verso.TrashSpec as TrashSpec
+import qualified Verso.TreeMoveSpec as TreeMoveSpec
 
 main :: IO ()
 main = hspec $ do

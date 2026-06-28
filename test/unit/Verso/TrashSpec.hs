@@ -1,7 +1,7 @@
-module MicroHttp.TrashSpec (spec) where
+module Verso.TrashSpec (spec) where
 
-import MicroHttp.Trash (Manifest (..), TrashItem (..), parseManifest, renderManifest)
 import Test.Hspec
+import Verso.Trash (Manifest (..), TrashItem (..), parseManifest, renderManifest)
 
 pageManifest :: Manifest
 pageManifest =
@@ -29,7 +29,7 @@ sectionManifest =
 
 spec :: Spec
 spec =
-    describe "MicroHttp.Trash" $ do
+    describe "Verso.Trash" $ do
         it "round-trips a page manifest with multiple items" $
             parseManifest (renderManifest pageManifest) `shouldBe` Just pageManifest
 

@@ -30,26 +30,26 @@ import qualified Data.ByteString.Char8 as BS
 import Data.Char (digitToInt, isAsciiLower, isAsciiUpper, isDigit, isSpace, toLower, toUpper)
 import Data.List (intercalate, isSuffixOf, sortBy)
 import Data.Maybe (catMaybes, fromMaybe)
-import MicroHttp.Attachment (allowedExtension, attachmentRoutes, extensionOf, fileAttachmentStore, inlineImageExtension, originalUploadFilename, uploadFilename)
 import MicroHttp.Config (Config, configInt, configMounts, configString)
-import qualified MicroHttp.DocumentMeta as DocumentMeta
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http as Http
 import MicroHttp.Http.Parse (ParseError (..))
 import MicroHttp.Http.PercentEncoding (decodeFormValue)
 import MicroHttp.Iteratee (Iter, liftIO, readBodyStrict)
-import MicroHttp.LinkIndexStore (LinkIndexStore, addSubtreeToIndex, applyChanges, newLinkIndexStore, openLinkIndex, refreshLinkIndex, relocateInIndex, removeSubtreeInIndex)
 import MicroHttp.Log (Logger, consoleLog, localTimestamp, rotatingAppender, rotatingFileLogfmtLogger)
 import MicroHttp.Middleware (logRequests, withErrorResponses)
 import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), fileSizeBytes)
-import MicroHttp.OperationLog (OpType (..), Operation (..), appendOperation, nextSeq, readOperations, renderOperation)
 import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
 import MicroHttp.Stream (StreamError (..))
-import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), RelevantPages, deleteTarget, indexRelevant, listTrash, movePage, movePlanJson, moveSection, restoreFromTrash, scanRelevant, trashListJson)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import System.IO (hPutStrLn, stderr)
+import Verso.Attachment (allowedExtension, attachmentRoutes, extensionOf, fileAttachmentStore, inlineImageExtension, originalUploadFilename, uploadFilename)
+import qualified Verso.DocumentMeta as DocumentMeta
+import Verso.LinkIndexStore (LinkIndexStore, addSubtreeToIndex, applyChanges, newLinkIndexStore, openLinkIndex, refreshLinkIndex, relocateInIndex, removeSubtreeInIndex)
+import Verso.OperationLog (OpType (..), Operation (..), appendOperation, nextSeq, readOperations, renderOperation)
+import Verso.TreeMove (DeleteOutcome (..), MovePlan (..), RelevantPages, deleteTarget, indexRelevant, listTrash, movePage, movePlanJson, moveSection, restoreFromTrash, scanRelevant, trashListJson)
 
 data DocumentStore = DocumentStore
     { loadDocument :: String -> IO String
@@ -566,7 +566,7 @@ treeTrashListHandler trashRoot _ _ = do
 
 -- Replay is an operator action run from the @replay-tool@ CLI (RFC-0028), not a web
 -- endpoint, so it is deliberately not surfaced under the routes; the logic lives in
--- 'MicroHttp.TreeMove.replayLog'.
+-- 'Verso.TreeMove.replayLog'.
 
 -- | @"page"@ or @"section"@ for a tree path.
 kindOf :: String -> String

@@ -13,7 +13,7 @@ The pure builders, the dedup/append, the surgical update, and the attachment
 reader are exported so they are tested without the filesystem; thin @IO@ wrappers
 apply them to a meta directory.
 -}
-module MicroHttp.DocumentMeta (
+module Verso.DocumentMeta (
     AttachmentEntry (..),
     metaDirectoryFor,
     renderAttachmentEntry,

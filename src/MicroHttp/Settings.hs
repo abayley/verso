@@ -39,7 +39,7 @@ defaultSettings =
         , settingsMaxActiveHandlers = 32
         , settingsMaxHeaderBytes = 8192
         , -- The framing body cap applies to every route; it must be at least the attachment upload
-          -- limit (RFC-0018, MicroHttp.Attachment.attachmentMaxBytes = 10 MiB). Handlers still apply
+          -- limit (RFC-0018, Verso.Attachment.attachmentMaxBytes = 10 MiB). Handlers still apply
           -- their own tighter bounds (e.g. the document form keeps a 1 MiB limit).
           settingsMaxBodyBytes = 10485760
         , settingsReadBufferBytes = 8192

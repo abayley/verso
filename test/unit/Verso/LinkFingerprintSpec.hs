@@ -1,11 +1,10 @@
-module MicroHttp.LinkFingerprintSpec (spec) where
+module Verso.LinkFingerprintSpec (spec) where
 
 import Control.Monad (when)
 import qualified Data.ByteString.Char8 as BS
 import Data.List (sort)
 import qualified Data.Map as Map
 import MicroHttp.FileSystem (removeEmptyDir)
-import MicroHttp.LinkFingerprint (fingerprintTree, markdownFiles)
 import System.Directory (
     createDirectoryIfMissing,
     doesDirectoryExist,
@@ -14,6 +13,7 @@ import System.Directory (
     removeFile,
  )
 import Test.Hspec
+import Verso.LinkFingerprint (fingerprintTree, markdownFiles)
 
 -- | A scratch document tree under build/, reset at the start of each IO test.
 root :: FilePath
@@ -59,7 +59,7 @@ seedTree = do
 
 spec :: Spec
 spec =
-    describe "MicroHttp.LinkFingerprint" $ do
+    describe "Verso.LinkFingerprint" $ do
         describe "markdownFiles" $ do
             it "enumerates only the .md pages, skipping assets, meta, and dot-dirs" $ do
                 seedTree

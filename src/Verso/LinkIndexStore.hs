@@ -1,5 +1,5 @@
 {- | The running server's home for the link index (RFC-0029, revised). The graph
-('MicroHttp.LinkIndex') lives in an 'MVar', built at startup and then read by move/delete
+('Verso.LinkIndex') lives in an 'MVar', built at startup and then read by move/delete
 with __no per-operation filesystem walk__: the server owns the document tree, so the only
 routine out-of-band writer is the periodic re-export, which calls 'refreshLinkIndex'
 explicitly. In-server mutations keep the in-memory graph correct incrementally -- a move
@@ -14,7 +14,7 @@ The persisted file is rewritten on build and refresh, not per mutation, so in-se
 mutations stay snappy; a file made stale by mutations is simply rebuilt on the next
 start. A missing or corrupt file rebuilds too.
 -}
-module MicroHttp.LinkIndexStore (
+module Verso.LinkIndexStore (
     LinkIndexStore,
     newLinkIndexStore,
     openLinkIndex,
@@ -37,8 +37,9 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes, fromMaybe, isNothing)
 import MicroHttp.FileSystem (FileStat (..), fileStat, renamePath)
-import MicroHttp.LinkFingerprint (Fingerprint, fingerprintTree, markdownFiles)
-import MicroHttp.LinkIndex (
+import System.Directory (doesFileExist)
+import Verso.LinkFingerprint (Fingerprint, fingerprintTree, markdownFiles)
+import Verso.LinkIndex (
     LinkIndex,
     emptyIndex,
     forceIndex,
@@ -49,7 +50,6 @@ import MicroHttp.LinkIndex (
     removeSubtree,
     updatePage,
  )
-import System.Directory (doesFileExist)
 
 -- | The graph and the fingerprint of the tree it was built from, held together.
 data IndexState = IndexState

@@ -1,7 +1,7 @@
 {- | In-server section move (RFC-0027, phase 2): relocate a section folder to a new
 parent and/or slug, preserving link integrity. The pure cores do the work --
-'MicroHttp.DocumentLinks.planMoveRewrites' computes the link rewrites across the
-whole tree, 'MicroHttp.DocumentListing' relocates the parent @index.md@ listing card
+'Verso.DocumentLinks.planMoveRewrites' computes the link rewrites across the
+whole tree, 'Verso.DocumentListing' relocates the parent @index.md@ listing card
 -- and this module supplies the IO: enumerating the tree's pages, the refusals
 (root, cycle, collision), the @rename(2)@, and the writes.
 
@@ -11,7 +11,7 @@ returns the same plan marked applied. A move is best-effort transactional: the
 rewrites are computed up front against the pre-move tree, then the directory is
 renamed and the rewritten pages and listings are written.
 -}
-module MicroHttp.TreeMove (
+module Verso.TreeMove (
     RelevantQuery (..),
     RelevantPages,
     scanRelevant,
@@ -35,7 +35,10 @@ import qualified Data.ByteString.Char8 as BS
 import Data.Char (isSpace)
 import Data.List (intercalate, isPrefixOf, isSuffixOf, nub, stripPrefix)
 import Data.Maybe (catMaybes, fromMaybe, maybeToList)
-import MicroHttp.DocumentLinks (
+import MicroHttp.FileSystem (removeEmptyDir, removeFilePath, renamePath)
+import MicroHttp.Static (resolveStaticPath)
+import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
+import Verso.DocumentLinks (
     AssetClass (..),
     assetNamesIn,
     classifyAssets,
@@ -45,15 +48,12 @@ import MicroHttp.DocumentLinks (
     referrersMatching,
     relocatePath,
  )
-import MicroHttp.DocumentListing (addListingEntry, removeListingEntry)
-import MicroHttp.DocumentMeta (metaDirectoryFor)
-import MicroHttp.FileSystem (removeEmptyDir, removeFilePath, renamePath)
-import MicroHttp.LinkIndex (rewriteCandidates)
-import MicroHttp.LinkIndexStore (LinkIndexStore, currentIndex)
-import MicroHttp.OperationLog (OpType (..), Operation (..))
-import MicroHttp.Static (resolveStaticPath)
-import MicroHttp.Trash (Manifest (..), TrashItem (..), parseManifest, renderManifest)
-import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
+import Verso.DocumentListing (addListingEntry, removeListingEntry)
+import Verso.DocumentMeta (metaDirectoryFor)
+import Verso.LinkIndex (rewriteCandidates)
+import Verso.LinkIndexStore (LinkIndexStore, currentIndex)
+import Verso.OperationLog (OpType (..), Operation (..))
+import Verso.Trash (Manifest (..), TrashItem (..), parseManifest, renderManifest)
 
 {- | The impact of a section move: the source and destination tree paths, the tree
 paths (final locations) of the pages whose links change, and whether it was applied

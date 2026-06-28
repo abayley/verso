@@ -268,10 +268,11 @@ Each phase is one commit, `make check` green before committing.
    `ConfigSpec` updated (unit + integration). Entry points use
    `Verso.Config.loadConfig`. `VersoConfig` is consumed by the assembly in Phase 4;
    the `VERSO_`/`MICROHTTP_` partition is live now. (Behavioural change.)
-3. **Phase 3 -- Move app domain modules.** `MicroHttp.{DocumentLinks, LinkIndex,
-   LinkIndexStore, LinkFingerprint, DocumentListing, DocumentMeta, Attachment,
-   TreeMove, OperationLog, Trash}` -> `Verso.*`, atomically: module headers + all
-   importers + relocate specs + update test drivers. One commit.
+3. **[DONE] Phase 3 -- Move app domain modules.** `MicroHttp.{DocumentLinks,
+   LinkIndex, LinkIndexStore, LinkFingerprint, DocumentListing, DocumentMeta,
+   Attachment, TreeMove, OperationLog, Trash}` -> `Verso.*`: module headers + all
+   importers + relocated specs + test driver. (`MicroHttp.TestApp` and
+   `ReplayTool` import `Verso.*` until renamed in phase 4 -- transient, no cycle.)
 4. **Phase 4 -- Rename the app assembly + executables.**
    `MicroHttp.TestApp` -> `Verso.App`; `src/TestApp.hs` -> `src/Verso/Main.hs`;
    `src/ReplayTool.hs` -> `src/Verso/ReplayTool.hs`. Update Makefile

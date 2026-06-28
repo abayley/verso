@@ -1,12 +1,12 @@
-module MicroHttp.AttachmentSpec (spec) where
+module Verso.AttachmentSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import Data.Char (isHexDigit)
-import MicroHttp.Attachment (AttachmentStore, attachmentRoutes, contentHash, fileAttachmentStore)
 import MicroHttp.Http
 import MicroHttp.Iteratee (run, strictEnumerator)
 import qualified MicroHttp.Router as Router
 import Test.Hspec
+import Verso.Attachment (AttachmentStore, attachmentRoutes, contentHash, fileAttachmentStore)
 
 -- | The blob store used by the routing tests; content-addressed, under build/.
 testRoot :: FilePath
@@ -17,7 +17,7 @@ testStore = fileAttachmentStore testRoot
 
 spec :: Spec
 spec =
-    describe "MicroHttp.Attachment" $ do
+    describe "Verso.Attachment" $ do
         describe "contentHash" $ do
             it "is deterministic, distinguishes content, and is 32 lowercase hex digits" $ do
                 contentHash (BS.pack "hello") `shouldBe` contentHash (BS.pack "hello")

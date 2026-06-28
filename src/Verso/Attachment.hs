@@ -12,7 +12,7 @@ non-cryptographic 128-bit FNV-1a (no crypto dependency in MicroHs); it provides
 deduplication and a collision-free-in-practice address, not a security primitive
 -- safety comes from the serving headers and the type allow-list.
 -}
-module MicroHttp.Attachment (
+module Verso.Attachment (
     AttachmentStore (..),
     allowedExtension,
     attachmentRoutes,

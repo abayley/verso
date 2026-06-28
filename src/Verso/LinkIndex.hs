@@ -1,7 +1,7 @@
 {- | The pure link graph for RFC-0029's in-memory link index: the document tree's
 resolved @.md@->@.md@ link graph and its inverse, with the in-place update functions a
 move/delete and incremental maintenance need. It reuses the RFC-0027 link engine
-('MicroHttp.DocumentLinks') to resolve targets, so the index resolves a link exactly
+('Verso.DocumentLinks') to resolve targets, so the index resolves a link exactly
 as the whole-tree scan does; it is purely a performance layer that narrows /which/
 pages an operation must process, never a second implementation of /what/ a link means
 (ADR-066).
@@ -22,7 +22,7 @@ pages in arbitrary order). Together this makes structural equality a true semant
 equality: an incrementally-maintained index equals a full rebuild from the same final
 bodies (the anti-drift invariant, asserted in the tests).
 -}
-module MicroHttp.LinkIndex (
+module Verso.LinkIndex (
     LinkIndex,
     emptyIndex,
     buildIndex,
@@ -45,7 +45,7 @@ import Data.List (foldl', isPrefixOf, isSuffixOf, nub, sort)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
-import MicroHttp.DocumentLinks (dirOfPath, linkTarget, pageLinks, relocatePath, resolveTarget)
+import Verso.DocumentLinks (dirOfPath, linkTarget, pageLinks, relocatePath, resolveTarget)
 
 -- | A page's tree-relative path (the body's location); a graph source.
 type PagePath = String
@@ -138,7 +138,7 @@ inboundOf target = Map.findWithDefault [] target . idxInbound
 
 {- | A page's resolved in-tree @.md@ link targets (tree-absolute), deduplicated and in
 body order. External and non-@.md@ (asset) targets are excluded -- the graph is
-@.md@->@.md@ only (ADR-066). Resolution reuses 'MicroHttp.DocumentLinks', so it matches
+@.md@->@.md@ only (ADR-066). Resolution reuses 'Verso.DocumentLinks', so it matches
 the scan.
 -}
 pageTargets :: PagePath -> ByteString -> [TreePath]
@@ -179,7 +179,7 @@ relocatePage :: PagePath -> PagePath -> ByteString -> LinkIndex -> LinkIndex
 relocatePage oldPath newPath newBody = updatePage newPath newBody . removePage oldPath
 
 {- | The pages that link to a target the predicate accepts, excluding the given paths.
-Mirrors 'MicroHttp.DocumentLinks.referrersMatching' as a page set: equality with a
+Mirrors 'Verso.DocumentLinks.referrersMatching' as a page set: equality with a
 target answers a page delete's refuse-if-referenced; a subtree-prefix predicate answers
 a section delete's "who links into this subtree".
 -}
@@ -195,7 +195,7 @@ link to an outside target changes), and (2) a page outside the subtree that link
 moves together with its targets, so its relative links are unchanged and it needs no rewrite.
 
 This is computed from the index's resolved edges alone -- without reading any bodies -- and is
-still a superset of the pages 'MicroHttp.DocumentLinks.planMoveRewrites' actually changes
+still a superset of the pages 'Verso.DocumentLinks.planMoveRewrites' actually changes
 (a crossing link may happen to need no textual edit), so restricting the plan to these
 candidates drops no rewrite. Earlier this returned /every/ subtree page; narrowing it to the
 out-linkers avoids reading and parsing the (often many) subtree pages with only internal

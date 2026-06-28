@@ -6,18 +6,18 @@ Replay is an operator action, not a web action, so it lives here rather than beh
 an HTTP route. It reads the same configuration as the server (the @MICROHTTP_CONFIG@
 file, default @micro-http.conf@) for @document_tree_root@, @operation_log@, and
 @trash_root@, applies each logged operation in order through the shared
-'MicroHttp.TreeMove.replayLog' machinery (best-effort: stale operations are skipped),
+'Verso.TreeMove.replayLog' machinery (best-effort: stale operations are skipped),
 and prints the report.
 -}
 module Main (main) where
 
 import Data.Maybe (fromMaybe)
 import MicroHttp.Config (Config, ConfigError (..), configString)
-import MicroHttp.OperationLog (readOperations)
-import MicroHttp.TreeMove (ReplayEntry (..), replayLog)
 import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
 import Verso.Config (loadConfig)
+import Verso.OperationLog (readOperations)
+import Verso.TreeMove (ReplayEntry (..), replayLog)
 
 -- | The default config path, overridable by @MICROHTTP_CONFIG@ (matching the server).
 defaultConfigPath :: FilePath

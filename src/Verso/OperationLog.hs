@@ -10,7 +10,7 @@ is apply-then-append, RFC-0028 reliability) and a read. Paths are validated
 tree-relative components (no quotes/backslashes), so the JSON values need no
 escaping and parse by a simple top-level split.
 -}
-module MicroHttp.OperationLog (
+module Verso.OperationLog (
     OpType (..),
     Operation (..),
     renderOperation,

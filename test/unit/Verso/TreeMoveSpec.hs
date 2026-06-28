@@ -1,13 +1,13 @@
-module MicroHttp.TreeMoveSpec (spec) where
+module Verso.TreeMoveSpec (spec) where
 
 import Control.Monad (forM_, void, when)
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.FileSystem (removeEmptyDir, removeFilePath)
-import MicroHttp.LinkIndexStore (newLinkIndexStore, openLinkIndex)
-import MicroHttp.OperationLog (OpType (..), Operation (..))
-import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), ReplayEntry (..), deleteTarget, indexRelevant, movePage, moveSection, replayLog, restoreFromTrash, scanRelevant)
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import Test.Hspec
+import Verso.LinkIndexStore (newLinkIndexStore, openLinkIndex)
+import Verso.OperationLog (OpType (..), Operation (..))
+import Verso.TreeMove (DeleteOutcome (..), MovePlan (..), ReplayEntry (..), deleteTarget, indexRelevant, movePage, moveSection, replayLog, restoreFromTrash, scanRelevant)
 
 root :: FilePath
 root = "build/tree-move-spec"
@@ -93,7 +93,7 @@ planOr (Left _) = MovePlan "" "" [] False
 
 spec :: Spec
 spec = do
-    describe "MicroHttp.TreeMove.moveSection" $ do
+    describe "Verso.TreeMove.moveSection" $ do
         it "moves a section folder, rewrites inbound links, and relocates the listing card" $ do
             seedFixture
             result <- moveSection scanRelevant root "sub" "dest" "sub" True
@@ -139,7 +139,7 @@ spec = do
             result <- moveSection scanRelevant root "sub" "dest" "sub" True
             isLeft result `shouldBe` True
 
-    describe "MicroHttp.TreeMove.movePage" $ do
+    describe "Verso.TreeMove.movePage" $ do
         it "moves a page cross-folder: relocates exclusive, copies shared, co-moves meta, rewrites links" $ do
             seedPageFixture
             result <- movePage scanRelevant root "a/mover.md" "b" "mover" True
@@ -183,7 +183,7 @@ spec = do
             result <- movePage scanRelevant root "a/mover.md" "b" "mover" True
             isLeft result `shouldBe` True
 
-    describe "MicroHttp.TreeMove.deleteTarget" $ do
+    describe "Verso.TreeMove.deleteTarget" $ do
         it "refuses a delete while another page links to the target, listing the referrer" $ do
             seedDeleteFixture
             removeTree trashRoot
@@ -213,7 +213,7 @@ spec = do
             idx <- readAt "index.md"
             ("Lonely" `notInfix` idx) `shouldBe` True
 
-    describe "MicroHttp.TreeMove.restoreFromTrash" $ do
+    describe "Verso.TreeMove.restoreFromTrash" $ do
         it "restores a trashed page to its origin, re-adding the listing entry" $ do
             seedDeleteFixture
             removeTree trashRoot
@@ -234,7 +234,7 @@ spec = do
             result <- restoreFromTrash root trashRoot "7"
             isLeft result `shouldBe` True
 
-    describe "MicroHttp.TreeMove.replayLog" $ do
+    describe "Verso.TreeMove.replayLog" $ do
         it "applies in-order ops onto a fresh corpus and skips ones whose precondition fails" $ do
             removeTree root
             removeTree trashRoot

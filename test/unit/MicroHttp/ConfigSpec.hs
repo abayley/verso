@@ -26,10 +26,13 @@ spec =
                 configBool "on" False (parsed "on = true") `shouldBe` Right True
                 configBool "on" True (parsed "on = false") `shouldBe` Right False
                 isLeft (configBool "on" False (parsed "on = yes")) `shouldBe` True
-        describe "applyEnvironment" $
-            it "given a MICROHTTP_ override, when applied, then it beats the file value" $ do
-                let cfg = applyEnvironment [("MICROHTTP_PORT", "7200"), ("PATH", "/ignored")] (parsed "port = 7100")
+        describe "applyEnvironment" $ do
+            it "given a MICROHTTP_ override of an owned key, when applied, then it beats the file value" $ do
+                let cfg = applyEnvironment "MICROHTTP_" serverEnvKeys [("MICROHTTP_PORT", "7200"), ("PATH", "/ignored")] (parsed "port = 7100")
                 configInt "port" 0 cfg `shouldBe` Right 7200
+            it "given a MICROHTTP_ override of an unowned key, when applied, then it is ignored" $ do
+                let cfg = applyEnvironment "MICROHTTP_" serverEnvKeys [("MICROHTTP_DOCUMENT_TREE_ROOT", "/x")] (parsed "document_tree_root = /y")
+                configString "document_tree_root" "" cfg `shouldBe` "/y"
         describe "configMounts" $ do
             it "given a comma-separated mount list, when parsed, then each prefix/root pair is returned" $
                 configMounts "static_mounts" (parsed "static_mounts = /static/editor static/editor, /assets public/assets")

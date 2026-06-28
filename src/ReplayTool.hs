@@ -12,11 +12,12 @@ and prints the report.
 module Main (main) where
 
 import Data.Maybe (fromMaybe)
-import MicroHttp.Config (Config, ConfigError (..), configString, loadConfig)
+import MicroHttp.Config (Config, ConfigError (..), configString)
 import MicroHttp.OperationLog (readOperations)
 import MicroHttp.TreeMove (ReplayEntry (..), replayLog)
 import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
+import Verso.Config (loadConfig)
 
 -- | The default config path, overridable by @MICROHTTP_CONFIG@ (matching the server).
 defaultConfigPath :: FilePath

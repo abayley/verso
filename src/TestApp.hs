@@ -1,7 +1,7 @@
 module Main (main) where
 
 import Data.Maybe (fromMaybe)
-import MicroHttp.Config (Config, ConfigError (..), loadConfig, toSettings)
+import MicroHttp.Config (Config, ConfigError (..), toSettings)
 import MicroHttp.Log (consoleLog)
 import MicroHttp.Network.Socket (Host (..), Port (..))
 import qualified MicroHttp.Server as Server
@@ -9,6 +9,7 @@ import qualified MicroHttp.TestApp as TestApp
 import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
 import System.IO (hFlush, stdout)
+import Verso.Config (loadConfig)
 
 {- | The default config file path, overridable by the @MICROHTTP_CONFIG@
 environment variable. A missing file means built-in defaults (RFC-0011).

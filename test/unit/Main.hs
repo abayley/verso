@@ -28,6 +28,7 @@ import qualified MicroHttp.TrashSpec as TrashSpec
 import qualified MicroHttp.TreeMoveSpec as TreeMoveSpec
 import qualified MicroHttpSpec as FacadeSpec
 import Test.Hspec
+import qualified Verso.ConfigSpec as VersoConfigSpec
 
 main :: IO ()
 main = hspec $ do
@@ -58,3 +59,4 @@ main = hspec $ do
     SocketAddrSpec.spec
     OperationLogSpec.spec
     TestAppSpec.spec
+    VersoConfigSpec.spec

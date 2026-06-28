@@ -134,16 +134,32 @@ also depends on it downward).
 (`configString`, `configInt`, `configBool`, `configMounts`), and `toSettings`
 plus `configHost` (these map onto the framework's own `Settings`).
 
-`applyEnvironment` currently hardcodes the `MICROHTTP_` prefix. It is
-parameterised by prefix so the framework can overlay `MICROHTTP_` and the
-application can overlay `VERSO_` onto the same single `Config`. Proposed shape
-(exact signatures finalised in implementation):
+`applyEnvironment` currently hardcodes the `MICROHTTP_` prefix and overlays *any*
+matching key. It is parameterised by both prefix and the key set the prefix
+owns, so the framework overlay (`MICROHTTP_` over `serverEnvKeys`) and the
+application overlay (`VERSO_` over `appEnvKeys`) touch disjoint key domains and
+neither leaks into the other (decision: strict partitioning -- a bare prefix
+list, as first sketched, would let `VERSO_PORT` set the framework `port` and so
+fail the "no leak into framework keys" requirement). Final shapes:
 
-- `applyEnvironment :: String -> [(String, String)] -> Config -> Config`
-  (prefix-parameterised; an entry `PREFIX_foo` overrides key `foo`).
-- `loadConfig :: [String] -> FilePath -> IO (Either ConfigError Config)`
-  (overlays each prefix in turn). The application passes
-  `["MICROHTTP_", "VERSO_"]`.
+- `applyEnvironment :: String -> [String] -> [(String, String)] -> Config -> Config`
+  (prefix, owned keys, environment, config; an entry `PREFIX_foo` overrides key
+  `foo` only when `foo` is owned).
+- `loadConfigWith :: [(String, [String])] -> FilePath -> IO (Either ConfigError Config)`
+  (reads file + environment once, applies each `(prefix, ownedKeys)` overlay).
+- `serverEnvKeys :: [String]` (framework) lists the nine `toSettings` keys.
+
+`Verso.Config` owns `appEnvKeys :: [String]` and provides the application's single
+loader:
+
+- `loadConfig = loadConfigWith [("MICROHTTP_", serverEnvKeys), ("VERSO_", appEnvKeys)]`.
+
+Both application entry points (`Main`, `ReplayTool`) call `Verso.Config.loadConfig`.
+
+Consequence (intended): application keys are no longer overridable via
+`MICROHTTP_<KEY>` (only `VERSO_<KEY>`); framework keys remain `MICROHTTP_<KEY>`
+only. `MICROHTTP_CONFIG` (the config-file path, read via `lookupEnv`, not the
+overlay) is unaffected.
 
 `Verso.Config` (new) owns the application keys and exposes a typed record built
 once:
@@ -242,14 +258,16 @@ assembly spec `TestAppSpec` -> `Verso.AppSpec`. `FileOpsSpec` ->
 
 Each phase is one commit, `make check` green before committing.
 
-1. **Phase 1 -- `FileOps` -> `MicroHttp.FileSystem`.** Rename module + file;
-   update importers (`MicroHttp.Log`, the app move/delete modules) and
-   `FileOpsSpec` -> `MicroHttp.FileSystemSpec` + driver. Smallest, isolated.
-2. **Phase 2 -- Config split.** Parameterise `applyEnvironment`/`loadConfig` by
-   prefix in `MicroHttp.Config`; add `Verso.Config` (`VersoConfig` +
-   `fromConfig`); add `Verso.ConfigSpec`; update framework `ConfigSpec`. Wire
-   `["MICROHTTP_","VERSO_"]` in the entry points. (Behavioural change lands here,
-   test-first.)
+1. **[DONE -- afaf457] Phase 1 -- `FileOps` -> `MicroHttp.FileSystem`.** Rename
+   module + file; update importers (`MicroHttp.Log`, the app move/delete modules)
+   and `FileOpsSpec` -> `MicroHttp.FileSystemSpec` + driver. Smallest, isolated.
+2. **[DONE] Phase 2 -- Config split.** `applyEnvironment` parameterised by
+   prefix + owned keys and `loadConfigWith` added in `MicroHttp.Config`
+   (`serverEnvKeys` exported); `Verso.Config` added (`VersoConfig`, `fromConfig`,
+   `appEnvKeys`, orchestrating `loadConfig`); `Verso.ConfigSpec` added; framework
+   `ConfigSpec` updated (unit + integration). Entry points use
+   `Verso.Config.loadConfig`. `VersoConfig` is consumed by the assembly in Phase 4;
+   the `VERSO_`/`MICROHTTP_` partition is live now. (Behavioural change.)
 3. **Phase 3 -- Move app domain modules.** `MicroHttp.{DocumentLinks, LinkIndex,
    LinkIndexStore, LinkFingerprint, DocumentListing, DocumentMeta, Attachment,
    TreeMove, OperationLog, Trash}` -> `Verso.*`, atomically: module headers + all

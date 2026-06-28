@@ -1,7 +1,7 @@
 module MicroHttp.ConfigSpec (spec) where
 
 import Control.Monad (when)
-import MicroHttp.Config (Config, ConfigError, loadConfig, toSettings)
+import MicroHttp.Config (Config, ConfigError, loadConfigWith, serverEnvKeys, toSettings)
 import MicroHttp.Network.Socket (Port (..))
 import MicroHttp.Server (Settings (..), defaultSettings)
 import System.Directory (doesFileExist, removeFile)
@@ -12,14 +12,14 @@ spec =
     describe "MicroHttp.Config loading" $ do
         it "given a config file, when loaded, then the settings reflect its values" $ do
             writeFile configFile "port = 7100\nmax_body_bytes = 4096\n"
-            loaded <- loadConfig configFile
+            loaded <- loadConfigWith [("MICROHTTP_", serverEnvKeys)] configFile
             removeFile configFile
             settingsOf loaded $ \settings -> do
                 settingsPort settings `shouldBe` Port 7100
                 settingsMaxBodyBytes settings `shouldBe` 4096
         it "given no config file, when loaded, then the built-in defaults apply" $ do
             removeIfExists configFile
-            loaded <- loadConfig configFile
+            loaded <- loadConfigWith [("MICROHTTP_", serverEnvKeys)] configFile
             settingsOf loaded (\settings -> settingsPort settings `shouldBe` settingsPort defaultSettings)
 
 settingsOf :: Either ConfigError Config -> (Settings -> Expectation) -> Expectation

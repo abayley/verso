@@ -1,16 +1,22 @@
-{- | Configuration loading (RFC-0011). A flat @key = value@ file, parsed by
-this module, with environment-variable overrides: any key @foo@ is overridden
-by @MICROHTTP_FOO@, and the precedence is built-in defaults, then the file, then
-the environment. The known server keys map to a 'Settings' via 'toSettings'
-(failing fast on a bad value); an application reads its own keys with the typed
-lookups. A missing file is an empty config, so defaults apply.
+{- | Generic configuration loading (RFC-0011, RFC-0030). A flat @key = value@
+file, parsed by this module, with environment-variable overrides scoped by
+prefix and key set: 'applyEnvironment' overlays @PREFIX_FOO@ onto key @foo@ but
+only for keys it is told to own, so a framework prefix and an application prefix
+overlay disjoint key domains without leaking into each other. The precedence is
+built-in defaults, then the file, then the environment. The known server keys
+('serverEnvKeys') map to a 'Settings' via 'toSettings' (failing fast on a bad
+value); an application owns its own keys and reads them with the typed lookups. A
+missing file is an empty config, so defaults apply. 'loadConfigWith' reads the
+file and environment once and applies a caller-supplied list of overlays, so the
+application is responsible for creating both the framework config and its own.
 -}
 module MicroHttp.Config (
     Config,
     ConfigError (..),
     parseConfig,
-    loadConfig,
+    loadConfigWith,
     applyEnvironment,
+    serverEnvKeys,
     toSettings,
     configString,
     configInt,
@@ -49,28 +55,54 @@ parseConfig text =
             (key, '=' : value) -> Right (trim key, trim value)
             _ -> Left (ConfigError ("malformed config line: " ++ line))
 
-{- | Reads the file (an absent file is empty), parses it, and overlays
-environment variables: @MICROHTTP_FOO@ overrides key @foo@. Environment entries
-win because they are placed first.
+{- | Reads the file (an absent file is empty), parses it, and applies each
+@(prefix, ownedKeys)@ overlay in turn from the environment, read once. The
+application supplies the overlays so it creates both the framework config (the
+@MICROHTTP_@ / 'serverEnvKeys' overlay) and its own (e.g. a @VERSO_@ overlay).
 -}
-loadConfig :: FilePath -> IO (Either ConfigError Config)
-loadConfig path = do
+loadConfigWith :: [(String, [String])] -> FilePath -> IO (Either ConfigError Config)
+loadConfigWith overlays path = do
     present <- doesFileExist path
     fileText <- if present then readFile path else return ""
     environment <- getEnvironment
-    return (fmap (applyEnvironment environment) (parseConfig fileText))
+    return (fmap (overlay environment) (parseConfig fileText))
+  where
+    overlay environment cfg =
+        foldl (\acc (prefix, keys) -> applyEnvironment prefix keys environment acc) cfg overlays
 
-{- | Overlays @MICROHTTP_FOO@ environment entries onto a parsed config as key
-@foo@; the overrides win because they are placed first. Pure, so the override
+{- | Overlays @PREFIX_FOO@ environment entries onto a parsed config as key @foo@,
+but only for keys in @ownedKeys@, so a prefix overlay never touches a key it does
+not own. The overrides win because they are placed first. Pure, so the override
 behaviour is testable without the environment.
 -}
-applyEnvironment :: [(String, String)] -> Config -> Config
-applyEnvironment environment (Config fileEntries) =
+applyEnvironment :: String -> [String] -> [(String, String)] -> Config -> Config
+applyEnvironment prefix ownedKeys environment (Config fileEntries) =
     Config (overrides ++ fileEntries)
   where
-    overrides = [(keyOf name, value) | (name, value) <- environment, isOverride name]
-    isOverride name = "MICROHTTP_" `isPrefixOf` name
-    keyOf name = map toLower (drop (length "MICROHTTP_") name)
+    overrides =
+        [ (key, value)
+        | (name, value) <- environment
+        , prefix `isPrefixOf` name
+        , let key = map toLower (drop (length prefix) name)
+        , key `elem` ownedKeys
+        ]
+
+{- | The known server keys, owned by the @MICROHTTP_@ environment overlay and
+mapped onto 'Settings' by 'toSettings'. Listed here so the overlay can be scoped
+to exactly these keys.
+-}
+serverEnvKeys :: [String]
+serverEnvKeys =
+    [ "host"
+    , "port"
+    , "backlog"
+    , "max_active_handlers"
+    , "max_header_bytes"
+    , "max_body_bytes"
+    , "read_buffer_bytes"
+    , "idle_read_timeout_micros"
+    , "idle_write_timeout_micros"
+    ]
 
 -- | Maps the known server keys onto 'defaultSettings', failing on a bad value.
 toSettings :: Config -> Either ConfigError Settings

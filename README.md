@@ -48,8 +48,6 @@ The current public facade is `MicroHttp`, which re-exports:
 
 - `MicroHttp.Html`
 - `MicroHttp.Http`
-- `MicroHttp.Http.Parser`
-- `MicroHttp.Http.Response`
 - `MicroHttp.Iteratee`
 - `MicroHttp.Middleware`
 - `MicroHttp.Router`

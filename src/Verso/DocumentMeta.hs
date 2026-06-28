@@ -28,11 +28,11 @@ module Verso.DocumentMeta (
 ) where
 
 import qualified Data.ByteString.Char8 as BS
-import Data.Char (isSpace)
-import Data.List (isPrefixOf, isSuffixOf)
-import Data.Maybe (fromMaybe, mapMaybe)
+import qualified Data.Char as Char
+import qualified Data.List as List
+import qualified Data.Maybe as Maybe
 import qualified MicroHttp.Static as Static
-import System.Directory (createDirectoryIfMissing, doesFileExist)
+import qualified System.Directory as Directory
 
 -- | An attachment record as written for a new upload: the legacy @id@/@path@ are omitted (ADR-049).
 data AttachmentEntry = AttachmentEntry
@@ -115,12 +115,12 @@ setImageShortTitle existing localPath newTitle =
 
 -- | The @(name, local_path)@ of each attachment entry, for the metadata panel (ADR-049).
 parseAttachments :: String -> [(String, String)]
-parseAttachments contents = mapMaybe blockToAttachment (splitBlocks (lines contents))
+parseAttachments contents = Maybe.mapMaybe blockToAttachment (splitBlocks (lines contents))
   where
     blockToAttachment block =
-        let fields = mapMaybe lineField block
+        let fields = Maybe.mapMaybe lineField block
          in case lookup "local_path" fields of
-                Just localPath -> Just (fromMaybe (fileName localPath) (lookup "name" fields), localPath)
+                Just localPath -> Just (Maybe.fromMaybe (fileName localPath) (lookup "name" fields), localPath)
                 Nothing -> Nothing
 
 -- | Append an attachment entry to the meta directory's @attachments.yaml@ (dedup, on-demand create).
@@ -139,7 +139,7 @@ when an entry matches and the value changes. Absent file or no match is a no-op.
 updateImageShortTitle :: FilePath -> String -> String -> IO ()
 updateImageShortTitle dir localPath shortTitle = do
     let file = imagesFile dir
-    exists <- doesFileExist file
+    exists <- Directory.doesFileExist file
     if not exists
         then pure ()
         else do
@@ -150,7 +150,7 @@ updateImageShortTitle dir localPath shortTitle = do
 readAttachmentEntries :: FilePath -> IO [(String, String)]
 readAttachmentEntries dir = do
     let file = attachmentsFile dir
-    exists <- doesFileExist file
+    exists <- Directory.doesFileExist file
     if not exists
         then pure []
         else do
@@ -159,9 +159,11 @@ readAttachmentEntries dir = do
 
 -- Internal -----------------------------------------------------------------
 
+-- | The @attachments.yaml@ file within a meta directory.
 attachmentsFile :: FilePath -> FilePath
 attachmentsFile dir = dir ++ "/attachments.yaml"
 
+-- | The @images.yaml@ file within a meta directory.
 imagesFile :: FilePath -> FilePath
 imagesFile dir = dir ++ "/images.yaml"
 
@@ -170,12 +172,12 @@ and write it back, creating the meta directory on demand.
 -}
 appendEntryFile :: FilePath -> String -> String -> IO ()
 appendEntryFile file localPath block = do
-    exists <- doesFileExist file
+    exists <- Directory.doesFileExist file
     existing <- if exists then readMetaFile file else pure "[]\n"
     case addEntryDedup existing localPath block of
         Nothing -> pure ()
         Just revised -> do
-            createDirectoryIfMissing True (dirName file)
+            Directory.createDirectoryIfMissing True (dirName file)
             writeMetaFile file revised
 
 {- | Read and write a @.meta@ file as opaque (UTF-8) bytes -- never decoding, so multibyte characters in
@@ -185,6 +187,7 @@ attachment names survive verbatim (see 'Verso.App' for the same rationale on doc
 readMetaFile :: FilePath -> IO String
 readMetaFile file = fmap BS.unpack (BS.readFile file)
 
+-- | Write a @.meta@ file as opaque (UTF-8) bytes (see 'readMetaFile').
 writeMetaFile :: FilePath -> String -> IO ()
 writeMetaFile file contents = BS.writeFile file (BS.pack contents)
 
@@ -196,6 +199,7 @@ isEmptyList contents = let t = trim contents in t == "[]" || null t
 hasLocalPath :: String -> String -> Bool
 hasLocalPath contents localPath = any (\line -> fieldValueOn "local_path" line == Just localPath) (lines contents)
 
+-- | Ensure a non-empty string ends in a newline; empty strings are unchanged.
 ensureTrailingNewline :: String -> String
 ensureTrailingNewline s
     | null s = s
@@ -213,15 +217,15 @@ splitBlocks ls =
 
 -- | Whether a line begins a top-level list item (a @"- "@ at column zero).
 isItemStart :: String -> Bool
-isItemStart line = "- " `isPrefixOf` stripCarriageReturn line
+isItemStart line = "- " `List.isPrefixOf` stripCarriageReturn line
 
 {- | The @key: value@ on a line, ignoring leading whitespace and an optional @"- "@
 item marker; 'Nothing' when the line is not a simple field. The value is unquoted.
 -}
 lineField :: String -> Maybe (String, String)
 lineField raw =
-    let stripped = dropWhile isSpace (stripCarriageReturn raw)
-        afterDash = if "- " `isPrefixOf` stripped then drop 2 stripped else stripped
+    let stripped = dropWhile Char.isSpace (stripCarriageReturn raw)
+        afterDash = if "- " `List.isPrefixOf` stripped then drop 2 stripped else stripped
      in case break (== ':') afterDash of
             (key, ':' : rest) | isSimpleKey key -> Just (key, unquote (trim rest))
             _ -> Nothing
@@ -259,21 +263,25 @@ unquote value = case value of
     undouble (c : xs) = c : undouble xs
     undouble [] = []
 
+-- | The leading run of whitespace on a line.
 leadingWhitespace :: String -> String
-leadingWhitespace = takeWhile isSpace
+leadingWhitespace = takeWhile Char.isSpace
 
+-- | Drop a trailing carriage return, if present (for CRLF-terminated lines).
 stripCarriageReturn :: String -> String
 stripCarriageReturn s = if not (null s) && last s == '\r' then init s else s
 
+-- | Drop leading and trailing whitespace.
 trim :: String -> String
-trim = trimEnd . dropWhile isSpace
+trim = trimEnd . dropWhile Char.isSpace
   where
-    trimEnd = reverse . dropWhile isSpace . reverse
+    trimEnd = reverse . dropWhile Char.isSpace . reverse
 
 -- | The non-empty @/@-separated segments of a tree path.
 pathSegments :: String -> [String]
 pathSegments path = filter (not . null) (splitOnSlash path)
 
+-- | Split a string on @/@, keeping empty segments.
 splitOnSlash :: String -> [String]
 splitOnSlash s = case break (== '/') s of
     (a, []) -> [a]
@@ -289,5 +297,6 @@ dirName p = case break (== '/') (reverse p) of
     (_, '/' : rest) -> reverse rest
     (_, _) -> "."
 
+-- | Drop a trailing @.md@ extension from a filename, if present.
 dropMarkdownExtension :: String -> String
-dropMarkdownExtension name = if ".md" `isSuffixOf` name then take (length name - 3) name else name
+dropMarkdownExtension name = if ".md" `List.isSuffixOf` name then take (length name - 3) name else name

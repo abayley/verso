@@ -24,28 +24,20 @@ module Verso.Attachment (
     uploadFilename,
 ) where
 
-import Data.Bits (xor)
+import qualified Data.Bits as Bits
 import qualified Data.ByteString.Char8 as BS
-import Data.Char (isAsciiLower, isAsciiUpper, isDigit, ord, toLower)
-import Data.Maybe (fromMaybe)
-import Data.Word (Word64)
-import MicroHttp.Http (
-    Header,
-    RequestHead (..),
-    Response (..),
-    ResponseBody (..),
-    Status (..),
-    normaliseHeaderName,
-    okStatus,
- )
-import MicroHttp.Http.Parse (ParseError (..))
-import MicroHttp.Iteratee (liftIO, readBodyStrict)
-import MicroHttp.Network.Socket (fileSizeBytes)
-import MicroHttp.Router (Captures, Handler, Route, get, post)
-import MicroHttp.Static (contentTypeFor)
-import MicroHttp.Stream (StreamError (..))
-import Numeric (showHex)
-import System.Directory (createDirectoryIfMissing, doesFileExist)
+import qualified Data.Char as Char
+import qualified Data.Maybe as Maybe
+import qualified Data.Word as Word
+import qualified MicroHttp.Http as Http
+import qualified MicroHttp.Http.Parse as Parse
+import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Network.Socket as Socket
+import qualified MicroHttp.Router as Router
+import qualified MicroHttp.Static as Static
+import qualified MicroHttp.Stream as Stream
+import qualified Numeric
+import qualified System.Directory as Directory
 
 -- | The maximum accepted upload size in bytes (RFC-0018; the server cap must be at least this).
 attachmentMaxBytes :: Int
@@ -76,7 +68,7 @@ self-heals a blob left partial by an interrupted earlier write.
 putBlob :: FilePath -> BS.ByteString -> IO String
 putBlob root bytes = do
     let hash = contentHash bytes
-    createDirectoryIfMissing True root
+    Directory.createDirectoryIfMissing True root
     BS.writeFile (root ++ "/" ++ hash) bytes
     pure hash
 
@@ -84,11 +76,11 @@ putBlob root bytes = do
 resolveBlob :: FilePath -> String -> IO (Maybe (FilePath, Int))
 resolveBlob root hash = do
     let path = root ++ "/" ++ hash
-    exists <- doesFileExist path
+    exists <- Directory.doesFileExist path
     if not exists
         then pure Nothing
         else do
-            sized <- fileSizeBytes path
+            sized <- Socket.fileSizeBytes path
             pure (fmap (pathAndSize path) sized)
   where
     pathAndSize p size = (p, size)
@@ -105,20 +97,20 @@ contentHash bytes =
 A strict left fold directly over the 'ByteString' so a large upload neither
 unpacks to a list nor builds a deep thunk chain.
 -}
-fnv1a :: Word64 -> BS.ByteString -> Word64
-fnv1a = BS.foldl' (\hash byte -> (hash `xor` fromIntegral (ord byte)) * 1099511628211)
+fnv1a :: Word.Word64 -> BS.ByteString -> Word.Word64
+fnv1a = BS.foldl' (\hash byte -> (hash `Bits.xor` fromIntegral (Char.ord byte)) * 1099511628211)
 
--- | A 'Word64' as exactly 16 lowercase hex digits.
-paddedHex :: Word64 -> String
+-- | A 'Word.Word64' as exactly 16 lowercase hex digits.
+paddedHex :: Word.Word64 -> String
 paddedHex value =
-    let digits = showHex value ""
+    let digits = Numeric.showHex value ""
      in replicate (16 - length digits) '0' ++ digits
 
 -- | The upload and serving routes for an attachment store.
-attachmentRoutes :: AttachmentStore -> [Route]
+attachmentRoutes :: AttachmentStore -> [Router.Route]
 attachmentRoutes store =
-    [ post "/attachments" (uploadAttachment store)
-    , get "/attachments/:hash/:name" (serveAttachment store)
+    [ Router.post "/attachments" (uploadAttachment store)
+    , Router.get "/attachments/:hash/:name" (serveAttachment store)
     ]
 
 {- | Receives a file as the raw request body, stores it under its content hash,
@@ -126,14 +118,14 @@ and returns @{"url": "/attachments/<hash>/<name>"}@. The filename comes from the
 @X-Attachment-Filename@ header (percent-encoded); its extension gates the type
 allow-list (a disallowed type is @415@) and drives the served content type.
 -}
-uploadAttachment :: AttachmentStore -> Handler
+uploadAttachment :: AttachmentStore -> Router.Handler
 uploadAttachment store _ request = do
-    bytes <- readBodyStrict (StreamParseError BodyTooLarge) attachmentMaxBytes
+    bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) attachmentMaxBytes
     let name = uploadFilename request
     if not (allowedExtension (extensionOf name))
         then pure (statusResponse 415 "Unsupported Media Type" "attachment type is not allowed\n")
         else do
-            hash <- liftIO (putAttachment store bytes)
+            hash <- Iteratee.liftIO (putAttachment store bytes)
             pure (jsonResponse ("{\"url\":\"/attachments/" ++ hash ++ "/" ++ name ++ "\"}"))
 
 {- | Serves a stored blob as a zero-copy 'FileBody' with hardening headers, or a
@@ -141,26 +133,27 @@ uploadAttachment store _ request = do
 download filename and the content-type extension); only the validated hex hash
 addresses the filesystem, so the path cannot be escaped.
 -}
-serveAttachment :: AttachmentStore -> Handler
+serveAttachment :: AttachmentStore -> Router.Handler
 serveAttachment store captures _ = do
     let hash = captureValue "hash" captures
         name = captureValue "name" captures
     if not (validHash hash)
         then pure notFoundResponse
         else do
-            resolved <- liftIO (resolveAttachment store hash)
+            resolved <- Iteratee.liftIO (resolveAttachment store hash)
             case resolved of
                 Nothing -> pure notFoundResponse
                 Just (path, size) -> pure (attachmentResponse name path size)
 
 -- | The blob response: the file body plus the content type and hardening headers.
-attachmentResponse :: String -> FilePath -> Int -> Response
+attachmentResponse :: String -> FilePath -> Int -> Http.Response
 attachmentResponse name path size =
-    Response okStatus (attachmentHeaders name) (FileBody path size)
+    Http.Response Http.okStatus (attachmentHeaders name) (Http.FileBody path size)
 
-attachmentHeaders :: String -> [Header]
+-- | The serving headers for a blob: content type plus the hardening set.
+attachmentHeaders :: String -> [Http.Header]
 attachmentHeaders name =
-    [ header "Content-Type" (contentTypeFor name)
+    [ header "Content-Type" (Static.contentTypeFor name)
     , header "X-Content-Type-Options" "nosniff"
     , header "Content-Security-Policy" "default-src 'none'; sandbox"
     , header "Content-Disposition" (disposition name)
@@ -188,9 +181,9 @@ allowedExtension ext =
     inlineImageExtension ext || ext `elem` ["svg", "pdf", "txt", "md", "csv", "json", "zip"]
 
 -- | The percent-decoded, sanitised upload filename, or @"file"@ when unusable.
-uploadFilename :: RequestHead -> String
+uploadFilename :: Http.RequestHead -> String
 uploadFilename request =
-    case lookup (normaliseHeaderName (BS.pack "x-attachment-filename")) (requestHeaders request) of
+    case lookup (Http.normaliseHeaderName (BS.pack "x-attachment-filename")) (Http.requestHeaders request) of
         Just raw -> sanitiseFilename (percentDecode (BS.unpack raw))
         Nothing -> "file"
 
@@ -200,9 +193,9 @@ intact (e.g. @My Report.pdf@). Unlike 'uploadFilename' (which sanitises for use
 as a stored filename and URL segment), this is never used as a path -- it is the
 @name@/@short_title@ recorded in the sidecar metadata (RFC-0019).
 -}
-originalUploadFilename :: RequestHead -> String
+originalUploadFilename :: Http.RequestHead -> String
 originalUploadFilename request =
-    case lookup (normaliseHeaderName (BS.pack "x-attachment-filename")) (requestHeaders request) of
+    case lookup (Http.normaliseHeaderName (BS.pack "x-attachment-filename")) (Http.requestHeaders request) of
         Just raw -> case lastSegment (percentDecode (BS.unpack raw)) of
             "" -> "file"
             name -> name
@@ -224,9 +217,10 @@ sanitiseFilename raw =
         | safeFilenameChar c = c
         | otherwise = '_'
 
+-- | Whether a character is safe in a filename segment (letters, digits, @. _ -@).
 safeFilenameChar :: Char -> Bool
 safeFilenameChar c =
-    isAsciiLower c || isAsciiUpper c || isDigit c || c == '.' || c == '_' || c == '-'
+    Char.isAsciiLower c || Char.isAsciiUpper c || Char.isDigit c || c == '.' || c == '_' || c == '-'
 
 -- | The last path segment of a name (drops any directory prefix from the client).
 lastSegment :: String -> String
@@ -237,15 +231,16 @@ validHash :: String -> Bool
 validHash hash =
     length hash == 32 && all isLowerHexDigit hash
 
+-- | Whether a character is a lowercase hex digit (@0-9@ or @a-f@).
 isLowerHexDigit :: Char -> Bool
 isLowerHexDigit c =
-    isDigit c || (c >= 'a' && c <= 'f')
+    Char.isDigit c || (c >= 'a' && c <= 'f')
 
 -- | The lower-cased extension of a name's last segment, or @""@ if it has none.
 extensionOf :: String -> String
 extensionOf name =
     case span (/= '.') (reverse (lastSegment name)) of
-        (revExtension, '.' : _) -> map toLower (reverse revExtension)
+        (revExtension, '.' : _) -> map Char.toLower (reverse revExtension)
         (_, _) -> ""
 
 -- | A minimal percent-decoder for the filename header (decodes @%XX@; leaves @+@).
@@ -255,29 +250,35 @@ percentDecode ('%' : high : low : rest)
     | Just h <- hexValue high, Just l <- hexValue low = toEnum (h * 16 + l) : percentDecode rest
 percentDecode (c : rest) = c : percentDecode rest
 
+-- | The numeric value of a single hex digit (any case), or 'Nothing' if not one.
 hexValue :: Char -> Maybe Int
 hexValue c
-    | isDigit c = Just (fromEnum c - fromEnum '0')
+    | Char.isDigit c = Just (fromEnum c - fromEnum '0')
     | c >= 'a' && c <= 'f' = Just (fromEnum c - fromEnum 'a' + 10)
     | c >= 'A' && c <= 'F' = Just (fromEnum c - fromEnum 'A' + 10)
     | otherwise = Nothing
 
-captureValue :: String -> Captures -> String
+-- | The value of a named route capture, or @""@ when it is absent.
+captureValue :: String -> Router.Captures -> String
 captureValue key captures =
-    fromMaybe "" (lookup key captures)
+    Maybe.fromMaybe "" (lookup key captures)
 
-header :: String -> String -> Header
+-- | A response header from a name and value, with the name normalised.
+header :: String -> String -> Http.Header
 header name value =
-    (normaliseHeaderName (BS.pack name), BS.pack value)
+    (Http.normaliseHeaderName (BS.pack name), BS.pack value)
 
-jsonResponse :: String -> Response
+-- | A @200@ JSON response from a body string.
+jsonResponse :: String -> Http.Response
 jsonResponse body =
-    Response okStatus [header "Content-Type" "application/json"] (StrictBody (BS.pack body))
+    Http.Response Http.okStatus [header "Content-Type" "application/json"] (Http.StrictBody (BS.pack body))
 
-statusResponse :: Int -> String -> String -> Response
+-- | A plain-text response from a status code, reason phrase, and body.
+statusResponse :: Int -> String -> String -> Http.Response
 statusResponse code reason body =
-    Response (Status code reason) [header "Content-Type" "text/plain"] (StrictBody (BS.pack body))
+    Http.Response (Http.Status code reason) [header "Content-Type" "text/plain"] (Http.StrictBody (BS.pack body))
 
-notFoundResponse :: Response
+-- | The shared @404 Not Found@ plain-text response.
+notFoundResponse :: Http.Response
 notFoundResponse =
     statusResponse 404 "Not Found" "not found\n"

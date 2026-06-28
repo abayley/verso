@@ -31,10 +31,9 @@ module Verso.DocumentLinks (
     dirOfPath,
 ) where
 
-import Data.ByteString.Char8 (ByteString)
 import qualified Data.ByteString.Char8 as BS
-import Data.List (intercalate, isPrefixOf, sortBy)
-import Data.Maybe (fromMaybe)
+import qualified Data.List as List
+import qualified Data.Maybe as Maybe
 
 {- | An inline link or image target in a page body: the raw target token (the text
 between @](@ and the closing @)@ or a title, which may carry a @#anchor@/@?query@
@@ -53,7 +52,7 @@ data Link = Link
 blocks (``` and @~~~@). A title (@](path "title")@) is excluded from the target;
 the target token is the path plus any @#anchor@/@?query@.
 -}
-pageLinks :: ByteString -> [Link]
+pageLinks :: BS.ByteString -> [Link]
 pageLinks text = concat (scanLines False (linesWithOffsets text))
   where
     scanLines _ [] = []
@@ -66,7 +65,7 @@ pageLinks text = concat (scanLines False (linesWithOffsets text))
 Walks the line once with O(1) 'ByteString' indexing (@BS.index@/@BS.drop@), so no
 @length@/@drop@ rescan and no @String@ allocation.
 -}
-lineLinks :: Int -> ByteString -> [Link]
+lineLinks :: Int -> BS.ByteString -> [Link]
 lineLinks lineOff line = go 0
   where
     len = BS.length line
@@ -84,7 +83,7 @@ lineLinks lineOff line = go 0
 @)@). 'Nothing' if no closing @)@ is found on the line. The token is returned as a
 'String' (it is short).
 -}
-readTarget :: ByteString -> Maybe (String, Int)
+readTarget :: BS.ByteString -> Maybe (String, Int)
 readTarget afterOpen = case BS.elemIndex ')' afterOpen of
     Nothing -> Nothing
     Just _ -> Just (BS.unpack (stripAngles raw), BS.length raw)
@@ -109,7 +108,7 @@ empty path (a pure @#anchor@).
 isExternalTarget :: String -> Bool
 isExternalTarget target =
     null path
-        || "//" `isPrefixOf` path
+        || "//" `List.isPrefixOf` path
         || (not (null path) && head path == '/')
         || hasScheme path
   where
@@ -125,7 +124,7 @@ one that escapes the root. The @#anchor@/@?query@ suffix is dropped.
 resolveTarget :: String -> String -> Maybe String
 resolveTarget dir target
     | isExternalTarget target = Nothing
-    | otherwise = fmap (intercalate "/") (normaliseSegments (pathSegmentsOf dir ++ pathSegmentsOf path))
+    | otherwise = fmap (List.intercalate "/") (normaliseSegments (pathSegmentsOf dir ++ pathSegmentsOf path))
   where
     (path, _) = splitTargetSuffix target
 
@@ -135,8 +134,8 @@ the tree path @toPath@. Same-directory or descendant targets are @./@-prefixed
 -}
 relativeBetween :: String -> String -> String
 relativeBetween fromDir toPath
-    | ups == 0 = "./" ++ intercalate "/" (downs ++ [fileName])
-    | otherwise = intercalate "/" (replicate ups ".." ++ downs ++ [fileName])
+    | ups == 0 = "./" ++ List.intercalate "/" (downs ++ [fileName])
+    | otherwise = List.intercalate "/" (replicate ups ".." ++ downs ++ [fileName])
   where
     fromSegs = pathSegmentsOf fromDir
     toSegs = pathSegmentsOf toPath
@@ -157,8 +156,8 @@ not a problem today. It would become O(len) with a single-allocation concat (sum
 lengths, allocate once, write each piece). See the mhs BS cost model in
 docs/design/link-index-performance.md.
 -}
-rewriteLinks :: ByteString -> [(Int, Int, String)] -> ByteString
-rewriteLinks text edits = BS.concat (go 0 (sortBy byStart edits))
+rewriteLinks :: BS.ByteString -> [(Int, Int, String)] -> BS.ByteString
+rewriteLinks text edits = BS.concat (go 0 (List.sortBy byStart edits))
   where
     byStart (a, _, _) (b, _, _) = compare a b
     go cursor [] = [BS.drop cursor text]
@@ -176,7 +175,7 @@ merely starts with @oldPrefix@ (e.g. @a/bc@ vs @a/b@) is not matched.
 relocatePath :: String -> String -> String -> Maybe String
 relocatePath oldPrefix newPrefix p
     | p == oldPrefix = Just newPrefix
-    | (oldPrefix ++ "/") `isPrefixOf` p = Just (newPrefix ++ drop (length oldPrefix) p)
+    | (oldPrefix ++ "/") `List.isPrefixOf` p = Just (newPrefix ++ drop (length oldPrefix) p)
     | otherwise = Nothing
 
 {- | Plans the link rewrites a move induces across the tree. Given the relocation
@@ -190,7 +189,7 @@ renames additionally fixes internal links routing through the old name.
 The two parent index.md listings are reconciled separately (their membership entry
 relocates, not repoints) and so are excluded by the caller from the page set here.
 -}
-planMoveRewrites :: (String, String) -> [(String, ByteString)] -> [(String, ByteString)]
+planMoveRewrites :: (String, String) -> [(String, BS.ByteString)] -> [(String, BS.ByteString)]
 planMoveRewrites (oldPrefix, newPrefix) pages =
     [ (path, rewriteLinks text edits)
     | (path, text) <- pages
@@ -201,12 +200,12 @@ planMoveRewrites (oldPrefix, newPrefix) pages =
     reloc = relocatePath oldPrefix newPrefix
     pageEdits path text =
         let oldDir = dirOfPath path
-            newDir = fromMaybe oldDir (reloc oldDir)
+            newDir = Maybe.fromMaybe oldDir (reloc oldDir)
          in [ (linkStart l, linkEnd l, relativeBetween newDir newTarget ++ suffix)
             | l <- pageLinks text
             , let (pathPart, suffix) = splitTargetSuffix (linkTarget l)
             , Just oldTarget <- [resolveTarget oldDir (linkTarget l)]
-            , let newTarget = fromMaybe oldTarget (reloc oldTarget)
+            , let newTarget = Maybe.fromMaybe oldTarget (reloc oldTarget)
             , resolveTarget newDir pathPart /= Just newTarget
             ]
 
@@ -218,7 +217,7 @@ same relative token (the assets travel into the destination's @assets/@) -- whil
 every other page's inbound links to it are fixed by the subtree machinery (the file
 itself is the relocated prefix). The moved page's result is keyed by its new path.
 -}
-planPageMove :: (String, String) -> [(String, ByteString)] -> [(String, ByteString)]
+planPageMove :: (String, String) -> [(String, BS.ByteString)] -> [(String, BS.ByteString)]
 planPageMove (oldPath, newPath) pages =
     movedEntry ++ planMoveRewrites (oldPath, newPath) others
   where
@@ -241,7 +240,7 @@ planPageMove (oldPath, newPath) pages =
                 rewritten = rewriteLinks body edits
              in [(newPath, rewritten) | rewritten /= body]
     relocateMovedTarget t =
-        fromMaybe t (orElse (relocatePath oldPath newPath t) (relocatePath oldAssets newAssets t))
+        Maybe.fromMaybe t (orElse (relocatePath oldPath newPath t) (relocatePath oldAssets newAssets t))
     orElse (Just x) _ = Just x
     orElse Nothing y = y
 
@@ -254,7 +253,7 @@ assetsDir dir = dir ++ "/assets"
 @assets/@ prefix in inline link/image targets), in order, for the shared/exclusive
 analysis of a cross-folder page move (ADR-062).
 -}
-assetNamesIn :: ByteString -> [String]
+assetNamesIn :: BS.ByteString -> [String]
 assetNamesIn body =
     [ name
     | l <- pageLinks body
@@ -263,7 +262,7 @@ assetNamesIn body =
     ]
   where
     assetBasename p = case dropWhile (== ".") (pathSegmentsOf p) of
-        ("assets" : rest@(_ : _)) -> Just (intercalate "/" rest)
+        ("assets" : rest@(_ : _)) -> Just (List.intercalate "/" rest)
         _ -> Nothing
 
 -- | Whether a peer asset is referenced only by the moving page ('ExclusiveAsset') or by a sibling too ('SharedAsset').
@@ -285,7 +284,7 @@ for a section delete it accepts the subtree (the folder and its descendants), an
 subtree's own pages are excluded. Used to refuse a referenced delete (RFC-0027,
 ADR-063) and list the referrers.
 -}
-referrersMatching :: (String -> Bool) -> [String] -> [(String, ByteString)] -> [(String, String)]
+referrersMatching :: (String -> Bool) -> [String] -> [(String, BS.ByteString)] -> [(String, String)]
 referrersMatching matches excluded pages =
     [ (path, linkTarget l)
     | (path, body) <- pages
@@ -297,7 +296,7 @@ referrersMatching matches excluded pages =
 
 -- | The tree-relative directory holding a page (its path minus the final segment; @""@ at the root).
 dirOfPath :: String -> String
-dirOfPath p = intercalate "/" (initOrEmpty (pathSegmentsOf p))
+dirOfPath p = List.intercalate "/" (initOrEmpty (pathSegmentsOf p))
   where
     initOrEmpty [] = []
     initOrEmpty xs = init xs
@@ -341,14 +340,14 @@ on the reference corpus). ('BS.drop'/'BS.take' here are O(1) buffer-views, not t
 parser ~5.8x faster with byte-identical output. (mhs BS cost model: see
 docs/design/link-index-performance.md.)
 -}
-linesWithOffsets :: ByteString -> [(Int, ByteString)]
+linesWithOffsets :: BS.ByteString -> [(Int, BS.ByteString)]
 linesWithOffsets text = withOffsets 0 (BS.split '\n' text)
   where
     withOffsets _ [] = []
     withOffsets off (line : rest) = (off, line) : withOffsets (off + BS.length line + 1) rest
 
 -- | Whether a line opens or closes a fenced code block (``` or @~~~@ after optional indent).
-isFenceLine :: ByteString -> Bool
+isFenceLine :: BS.ByteString -> Bool
 isFenceLine line =
     let trimmed = BS.dropWhile (== ' ') line
      in BS.pack "```" `BS.isPrefixOf` trimmed || BS.pack "~~~" `BS.isPrefixOf` trimmed

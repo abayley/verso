@@ -26,49 +26,37 @@ module Verso.LinkIndexStore (
     addSubtreeToIndex,
 ) where
 
-import Control.Concurrent.MVar (MVar, modifyMVar_, newMVar, readMVar)
-import Control.Exception (SomeException, try)
-import Control.Monad.Except (ExceptT (..), runExceptT)
-import Control.Monad.IO.Class (liftIO)
-import Data.ByteString.Char8 (ByteString)
+import qualified Control.Concurrent.MVar as MVar
+import qualified Control.Exception as Exception
+import qualified Control.Monad.Except as Except
+import qualified Control.Monad.IO.Class as Class
 import qualified Data.ByteString.Char8 as BS
-import Data.List (foldl', intercalate, isPrefixOf)
-import Data.Map (Map)
+import qualified Data.List as List
 import qualified Data.Map as Map
-import Data.Maybe (catMaybes, fromMaybe, isNothing)
-import MicroHttp.FileSystem (FileStat (..), fileStat, renamePath)
-import System.Directory (doesFileExist)
-import Verso.LinkFingerprint (Fingerprint, fingerprintTree, markdownFiles)
-import Verso.LinkIndex (
-    LinkIndex,
-    emptyIndex,
-    forceIndex,
-    indexFromEdges,
-    outboundEdges,
-    relocateIndex,
-    removePage,
-    removeSubtree,
-    updatePage,
- )
+import qualified Data.Maybe as Maybe
+import qualified MicroHttp.FileSystem as FileSystem
+import qualified System.Directory as Directory
+import qualified Verso.LinkFingerprint as LinkFingerprint
+import qualified Verso.LinkIndex as LinkIndex
 
 -- | The graph and the fingerprint of the tree it was built from, held together.
 data IndexState = IndexState
-    { stIndex :: LinkIndex
-    , stFingerprint :: Fingerprint
+    { stIndex :: LinkIndex.LinkIndex
+    , stFingerprint :: LinkFingerprint.Fingerprint
     }
 
 -- | A handle to the server's link index ('Nothing' until 'openLinkIndex' builds or loads it).
-newtype LinkIndexStore = LinkIndexStore (MVar (Maybe IndexState))
+newtype LinkIndexStore = LinkIndexStore (MVar.MVar (Maybe IndexState))
 
 -- | A fresh, unopened store.
 newLinkIndexStore :: IO LinkIndexStore
-newLinkIndexStore = fmap LinkIndexStore (newMVar Nothing)
+newLinkIndexStore = fmap LinkIndexStore (MVar.newMVar Nothing)
 
 {- | The current graph, read without any filesystem access (RFC-0029). Empty if the
 store was never opened (a misconfiguration; move/delete then simply find no candidates).
 -}
-currentIndex :: LinkIndexStore -> IO LinkIndex
-currentIndex (LinkIndexStore mv) = fmap (maybe emptyIndex stIndex) (readMVar mv)
+currentIndex :: LinkIndexStore -> IO LinkIndex.LinkIndex
+currentIndex (LinkIndexStore mv) = fmap (maybe LinkIndex.emptyIndex stIndex) (MVar.readMVar mv)
 
 {- | Opens the index at startup: load the persisted file and trust it only if its
 fingerprint still matches the tree (one stat-walk); otherwise build from the tree. Either
@@ -76,7 +64,7 @@ way the result is persisted and held. The build is forced so its cost is paid he
 in the first move/delete.
 -}
 openLinkIndex :: FilePath -> FilePath -> LinkIndexStore -> IO (Either String ())
-openLinkIndex root indexPath store = runExceptT $ do
+openLinkIndex root indexPath store = Except.runExceptT $ do
     loaded <- loadValidState root indexPath
     st <- case loaded of
         Just s -> pure s
@@ -84,14 +72,14 @@ openLinkIndex root indexPath store = runExceptT $ do
             built <- buildFromTree root
             persistState indexPath built
             pure built
-    liftIO (storeState store st)
+    Class.liftIO (storeState store st)
 
 -- | Rebuilds the index from the tree and re-persists it (the explicit refresh after a re-export).
 refreshLinkIndex :: FilePath -> FilePath -> LinkIndexStore -> IO (Either String ())
-refreshLinkIndex root indexPath store = runExceptT $ do
+refreshLinkIndex root indexPath store = Except.runExceptT $ do
     built <- buildFromTree root
     persistState indexPath built
-    liftIO (storeState store built)
+    Class.liftIO (storeState store built)
 
 {- | Incremental maintenance for an in-server mutation: re-read each given @.md@ path and
 patch the graph -- 'updatePage' when it now exists, 'removePage' when it is gone. No walk,
@@ -99,80 +87,80 @@ no re-parse, not persisted. The reads happen before the lock so a vanished file 
 'Left', not a thrown exception; the pure patch then runs under the lock.
 -}
 applyChanges :: FilePath -> [String] -> LinkIndexStore -> IO (Either String ())
-applyChanges root paths store = runExceptT $ do
+applyChanges root paths store = Except.runExceptT $ do
     pairs <- tryIO (mapM readPath paths)
-    liftIO (modifyIndex store (\ix -> foldl' patch ix pairs))
+    Class.liftIO (modifyIndex store (\ix -> List.foldl' patch ix pairs))
   where
     readPath rel = do body <- readPageBody (root ++ "/" ++ rel); pure (rel, body)
-    patch ix (rel, Nothing) = removePage rel ix
-    patch ix (rel, Just body) = updatePage rel body ix
+    patch ix (rel, Nothing) = LinkIndex.removePage rel ix
+    patch ix (rel, Just body) = LinkIndex.updatePage rel body ix
 
 -- | Maintenance for a move: relocate the moved subtree's keys and targets in-place (a pure transform, no re-read, cannot fail).
 relocateInIndex :: String -> String -> LinkIndexStore -> IO ()
-relocateInIndex oldPrefix newPrefix store = modifyIndex store (relocateIndex oldPrefix newPrefix)
+relocateInIndex oldPrefix newPrefix store = modifyIndex store (LinkIndex.relocateIndex oldPrefix newPrefix)
 
 -- | Maintenance for a section delete: drop every page at or under the deleted prefix (pure, cannot fail).
 removeSubtreeInIndex :: String -> LinkIndexStore -> IO ()
-removeSubtreeInIndex prefix store = modifyIndex store (removeSubtree prefix)
+removeSubtreeInIndex prefix store = modifyIndex store (LinkIndex.removeSubtree prefix)
 
 -- | Maintenance for a section restore: re-read every @.md@ now present under the restored prefix and add it.
 addSubtreeToIndex :: FilePath -> String -> LinkIndexStore -> IO (Either String ())
-addSubtreeToIndex root prefix store = runExceptT $ do
-    files <- tryIO (markdownFiles root)
-    let under = [(rel, fs) | (rel, fs) <- files, rel == prefix || (prefix ++ "/") `isPrefixOf` rel]
+addSubtreeToIndex root prefix store = Except.runExceptT $ do
+    files <- tryIO (LinkFingerprint.markdownFiles root)
+    let under = [(rel, fs) | (rel, fs) <- files, rel == prefix || (prefix ++ "/") `List.isPrefixOf` rel]
     pairs <- tryIO (mapM readBoth under)
-    liftIO (modifyIndex store (\ix -> foldl' add ix pairs))
+    Class.liftIO (modifyIndex store (\ix -> List.foldl' add ix pairs))
   where
     readBoth (rel, fs) = do body <- readPageBody fs; pure (rel, body)
-    add ix (rel, body) = updatePage rel (fromMaybe BS.empty body) ix
+    add ix (rel, body) = LinkIndex.updatePage rel (Maybe.fromMaybe BS.empty body) ix
 
 -- | Runs an IO action that may throw, converting any exception to a 'Left' message (the Either boundary).
-tryIO :: IO a -> ExceptT String IO a
-tryIO action = ExceptT (fmap (either (Left . showErr) Right) (try action))
+tryIO :: IO a -> Except.ExceptT String IO a
+tryIO action = Except.ExceptT (fmap (either (Left . showErr) Right) (Exception.try action))
   where
-    showErr e = show (e :: SomeException)
+    showErr e = show (e :: Exception.SomeException)
 
 -- | Applies a pure graph transform to the held state under the lock, forcing the result. A no-op before the index is opened.
-modifyIndex :: LinkIndexStore -> (LinkIndex -> LinkIndex) -> IO ()
-modifyIndex (LinkIndexStore mv) f = modifyMVar_ mv (forceApply f)
+modifyIndex :: LinkIndexStore -> (LinkIndex.LinkIndex -> LinkIndex.LinkIndex) -> IO ()
+modifyIndex (LinkIndexStore mv) f = MVar.modifyMVar_ mv (forceApply f)
 
 -- | The pure graph transform applied to one held state, forced so the parse is paid here, not on the next read.
-forceApply :: (LinkIndex -> LinkIndex) -> Maybe IndexState -> IO (Maybe IndexState)
+forceApply :: (LinkIndex.LinkIndex -> LinkIndex.LinkIndex) -> Maybe IndexState -> IO (Maybe IndexState)
 forceApply _ Nothing = pure Nothing
 forceApply f (Just st) =
-    let forced = forceIndex (f (stIndex st))
+    let forced = LinkIndex.forceIndex (f (stIndex st))
      in forced `seq` pure (Just st{stIndex = forced})
 
 -- | Replaces the held state (after a build or load).
 storeState :: LinkIndexStore -> IndexState -> IO ()
-storeState (LinkIndexStore mv) st = modifyMVar_ mv (\_ -> pure (Just st))
+storeState (LinkIndexStore mv) st = MVar.modifyMVar_ mv (\_ -> pure (Just st))
 
 {- | Builds the graph and fingerprint from the tree in a single walk (forced), so the
 whole-tree parse is paid here, not lazily in the first request. Filesystem exceptions
 become 'Left' via 'tryIO'.
 -}
-buildFromTree :: FilePath -> ExceptT String IO IndexState
+buildFromTree :: FilePath -> Except.ExceptT String IO IndexState
 buildFromTree root = do
-    files <- tryIO (markdownFiles root)
+    files <- tryIO (LinkFingerprint.markdownFiles root)
     entries <- tryIO (mapM readAndStat files)
     let pages = [(rel, body) | (rel, Just body, _) <- entries]
         fingerprint = Map.fromList [(rel, st) | (rel, _, Just st) <- entries]
-        graph = forceIndex (buildFromBodies pages)
+        graph = LinkIndex.forceIndex (buildFromBodies pages)
     graph `seq` pure (IndexState graph fingerprint)
   where
     readAndStat (rel, fs) = do
         body <- readPageBody fs
-        st <- fileStat fs
+        st <- FileSystem.fileStat fs
         pure (rel, body, st)
 
 -- | Builds the graph from page bodies (the parse), via repeated 'updatePage' over the empty index.
-buildFromBodies :: [(String, ByteString)] -> LinkIndex
-buildFromBodies = foldl' (\ix (rel, body) -> updatePage rel body ix) emptyIndex
+buildFromBodies :: [(String, BS.ByteString)] -> LinkIndex.LinkIndex
+buildFromBodies = List.foldl' (\ix (rel, body) -> LinkIndex.updatePage rel body ix) LinkIndex.emptyIndex
 
 -- | Reads a page body as 'ByteString' (no @String@ conversion), or 'Nothing' when absent.
-readPageBody :: FilePath -> IO (Maybe ByteString)
+readPageBody :: FilePath -> IO (Maybe BS.ByteString)
 readPageBody fs = do
-    exists <- doesFileExist fs
+    exists <- Directory.doesFileExist fs
     if exists then fmap Just (BS.readFile fs) else pure Nothing
 
 -- Persistence -----------------------------------------------------------------
@@ -180,9 +168,9 @@ readPageBody fs = do
 {- | Loads the persisted index and returns it only if its stored fingerprint still
 matches the tree (one stat-walk). 'Nothing' when the file is absent, corrupt, or stale.
 -}
-loadValidState :: FilePath -> FilePath -> ExceptT String IO (Maybe IndexState)
+loadValidState :: FilePath -> FilePath -> Except.ExceptT String IO (Maybe IndexState)
 loadValidState root indexPath = do
-    exists <- tryIO (doesFileExist indexPath)
+    exists <- tryIO (Directory.doesFileExist indexPath)
     if not exists
         then pure Nothing
         else do
@@ -192,19 +180,19 @@ loadValidState root indexPath = do
                 Just rows -> do
                     -- Force the loaded graph here so the Map/inbound construction is paid at load,
                     -- not deferred to the first move/delete (forceIndex walks both adjacency maps).
-                    let graph = forceIndex (edgesToIndex rows)
+                    let graph = LinkIndex.forceIndex (edgesToIndex rows)
                         storedFp = rowsToFingerprint rows
-                    current <- tryIO (fingerprintTree root)
+                    current <- tryIO (LinkFingerprint.fingerprintTree root)
                     if storedFp == current
                         then pure (graph `seq` Just (IndexState graph storedFp))
                         else pure Nothing
 
 -- | Writes the index to a temp file then atomically renames it into place, so a partial write never corrupts it.
-persistState :: FilePath -> IndexState -> ExceptT String IO ()
+persistState :: FilePath -> IndexState -> Except.ExceptT String IO ()
 persistState indexPath st = do
     let tmp = indexPath ++ ".tmp"
     tryIO (BS.writeFile tmp (serialiseState st))
-    _ <- tryIO (renamePath tmp indexPath) -- best-effort; a failed persist just means a rebuild next start
+    _ <- tryIO (FileSystem.renamePath tmp indexPath) -- best-effort; a failed persist just means a rebuild next start
     pure ()
 
 {- | Serialises the index as line-oriented text: @E\<TAB>page\<TAB>target...@ for each
@@ -212,12 +200,12 @@ page's edges (a linkless page is just @E\<TAB>page@), then
 @F\<TAB>path\<TAB>sec\<TAB>nsec\<TAB>size@ for each fingerprint entry. Tree paths contain
 no tabs.
 -}
-serialiseState :: IndexState -> ByteString
+serialiseState :: IndexState -> BS.ByteString
 serialiseState st = BS.pack (unlines (edgeLines ++ fpLines))
   where
-    edgeLines = [intercalate "\t" ("E" : page : targets) | (page, targets) <- outboundEdges (stIndex st)]
+    edgeLines = [List.intercalate "\t" ("E" : page : targets) | (page, targets) <- LinkIndex.outboundEdges (stIndex st)]
     fpLines =
-        [ intercalate "\t" ["F", path, show (fsMtimeSec s), show (fsMtimeNsec s), show (fsSize s)]
+        [ List.intercalate "\t" ["F", path, show (FileSystem.fsMtimeSec s), show (FileSystem.fsMtimeNsec s), show (FileSystem.fsSize s)]
         | (path, s) <- Map.toList (stFingerprint st)
         ]
 
@@ -230,28 +218,29 @@ index). 'BS.split' unpacks once and is linear. The trailing empty element @split
 after the final newline is dropped by the @null@ filter, so the row set is identical. (mhs
 ByteString cost model: docs/design/link-index-performance.md.)
 -}
-parseRows :: ByteString -> Maybe [Row]
+parseRows :: BS.ByteString -> Maybe [Row]
 parseRows bytes =
     let rows = map (map BS.unpack . BS.split '\t') (filter (not . BS.null) (BS.split '\n' bytes))
         parsed = map parseRow rows
-     in if any isNothing parsed then Nothing else Just (catMaybes parsed)
+     in if any Maybe.isNothing parsed then Nothing else Just (Maybe.catMaybes parsed)
 
 -- | Reconstructs the graph from the edge rows (re-deriving the inverse), no body re-parse.
-edgesToIndex :: [Row] -> LinkIndex
-edgesToIndex entries = indexFromEdges [(page, targets) | EdgeRow page targets <- entries]
+edgesToIndex :: [Row] -> LinkIndex.LinkIndex
+edgesToIndex entries = LinkIndex.indexFromEdges [(page, targets) | EdgeRow page targets <- entries]
 
 -- | The stored fingerprint map from the fingerprint rows.
-rowsToFingerprint :: [Row] -> Fingerprint
+rowsToFingerprint :: [Row] -> LinkFingerprint.Fingerprint
 rowsToFingerprint entries = Map.fromList [(path, s) | FpRow path s <- entries]
 
 -- | One parsed persistence row: an edge list for a page, or a fingerprint entry.
-data Row = EdgeRow String [String] | FpRow String FileStat
+data Row = EdgeRow String [String] | FpRow String FileSystem.FileStat
 
+-- | Parses one tab-split row into a 'Row'; 'Nothing' when the tag or arity is unrecognised.
 parseRow :: [String] -> Maybe Row
 parseRow ("E" : page : targets) = Just (EdgeRow page targets)
 parseRow ["F", path, sec, nsec, size] =
     case (readInt sec, readInt nsec, readInt size) of
-        (Just a, Just b, Just c) -> Just (FpRow path (FileStat a b c))
+        (Just a, Just b, Just c) -> Just (FpRow path (FileSystem.FileStat a b c))
         _ -> Nothing
 parseRow _ = Nothing
 

@@ -15,8 +15,8 @@ module Verso.Trash (
     parseManifest,
 ) where
 
-import Data.List (isPrefixOf)
-import Data.Maybe (mapMaybe)
+import qualified Data.List as List
+import qualified Data.Maybe as Maybe
 
 -- | One stored file or directory in a trash entry: its name inside the entry, whether it is a directory, and its origin tree path.
 data TrashItem = TrashItem
@@ -65,17 +65,17 @@ parseManifest text = do
             , manKind = kindLine
             , manSeq = seqVal
             , manListing = optField "listing: " ls
-            , manItems = mapMaybe parseItem ls
+            , manItems = Maybe.mapMaybe parseItem ls
             }
   where
-    optField prefix ls = case [drop (length prefix) l | l <- ls, prefix `isPrefixOf` l] of
+    optField prefix ls = case [drop (length prefix) l | l <- ls, prefix `List.isPrefixOf` l] of
         (value : _) -> Just value
         [] -> Nothing
 
 -- | Parses one @item: <stored> <file|dir> <origin>@ line.
 parseItem :: String -> Maybe TrashItem
 parseItem line
-    | not ("item: " `isPrefixOf` line) = Nothing
+    | not ("item: " `List.isPrefixOf` line) = Nothing
     | otherwise = case words (drop (length "item: ") line) of
         (stored : typ : originWords@(_ : _)) ->
             Just (TrashItem stored (typ == "dir") (unwords originWords))

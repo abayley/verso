@@ -40,12 +40,11 @@ module Verso.LinkIndex (
     rewriteCandidates,
 ) where
 
-import Data.ByteString.Char8 (ByteString)
-import Data.List (foldl', isPrefixOf, isSuffixOf, nub, sort)
-import Data.Map (Map)
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.List as List
 import qualified Data.Map as Map
-import Data.Maybe (fromMaybe)
-import Verso.DocumentLinks (dirOfPath, linkTarget, pageLinks, relocatePath, resolveTarget)
+import qualified Data.Maybe as Maybe
+import qualified Verso.DocumentLinks as DocumentLinks
 
 -- | A page's tree-relative path (the body's location); a graph source.
 type PagePath = String
@@ -58,8 +57,8 @@ targets and the inverted referrer map. 'inbound' is derived from 'outbound'; bot
 stored so a per-page change patches the inverse without a full rebuild.
 -}
 data LinkIndex = LinkIndex
-    { idxOutbound :: Map PagePath [TreePath]
-    , idxInbound :: Map TreePath [PagePath]
+    { idxOutbound :: Map.Map PagePath [TreePath]
+    , idxInbound :: Map.Map TreePath [PagePath]
     }
     deriving (Eq, Show)
 
@@ -71,8 +70,8 @@ emptyIndex = LinkIndex Map.empty Map.empty
 'updatePage' to each page over the empty index, so an incremental sequence converges to
 this rebuild.
 -}
-buildIndex :: [(PagePath, ByteString)] -> LinkIndex
-buildIndex = foldl' (\ix (page, body) -> updatePage page body ix) emptyIndex
+buildIndex :: [(PagePath, BS.ByteString)] -> LinkIndex
+buildIndex = List.foldl' (\ix (page, body) -> updatePage page body ix) emptyIndex
 
 {- | Forces the graph's adjacency lists so the deferred link parse (the comprehension in
 'pageTargets') runs /now/, where the index is built or maintained, rather than being left
@@ -93,12 +92,12 @@ outboundEdges = Map.toList . idxOutbound
 without re-parsing bodies. Used to load a persisted index and to relocate by prefix.
 -}
 indexFromEdges :: [(PagePath, [TreePath])] -> LinkIndex
-indexFromEdges = foldl' addPageEdges emptyIndex
+indexFromEdges = List.foldl' addPageEdges emptyIndex
   where
     addPageEdges ix (page, targets) =
         LinkIndex
             (Map.insert page targets (idxOutbound ix))
-            (foldl' (\m t -> addInbound t page m) (idxInbound ix) targets)
+            (List.foldl' (\m t -> addInbound t page m) (idxInbound ix) targets)
 
 {- | Relocates a moved subtree within the graph (RFC-0029): renames every page key and
 every resolved target that lies under @oldPrefix@ to sit under @newPrefix@. This is the
@@ -117,16 +116,16 @@ relocateIndex :: String -> String -> LinkIndex -> LinkIndex
 relocateIndex oldPrefix newPrefix ix =
     LinkIndex
         (Map.fromList [(reloc page, map reloc targets) | (page, targets) <- Map.toList (idxOutbound ix)])
-        (Map.fromList [(reloc target, sort (map reloc pages)) | (target, pages) <- Map.toList (idxInbound ix)])
+        (Map.fromList [(reloc target, List.sort (map reloc pages)) | (target, pages) <- Map.toList (idxInbound ix)])
   where
-    reloc p = fromMaybe p (relocatePath oldPrefix newPrefix p)
+    reloc p = Maybe.fromMaybe p (DocumentLinks.relocatePath oldPrefix newPrefix p)
 
 -- | Removes a deleted page or whole section subtree from the graph as a source (every key at or under @prefix@).
 removeSubtree :: String -> LinkIndex -> LinkIndex
-removeSubtree prefix ix = foldl' (flip removePage) ix underPrefix
+removeSubtree prefix ix = List.foldl' (flip removePage) ix underPrefix
   where
     underPrefix =
-        [page | page <- Map.keys (idxOutbound ix), page == prefix || (prefix ++ "/") `isPrefixOf` page]
+        [page | page <- Map.keys (idxOutbound ix), page == prefix || (prefix ++ "/") `List.isPrefixOf` page]
 
 -- | A page's recorded outbound @.md@ targets (empty when the page is absent or linkless).
 outboundOf :: PagePath -> LinkIndex -> [TreePath]
@@ -141,25 +140,25 @@ body order. External and non-@.md@ (asset) targets are excluded -- the graph is
 @.md@->@.md@ only (ADR-066). Resolution reuses 'Verso.DocumentLinks', so it matches
 the scan.
 -}
-pageTargets :: PagePath -> ByteString -> [TreePath]
+pageTargets :: PagePath -> BS.ByteString -> [TreePath]
 pageTargets page body =
-    nub
+    List.nub
         [ target
-        | link <- pageLinks body
-        , Just target <- [resolveTarget (dirOfPath page) (linkTarget link)]
-        , ".md" `isSuffixOf` target
+        | link <- DocumentLinks.pageLinks body
+        , Just target <- [DocumentLinks.resolveTarget (DocumentLinks.dirOfPath page) (DocumentLinks.linkTarget link)]
+        , ".md" `List.isSuffixOf` target
         ]
 
 {- | Records (or replaces) a page's outbound edges from its current body, patching the
 inverse: the page's previous edges are withdrawn from 'inbound' and its new edges added.
 Applied per page, this keeps the index equal to a rebuild from the same bodies.
 -}
-updatePage :: PagePath -> ByteString -> LinkIndex -> LinkIndex
+updatePage :: PagePath -> BS.ByteString -> LinkIndex -> LinkIndex
 updatePage page body ix =
     let cleared = clearSource page ix
         targets = pageTargets page body
         outbound' = Map.insert page targets (idxOutbound cleared)
-        inbound' = foldl' (\m t -> addInbound t page m) (idxInbound cleared) targets
+        inbound' = List.foldl' (\m t -> addInbound t page m) (idxInbound cleared) targets
      in LinkIndex outbound' inbound'
 
 {- | Removes a page as a link /source/: its outbound edges are withdrawn from the
@@ -175,7 +174,7 @@ from the (possibly rewritten) new body. Other pages whose links were rewritten t
 new path are maintained separately by re-deriving each (the move's write-set), so this
 handles only the moved page's own key.
 -}
-relocatePage :: PagePath -> PagePath -> ByteString -> LinkIndex -> LinkIndex
+relocatePage :: PagePath -> PagePath -> BS.ByteString -> LinkIndex -> LinkIndex
 relocatePage oldPath newPath newBody = updatePage newPath newBody . removePage oldPath
 
 {- | The pages that link to a target the predicate accepts, excluding the given paths.
@@ -185,7 +184,7 @@ a section delete's "who links into this subtree".
 -}
 referrers :: (TreePath -> Bool) -> [PagePath] -> LinkIndex -> [PagePath]
 referrers matches excluded ix =
-    nub [page | page <- linkersInto matches ix, page `notElem` excluded]
+    List.nub [page | page <- linkersInto matches ix, page `notElem` excluded]
 
 {- | The pages a move must consider rewriting (ADR-066): the only pages whose links a
 section move changes are those with a link that /crosses the subtree boundary/ --
@@ -204,7 +203,7 @@ the page), which is why an asset link never makes a subtree page a candidate.
 -}
 rewriteCandidates :: (TreePath -> Bool) -> LinkIndex -> [PagePath]
 rewriteCandidates inSubtree ix =
-    nub (subtreeOutLinkers ++ externalInLinkers)
+    List.nub (subtreeOutLinkers ++ externalInLinkers)
   where
     subtreeOutLinkers =
         [ page
@@ -227,16 +226,16 @@ linkersInto matches ix =
 clearSource :: PagePath -> LinkIndex -> LinkIndex
 clearSource page ix =
     let old = Map.findWithDefault [] page (idxOutbound ix)
-        inbound' = foldl' (\m t -> removeInbound t page m) (idxInbound ix) old
+        inbound' = List.foldl' (\m t -> removeInbound t page m) (idxInbound ix) old
      in LinkIndex (Map.delete page (idxOutbound ix)) inbound'
 
 -- | Adds a page to a target's inbound list (kept sorted and unique).
-addInbound :: TreePath -> PagePath -> Map TreePath [PagePath] -> Map TreePath [PagePath]
+addInbound :: TreePath -> PagePath -> Map.Map TreePath [PagePath] -> Map.Map TreePath [PagePath]
 addInbound target page m =
     Map.insert target (insertSorted page (Map.findWithDefault [] target m)) m
 
 -- | Removes a page from a target's inbound list, dropping the key when it empties.
-removeInbound :: TreePath -> PagePath -> Map TreePath [PagePath] -> Map TreePath [PagePath]
+removeInbound :: TreePath -> PagePath -> Map.Map TreePath [PagePath] -> Map.Map TreePath [PagePath]
 removeInbound target page m =
     case filter (/= page) (Map.findWithDefault [] target m) of
         [] -> Map.delete target m

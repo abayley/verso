@@ -16,17 +16,9 @@ module Verso.Config (
     loadConfig,
 ) where
 
-import MicroHttp.Config (
-    Config,
-    ConfigError,
-    configInt,
-    configMounts,
-    configString,
-    loadConfigWith,
-    serverEnvKeys,
- )
+import qualified MicroHttp.Config as Config
 
--- | The application's resolved configuration, read once from a 'Config'.
+-- | The application's resolved configuration, read once from a 'Config.Config'.
 data VersoConfig = VersoConfig
     { documentTreeRoot :: String
     , documentRoot :: String
@@ -66,6 +58,7 @@ appEnvKeys =
 defaultLogMaxBytes :: Int
 defaultLogMaxBytes = 10485760
 
+-- | The default count of rotated log files to retain (RFC-0024).
 defaultLogKeep :: Int
 defaultLogKeep = 5
 
@@ -73,29 +66,29 @@ defaultLogKeep = 5
 malformed integer (matching 'MicroHttp.Config.toSettings' for server keys). An
 absent key takes its built-in default.
 -}
-fromConfig :: Config -> Either ConfigError VersoConfig
+fromConfig :: Config.Config -> Either Config.ConfigError VersoConfig
 fromConfig cfg = do
-    maxBytes <- configInt "log_max_bytes" defaultLogMaxBytes cfg
-    keep <- configInt "log_keep" defaultLogKeep cfg
+    maxBytes <- Config.configInt "log_max_bytes" defaultLogMaxBytes cfg
+    keep <- Config.configInt "log_keep" defaultLogKeep cfg
     pure
         VersoConfig
-            { documentTreeRoot = configString "document_tree_root" "" cfg
-            , documentRoot = configString "document_root" "data/documents" cfg
-            , attachmentRoot = configString "attachment_root" "data/attachments" cfg
-            , editorTheme = configString "editor_theme" "paper" cfg
-            , operationLog = configString "operation_log" "data/operation_log" cfg
-            , trashRoot = configString "trash_root" "data/trash" cfg
-            , linkIndex = configString "link_index" "data/link_index" cfg
-            , accessLog = configString "access_log" "build/access.log" cfg
-            , clientErrorLog = configString "client_error_log" "build/client-errors.log" cfg
+            { documentTreeRoot = Config.configString "document_tree_root" "" cfg
+            , documentRoot = Config.configString "document_root" "data/documents" cfg
+            , attachmentRoot = Config.configString "attachment_root" "data/attachments" cfg
+            , editorTheme = Config.configString "editor_theme" "paper" cfg
+            , operationLog = Config.configString "operation_log" "data/operation_log" cfg
+            , trashRoot = Config.configString "trash_root" "data/trash" cfg
+            , linkIndex = Config.configString "link_index" "data/link_index" cfg
+            , accessLog = Config.configString "access_log" "build/access.log" cfg
+            , clientErrorLog = Config.configString "client_error_log" "build/client-errors.log" cfg
             , logMaxBytes = maxBytes
             , logKeep = keep
-            , staticMounts = configMounts "static_mounts" cfg
+            , staticMounts = Config.configMounts "static_mounts" cfg
             }
 
 {- | Loads the configuration file, layering the framework's @MICROHTTP_@ overlay
 (server keys) and the application's @VERSO_@ overlay (application keys) from the
 environment. This is the application's single entry into configuration.
 -}
-loadConfig :: FilePath -> IO (Either ConfigError Config)
-loadConfig = loadConfigWith [("MICROHTTP_", serverEnvKeys), ("VERSO_", appEnvKeys)]
+loadConfig :: FilePath -> IO (Either Config.ConfigError Config.Config)
+loadConfig = Config.loadConfigWith [("MICROHTTP_", Config.serverEnvKeys), ("VERSO_", appEnvKeys)]

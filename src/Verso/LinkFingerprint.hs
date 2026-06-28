@@ -18,15 +18,14 @@ module Verso.LinkFingerprint (
     fingerprintTree,
 ) where
 
-import Data.List (isSuffixOf)
-import Data.Map (Map)
+import qualified Data.List as List
 import qualified Data.Map as Map
-import Data.Maybe (catMaybes)
-import MicroHttp.FileSystem (FileStat, fileStat)
-import System.Directory (doesDirectoryExist, listDirectory)
+import qualified Data.Maybe as Maybe
+import qualified MicroHttp.FileSystem as FileSystem
+import qualified System.Directory as Directory
 
 -- | The tree's freshness fingerprint: each @.md@ tree path to its modification time and size.
-type Fingerprint = Map String FileStat
+type Fingerprint = Map.Map String FileSystem.FileStat
 
 {- | Every @.md@ file in the tree as @(treeRelPath, filesystemPath)@, skipping
 dot-entries and the @assets@/@meta@ folders (mirroring
@@ -37,17 +36,17 @@ markdownFiles :: FilePath -> IO [(String, FilePath)]
 markdownFiles = walk ""
   where
     walk rel dirFs = do
-        names <- listDirectory dirFs
+        names <- Directory.listDirectory dirFs
         fmap concat (mapM (collect rel dirFs) names)
     collect rel dirFs name
         | isDot name = pure []
         | otherwise = do
             let childRel = joinRel rel name
                 childFs = dirFs ++ "/" ++ name
-            isDir <- doesDirectoryExist childFs
+            isDir <- Directory.doesDirectoryExist childFs
             if isDir
                 then if name == "assets" || name == "meta" then pure [] else walk childRel childFs
-                else pure [(childRel, childFs) | ".md" `isSuffixOf` name]
+                else pure [(childRel, childFs) | ".md" `List.isSuffixOf` name]
     isDot ('.' : _) = True
     isDot _ = False
     joinRel "" s = s
@@ -61,7 +60,7 @@ fingerprintTree :: FilePath -> IO Fingerprint
 fingerprintTree root = do
     files <- markdownFiles root
     entries <- mapM stat1 files
-    pure (Map.fromList (catMaybes entries))
+    pure (Map.fromList (Maybe.catMaybes entries))
   where
-    stat1 (rel, fs) = fmap (fmap (withPath rel)) (fileStat fs)
+    stat1 (rel, fs) = fmap (fmap (withPath rel)) (FileSystem.fileStat fs)
     withPath rel st = (rel, st)

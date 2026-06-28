@@ -17,18 +17,8 @@ module Verso.DocumentListing (
 ) where
 
 import qualified Data.ByteString.Char8 as BS
-import Data.List (isInfixOf, isPrefixOf)
-import Verso.DocumentLinks (
-    linkEnd,
-    linkStart,
-    linkTarget,
-    pageLinks,
-    pathSegmentsOf,
-    relativeBetween,
-    resolveTarget,
-    rewriteLinks,
-    splitTargetSuffix,
- )
+import qualified Data.List as List
+import qualified Verso.DocumentLinks as DocumentLinks
 
 {- | Removes the listing entry (a single list-item line) whose inline link resolves,
 from the @index.md@'s own directory @indexDir@, to @target@; returns the new text
@@ -62,11 +52,11 @@ repointEntry destDir target line =
     -- The line is the byte-per-char form (from BS.unpack of the index.md bytes), so
     -- BS.pack/BS.unpack round-trips it losslessly while pageLinks/rewriteLinks work on bytes.
     let packed = BS.pack line
-     in case pageLinks packed of
+     in case DocumentLinks.pageLinks packed of
             [] -> line
             (l : _) ->
-                let (_, suffix) = splitTargetSuffix (linkTarget l)
-                 in BS.unpack (rewriteLinks packed [(linkStart l, linkEnd l, relativeBetween destDir target ++ suffix)])
+                let (_, suffix) = DocumentLinks.splitTargetSuffix (DocumentLinks.linkTarget l)
+                 in BS.unpack (DocumentLinks.rewriteLinks packed [(DocumentLinks.linkStart l, DocumentLinks.linkEnd l, DocumentLinks.relativeBetween destDir target ++ suffix)])
 
 {- | Inserts a card line into the first grid block, after the last existing card
 (so cards stay contiguous and a trailing blank line before @</div>@ is preserved),
@@ -101,8 +91,8 @@ gridCloseIndex ls =
                 ((closeIdx, _) : _) -> Just closeIdx
                 [] -> Nothing
   where
-    isGridOpen (_, l) = "grid cards" `isInfixOf` l
-    isClosingDiv l = "</div>" `isPrefixOf` dropSpaces l
+    isGridOpen (_, l) = "grid cards" `List.isInfixOf` l
+    isClosingDiv l = "</div>" `List.isPrefixOf` dropSpaces l
 
 -- | The index of the last list-item line, if any.
 lastListItemIndex :: [String] -> Maybe Int
@@ -113,19 +103,20 @@ lastListItemIndex ls =
 
 -- | Whether a target points at a section (its final path segment is @index.md@).
 isSectionTarget :: String -> Bool
-isSectionTarget target = case pathSegmentsOf (fst (splitTargetSuffix target)) of
+isSectionTarget target = case DocumentLinks.pathSegmentsOf (fst (DocumentLinks.splitTargetSuffix target)) of
     [] -> False
     segs -> last segs == "index.md"
 
 -- | Whether a line is a Markdown list item (a @-@ bullet after optional indent).
 isListItem :: String -> Bool
-isListItem line = "- " `isPrefixOf` dropSpaces line
+isListItem line = "- " `List.isPrefixOf` dropSpaces line
 
 -- | Whether a line's inline link resolves (from @indexDir@) to @target@.
 matchesTarget :: String -> String -> String -> Bool
 matchesTarget indexDir target line =
-    isListItem line && any (\l -> resolveTarget indexDir (linkTarget l) == Just target) (pageLinks (BS.pack line))
+    isListItem line && any (\l -> DocumentLinks.resolveTarget indexDir (DocumentLinks.linkTarget l) == Just target) (DocumentLinks.pageLinks (BS.pack line))
 
+-- | Drops leading spaces from a line (the optional indent before a list item or closing tag).
 dropSpaces :: String -> String
 dropSpaces = dropWhile (== ' ')
 

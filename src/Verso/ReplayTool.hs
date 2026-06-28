@@ -11,50 +11,51 @@ and prints the report.
 -}
 module Main (main) where
 
-import Data.Maybe (fromMaybe)
-import MicroHttp.Config (Config, ConfigError (..), configString)
-import System.Environment (lookupEnv)
-import System.Exit (exitFailure)
-import Verso.Config (loadConfig)
-import Verso.OperationLog (readOperations)
-import Verso.TreeMove (ReplayEntry (..), replayLog)
+import qualified Data.Maybe as Maybe
+import qualified MicroHttp.Config as Config
+import qualified System.Environment as Environment
+import qualified System.Exit as Exit
+import qualified Verso.Config as VConfig
+import qualified Verso.OperationLog as OperationLog
+import qualified Verso.TreeMove as TreeMove
 
 -- | The default config path, overridable by @MICROHTTP_CONFIG@ (matching the server).
 defaultConfigPath :: FilePath
 defaultConfigPath = "micro-http.conf"
 
+-- | Entry point: resolve the config path, load it, and replay (or report a config error).
 main :: IO ()
 main = do
-    configPath <- fromMaybe defaultConfigPath <$> lookupEnv "MICROHTTP_CONFIG"
-    loaded <- loadConfig configPath
+    configPath <- Maybe.fromMaybe defaultConfigPath <$> Environment.lookupEnv "MICROHTTP_CONFIG"
+    loaded <- VConfig.loadConfig configPath
     case loaded of
-        Left (ConfigError message) -> do
+        Left (Config.ConfigError message) -> do
             putStrLn ("configuration error: " ++ message)
-            exitFailure
+            Exit.exitFailure
         Right cfg -> replay cfg
 
 -- | Replays the configured operation log onto the configured tree, printing the report.
-replay :: Config -> IO ()
+replay :: Config.Config -> IO ()
 replay cfg
     | null root = do
         putStrLn "replay-tool: document_tree_root is not set in the configuration"
-        exitFailure
+        Exit.exitFailure
     | otherwise = do
-        ops <- readOperations logPath
+        ops <- OperationLog.readOperations logPath
         putStrLn ("Replaying " ++ show (length ops) ++ " operation(s) from " ++ logPath ++ " onto " ++ root)
-        report <- replayLog root trashRoot ops
+        report <- TreeMove.replayLog root trashRoot ops
         mapM_ printEntry report
-        let skipped = length (filter (isSkipped . reStatus) report)
+        let skipped = length (filter (isSkipped . TreeMove.reStatus) report)
         putStrLn ("Done: " ++ show (length report - skipped) ++ " applied, " ++ show skipped ++ " skipped")
   where
-    root = configString "document_tree_root" "" cfg
-    logPath = configString "operation_log" "data/operation_log" cfg
-    trashRoot = configString "trash_root" "data/trash" cfg
+    root = Config.configString "document_tree_root" "" cfg
+    logPath = Config.configString "operation_log" "data/operation_log" cfg
+    trashRoot = Config.configString "trash_root" "data/trash" cfg
 
 -- | Prints one replayed operation's outcome.
-printEntry :: ReplayEntry -> IO ()
+printEntry :: TreeMove.ReplayEntry -> IO ()
 printEntry entry =
-    putStrLn ("  seq " ++ show (reSeq entry) ++ " " ++ reType entry ++ ": " ++ reStatus entry)
+    putStrLn ("  seq " ++ show (TreeMove.reSeq entry) ++ " " ++ TreeMove.reType entry ++ ": " ++ TreeMove.reStatus entry)
 
 -- | Whether a replay status line reports a skip (as opposed to @applied@).
 isSkipped :: String -> Bool

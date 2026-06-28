@@ -21,9 +21,9 @@ module Verso.OperationLog (
 ) where
 
 import qualified Data.ByteString.Char8 as BS
-import Data.List (intercalate)
-import Data.Maybe (mapMaybe)
-import System.Directory (doesFileExist)
+import qualified Data.List as List
+import qualified Data.Maybe as Maybe
+import qualified System.Directory as Directory
 
 -- | The kind of a logical operation.
 data OpType = OpMove | OpDelete | OpRestore
@@ -48,7 +48,7 @@ data Operation = Operation
 -- | Renders an operation as one JSON line (no trailing newline).
 renderOperation :: Operation -> String
 renderOperation op =
-    "{" ++ intercalate "," fields ++ "}"
+    "{" ++ List.intercalate "," fields ++ "}"
   where
     fields =
         [str "type" (typeString (opType op)), str "kind" (opKind op)]
@@ -79,7 +79,7 @@ of string/number values with no nesting, so it parses by a top-level comma split
 parseOperation :: String -> Maybe Operation
 parseOperation line = do
     let body = stripBraces (trim line)
-        pairs = mapMaybe toPair (splitTop body)
+        pairs = Maybe.mapMaybe toPair (splitTop body)
     typeStr <- lookup "type" pairs
     opT <- parseType typeStr
     kind <- lookup "kind" pairs
@@ -104,10 +104,10 @@ parseOperation line = do
 -- | Reads every operation from the log file (empty when absent), in file order.
 readOperations :: FilePath -> IO [Operation]
 readOperations path = do
-    exists <- doesFileExist path
+    exists <- Directory.doesFileExist path
     if not exists
         then pure []
-        else fmap (mapMaybe parseOperation . lines . BS.unpack) (BS.readFile path)
+        else fmap (Maybe.mapMaybe parseOperation . lines . BS.unpack) (BS.readFile path)
 
 -- | Appends one operation as a JSON line (apply-then-append; the file is created on first write).
 appendOperation :: FilePath -> Operation -> IO ()
@@ -143,5 +143,6 @@ readInt s = case reads s of
     [(n, "")] -> Just n
     _ -> Nothing
 
+-- | Strips leading and trailing spaces.
 trim :: String -> String
 trim = f . f where f = reverse . dropWhile (== ' ')

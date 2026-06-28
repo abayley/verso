@@ -158,8 +158,12 @@ Each phase/group is one commit, `make format` + `make check` green first.
    qualified with aliases and Haddock added to every top-level binding. The
    `MicroHttp.hs` umbrella is a pure re-export facade (its imports cannot be
    qualified) and is left as-is.
-3. **Phase 3 -- Qualify + Haddock, Verso app.** All `Verso.*` modules + the
-   executables (`Main`, `ReplayTool`).
+3. **[DONE] Phase 3 -- Qualify + Haddock, Verso app.** All 14 `Verso.*` Haskell
+   modules (App, Config, Attachment, DocumentLinks, DocumentListing,
+   DocumentMeta, LinkFingerprint, LinkIndex, LinkIndexStore, OperationLog, Trash,
+   TreeMove) + the executables (Main, ReplayTool) qualified with aliases
+   (MicroHttp.Config=Config, Verso.Config=VConfig) and Haddock added. The
+   `Verso.Editor` TypeScript tree is out of scope (not Haskell).
 4. **Phase 4 -- Qualify tests.** Qualify module/stdlib imports across `test/`
    (`Test.Hspec` stays unqualified). No Haddock added to tests.
 5. **Phase 5 -- Docs + memory.** ADR for the Http inlining + the qualified-import

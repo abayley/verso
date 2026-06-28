@@ -14,9 +14,11 @@ import qualified Control.Concurrent as Concurrent
 import qualified Control.Concurrent.QSem as QSem
 import qualified Data.ByteString.Char8 as BS
 import qualified Foreign.Ptr as Ptr
+import MicroHttp.Http (Application)
 import qualified MicroHttp.Http as Http
 import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Network.Socket as Socket
+import MicroHttp.Settings (Settings (..), defaultSettings, parseLimits)
 import qualified MicroHttp.Settings as Settings
 import qualified MicroHttp.Stream as Stream
 

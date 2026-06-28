@@ -29,6 +29,7 @@ module MicroHttp.Middleware (
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
+import MicroHttp.Http (Application)
 import qualified MicroHttp.Http as Http
 import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Log as Log

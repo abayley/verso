@@ -1,7 +1,7 @@
 ---
 id: RFC-0028
 name: Operation Log, Replay, and Trash
-status: Draft
+status: Implemented
 owners:
     - alistairbayley
 created: 2026-06-23

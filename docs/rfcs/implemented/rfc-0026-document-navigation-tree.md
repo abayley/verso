@@ -1,7 +1,7 @@
 ---
 id: RFC-0026
 name: Document Navigation Tree
-status: Draft
+status: Implemented
 owners:
     - alistairbayley
 created: 2026-06-23

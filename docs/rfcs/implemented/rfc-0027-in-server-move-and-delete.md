@@ -1,7 +1,7 @@
 ---
 id: RFC-0027
 name: In-Server Move and Delete
-status: Draft
+status: Implemented
 owners:
     - alistairbayley
 created: 2026-06-23

@@ -1,7 +1,7 @@
 ---
 id: RFC-0029
 name: In-Memory Link Index
-status: Draft
+status: Implemented
 owners:
     - alistairbayley
 created: 2026-06-24

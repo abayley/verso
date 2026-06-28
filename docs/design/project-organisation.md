@@ -2,8 +2,10 @@
 
 ## MicroHttp Project Layout Decision
 
-Use a conventional Haskell layout, adapted for MicroHs, with TestApp-owned
-TypeScript source under `src/` when browser components are part of the TestApp:
+Use a conventional Haskell layout, adapted for MicroHs. The web framework lives
+under the `MicroHttp` namespace and the Verso wiki application under `Verso`
+(RFC-0030); `Verso.*` depends on `MicroHttp.*`, never the reverse. The
+application's TypeScript editor source lives under `src/Verso/Editor/`:
 
 ```text
 micro-http/
@@ -11,25 +13,31 @@ micro-http/
   Makefile
   docs/
   src/
-    MicroHttp.hs
-    MicroHttp/
+    MicroHttp.hs            framework facade
+    MicroHttp/              framework modules
       ...
-    TestApp.hs
-    TestApp/
-      Editor/
+    Verso/                  the wiki application
+      App.hs               routed application assembly
+      Main.hs              server executable (module Main)
+      ReplayTool.hs        operation-log replay executable (module Main)
+      Config.hs            application config (VERSO_ keys)
+      ...
+      Editor/              TypeScript editor source
         ...
   static/
     editor/
       ...
   test/
     unit/
-      MicroHttp/
+      MicroHttp/           framework specs
+        ...
+      Verso/               application specs
         ...
     integration/
       MicroHttp/
         ...
-  app/
-    Main.hs
+      Verso/
+        ...
   spike/
     MicroHttp/
       Spike*.hs
@@ -50,10 +58,11 @@ This project should follow those conventions even if the first build automation
 uses `Makefile` and `mhs` directly. That keeps the tree familiar to Haskell
 readers and leaves room for `mcabal` integration.
 
-The Markdown editor spike follows the same source-vs-asset distinction:
+The Markdown editor follows the same source-vs-asset distinction:
 
-- `src/TestApp/Editor/` contains TypeScript source for TestApp web components.
-- `static/editor/` contains files the TestApp serves directly, including the
+- `src/Verso/Editor/` contains TypeScript source for the application's web
+  components.
+- `static/editor/` contains files the application serves directly, including the
   generated JavaScript bundle and CSS.
 - `test/editor/` contains TypeScript tests for editor source modules.
 

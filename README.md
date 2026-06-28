@@ -33,12 +33,16 @@ The project deliberately avoids:
 
 ```text
 micro-http/
-  src/               Production modules.
+  src/MicroHttp/     The web framework (HTTP, sockets, server, router, ...).
+  src/Verso/         The Verso wiki application (built on MicroHttp).
   test/unit/         Unit specs with no filesystem or socket effects.
   test/integration/  Integration specs that use filesystem or socket effects.
   spike/             Exploratory compile spikes retained for design evidence.
   docs/              Design documents and the decision register.
 ```
+
+The framework lives under the `MicroHttp` namespace and the wiki application under
+`Verso`; `Verso.*` depends on `MicroHttp.*`, never the reverse (RFC-0030).
 
 The current public facade is `MicroHttp`, which re-exports:
 
@@ -129,7 +133,7 @@ Run the browser smoke test for the Markdown editor spike:
 make test-editor-browser
 ```
 
-The browser smoke test starts and stops the TestApp itself.
+The browser smoke test starts and stops the Verso server itself.
 
 Run the TypeScript editor checks:
 
@@ -143,7 +147,7 @@ Run only the TypeScript editor unused-code check:
 make editor-knip
 ```
 
-The editor source lives under `src/TestApp/Editor/`. Bun compiles it into the
+The editor source lives under `src/Verso/Editor/`. Bun compiles it into the
 generated, untracked served bundle at `static/editor/markdown-editor.js`.
 
 Format TypeScript and editor package files with Biome:
@@ -251,10 +255,10 @@ make clean
 
 ## MicroHttp Run Commands
 
-Run the test application:
+Run the Verso application:
 
 ```sh
-make run-test-app
+make run-verso
 ```
 
 Then open:
@@ -263,11 +267,11 @@ Then open:
 http://127.0.0.1:8080/
 ```
 
-The app is implemented in `src/TestApp.hs` and serves `/`, `/index.html`, the
-Markdown editor spike under `/documents/home/edit`, and static editor assets
-under `/static/editor/`. The editor web-component source is TypeScript under
-`src/TestApp/Editor/`; `make run-test-app` depends on `make editor-build`, which
-writes the generated served JavaScript bundle.
+The app is implemented in `src/Verso/Main.hs` (assembled by `Verso.App`) and
+serves `/`, `/index.html`, the Markdown editor under `/documents/home/edit`, and
+static editor assets under `/static/editor/`. The editor web-component source is
+TypeScript under `src/Verso/Editor/`; `make run-verso` depends on
+`make editor-build`, which writes the generated served JavaScript bundle.
 The app uses the normal `serve` loop. The socket adapter keeps listening and
 client sockets non-blocking so browser-style concurrent asset requests do not
 starve handler progress under MicroHs' socket FFI.

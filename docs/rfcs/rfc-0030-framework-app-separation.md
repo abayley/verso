@@ -1,7 +1,7 @@
 ---
 id: RFC-0030
 name: Separate the MicroHttp framework from the Verso wiki application
-status: Draft
+status: Implemented
 owners:
     - alistair
 created: 2026-06-28
@@ -18,7 +18,7 @@ superseded_by: null
 |-----------|------------------|
 | Authored  | 2026-06-28       |
 | Started   | 2026-06-28       |
-| Completed |                  |
+| Completed | 2026-06-28       |
 
 ## Summary
 
@@ -280,15 +280,19 @@ Each phase is one commit, `make check` green before committing.
    (unit + integration); qualified aliases `TestApp` -> `App`. Updated Makefile
    (`build/test-app` -> `build/verso`, `run-test-app` -> `run-verso`),
    `.claude/launch.json`, `scripts/http-bench.sh`, `scripts/editor-smoke.cjs`.
+   `Verso.App.appFromConfig`/`configuredRoutes` now take the typed `VersoConfig`
+   (built by `Main`/`fromConfig`) instead of poking the raw `Config`; the local
+   lenient `configIntOr` is gone, so a malformed `log_max_bytes`/`log_keep` now
+   fails fast at startup like the server keys (consistent with `toSettings`).
 5. **[DONE] Phase 5 -- Move editor TS.** `src/TestApp/Editor` ->
    `src/Verso/Editor`; updated `knip.json`, `package.json`, `tsconfig.json`,
    `scripts/build-editor.mjs`, 21 `test/editor` import paths, and the dangling
    `spike/editor-lit` import. Served bundle path `static/editor/` unchanged.
    `editor-check` green.
-6. **Phase 6 -- Docs + memory.** Update `docs/design/project-organisation.md`,
-   `README.md`, add an ADR for the framework/app split, refresh the
-   decision-register reference, and update the auto-memory index. Mark this RFC
-   Completed and move it to `docs/rfcs/implemented/`.
+6. **[DONE] Phase 6 -- Docs + memory.** Updated `docs/design/project-organisation.md`,
+   `README.md`, and added ADR-068 to `docs/decision-register.md`. Marked this RFC
+   Implemented. Kept at `docs/rfcs/` top-level alongside RFC-0026..0029 (the
+   de-facto convention; those completed RFCs were not moved to `implemented/`).
 
 ### Rollout Plan Escape Hatch
 

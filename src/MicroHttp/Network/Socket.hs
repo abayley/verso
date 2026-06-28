@@ -26,38 +26,38 @@ module MicroHttp.Network.Socket (
     sendFileWithin,
 ) where
 
-import Control.Monad (void, when)
-import Control.Monad.Except (ExceptT (..), catchError, runExceptT, throwError)
-import Control.Monad.IO.Class (liftIO)
+import qualified Control.Monad as Monad
+import qualified Control.Monad.Except as Except
+import qualified Control.Monad.IO.Class as Class
 import qualified Data.ByteString as BS
-import Data.Word (Word8)
-import Foreign.C.Error (Errno, eAGAIN, eALREADY, eINPROGRESS, eISCONN, eTIMEDOUT, eWOULDBLOCK, getErrno)
-import Foreign.C.String (CString, withCString)
-import Foreign.Marshal.Alloc (alloca, allocaBytes)
-import Foreign.Ptr (Ptr, castPtr, nullPtr, plusPtr)
-import Foreign.Storable (peek, peekByteOff, poke, pokeByteOff, sizeOf)
-import System.IO.FD (waitForReadFD, waitForWriteFD)
-import System.Timeout (timeout)
+import qualified Data.Word as Word
+import qualified Foreign.C.Error as Error
+import qualified Foreign.C.String as CStr
+import qualified Foreign.Marshal.Alloc as Alloc
+import qualified Foreign.Ptr as Ptr
+import qualified Foreign.Storable as Storable
+import qualified System.IO.FD as FD
+import qualified System.Timeout as Timeout
 
 foreign import ccall "socket" c_socket :: Int -> Int -> Int -> IO Int
-foreign import ccall "setsockopt" c_setsockopt :: Int -> Int -> Int -> Ptr Int -> Int -> IO Int
+foreign import ccall "setsockopt" c_setsockopt :: Int -> Int -> Int -> Ptr.Ptr Int -> Int -> IO Int
 foreign import ccall "fcntl" c_fcntl :: Int -> Int -> Int -> IO Int
-foreign import ccall "bind" c_bind :: Int -> Ptr () -> Int -> IO Int
-foreign import ccall "connect" c_connect :: Int -> Ptr () -> Int -> IO Int
+foreign import ccall "bind" c_bind :: Int -> Ptr.Ptr () -> Int -> IO Int
+foreign import ccall "connect" c_connect :: Int -> Ptr.Ptr () -> Int -> IO Int
 foreign import ccall "listen" c_listen :: Int -> Int -> IO Int
-foreign import ccall "accept" c_accept :: Int -> Ptr () -> Ptr Int -> IO Int
-foreign import ccall "getsockname" c_getsockname :: Int -> Ptr () -> Ptr Int -> IO Int
-foreign import ccall "recv" c_recv :: Int -> CString -> Int -> Int -> IO Int
-foreign import ccall "send" c_send :: Int -> CString -> Int -> Int -> IO Int
+foreign import ccall "accept" c_accept :: Int -> Ptr.Ptr () -> Ptr.Ptr Int -> IO Int
+foreign import ccall "getsockname" c_getsockname :: Int -> Ptr.Ptr () -> Ptr.Ptr Int -> IO Int
+foreign import ccall "recv" c_recv :: Int -> CStr.CString -> Int -> Int -> IO Int
+foreign import ccall "send" c_send :: Int -> CStr.CString -> Int -> Int -> IO Int
 foreign import ccall "close" c_close :: Int -> IO Int
-foreign import ccall "fcntl.h open" c_open :: CString -> Int -> Int -> IO Int
+foreign import ccall "fcntl.h open" c_open :: CStr.CString -> Int -> Int -> IO Int
 foreign import ccall "unistd.h lseek" c_lseek :: Int -> Int -> Int -> IO Int
 
 -- macOS sendfile: sendfile(int fd, int s, off_t offset, off_t *len,
 -- struct sf_hdtr *hdtr, int flags). The in/out len holds bytes sent on both
 -- success and EAGAIN; hdtr is passed NULL (the head goes via the chunk path).
 foreign import ccall "sys/socket.h sendfile"
-    c_sendfile :: Int -> Int -> Int -> Ptr Int -> Ptr () -> Int -> IO Int
+    c_sendfile :: Int -> Int -> Int -> Ptr.Ptr Int -> Ptr.Ptr () -> Int -> IO Int
 
 foreign import capi "sys/socket.h value AF_INET" afInet :: Int
 foreign import capi "sys/socket.h value SOCK_STREAM" sockStream :: Int
@@ -80,7 +80,7 @@ newtype FileFd = FileFd Int
 
 data Host
     = HostAny
-    | HostIPv4 Word8 Word8 Word8 Word8
+    | HostIPv4 Word.Word8 Word.Word8 Word.Word8 Word.Word8
     deriving (Eq, Show)
 
 newtype Port = Port Int
@@ -96,43 +96,50 @@ data ConnectionInfo = ConnectionInfo
     }
     deriving (Eq, Show)
 
-data SocketError = SocketError String Errno
+data SocketError = SocketError String Error.Errno
     deriving (Eq)
 
 instance Show SocketError where
     show (SocketError operation _) = "SocketError " ++ show operation
 
+{- | Creates a listening TCP socket bound to a host and port with the given
+backlog, set non-blocking, closing the descriptor on any mid-setup failure.
+-}
 listenTcp :: Host -> Port -> Int -> IO (Either SocketError ListenSocket)
 listenTcp host port backlog =
-    runExceptT $ do
-        fd <- ExceptT (checked "socket" (c_socket afInet sockStream 0))
+    Except.runExceptT $ do
+        fd <- Except.ExceptT (checked "socket" (c_socket afInet sockStream 0))
         closingOnError fd $ do
-            ExceptT (setReuseAddr fd)
-            ExceptT (withSockAddrIn host port (\addr addrLen -> checked "bind" (c_bind fd addr addrLen)))
-            ExceptT (checked "listen" (c_listen fd backlog))
-            ExceptT (setNonBlocking fd)
+            Except.ExceptT (setReuseAddr fd)
+            Except.ExceptT (withSockAddrIn host port (\addr addrLen -> checked "bind" (c_bind fd addr addrLen)))
+            Except.ExceptT (checked "listen" (c_listen fd backlog))
+            Except.ExceptT (setNonBlocking fd)
             pure (ListenSocket fd)
 
+{- | Accepts a pending connection on a listening socket, returning the
+non-blocking client socket and its peer 'ConnectionInfo'; parks on read
+readiness while no connection is queued.
+-}
 accept :: ListenSocket -> IO (Either SocketError (ClientSocket, ConnectionInfo))
 accept (ListenSocket fd) =
-    allocaBytes sockaddrInSize $ \addr ->
-        alloca $ \addrLen ->
-            runExceptT $ do
-                accepted <- ExceptT (acceptLoop addr addrLen)
+    Alloc.allocaBytes sockaddrInSize $ \addr ->
+        Alloc.alloca $ \addrLen ->
+            Except.runExceptT $ do
+                accepted <- Except.ExceptT (acceptLoop addr addrLen)
                 closingOnError accepted $ do
-                    ExceptT (setNonBlocking accepted)
-                    peer <- liftIO (peekConnectionInfo (castPtr addr))
+                    Except.ExceptT (setNonBlocking accepted)
+                    peer <- Class.liftIO (peekConnectionInfo (Ptr.castPtr addr))
                     pure (ClientSocket accepted, peer)
   where
     acceptLoop addr addrLen = do
-        poke addrLen sockaddrInSize
-        accepted <- c_accept fd (castPtr addr) addrLen
+        Storable.poke addrLen sockaddrInSize
+        accepted <- c_accept fd (Ptr.castPtr addr) addrLen
         if accepted < 0
             then do
-                errno <- getErrno
+                errno <- Error.getErrno
                 if isWouldBlock errno
                     then do
-                        waitForReadFD fd
+                        FD.waitForReadFD fd
                         acceptLoop addr addrLen
                     else return (Left (SocketError "accept" errno))
             else return (Right accepted)
@@ -143,52 +150,57 @@ polled: in-progress results retry until the socket reports connected.
 -}
 connectTcp :: Host -> Port -> IO (Either SocketError ClientSocket)
 connectTcp host port =
-    runExceptT $ do
-        fd <- ExceptT (checked "socket" (c_socket afInet sockStream 0))
+    Except.runExceptT $ do
+        fd <- Except.ExceptT (checked "socket" (c_socket afInet sockStream 0))
         closingOnError fd $ do
-            ExceptT (setNonBlocking fd)
-            ExceptT (withSockAddrIn host port (connectLoop fd))
+            Except.ExceptT (setNonBlocking fd)
+            Except.ExceptT (withSockAddrIn host port (connectLoop fd))
 
-connectLoop :: Int -> Ptr () -> Int -> IO (Either SocketError ClientSocket)
+{- | Drives the non-blocking connect, retrying on connect-pending errors by
+parking on write readiness until the socket reports connected.
+-}
+connectLoop :: Int -> Ptr.Ptr () -> Int -> IO (Either SocketError ClientSocket)
 connectLoop fd addr addrLen = do
     connected <- c_connect fd addr addrLen
     if connected >= 0
         then return (Right (ClientSocket fd))
         else do
-            errno <- getErrno
-            if errno == eISCONN
+            errno <- Error.getErrno
+            if errno == Error.eISCONN
                 then return (Right (ClientSocket fd))
                 else
                     if isConnectPending errno
                         then do
-                            waitForWriteFD fd
+                            FD.waitForWriteFD fd
                             connectLoop fd addr addrLen
                         else return (Left (SocketError "connect" errno))
 
-isConnectPending :: Errno -> Bool
+-- | Whether a connect errno means the connection is still in progress.
+isConnectPending :: Error.Errno -> Bool
 isConnectPending errno =
-    errno == eINPROGRESS || errno == eALREADY || isWouldBlock errno
+    errno == Error.eINPROGRESS || errno == Error.eALREADY || isWouldBlock errno
 
 -- | Returns the locally bound port of a listening socket.
 boundPort :: ListenSocket -> IO (Either SocketError Port)
 boundPort (ListenSocket fd) =
-    allocaBytes sockaddrInSize $ \addr ->
-        alloca $ \addrLen ->
-            runExceptT $ do
-                liftIO (poke addrLen sockaddrInSize)
-                ExceptT (checked "getsockname" (c_getsockname fd (castPtr addr) addrLen))
-                high <- liftIO (peekWord8 addr 2)
-                low <- liftIO (peekWord8 addr 3)
+    Alloc.allocaBytes sockaddrInSize $ \addr ->
+        Alloc.alloca $ \addrLen ->
+            Except.runExceptT $ do
+                Class.liftIO (Storable.poke addrLen sockaddrInSize)
+                Except.ExceptT (checked "getsockname" (c_getsockname fd (Ptr.castPtr addr) addrLen))
+                high <- Class.liftIO (peekWord8 addr 2)
+                low <- Class.liftIO (peekWord8 addr 3)
                 pure (Port (fromIntegral high * 256 + fromIntegral low))
 
-peekWord8 :: Ptr Word8 -> Int -> IO Word8
-peekWord8 = peekByteOff
+-- | Reads a single byte from a @sockaddr@ buffer at the given offset.
+peekWord8 :: Ptr.Ptr Word.Word8 -> Int -> IO Word.Word8
+peekWord8 = Storable.peekByteOff
 
 {- | Decodes the peer address from a filled @sockaddr_in@ buffer, using the
 same BSD byte layout as 'encodeSockAddrIn': the port at offsets 2-3 and the
 IPv4 address at offsets 4-7.
 -}
-peekConnectionInfo :: Ptr Word8 -> IO ConnectionInfo
+peekConnectionInfo :: Ptr.Ptr Word.Word8 -> IO ConnectionInfo
 peekConnectionInfo addr = do
     portHigh <- peekWord8 addr 2
     portLow <- peekWord8 addr 3
@@ -202,6 +214,9 @@ peekConnectionInfo addr = do
             , connPeerPort = Port (fromIntegral portHigh * 256 + fromIntegral portLow)
             }
 
+{- | Receives up to @byteCount@ bytes from a client socket, waiting indefinitely
+for read readiness (the unbounded form of 'recvWithin').
+-}
 recv :: ClientSocket -> Int -> IO (Either SocketError BS.ByteString)
 recv = recvWithin 0
 
@@ -214,13 +229,13 @@ no timer.
 -}
 recvWithin :: Int -> ClientSocket -> Int -> IO (Either SocketError BS.ByteString)
 recvWithin idleMicros (ClientSocket fd) byteCount =
-    allocaBytes byteCount recvLoop
+    Alloc.allocaBytes byteCount recvLoop
   where
     recvLoop buf = do
-        received <- c_recv fd (castPtr buf) byteCount 0
+        received <- c_recv fd (Ptr.castPtr buf) byteCount 0
         if received < 0
             then do
-                errno <- getErrno
+                errno <- Error.getErrno
                 if isWouldBlock errno
                     then do
                         ready <- waitReadable idleMicros fd
@@ -229,7 +244,7 @@ recvWithin idleMicros (ClientSocket fd) byteCount =
                             Right () -> recvLoop buf
                     else return (Left (SocketError "recv" errno))
             else do
-                bytes <- BS.packCStringLen (castPtr buf, received)
+                bytes <- BS.packCStringLen (Ptr.castPtr buf, received)
                 return (Right bytes)
 
 {- | Waits for a descriptor to become readable, bounded by the idle timeout
@@ -238,18 +253,21 @@ if it is positive. A reached deadline is reported as a timeout 'SocketError'.
 waitReadable :: Int -> Int -> IO (Either SocketError ())
 waitReadable idleMicros fd
     | idleMicros <= 0 = do
-        waitForReadFD fd
+        FD.waitForReadFD fd
         return (Right ())
     | otherwise = do
-        woken <- timeout idleMicros (waitForReadFD fd)
+        woken <- Timeout.timeout idleMicros (FD.waitForReadFD fd)
         case woken of
             Just () -> return (Right ())
-            Nothing -> return (Left (SocketError "recv" eTIMEDOUT))
+            Nothing -> return (Left (SocketError "recv" Error.eTIMEDOUT))
 
 -- | Whether a socket error is an idle-timeout failure (read or write).
 isTimeoutError :: SocketError -> Bool
-isTimeoutError (SocketError _ errno) = errno == eTIMEDOUT
+isTimeoutError (SocketError _ errno) = errno == Error.eTIMEDOUT
 
+{- | Sends an entire byte string on a client socket, waiting indefinitely for
+write readiness (the unbounded form of 'sendAllWithin').
+-}
 sendAll :: ClientSocket -> BS.ByteString -> IO (Either SocketError ())
 sendAll = sendAllWithin 0
 
@@ -267,7 +285,7 @@ sendAllWithin idleMicros (ClientSocket fd) bytes =
 -- | Opens a file read-only for zero-copy sending; 'Nothing' if it cannot open.
 openFileRead :: FilePath -> IO (Maybe FileFd)
 openFileRead path = do
-    fd <- withCString path (\p -> c_open p oRdOnly 0)
+    fd <- CStr.withCString path (\p -> c_open p oRdOnly 0)
     if fd < 0
         then return Nothing
         else return (Just (FileFd fd))
@@ -278,7 +296,7 @@ fileSize (FileFd fd) = c_lseek fd 0 seekEnd
 
 -- | Closes a file descriptor (a read-only fd close); the result is ignored.
 closeFileFd :: FileFd -> IO ()
-closeFileFd (FileFd fd) = void (c_close fd)
+closeFileFd (FileFd fd) = Monad.void (c_close fd)
 
 {- | The size of a file by path, opening read-only and closing again, or
 'Nothing' if it cannot be opened. The single size source for a 'FileBody':
@@ -306,15 +324,18 @@ stops, covering a file truncated under us.
 -}
 sendFileWithin :: Int -> ClientSocket -> FileFd -> Int -> Int -> IO (Either SocketError ())
 sendFileWithin idleMicros (ClientSocket s) (FileFd fd) offset0 len0 =
-    alloca (sendFileLoop idleMicros s fd offset0 len0)
+    Alloc.alloca (sendFileLoop idleMicros s fd offset0 len0)
 
-sendFileLoop :: Int -> Int -> Int -> Int -> Int -> Ptr Int -> IO (Either SocketError ())
+{- | Drives the @sendfile@ retry loop, advancing past bytes the kernel sent and
+parking on write readiness on a would-block until the range is fully sent.
+-}
+sendFileLoop :: Int -> Int -> Int -> Int -> Int -> Ptr.Ptr Int -> IO (Either SocketError ())
 sendFileLoop idleMicros s fd offset remaining lenPtr
     | remaining <= 0 = return (Right ())
     | otherwise = do
-        poke lenPtr remaining
-        rc <- c_sendfile fd s offset lenPtr nullPtr 0
-        sent <- peek lenPtr
+        Storable.poke lenPtr remaining
+        rc <- c_sendfile fd s offset lenPtr Ptr.nullPtr 0
+        sent <- Storable.peek lenPtr
         let offset' = offset + sent
             remaining' = remaining - sent
         if remaining' <= 0
@@ -326,7 +347,7 @@ sendFileLoop idleMicros s fd offset remaining lenPtr
                             then return (Right ())
                             else sendFileLoop idleMicros s fd offset' remaining' lenPtr
                     else do
-                        errno <- getErrno
+                        errno <- Error.getErrno
                         if isWouldBlock errno
                             then do
                                 ready <- waitWritable idleMicros s
@@ -335,9 +356,11 @@ sendFileLoop idleMicros s fd offset remaining lenPtr
                                     Right () -> sendFileLoop idleMicros s fd offset' remaining' lenPtr
                             else return (Left (SocketError "sendfile" errno))
 
+-- | Closes a listening socket, returning any close error.
 closeListenSocket :: ListenSocket -> IO (Either SocketError ())
 closeListenSocket (ListenSocket fd) = closeFd fd
 
+-- | Closes a client socket immediately, returning any close error.
 closeClientSocket :: ClientSocket -> IO (Either SocketError ())
 closeClientSocket (ClientSocket fd) = closeFd fd
 
@@ -360,22 +383,26 @@ stream, or on error. This is a non-blocking sweep, not a wait for the peer, so
 it never stalls the handler.
 -}
 drainReceiveBuffer :: ClientSocket -> IO ()
-drainReceiveBuffer (ClientSocket fd) = allocaBytes drainBufferBytes loop
+drainReceiveBuffer (ClientSocket fd) = Alloc.allocaBytes drainBufferBytes loop
   where
     loop buf = do
-        received <- c_recv fd (castPtr buf) drainBufferBytes 0
-        when (received > 0) (loop buf)
+        received <- c_recv fd (Ptr.castPtr buf) drainBufferBytes 0
+        Monad.when (received > 0) (loop buf)
 
+-- | The fixed buffer size used by the receive-buffer drain sweep.
 drainBufferBytes :: Int
 drainBufferBytes = 4096
 
-sendLoop :: Int -> Int -> CString -> Int -> IO (Either SocketError ())
+{- | Drives the non-blocking send loop, advancing the pointer past sent bytes
+and parking on write readiness on a would-block until all bytes are sent.
+-}
+sendLoop :: Int -> Int -> CStr.CString -> Int -> IO (Either SocketError ())
 sendLoop _ _ _ remaining | remaining <= 0 = return (Right ())
 sendLoop idleMicros fd ptr remaining = do
     sent <- c_send fd ptr remaining 0
     if sent < 0
         then do
-            errno <- getErrno
+            errno <- Error.getErrno
             if isWouldBlock errno
                 then do
                     ready <- waitWritable idleMicros fd
@@ -391,49 +418,57 @@ if it is positive. A reached deadline is reported as a timeout 'SocketError'.
 waitWritable :: Int -> Int -> IO (Either SocketError ())
 waitWritable idleMicros fd
     | idleMicros <= 0 = do
-        waitForWriteFD fd
+        FD.waitForWriteFD fd
         return (Right ())
     | otherwise = do
-        woken <- timeout idleMicros (waitForWriteFD fd)
+        woken <- Timeout.timeout idleMicros (FD.waitForWriteFD fd)
         case woken of
             Just () -> return (Right ())
-            Nothing -> return (Left (SocketError "send" eTIMEDOUT))
+            Nothing -> return (Left (SocketError "send" Error.eTIMEDOUT))
 
-advanceCString :: CString -> Int -> CString
-advanceCString ptr count = castPtr (castPtr ptr `plusPtr` count)
+-- | Advances a 'CStr.CString' pointer by a byte count.
+advanceCString :: CStr.CString -> Int -> CStr.CString
+advanceCString ptr count = Ptr.castPtr (Ptr.castPtr ptr `Ptr.plusPtr` count)
 
+-- | Closes a raw descriptor, discarding the success value, reporting any error.
 closeFd :: Int -> IO (Either SocketError ())
-closeFd fd = void <$> checked "close" (c_close fd)
+closeFd fd = Monad.void <$> checked "close" (c_close fd)
 
+-- | Enables @SO_REUSEADDR@ on a socket, returning any setsockopt error.
 setReuseAddr :: Int -> IO (Either SocketError ())
 setReuseAddr fd =
-    alloca $ \opt -> do
-        poke opt (1 :: Int)
-        void <$> checked "setsockopt" (c_setsockopt fd solSocket soReuseAddr opt (sizeOf (1 :: Int)))
+    Alloc.alloca $ \opt -> do
+        Storable.poke opt (1 :: Int)
+        Monad.void <$> checked "setsockopt" (c_setsockopt fd solSocket soReuseAddr opt (Storable.sizeOf (1 :: Int)))
 
+-- | Sets a socket to non-blocking mode via @fcntl@, returning any error.
 setNonBlocking :: Int -> IO (Either SocketError ())
-setNonBlocking fd = void <$> checked "fcntl" (c_fcntl fd fSetFl oNonBlock)
+setNonBlocking fd = Monad.void <$> checked "fcntl" (c_fcntl fd fSetFl oNonBlock)
 
-isWouldBlock :: Errno -> Bool
+-- | Whether an errno means the operation would block on a non-blocking socket.
+isWouldBlock :: Error.Errno -> Bool
 isWouldBlock errno =
-    errno == eAGAIN || errno == eWOULDBLOCK
+    errno == Error.eAGAIN || errno == Error.eWOULDBLOCK
 
 {- | Runs an acquire step that already owns @fd@; if it fails, closes @fd@
 before propagating the error, so a mid-acquisition failure never leaks the
 descriptor.
 -}
-closingOnError :: Int -> ExceptT SocketError IO a -> ExceptT SocketError IO a
+closingOnError :: Int -> Except.ExceptT SocketError IO a -> Except.ExceptT SocketError IO a
 closingOnError fd action =
-    action `catchError` \err -> do
-        _ <- liftIO (c_close fd)
-        throwError err
+    action `Except.catchError` \err -> do
+        _ <- Class.liftIO (c_close fd)
+        Except.throwError err
 
+{- | Runs a syscall returning an @Int@, mapping a negative result to a
+'SocketError' tagged with the given label and the current errno.
+-}
 checked :: String -> IO Int -> IO (Either SocketError Int)
 checked label action = do
     result <- action
     if result < 0
         then do
-            Left . SocketError label <$> getErrno
+            Left . SocketError label <$> Error.getErrno
         else
             return (Right result)
 
@@ -441,7 +476,7 @@ checked label action = do
 The layout is the BSD form with a length byte at offset zero, which is
 correct on macOS; other platforms need their own layout behind this seam.
 -}
-encodeSockAddrIn :: Host -> Port -> [Word8]
+encodeSockAddrIn :: Host -> Port -> [Word.Word8]
 encodeSockAddrIn host (Port port) =
     [ fromIntegral sockaddrInSize
     , fromIntegral afInet
@@ -451,23 +486,29 @@ encodeSockAddrIn host (Port port) =
         ++ hostBytes host
         ++ replicate 8 0
 
-hostBytes :: Host -> [Word8]
+-- | The four address bytes for a host: all-zero for 'HostAny', else the octets.
+hostBytes :: Host -> [Word.Word8]
 hostBytes HostAny = [0, 0, 0, 0]
 hostBytes (HostIPv4 a b c d) = [a, b, c, d]
 
-withSockAddrIn :: Host -> Port -> (Ptr () -> Int -> IO a) -> IO a
+{- | Builds a @sockaddr_in@ in a temporary buffer and passes it (with its size)
+to the continuation.
+-}
+withSockAddrIn :: Host -> Port -> (Ptr.Ptr () -> Int -> IO a) -> IO a
 withSockAddrIn host port use =
-    allocaBytes sockaddrInSize $ \ptr -> do
+    Alloc.allocaBytes sockaddrInSize $ \ptr -> do
         pokeBytes ptr (encodeSockAddrIn host port)
-        use (castPtr ptr) sockaddrInSize
+        use (Ptr.castPtr ptr) sockaddrInSize
 
-pokeBytes :: Ptr Word8 -> [Word8] -> IO ()
+-- | Writes a list of bytes into a buffer at successive offsets from zero.
+pokeBytes :: Ptr.Ptr Word.Word8 -> [Word.Word8] -> IO ()
 pokeBytes ptr = go 0
   where
     go _ [] = return ()
     go index (byte : rest) = do
-        pokeByteOff ptr index byte
+        Storable.pokeByteOff ptr index byte
         go (index + 1) rest
 
+-- | The size in bytes of a @sockaddr_in@ structure.
 sockaddrInSize :: Int
 sockaddrInSize = 16

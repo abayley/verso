@@ -17,7 +17,7 @@ module MicroHttp.Iteratee (
     byteSinkI,
 ) where
 
-import Control.Monad ((>=>))
+import qualified Control.Monad as Monad
 import qualified Data.ByteString as BS
 
 {- | A unit of stream input: a chunk of bytes, or the end of the stream
@@ -62,7 +62,7 @@ instance Applicative (Iter e) where
 instance Monad (Iter e) where
     it >>= f = case it of
         Done a residue -> feedStream residue (f a)
-        NeedInput k -> NeedInput (k >=> f)
+        NeedInput k -> NeedInput (k Monad.>=> f)
         IterM m -> IterM (fmap (>>= f) m)
         IterFailed err residue -> IterFailed err residue
 

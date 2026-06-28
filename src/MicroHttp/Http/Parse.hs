@@ -10,12 +10,16 @@ module MicroHttp.Http.Parse (
 
 import qualified Data.ByteString as BS
 
+{- | Size limits applied while parsing a request, guarding against oversized
+headers and bodies.
+-}
 data ParseLimits = ParseLimits
     { maxHeaderBytes :: Int
     , maxBodyBytes :: Int
     }
     deriving (Eq, Show)
 
+-- | Conservative default limits: 8 KiB of headers and 1 MiB of body.
 defaultParseLimits :: ParseLimits
 defaultParseLimits =
     ParseLimits
@@ -23,6 +27,7 @@ defaultParseLimits =
         , maxBodyBytes = 1048576
         }
 
+-- | Reasons a request could not be parsed or was rejected before dispatch.
 data ParseError
     = BadRequest String
     | HeaderTooLarge

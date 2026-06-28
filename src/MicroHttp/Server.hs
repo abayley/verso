@@ -10,64 +10,68 @@ module MicroHttp.Server (
     serveOne,
 ) where
 
-import Control.Concurrent (forkIO)
-import Control.Concurrent.QSem
+import qualified Control.Concurrent as Concurrent
+import qualified Control.Concurrent.QSem as QSem
 import qualified Data.ByteString.Char8 as BS
-import Foreign.Ptr (Ptr, nullPtr, plusPtr)
-import MicroHttp.Http (Application, Response, ResponseSink (..), ResponseWriter, serialiseFileHead, writeResponse)
-import MicroHttp.Iteratee (run, strictEnumerator)
-import MicroHttp.Network.Socket
-import MicroHttp.Settings (Settings (..), defaultSettings, parseLimits)
-import MicroHttp.Stream (StreamError (..), socketEnumerator)
+import qualified Foreign.Ptr as Ptr
+import qualified MicroHttp.Http as Http
+import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Network.Socket as Socket
+import qualified MicroHttp.Settings as Settings
+import qualified MicroHttp.Stream as Stream
 
+-- | Failure modes surfaced by the server while accepting, reading, or writing.
 data ServerError
-    = ServerListenFailed SocketError
-    | ServerAcceptFailed SocketError
-    | ServerReadFailed SocketError
-    | ServerWriteFailed StreamError
-    | ServerStreamFailed StreamError
+    = ServerListenFailed Socket.SocketError
+    | ServerAcceptFailed Socket.SocketError
+    | ServerReadFailed Socket.SocketError
+    | ServerWriteFailed Stream.StreamError
+    | ServerStreamFailed Stream.StreamError
     deriving (Eq, Show)
 
 -- signal(2): ignore SIGPIPE process-wide so that a client disconnecting mid-response
 -- (e.g. a browser that gave up on a slow operation) makes the socket write return an
 -- error -- already handled per-connection as a SocketError -- instead of killing the
 -- whole server with signal 13. SIG_IGN is the libc sentinel handler value @(void*)1@.
-foreign import ccall "signal" c_signal :: Int -> Ptr () -> IO (Ptr ())
+foreign import ccall "signal" c_signal :: Int -> Ptr.Ptr () -> IO (Ptr.Ptr ())
 
+-- | Install SIG_IGN for SIGPIPE so writes to a dead socket fail rather than kill the process.
 ignoreSigpipe :: IO ()
 ignoreSigpipe = do
     _ <- c_signal sigPIPE sigIGN
     pure ()
   where
     sigPIPE = 13
-    sigIGN = nullPtr `plusPtr` 1
+    sigIGN = Ptr.nullPtr `Ptr.plusPtr` 1
 
-serve :: Settings -> Application -> IO (Either ServerError ())
+-- | Open the listening socket and serve connections concurrently, capped by the handler semaphore.
+serve :: Settings.Settings -> Http.Application -> IO (Either ServerError ())
 serve settings app = do
     ignoreSigpipe
     opened <-
-        listenTcp
-            (settingsHost settings)
-            (settingsPort settings)
-            (settingsBacklog settings)
+        Socket.listenTcp
+            (Settings.settingsHost settings)
+            (Settings.settingsPort settings)
+            (Settings.settingsBacklog settings)
     case opened of
         Left err -> return (Left (ServerListenFailed err))
         Right socket -> do
-            sem <- newQSem (settingsMaxActiveHandlers settings)
+            sem <- QSem.newQSem (Settings.settingsMaxActiveHandlers settings)
             acceptLoop settings app sem socket
 
-serveOne :: Settings -> Application -> IO (Either ServerError ())
+-- | Open the listening socket, handle a single connection, then close the socket.
+serveOne :: Settings.Settings -> Http.Application -> IO (Either ServerError ())
 serveOne settings app = do
     opened <-
-        listenTcp
-            (settingsHost settings)
-            (settingsPort settings)
-            (settingsBacklog settings)
+        Socket.listenTcp
+            (Settings.settingsHost settings)
+            (Settings.settingsPort settings)
+            (Settings.settingsBacklog settings)
     case opened of
         Left err -> return (Left (ServerListenFailed err))
         Right socket -> do
             result <- acceptAndHandle settings app socket
-            _ <- closeListenSocket socket
+            _ <- Socket.closeListenSocket socket
             return result
 
 {- | Drives an application over an in-memory copy of the request bytes with a
@@ -75,31 +79,35 @@ placeholder connection, returning the produced response or the stream failure.
 The unit-test seam for the application boundary; compose the application with
 'MicroHttp.Middleware.withErrorResponses' to exercise the 400/408 mapping.
 -}
-respondToRequestBytes :: Application -> BS.ByteString -> IO (Either StreamError Response)
+respondToRequestBytes :: Http.Application -> BS.ByteString -> IO (Either Stream.StreamError Http.Response)
 respondToRequestBytes app bytes =
-    strictEnumerator bytes (app placeholderConnection) >>= run
+    Iteratee.strictEnumerator bytes (app placeholderConnection) >>= Iteratee.run
 
-placeholderConnection :: ConnectionInfo
-placeholderConnection = ConnectionInfo (HostIPv4 127 0 0 1) (Port 0)
+-- | A stand-in 'ConnectionInfo' (loopback, port 0) for driving applications without a real socket.
+placeholderConnection :: Socket.ConnectionInfo
+placeholderConnection = Socket.ConnectionInfo (Socket.HostIPv4 127 0 0 1) (Socket.Port 0)
 
-acceptLoop :: Settings -> Application -> QSem -> ListenSocket -> IO (Either ServerError ())
+-- | Accept connections forever, forking a capped handler for each accepted client.
+acceptLoop :: Settings.Settings -> Http.Application -> QSem.QSem -> Socket.ListenSocket -> IO (Either ServerError ())
 acceptLoop settings app sem socket = do
-    accepted <- accept socket
+    accepted <- Socket.accept socket
     case accepted of
         Left err -> return (Left (ServerAcceptFailed err))
         Right (client, conn) -> do
-            _ <- forkIO (runCappedHandler settings app sem client conn)
+            _ <- Concurrent.forkIO (runCappedHandler settings app sem client conn)
             acceptLoop settings app sem socket
 
-runCappedHandler :: Settings -> Application -> QSem -> ClientSocket -> ConnectionInfo -> IO ()
+-- | Handle one client while holding a semaphore slot, releasing it when done.
+runCappedHandler :: Settings.Settings -> Http.Application -> QSem.QSem -> Socket.ClientSocket -> Socket.ConnectionInfo -> IO ()
 runCappedHandler settings app sem client conn = do
-    waitQSem sem
+    QSem.waitQSem sem
     _ <- handleClient settings app client conn
-    signalQSem sem
+    QSem.signalQSem sem
 
-acceptAndHandle :: Settings -> Application -> ListenSocket -> IO (Either ServerError ())
+-- | Accept a single connection and handle it inline.
+acceptAndHandle :: Settings.Settings -> Http.Application -> Socket.ListenSocket -> IO (Either ServerError ())
 acceptAndHandle settings app socket = do
-    accepted <- accept socket
+    accepted <- Socket.accept socket
     case accepted of
         Left err -> return (Left (ServerAcceptFailed err))
         Right (client, conn) -> handleClient settings app client conn
@@ -110,24 +118,25 @@ logging all live in the application stack (the router and middleware), not
 here. A stream failure that produced no response (a read failure) closes the
 connection with nothing written.
 -}
-handleClient :: Settings -> Application -> ClientSocket -> ConnectionInfo -> IO (Either ServerError ())
+handleClient :: Settings.Settings -> Http.Application -> Socket.ClientSocket -> Socket.ConnectionInfo -> IO (Either ServerError ())
 handleClient settings app client conn = do
     final <-
-        socketEnumerator
+        Stream.socketEnumerator
             client
-            (settingsReadBufferBytes settings)
-            (settingsIdleReadTimeoutMicros settings)
+            (Settings.settingsReadBufferBytes settings)
+            (Settings.settingsIdleReadTimeoutMicros settings)
             (app conn)
-    outcome <- run final
+    outcome <- Iteratee.run final
     result <- case outcome of
         Right response -> writeClientResponse settings client response
         Left err -> return (Left (streamFailure err))
-    _ <- closeClientSocketGraceful client
+    _ <- Socket.closeClientSocketGraceful client
     return result
 
-writeClientResponse :: Settings -> ClientSocket -> Response -> IO (Either ServerError ())
+-- | Write a response to the client socket, mapping any write failure to a 'ServerError'.
+writeClientResponse :: Settings.Settings -> Socket.ClientSocket -> Http.Response -> IO (Either ServerError ())
 writeClientResponse settings client response = do
-    written <- writeResponse (socketResponseSink settings client) response
+    written <- Http.writeResponse (socketResponseSink settings client) response
     case written of
         Left err -> return (Left (ServerWriteFailed err))
         Right () -> return (Right ())
@@ -135,18 +144,19 @@ writeClientResponse settings client response = do
 {- | The socket-backed response sink: chunks go out with 'sendAllWithin'; a file
 body is sent zero-copy with 'sendfile' through 'socketSinkFile'.
 -}
-socketResponseSink :: Settings -> ClientSocket -> ResponseSink
+socketResponseSink :: Settings.Settings -> Socket.ClientSocket -> Http.ResponseSink
 socketResponseSink settings client =
-    ResponseSink
-        { sinkChunk = socketChunkWriter settings client
-        , sinkFile = socketSinkFile settings client
+    Http.ResponseSink
+        { Http.sinkChunk = socketChunkWriter settings client
+        , Http.sinkFile = socketSinkFile settings client
         }
 
-socketChunkWriter :: Settings -> ClientSocket -> ResponseWriter
+-- | The chunk writer: send bytes within the idle write timeout, mapping failure to a 'StreamError'.
+socketChunkWriter :: Settings.Settings -> Socket.ClientSocket -> Http.ResponseWriter
 socketChunkWriter settings client bytes = do
-    sent <- sendAllWithin (settingsIdleWriteTimeoutMicros settings) client bytes
+    sent <- Socket.sendAllWithin (Settings.settingsIdleWriteTimeoutMicros settings) client bytes
     case sent of
-        Left err -> return (Left (StreamWriteError err))
+        Left err -> return (Left (Stream.StreamWriteError err))
         Right () -> return (Right ())
 
 {- | Sends a file response zero-copy: open the file read-only, write the head
@@ -156,29 +166,31 @@ here. An open failure -- a rare time-of-check/time-of-use race after
 'MicroHttp.Static.serveStatic' already found the file -- aborts the connection,
 like a streamed body that fails mid-flight.
 -}
-socketSinkFile :: Settings -> ClientSocket -> Response -> FilePath -> Int -> IO (Either StreamError ())
+socketSinkFile :: Settings.Settings -> Socket.ClientSocket -> Http.Response -> FilePath -> Int -> IO (Either Stream.StreamError ())
 socketSinkFile settings client response path size = do
-    opened <- openFileRead path
+    opened <- Socket.openFileRead path
     case opened of
-        Nothing -> return (Left (StreamSourceError ("cannot open file: " ++ path)))
+        Nothing -> return (Left (Stream.StreamSourceError ("cannot open file: " ++ path)))
         Just fd -> do
             result <- sendHeadThenFile settings client response fd size
-            closeFileFd fd
+            Socket.closeFileFd fd
             return result
 
-sendHeadThenFile :: Settings -> ClientSocket -> Response -> FileFd -> Int -> IO (Either StreamError ())
+-- | Write the file's response head, then @sendfile@ its body within the idle write timeout.
+sendHeadThenFile :: Settings.Settings -> Socket.ClientSocket -> Http.Response -> Socket.FileFd -> Int -> IO (Either Stream.StreamError ())
 sendHeadThenFile settings client response fd size = do
-    sentHead <- socketChunkWriter settings client (serialiseFileHead response size)
+    sentHead <- socketChunkWriter settings client (Http.serialiseFileHead response size)
     case sentHead of
         Left err -> return (Left err)
         Right () -> do
-            sentBody <- sendFileWithin (settingsIdleWriteTimeoutMicros settings) client fd 0 size
+            sentBody <- Socket.sendFileWithin (Settings.settingsIdleWriteTimeoutMicros settings) client fd 0 size
             case sentBody of
-                Left err -> return (Left (StreamWriteError err))
+                Left err -> return (Left (Stream.StreamWriteError err))
                 Right () -> return (Right ())
 
-streamFailure :: StreamError -> ServerError
+-- | Map a 'StreamError' to a 'ServerError', distinguishing read failures from other stream failures.
+streamFailure :: Stream.StreamError -> ServerError
 streamFailure err =
     case err of
-        StreamReadError socketError -> ServerReadFailed socketError
+        Stream.StreamReadError socketError -> ServerReadFailed socketError
         _ -> ServerStreamFailed err

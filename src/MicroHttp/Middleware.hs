@@ -27,58 +27,59 @@ module MicroHttp.Middleware (
     logRequests,
 ) where
 
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as BS
-import MicroHttp.Http (Application, Response (..), ResponseBody (..), Status (..), normaliseHeaderName, serialiseFileHead, serialiseHead, serialiseResponse)
-import MicroHttp.Iteratee (Enumerator, Iter (..), Stream (..))
-import MicroHttp.Log (AccessEvent (..), Logger, RequestLine (..))
-import MicroHttp.Stream (StreamError (..))
-import System.IO.TimeMilli (getTimeMilli)
+import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BSC
+import qualified MicroHttp.Http as Http
+import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Log as Log
+import qualified MicroHttp.Stream as Stream
+import qualified System.IO.TimeMilli as TimeMilli
 
 {- | A middleware wraps an application. The 'Application' contract itself lives
 in 'MicroHttp.Http' (re-exported here), so naming it needs no middleware deps.
 -}
-type Middleware = Application -> Application
+type Middleware = Http.Application -> Http.Application
 
 {- | Head-level middleware: transform the response value, no streams. For
 example, adding a header or rewriting the status.
 -}
-mapResponse :: (Response -> Response) -> Middleware
+mapResponse :: (Http.Response -> Http.Response) -> Middleware
 mapResponse f app conn = fmap f (app conn)
 
 {- | Ingress middleware: lift an enumeratee around the request consumption,
 for example bounding the bytes the application reads.
 -}
-ingress :: (Iter StreamError Response -> Iter StreamError Response) -> Middleware
+ingress :: (Iteratee.Iter Stream.StreamError Http.Response -> Iteratee.Iter Stream.StreamError Http.Response) -> Middleware
 ingress stage app conn = stage (app conn)
 
 {- | Egress middleware: fuse an enumeratee onto a streaming response body so it
 runs before the sink. A strict body is left unchanged.
 -}
-egress :: (Iter StreamError () -> Iter StreamError ()) -> Middleware
+egress :: (Iteratee.Iter Stream.StreamError () -> Iteratee.Iter Stream.StreamError ()) -> Middleware
 egress stage app conn = fmap (fuseBody stage) (app conn)
 
-fuseBody :: (Iter StreamError () -> Iter StreamError ()) -> Response -> Response
+-- | Fuses an egress enumeratee onto a streaming body, leaving strict and file bodies untouched.
+fuseBody :: (Iteratee.Iter Stream.StreamError () -> Iteratee.Iter Stream.StreamError ()) -> Http.Response -> Http.Response
 fuseBody stage response =
-    case responseBody response of
-        StrictBody _ -> response
-        FileBody _ _ -> response
-        StreamBody enumerator -> response{responseBody = StreamBody (fuse enumerator)}
+    case Http.responseBody response of
+        Http.StrictBody _ -> response
+        Http.FileBody _ _ -> response
+        Http.StreamBody enumerator -> response{Http.responseBody = Http.StreamBody (fuse enumerator)}
   where
-    fuse :: Enumerator StreamError () -> Enumerator StreamError ()
+    fuse :: Iteratee.Enumerator Stream.StreamError () -> Iteratee.Enumerator Stream.StreamError ()
     fuse enumerator sink = enumerator (stage sink)
 
 {- | Failure-handling middleware: intercept a terminal failure and answer with
 a replacement response instead. Successful results pass through.
 -}
-catchIter :: (StreamError -> Response) -> Middleware
+catchIter :: (Stream.StreamError -> Http.Response) -> Middleware
 catchIter handler app conn = recover (app conn)
   where
     recover it = case it of
-        Done a residue -> Done a residue
-        NeedInput k -> NeedInput (recover . k)
-        IterM m -> IterM (fmap recover m)
-        IterFailed err _ -> pure (handler err)
+        Iteratee.Done a residue -> Iteratee.Done a residue
+        Iteratee.NeedInput k -> Iteratee.NeedInput (recover . k)
+        Iteratee.IterM m -> Iteratee.IterM (fmap recover m)
+        Iteratee.IterFailed err _ -> pure (handler err)
 
 {- | Maps the framing/parse failures to default error responses: a parse or
 limit failure to 400, an idle-read timeout to 408. A transport read failure is
@@ -88,19 +89,20 @@ withErrorResponses :: Middleware
 withErrorResponses app conn = recover (app conn)
   where
     recover it = case it of
-        Done a residue -> Done a residue
-        NeedInput k -> NeedInput (recover . k)
-        IterM m -> IterM (fmap recover m)
-        IterFailed err residue ->
+        Iteratee.Done a residue -> Iteratee.Done a residue
+        Iteratee.NeedInput k -> Iteratee.NeedInput (recover . k)
+        Iteratee.IterM m -> Iteratee.IterM (fmap recover m)
+        Iteratee.IterFailed err residue ->
             case errorResponseFor err of
-                Just response -> Done response residue
-                Nothing -> IterFailed err residue
+                Just response -> Iteratee.Done response residue
+                Nothing -> Iteratee.IterFailed err residue
 
-errorResponseFor :: StreamError -> Maybe Response
+-- | Maps a stream framing failure to the default error response, if any.
+errorResponseFor :: Stream.StreamError -> Maybe Http.Response
 errorResponseFor err =
     case err of
-        StreamParseError _ -> Just badRequestResponse
-        StreamTimeout -> Just requestTimeoutResponse
+        Stream.StreamParseError _ -> Just badRequestResponse
+        Stream.StreamTimeout -> Just requestTimeoutResponse
         _ -> Nothing
 
 {- | The outermost middleware: it taps the request's first line (method and
@@ -112,59 +114,59 @@ count, with no extra syscall), and a streaming body is counted through an egress
 stage that logs the completed event when the body finishes (head length plus the
 body bytes).
 -}
-logRequests :: Logger -> Middleware
-logRequests logger inner conn = IterM start
+logRequests :: Log.Logger -> Middleware
+logRequests logger inner conn = Iteratee.IterM start
   where
     start = do
-        startMillis <- getTimeMilli
-        return (tap startMillis (Buffering B.empty) 0 (inner conn))
+        startMillis <- TimeMilli.getTimeMilli
+        return (tap startMillis (Buffering BS.empty) 0 (inner conn))
 
     tap startMillis lineState reqBytes it =
         case it of
-            NeedInput k -> NeedInput (consume startMillis lineState reqBytes k)
-            IterM m -> IterM (fmap (tap startMillis lineState reqBytes) m)
-            Done response residue -> completed startMillis lineState reqBytes response residue
-            IterFailed err residue ->
-                IterM (logAborted startMillis lineState reqBytes err >> return (IterFailed err residue))
+            Iteratee.NeedInput k -> Iteratee.NeedInput (consume startMillis lineState reqBytes k)
+            Iteratee.IterM m -> Iteratee.IterM (fmap (tap startMillis lineState reqBytes) m)
+            Iteratee.Done response residue -> completed startMillis lineState reqBytes response residue
+            Iteratee.IterFailed err residue ->
+                Iteratee.IterM (logAborted startMillis lineState reqBytes err >> return (Iteratee.IterFailed err residue))
 
     consume startMillis lineState reqBytes k stream =
         case stream of
-            Chunk bytes ->
-                let reqBytes' = reqBytes + B.length bytes
+            Iteratee.Chunk bytes ->
+                let reqBytes' = reqBytes + BS.length bytes
                     (lineState', received) = advanceLine lineState bytes
-                    next = tap startMillis lineState' reqBytes' (k (Chunk bytes))
+                    next = tap startMillis lineState' reqBytes' (k (Iteratee.Chunk bytes))
                  in case received of
-                        Just line -> IterM (logger (RequestReceived conn line) >> return next)
+                        Just line -> Iteratee.IterM (logger (Log.RequestReceived conn line) >> return next)
                         Nothing -> next
-            EndOfStream merr -> tap startMillis lineState reqBytes (k (EndOfStream merr))
+            Iteratee.EndOfStream merr -> tap startMillis lineState reqBytes (k (Iteratee.EndOfStream merr))
 
     -- A strict body's size is known now; a file body carries its size, so the
     -- head plus that size is the exact response byte count; a streaming body is
     -- counted as the server writes it, logging the completed event at its end.
     completed startMillis lineState reqBytes response residue =
-        case responseBody response of
-            StrictBody _ ->
-                IterM
-                    ( logCompleted startMillis lineState reqBytes (responseStatus response) (strictResponseSize response)
-                        >> return (Done response residue)
+        case Http.responseBody response of
+            Http.StrictBody _ ->
+                Iteratee.IterM
+                    ( logCompleted startMillis lineState reqBytes (Http.responseStatus response) (strictResponseSize response)
+                        >> return (Iteratee.Done response residue)
                     )
-            FileBody _ size ->
-                IterM
-                    ( logCompleted startMillis lineState reqBytes (responseStatus response) (B.length (serialiseFileHead response size) + size)
-                        >> return (Done response residue)
+            Http.FileBody _ size ->
+                Iteratee.IterM
+                    ( logCompleted startMillis lineState reqBytes (Http.responseStatus response) (BS.length (Http.serialiseFileHead response size) + size)
+                        >> return (Iteratee.Done response residue)
                     )
-            StreamBody enumerator ->
-                let headLength = B.length (serialiseHead response)
-                    counted = countingBody startMillis lineState reqBytes (responseStatus response) headLength enumerator
-                 in Done response{responseBody = StreamBody counted} residue
+            Http.StreamBody enumerator ->
+                let headLength = BS.length (Http.serialiseHead response)
+                    counted = countingBody startMillis lineState reqBytes (Http.responseStatus response) headLength enumerator
+                 in Iteratee.Done response{Http.responseBody = Http.StreamBody counted} residue
 
     logCompleted startMillis lineState reqBytes status respBytes = do
-        endMillis <- getTimeMilli
-        logger (RequestCompleted conn (lineOf lineState) status reqBytes respBytes (endMillis - startMillis))
+        endMillis <- TimeMilli.getTimeMilli
+        logger (Log.RequestCompleted conn (lineOf lineState) status reqBytes respBytes (endMillis - startMillis))
 
     logAborted startMillis lineState reqBytes err = do
-        endMillis <- getTimeMilli
-        logger (RequestAborted conn (lineOf lineState) (streamErrorLabel err) reqBytes (endMillis - startMillis))
+        endMillis <- TimeMilli.getTimeMilli
+        logger (Log.RequestAborted conn (lineOf lineState) (streamErrorLabel err) reqBytes (endMillis - startMillis))
 
     -- \| Wraps a streaming response body so the bytes are tallied as they reach
     --    the sink and the completed event is logged (head length plus body bytes)
@@ -175,77 +177,85 @@ logRequests logger inner conn = IterM start
       where
         countStage tally inner' =
             case inner' of
-                NeedInput k -> NeedInput (countConsume tally k)
-                IterM m -> IterM (fmap (countStage tally) m)
+                Iteratee.NeedInput k -> Iteratee.NeedInput (countConsume tally k)
+                Iteratee.IterM m -> Iteratee.IterM (fmap (countStage tally) m)
                 other -> other
         countConsume tally k stream =
             case stream of
-                Chunk bytes -> countStage (tally + B.length bytes) (k (Chunk bytes))
-                EndOfStream merr ->
-                    IterM
+                Iteratee.Chunk bytes -> countStage (tally + BS.length bytes) (k (Iteratee.Chunk bytes))
+                Iteratee.EndOfStream merr ->
+                    Iteratee.IterM
                         ( logCompleted startMillis lineState reqBytes status (headLength + tally)
-                            >> return (k (EndOfStream merr))
+                            >> return (k (Iteratee.EndOfStream merr))
                         )
 
-strictResponseSize :: Response -> Int
+-- | The serialised wire length of a strict-body response (0 if serialisation fails).
+strictResponseSize :: Http.Response -> Int
 strictResponseSize response =
-    case serialiseResponse response of
-        Right bytes -> B.length bytes
+    case Http.serialiseResponse response of
+        Right bytes -> BS.length bytes
         Left _ -> 0
 
 {- | The first-line tap state: still buffering bytes until the first CRLF, or
 the parsed request line.
 -}
 data LineState
-    = Buffering B.ByteString
-    | Seen RequestLine
+    = Buffering BS.ByteString
+    | Seen Log.RequestLine
 
-advanceLine :: LineState -> B.ByteString -> (LineState, Maybe RequestLine)
+-- | Feeds bytes into the first-line tap, parsing the request line once a CRLF is seen.
+advanceLine :: LineState -> BS.ByteString -> (LineState, Maybe Log.RequestLine)
 advanceLine (Seen line) _ = (Seen line, Nothing)
 advanceLine (Buffering buffered) bytes =
-    case breakCrlf (B.append buffered bytes) of
-        Nothing -> (Buffering (B.append buffered bytes), Nothing)
+    case breakCrlf (BS.append buffered bytes) of
+        Nothing -> (Buffering (BS.append buffered bytes), Nothing)
         Just lineBytes ->
             let line = parseRequestLine lineBytes
              in (Seen line, Just line)
 
-lineOf :: LineState -> Maybe RequestLine
+-- | The parsed request line held by the tap state, if one has been seen.
+lineOf :: LineState -> Maybe Log.RequestLine
 lineOf (Buffering _) = Nothing
 lineOf (Seen line) = Just line
 
-breakCrlf :: B.ByteString -> Maybe B.ByteString
+-- | Splits off the bytes before the first CRLF, or Nothing if no CRLF is present.
+breakCrlf :: BS.ByteString -> Maybe BS.ByteString
 breakCrlf bytes =
-    case B.breakSubstring (BS.pack "\r\n") bytes of
+    case BS.breakSubstring (BSC.pack "\r\n") bytes of
         (before, after)
-            | B.null after -> Nothing
+            | BS.null after -> Nothing
             | otherwise -> Just before
 
-parseRequestLine :: B.ByteString -> RequestLine
+-- | Parses a request line's bytes into its method and target.
+parseRequestLine :: BS.ByteString -> Log.RequestLine
 parseRequestLine lineBytes =
-    case BS.words lineBytes of
-        (method : target : _) -> RequestLine (BS.unpack method) (BS.unpack target)
-        [method] -> RequestLine (BS.unpack method) ""
-        [] -> RequestLine "" ""
+    case BSC.words lineBytes of
+        (method : target : _) -> Log.RequestLine (BSC.unpack method) (BSC.unpack target)
+        [method] -> Log.RequestLine (BSC.unpack method) ""
+        [] -> Log.RequestLine "" ""
 
-streamErrorLabel :: StreamError -> String
+-- | A short stable label naming the kind of a stream error, for the access log.
+streamErrorLabel :: Stream.StreamError -> String
 streamErrorLabel err =
     case err of
-        StreamReadError _ -> "StreamReadError"
-        StreamWriteError _ -> "StreamWriteError"
-        StreamParseError _ -> "StreamParseError"
-        StreamSourceError _ -> "StreamSourceError"
-        StreamTimeout -> "StreamTimeout"
+        Stream.StreamReadError _ -> "StreamReadError"
+        Stream.StreamWriteError _ -> "StreamWriteError"
+        Stream.StreamParseError _ -> "StreamParseError"
+        Stream.StreamSourceError _ -> "StreamSourceError"
+        Stream.StreamTimeout -> "StreamTimeout"
 
-badRequestResponse :: Response
+-- | The default 400 Bad Request response for parse and limit failures.
+badRequestResponse :: Http.Response
 badRequestResponse =
-    Response
-        (Status 400 "Bad Request")
-        [(normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/plain")]
-        (StrictBody (BS.pack "bad request\n"))
+    Http.Response
+        (Http.Status 400 "Bad Request")
+        [(Http.normaliseHeaderName (BSC.pack "Content-Type"), BSC.pack "text/plain")]
+        (Http.StrictBody (BSC.pack "bad request\n"))
 
-requestTimeoutResponse :: Response
+-- | The default 408 Request Timeout response for an idle-read timeout.
+requestTimeoutResponse :: Http.Response
 requestTimeoutResponse =
-    Response
-        (Status 408 "Request Timeout")
-        [(normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/plain")]
-        (StrictBody (BS.pack "request timeout\n"))
+    Http.Response
+        (Http.Status 408 "Request Timeout")
+        [(Http.normaliseHeaderName (BSC.pack "Content-Type"), BSC.pack "text/plain")]
+        (Http.StrictBody (BSC.pack "request timeout\n"))

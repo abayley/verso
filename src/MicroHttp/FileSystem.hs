@@ -27,24 +27,24 @@ module MicroHttp.FileSystem (
     fileStat,
 ) where
 
-import Foreign.C.String (CString, withCString)
-import Foreign.Marshal.Alloc (allocaBytes)
-import Foreign.Ptr (Ptr)
-import Foreign.Storable (peekByteOff)
+import qualified Foreign.C.String as CStr
+import qualified Foreign.Marshal.Alloc as Alloc
+import qualified Foreign.Ptr as Ptr
+import qualified Foreign.Storable as Storable
 
 -- rename(2)/unlink(2)/rmdir(2) directly: MicroHs has no atomic renameFile/removeFile
 -- in System.Directory, and exposes no removeDirectory either, so the filesystem
 -- mutations drive libc. The return code (0 success, -1 error) is reported, unlike
 -- MicroHttp.Log's best-effort rotation which discards it (ADR-061).
-foreign import ccall "stdio.h rename" c_rename :: CString -> CString -> IO Int
-foreign import ccall "unistd.h unlink" c_unlink :: CString -> IO Int
-foreign import ccall "unistd.h rmdir" c_rmdir :: CString -> IO Int
+foreign import ccall "stdio.h rename" c_rename :: CStr.CString -> CStr.CString -> IO Int
+foreign import ccall "unistd.h unlink" c_unlink :: CStr.CString -> IO Int
+foreign import ccall "unistd.h rmdir" c_rmdir :: CStr.CString -> IO Int
 
 -- stat(2) directly: MicroHs's System.Directory has no getModificationTime, and
 -- fileSizeBytes cheats with lseek. On arm64/x86_64 macOS (64-bit inode) the plain
 -- `stat` symbol is the modern struct; the fields the link index reads are at fixed
 -- byte offsets (see the constants below). macOS-specific (ADR-067, RFC-0029).
-foreign import ccall "sys/stat.h stat" c_stat :: CString -> Ptr () -> IO Int
+foreign import ccall "sys/stat.h stat" c_stat :: CStr.CString -> Ptr.Ptr () -> IO Int
 
 -- | A file's modification time (sub-second) and size: the link index's freshness fingerprint (RFC-0029).
 data FileStat = FileStat
@@ -57,32 +57,37 @@ data FileStat = FileStat
 -- macOS @struct stat@ layout (arm64/x86_64, 64-bit inode): the buffer size and the
 -- byte offsets of st_mtimespec.tv_sec, its tv_nsec, and st_size. Platform-specific;
 -- the portability RFC parameterises these (ADR-067).
+
+-- | The macOS @struct stat@ buffer size (bytes) to allocate for @stat(2)@ (ADR-067).
 statBufBytes :: Int
 statBufBytes = 144
 
+-- | Byte offset of @st_mtimespec.tv_sec@ within the macOS @struct stat@ (ADR-067).
 mtimeSecOffset :: Int
 mtimeSecOffset = 48
 
+-- | Byte offset of @st_mtimespec.tv_nsec@ within the macOS @struct stat@ (ADR-067).
 mtimeNsecOffset :: Int
 mtimeNsecOffset = 56
 
+-- | Byte offset of @st_size@ within the macOS @struct stat@ (ADR-067).
 sizeOffset :: Int
 sizeOffset = 96
 
 -- | Renames a file or directory, returning 'True' on success (@rename(2)@ == 0).
 renamePath :: FilePath -> FilePath -> IO Bool
 renamePath from to =
-    withCString from $ \f ->
-        withCString to $ \t ->
+    CStr.withCString from $ \f ->
+        CStr.withCString to $ \t ->
             fmap (== 0) (c_rename f t)
 
 -- | Removes a file, returning 'True' on success (@unlink(2)@ == 0).
 removeFilePath :: FilePath -> IO Bool
-removeFilePath path = withCString path (fmap (== 0) . c_unlink)
+removeFilePath path = CStr.withCString path (fmap (== 0) . c_unlink)
 
 -- | Removes an empty directory, returning 'True' on success (@rmdir(2)@ == 0).
 removeEmptyDir :: FilePath -> IO Bool
-removeEmptyDir path = withCString path (fmap (== 0) . c_rmdir)
+removeEmptyDir path = CStr.withCString path (fmap (== 0) . c_rmdir)
 
 {- | The file's modification time and size via @stat(2)@, or 'Nothing' when the call
 fails (the path is absent or unreadable). The @mtime@ is sub-second (macOS
@@ -91,13 +96,13 @@ another of the same length -- still moves it (RFC-0029, ADR-067).
 -}
 fileStat :: FilePath -> IO (Maybe FileStat)
 fileStat path =
-    withCString path $ \cpath ->
-        allocaBytes statBufBytes $ \buf -> do
+    CStr.withCString path $ \cpath ->
+        Alloc.allocaBytes statBufBytes $ \buf -> do
             rc <- c_stat cpath buf
             if rc /= 0
                 then pure Nothing
                 else do
-                    sec <- peekByteOff buf mtimeSecOffset :: IO Int
-                    nsec <- peekByteOff buf mtimeNsecOffset :: IO Int
-                    size <- peekByteOff buf sizeOffset :: IO Int
+                    sec <- Storable.peekByteOff buf mtimeSecOffset :: IO Int
+                    nsec <- Storable.peekByteOff buf mtimeNsecOffset :: IO Int
+                    size <- Storable.peekByteOff buf sizeOffset :: IO Int
                     pure (Just (FileStat sec nsec size))

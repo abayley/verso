@@ -42,14 +42,14 @@ module MicroHttp.Http (
     writeResponse,
 ) where
 
-import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
-import Data.Char (isAsciiUpper, isDigit, isSpace)
+import qualified Data.Char as Char
 import MicroHttp.Http.Parse (ParseError (..), ParseLimits (..), defaultParseLimits)
-import MicroHttp.Iteratee (Enumerator, Iter (..), Stream (..), byteSinkI, run)
-import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), Port (..))
-import MicroHttp.Stream (StreamError (..))
+import qualified MicroHttp.Http.Parse as Parse
+import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Network.Socket as Socket
+import qualified MicroHttp.Stream as Stream
 
 {- | An application consumes the raw request stream for a connection and yields
 a response (RFC-0012). The 'ConnectionInfo' carries the connection's non-payload
@@ -57,8 +57,9 @@ metadata (the peer). The contract lives here, in the core types module, so that
 naming it does not drag in the middleware machinery; the middleware combinators
 and the 'MicroHttp.Middleware.Middleware' alias build on it.
 -}
-type Application = ConnectionInfo -> Iter StreamError Response
+type Application = Socket.ConnectionInfo -> Iteratee.Iter Stream.StreamError Response
 
+-- | An HTTP request method.
 data Method
     = GET
     | POST
@@ -69,7 +70,8 @@ data Method
     | OPTIONS
     deriving (Eq, Show)
 
-parseMethod :: ByteString -> Maybe Method
+-- | Parses a method token into a 'Method', or 'Nothing' if unrecognised.
+parseMethod :: BS.ByteString -> Maybe Method
 parseMethod token =
     case BSC.unpack token of
         "GET" -> Just GET
@@ -81,14 +83,18 @@ parseMethod token =
         "OPTIONS" -> Just OPTIONS
         _ -> Nothing
 
-newtype HeaderName = HeaderName ByteString
+-- | A header field name, normalised to lower case.
+newtype HeaderName = HeaderName BS.ByteString
     deriving (Eq, Show)
 
-type Header = (HeaderName, ByteString)
+-- | A single header field: its name paired with its raw value bytes.
+type Header = (HeaderName, BS.ByteString)
 
+-- | A list of header fields.
 type Headers = [Header]
 
-type RawPath = ByteString
+-- | The raw request-target path bytes, before percent-decoding.
+type RawPath = BS.ByteString
 
 {- | The parsed head of a request: everything before the body. The body is
 consumed downstream as a stream, so it is not a field here.
@@ -99,7 +105,7 @@ data RequestHead = RequestHead
     , requestQuery :: [(String, String)]
     , requestHeaders :: Headers
     , requestRawPath :: RawPath
-    , requestPeer :: ConnectionInfo
+    , requestPeer :: Socket.ConnectionInfo
     }
     deriving (Eq, Show)
 
@@ -116,9 +122,10 @@ emptyRequestHead =
         , requestQuery = []
         , requestHeaders = []
         , requestRawPath = BS.empty
-        , requestPeer = ConnectionInfo HostAny (Port 0)
+        , requestPeer = Socket.ConnectionInfo Socket.HostAny (Socket.Port 0)
         }
 
+-- | An HTTP response: a status, header fields, and a body.
 data Response = Response
     { responseStatus :: Status
     , responseHeaders :: Headers
@@ -135,8 +142,8 @@ them in place (it may replace the body to opt out of zero-copy); the portable
 fallback remains @StreamBody (fileEnumerator path)@.
 -}
 data ResponseBody
-    = StrictBody ByteString
-    | StreamBody (Enumerator StreamError ())
+    = StrictBody BS.ByteString
+    | StreamBody (Iteratee.Enumerator Stream.StreamError ())
     | FileBody FilePath Int
 
 {- | Equality compares strict bodies, and file paths with sizes; a streaming
@@ -152,25 +159,30 @@ instance Show ResponseBody where
     show (StreamBody _) = "StreamBody <stream>"
     show (FileBody path size) = "FileBody " ++ show path ++ " " ++ show size
 
+-- | An HTTP response status: a numeric code and its reason phrase.
 data Status = Status
     { statusCode :: Int
     , statusReason :: String
     }
     deriving (Eq, Show)
 
+-- | The @200 OK@ status.
 okStatus :: Status
 okStatus = Status 200 "OK"
 
-normaliseHeaderName :: ByteString -> HeaderName
+-- | Normalises a header name to a lower-cased 'HeaderName' for comparison.
+normaliseHeaderName :: BS.ByteString -> HeaderName
 normaliseHeaderName name =
     HeaderName (BSC.pack (map lowerAscii (BSC.unpack name)))
 
-renderHeaderName :: HeaderName -> ByteString
+-- | Recovers the raw bytes of a 'HeaderName'.
+renderHeaderName :: HeaderName -> BS.ByteString
 renderHeaderName (HeaderName name) = name
 
+-- | Lower-cases an ASCII upper-case letter, leaving other characters as-is.
 lowerAscii :: Char -> Char
 lowerAscii c
-    | isAsciiUpper c = toEnum (fromEnum c + 32)
+    | Char.isAsciiUpper c = toEnum (fromEnum c + 32)
     | otherwise = c
 
 -- | Percent-decodes a path segment; a literal @+@ is kept.
@@ -181,6 +193,9 @@ decodePathSegment = decode False
 decodeFormValue :: String -> String
 decodeFormValue = decode True
 
+{- | Percent-decodes a string; when the flag is set, a literal @+@ becomes a
+space.
+-}
 decode :: Bool -> String -> String
 decode _ [] = []
 decode plusIsSpace ('%' : a : b : rest) =
@@ -190,12 +205,14 @@ decode plusIsSpace ('%' : a : b : rest) =
 decode True ('+' : rest) = ' ' : decode True rest
 decode plusIsSpace (c : rest) = c : decode plusIsSpace rest
 
+-- | Decodes two hex digits into the character they encode, if both are valid.
 hexPair :: Char -> Char -> Maybe Char
 hexPair a b = (\high low -> toEnum (high * 16 + low)) <$> hexValue a <*> hexValue b
 
+-- | Decodes a single hexadecimal digit into its numeric value.
 hexValue :: Char -> Maybe Int
 hexValue c
-    | isDigit c = Just (fromEnum c - fromEnum '0')
+    | Char.isDigit c = Just (fromEnum c - fromEnum '0')
     | 'a' <= c && c <= 'f' = Just (10 + fromEnum c - fromEnum 'a')
     | 'A' <= c && c <= 'F' = Just (10 + fromEnum c - fromEnum 'A')
     | otherwise = Nothing
@@ -206,22 +223,25 @@ body is no longer the parser's concern: it is consumed downstream as a
 stream. Header and body size limits are enforced by framing and the body
 cap stage, not here.
 -}
-parseRequestHead :: BS.ByteString -> Either ParseError RequestHead
+parseRequestHead :: BS.ByteString -> Either Parse.ParseError RequestHead
 parseRequestHead input =
     case splitLines (BSC.unpack input) of
-        [] -> Left (BadRequest "empty request")
+        [] -> Left (Parse.BadRequest "empty request")
         requestLine : headerLines ->
             case words requestLine of
                 [methodToken, target, version] ->
                     case parseMethod (BSC.pack methodToken) of
-                        Nothing -> Left (UnsupportedMethod (BSC.pack methodToken))
+                        Nothing -> Left (Parse.UnsupportedMethod (BSC.pack methodToken))
                         Just method ->
                             if version /= "HTTP/1.1" && version /= "HTTP/1.0"
-                                then Left UnsupportedHttpVersion
+                                then Left Parse.UnsupportedHttpVersion
                                 else parseHeaders method target headerLines
-                _ -> Left (BadRequest "invalid request line")
+                _ -> Left (Parse.BadRequest "invalid request line")
 
-parseHeaders :: Method -> String -> [String] -> Either ParseError RequestHead
+{- | Parses the header lines (after the request line) into a 'RequestHead',
+rejecting non-identity transfer encodings.
+-}
+parseHeaders :: Method -> String -> [String] -> Either Parse.ParseError RequestHead
 parseHeaders method target headerLines =
     case traverse parseHeader headerLines of
         Left err -> Left err
@@ -229,7 +249,7 @@ parseHeaders method target headerLines =
             case lookupHeader "transfer-encoding" headers of
                 Just value
                     | BSC.unpack (lowerBytes value) /= "identity" ->
-                        Left UnsupportedTransferEncoding
+                        Left Parse.UnsupportedTransferEncoding
                 _ ->
                     let (rawPath, queryText) = splitTarget target
                      in Right
@@ -241,29 +261,34 @@ parseHeaders method target headerLines =
                                 , requestRawPath = BSC.pack rawPath
                                 }
 
-parseHeader :: String -> Either ParseError Header
+-- | Parses one @Name: value@ header line into a normalised 'Header'.
+parseHeader :: String -> Either Parse.ParseError Header
 parseHeader line =
     case break (== ':') line of
         (name, ':' : value) ->
             Right (normaliseHeaderName (BSC.pack (trim name)), BSC.pack (trim value))
-        _ -> Left (BadRequest ("invalid header: " ++ line))
+        _ -> Left (Parse.BadRequest ("invalid header: " ++ line))
 
+-- | Looks up a header by (un-normalised) name, comparing normalised names.
 lookupHeader :: String -> Headers -> Maybe BS.ByteString
 lookupHeader _ [] = Nothing
 lookupHeader name ((key, value) : rest)
     | normaliseHeaderName (BSC.pack name) == key = Just value
     | otherwise = lookupHeader name rest
 
+-- | Splits a request target into its path and query (without the @?@).
 splitTarget :: String -> (String, String)
 splitTarget target =
     case break (== '?') target of
         (pathText, '?' : queryText) -> (pathText, queryText)
         (pathText, _) -> (pathText, "")
 
+-- | Splits a path into its non-empty, percent-decoded segments.
 pathSegments :: String -> [String]
 pathSegments pathText =
     map decodePathSegment (filter (/= "") (splitOn '/' pathText))
 
+-- | Parses a query string into decoded key-value pairs.
 parseQuery :: String -> [(String, String)]
 parseQuery "" = []
 parseQuery queryText = map parsePair (splitOn '&' queryText)
@@ -273,15 +298,18 @@ parseQuery queryText = map parsePair (splitOn '&' queryText)
             (key, '=' : value) -> (decodeFormValue key, decodeFormValue value)
             (key, _) -> (decodeFormValue key, "")
 
+-- | Splits text on CRLF line boundaries.
 splitLines :: String -> [String]
 splitLines = splitOnString "\r\n"
 
+-- | Splits text on a single-character separator, keeping empty fields.
 splitOn :: Char -> String -> [String]
 splitOn separator text =
     case break (== separator) text of
         (before, _ : after) -> before : splitOn separator after
         (before, []) -> [before]
 
+-- | Splits text on a multi-character separator string.
 splitOnString :: String -> String -> [String]
 splitOnString separator text =
     case breakOn separator text of
@@ -289,6 +317,9 @@ splitOnString separator text =
             before : splitOnString separator (drop (length separator) after)
         Nothing -> [text]
 
+{- | Finds the first occurrence of a needle, returning the text before it and
+the remainder (including the needle), or 'Nothing' if absent.
+-}
 breakOn :: String -> String -> Maybe (String, String)
 breakOn needle = go ""
   where
@@ -297,14 +328,17 @@ breakOn needle = go ""
         | needle `isPrefixOfLocal` rest = Just (reverse prefix, rest)
         | otherwise = go (head rest : prefix) (tail rest)
 
+-- | Whether the first string is a prefix of the second.
 isPrefixOfLocal :: String -> String -> Bool
 isPrefixOfLocal [] _ = True
 isPrefixOfLocal _ [] = False
 isPrefixOfLocal (x : xs) (y : ys) = x == y && isPrefixOfLocal xs ys
 
+-- | Strips leading and trailing whitespace.
 trim :: String -> String
-trim = reverse . dropWhile isSpace . reverse . dropWhile isSpace
+trim = reverse . dropWhile Char.isSpace . reverse . dropWhile Char.isSpace
 
+-- | Lower-cases the ASCII letters in a byte string.
 lowerBytes :: BS.ByteString -> BS.ByteString
 lowerBytes value =
     BSC.pack (map lowerAscii (BSC.unpack value))
@@ -315,28 +349,28 @@ is the header bytes before the terminator; the residue is the body prefix,
 threaded onward by bind. End of stream before the terminator is an
 incomplete request.
 -}
-frameHeadersI :: ParseLimits -> Iter StreamError BS.ByteString
+frameHeadersI :: Parse.ParseLimits -> Iteratee.Iter Stream.StreamError BS.ByteString
 frameHeadersI limits = go BS.empty
   where
-    go buffered = NeedInput (consume buffered)
+    go buffered = Iteratee.NeedInput (consume buffered)
     consume buffered s = case s of
-        Chunk bytes
+        Iteratee.Chunk bytes
             | BS.null bytes -> go buffered
             | otherwise -> scan (BS.append buffered bytes)
-        EndOfStream Nothing ->
-            IterFailed (StreamParseError (BadRequest "incomplete request")) (EndOfStream Nothing)
-        EndOfStream (Just err) ->
-            IterFailed err (EndOfStream (Just err))
+        Iteratee.EndOfStream Nothing ->
+            Iteratee.IterFailed (Stream.StreamParseError (Parse.BadRequest "incomplete request")) (Iteratee.EndOfStream Nothing)
+        Iteratee.EndOfStream (Just err) ->
+            Iteratee.IterFailed err (Iteratee.EndOfStream (Just err))
 
     scan buffered =
         case BS.breakSubstring headerTerminator buffered of
             (before, after)
                 | BS.null after ->
-                    if BS.length buffered > maxHeaderBytes limits + terminatorLength
-                        then IterFailed (StreamParseError HeaderTooLarge) (Chunk buffered)
+                    if BS.length buffered > Parse.maxHeaderBytes limits + terminatorLength
+                        then Iteratee.IterFailed (Stream.StreamParseError Parse.HeaderTooLarge) (Iteratee.Chunk buffered)
                         else go buffered
                 | otherwise ->
-                    Done before (Chunk (BS.drop terminatorLength after))
+                    Iteratee.Done before (Iteratee.Chunk (BS.drop terminatorLength after))
 
 headerTerminator :: BS.ByteString
 headerTerminator = BSC.pack "\r\n\r\n"
@@ -344,12 +378,13 @@ headerTerminator = BSC.pack "\r\n\r\n"
 terminatorLength :: Int
 terminatorLength = 4
 
+-- | Why a response could not be serialised to bytes.
 data ResponseSerialiseError
     = CannotSerialiseStreamBody
     deriving (Eq, Show)
 
 -- | Writes one response chunk, reporting a stream failure on write error.
-type ResponseWriter = BS.ByteString -> IO (Either StreamError ())
+type ResponseWriter = BS.ByteString -> IO (Either Stream.StreamError ())
 
 {- | The response writer's sink (RFC-0014). A 'StrictBody' or 'StreamBody' is
 written chunk-by-chunk through 'sinkChunk' (head and bytes alike); a 'FileBody'
@@ -359,7 +394,7 @@ replays it through 'sinkChunk'.
 -}
 data ResponseSink = ResponseSink
     { sinkChunk :: ResponseWriter
-    , sinkFile :: Response -> FilePath -> Int -> IO (Either StreamError ())
+    , sinkFile :: Response -> FilePath -> Int -> IO (Either Stream.StreamError ())
     }
 
 {- | Serialises a response to bytes for the strict-body case, with a computed
@@ -379,7 +414,7 @@ close-delimited head then drives the body enumerator into the chunk writer; a
 file body is handed whole to 'sinkFile', which sizes the file, writes the head
 with an exact @Content-Length@, and sends the bytes.
 -}
-writeResponse :: ResponseSink -> Response -> IO (Either StreamError ())
+writeResponse :: ResponseSink -> Response -> IO (Either Stream.StreamError ())
 writeResponse sink response =
     case responseBody response of
         StrictBody body -> sinkChunk sink (serialiseStrict response body)
@@ -387,9 +422,12 @@ writeResponse sink response =
             sent <- sinkChunk sink (serialiseHead response)
             case sent of
                 Left err -> return (Left err)
-                Right () -> enumerator (byteSinkI (sinkChunk sink)) >>= run
+                Right () -> enumerator (Iteratee.byteSinkI (sinkChunk sink)) >>= Iteratee.run
         FileBody path size -> sinkFile sink response path size
 
+{- | Serialises a response with a strict body: status line, headers, an exact
+@Content-Length@, @Connection: close@, then the body bytes.
+-}
 serialiseStrict :: Response -> BS.ByteString -> BS.ByteString
 serialiseStrict response body =
     BS.concat
@@ -427,6 +465,7 @@ serialiseFileHead response size =
         , BSC.pack "\r\nConnection: close\r\n\r\n"
         ]
 
+-- | Renders the @HTTP/1.1 <code> <reason>@ status line, CRLF-terminated.
 statusLine :: Status -> BS.ByteString
 statusLine status =
     BSC.pack
@@ -437,10 +476,12 @@ statusLine status =
             ++ "\r\n"
         )
 
+-- | Renders a list of headers to their CRLF-terminated wire bytes.
 responseHeadersBytes :: Headers -> BS.ByteString
 responseHeadersBytes headers =
     BS.concat (map headerBytes headers)
 
+-- | Renders a single header field to its CRLF-terminated wire bytes.
 headerBytes :: Header -> BS.ByteString
 headerBytes (name, value) =
     BS.concat

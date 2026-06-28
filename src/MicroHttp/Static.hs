@@ -15,39 +15,40 @@ module MicroHttp.Static (
 ) where
 
 import qualified Data.ByteString.Char8 as BS
-import Data.Char (toLower)
-import Data.List (intercalate)
-import MicroHttp.Http (RequestHead (..), Response (..), ResponseBody (..), Status (..), normaliseHeaderName, okStatus)
-import MicroHttp.Iteratee (Iter (..))
-import MicroHttp.Network.Socket (fileSizeBytes)
-import MicroHttp.Router (Handler, Route, get)
-import System.Directory (doesDirectoryExist, doesFileExist)
+import qualified Data.Char as Char
+import qualified Data.List as List
+import qualified MicroHttp.Http as Http
+import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Network.Socket as Socket
+import qualified MicroHttp.Router as Router
+import qualified System.Directory as Directory
 
 {- | Mounts the filesystem @root@ under the URL @prefix@ as a GET wildcard
 route. A request to @prefix/<rest>@ serves @root/<rest>@ if it is an existing
 regular file, and 404s otherwise.
 -}
-static :: String -> FilePath -> Route
+static :: String -> FilePath -> Router.Route
 static prefix root =
-    get (prefix ++ "/*rest") (serveStatic (prefixSegmentCount prefix) root)
+    Router.get (prefix ++ "/*rest") (serveStatic (prefixSegmentCount prefix) root)
 
 {- | Serves a file from @root@ for the request path beyond the @prefixCount@
 mount segments. The path is resolved safely; a missing file, a directory, or
 an unsafe path is a 404, decided before the head is written.
 -}
-serveStatic :: Int -> FilePath -> Handler
+serveStatic :: Int -> FilePath -> Router.Handler
 serveStatic prefixCount root _ request =
-    IterM (fmap pure (resolve (drop prefixCount (requestPath request))))
+    Iteratee.IterM (fmap pure (resolve (drop prefixCount (Http.requestPath request))))
   where
     resolve components =
         case resolveStaticPath root components of
             Nothing -> pure notFoundResponse
             Just path -> serveResolved path
 
-serveResolved :: FilePath -> IO Response
+-- | Serves @path@ as a sized file response if it is a regular file, else 404s.
+serveResolved :: FilePath -> IO Http.Response
 serveResolved path = do
-    isFile <- doesFileExist path
-    isDirectory <- doesDirectoryExist path
+    isFile <- Directory.doesFileExist path
+    isDirectory <- Directory.doesDirectoryExist path
     if isFile && not isDirectory
         then sizedFileResponse path
         else pure notFoundResponse
@@ -55,9 +56,9 @@ serveResolved path = do
 {- | Resolves the file size once and builds a zero-copy 'FileBody' carrying it;
 if the file cannot be sized (a race after the existence check), answers 404.
 -}
-sizedFileResponse :: FilePath -> IO Response
+sizedFileResponse :: FilePath -> IO Http.Response
 sizedFileResponse path = do
-    sized <- fileSizeBytes path
+    sized <- Socket.fileSizeBytes path
     case sized of
         Just size -> pure (fileResponse (contentTypeFor path) path size)
         Nothing -> pure notFoundResponse
@@ -73,6 +74,9 @@ resolveStaticPath root components
     | all safeComponent components = Just (buildPath root components)
     | otherwise = Nothing
 
+{- | True if a path component is safe: non-empty, not @.@ or @..@, and free of
+path separators or a NUL.
+-}
 safeComponent :: String -> Bool
 safeComponent component =
     not (null component)
@@ -82,9 +86,10 @@ safeComponent component =
         && notElem '\\' component
         && notElem '\0' component
 
+-- | Joins the root and the safe components into a served filesystem path.
 buildPath :: FilePath -> [String] -> FilePath
 buildPath root [] = root
-buildPath root components = root ++ "/" ++ intercalate "/" components
+buildPath root components = root ++ "/" ++ List.intercalate "/" components
 
 {- | The Content-Type for a path, chosen by its file extension and defaulting
 to @application/octet-stream@.
@@ -115,29 +120,34 @@ contentTypeFor path =
 extensionOf :: FilePath -> String
 extensionOf path =
     case span (/= '.') (reverse (lastComponent path)) of
-        (revExtension, '.' : _) -> map toLower (reverse revExtension)
+        (revExtension, '.' : _) -> map Char.toLower (reverse revExtension)
         (_, _) -> ""
 
+-- | The last @/@-separated component of a path.
 lastComponent :: FilePath -> String
 lastComponent = reverse . takeWhile (/= '/') . reverse
 
-fileResponse :: String -> FilePath -> Int -> Response
+-- | A 200 'Http.FileBody' response for @path@ with the given content type and size.
+fileResponse :: String -> FilePath -> Int -> Http.Response
 fileResponse contentType path size =
-    Response
-        okStatus
-        [(normaliseHeaderName (BS.pack "Content-Type"), BS.pack contentType)]
-        (FileBody path size)
+    Http.Response
+        Http.okStatus
+        [(Http.normaliseHeaderName (BS.pack "Content-Type"), BS.pack contentType)]
+        (Http.FileBody path size)
 
-notFoundResponse :: Response
+-- | The shared 404 response with a plain-text body.
+notFoundResponse :: Http.Response
 notFoundResponse =
-    Response
-        (Status 404 "Not Found")
-        [(normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/plain")]
-        (StrictBody (BS.pack "not found\n"))
+    Http.Response
+        (Http.Status 404 "Not Found")
+        [(Http.normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/plain")]
+        (Http.StrictBody (BS.pack "not found\n"))
 
+-- | The number of non-empty @/@-separated segments in a mount prefix.
 prefixSegmentCount :: String -> Int
 prefixSegmentCount = length . filter (not . null) . splitSlash
 
+-- | Splits a string on @/@ into its segments.
 splitSlash :: String -> [String]
 splitSlash text =
     case break (== '/') text of

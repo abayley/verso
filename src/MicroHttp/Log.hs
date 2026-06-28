@@ -23,19 +23,19 @@ module MicroHttp.Log (
     rotatingFileLogfmtLogger,
 ) where
 
-import Control.Concurrent.MVar (modifyMVar_, newMVar)
-import Control.Monad (forM_, void, when)
+import qualified Control.Concurrent.MVar as MVar
+import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
-import Foreign.C.String (CString, peekCStringLen, withCString)
-import Foreign.Marshal.Alloc (alloca, allocaBytes)
-import Foreign.Ptr (Ptr)
-import Foreign.Storable (poke)
-import MicroHttp.FileSystem (removeFilePath, renamePath)
-import MicroHttp.Http (Status (..))
-import MicroHttp.Network.Socket (ConnectionInfo (..), Host (..), Port (..))
-import System.Directory (doesFileExist)
-import System.IO (hFlush, stdout)
-import System.IO.TimeMilli (getTimeMilli)
+import qualified Foreign.C.String as CStr
+import qualified Foreign.Marshal.Alloc as Alloc
+import qualified Foreign.Ptr as Ptr
+import qualified Foreign.Storable as Storable
+import qualified MicroHttp.FileSystem as FileSystem
+import qualified MicroHttp.Http as Http
+import qualified MicroHttp.Network.Socket as Socket
+import qualified System.Directory as Directory
+import qualified System.IO as IO
+import qualified System.IO.TimeMilli as TimeMilli
 
 -- Log rotation reuses the libc rename/unlink wrappers from MicroHttp.FileSystem
 -- (MicroHs has no atomic renameFile/removeFile in System.Directory). Rotation is
@@ -52,8 +52,8 @@ import System.IO.TimeMilli (getTimeMilli)
 -- this toolchain: getZonedTime detects the zone name but negates the offset
 -- (e.g. NZST renders as -1200 with the wrong calendar day), so it logs the
 -- wrong local time. localtime/strftime delegate to libc and are correct.
-foreign import ccall "time.h localtime" c_localtime :: Ptr Int -> IO (Ptr ())
-foreign import ccall "time.h strftime" c_strftime :: CString -> Int -> CString -> Ptr () -> IO Int
+foreign import ccall "time.h localtime" c_localtime :: Ptr.Ptr Int -> IO (Ptr.Ptr ())
+foreign import ccall "time.h strftime" c_strftime :: CStr.CString -> Int -> CStr.CString -> Ptr.Ptr () -> IO Int
 
 -- | An injected access-log sink.
 type Logger = AccessEvent -> IO ()
@@ -71,9 +71,9 @@ bytes, and the duration in milliseconds; 'RequestAborted' carries request bytes
 and the duration.
 -}
 data AccessEvent
-    = RequestReceived ConnectionInfo RequestLine
-    | RequestCompleted ConnectionInfo (Maybe RequestLine) Status Int Int Int
-    | RequestAborted ConnectionInfo (Maybe RequestLine) String Int Int
+    = RequestReceived Socket.ConnectionInfo RequestLine
+    | RequestCompleted Socket.ConnectionInfo (Maybe RequestLine) Http.Status Int Int Int
+    | RequestAborted Socket.ConnectionInfo (Maybe RequestLine) String Int Int
 
 -- | The no-op logger: logging disabled.
 nullLogger :: Logger
@@ -96,9 +96,9 @@ zone and DST.
 -}
 localTimestamp :: IO String
 localTimestamp = do
-    millis <- getTimeMilli
-    alloca $ \timePtr -> do
-        poke timePtr (millis `div` 1000)
+    millis <- TimeMilli.getTimeMilli
+    Alloc.alloca $ \timePtr -> do
+        Storable.poke timePtr (millis `div` 1000)
         tmPtr <- c_localtime timePtr
         base <- strftimeWith "%Y-%m-%dT%H:%M:%S" tmPtr
         zone <- strftimeWith "%z" tmPtr
@@ -112,15 +112,15 @@ consoleLog :: String -> IO ()
 consoleLog message = do
     ts <- localTimestamp
     putStrLn (ts ++ " " ++ message)
-    hFlush stdout
+    IO.hFlush IO.stdout
 
 -- | Renders a broken-down time with a strftime format into a fresh buffer.
-strftimeWith :: String -> Ptr () -> IO String
+strftimeWith :: String -> Ptr.Ptr () -> IO String
 strftimeWith format tmPtr =
-    allocaBytes timestampBufferBytes $ \buf ->
-        withCString format $ \fmt -> do
+    Alloc.allocaBytes timestampBufferBytes $ \buf ->
+        CStr.withCString format $ \fmt -> do
             written <- c_strftime buf timestampBufferBytes fmt tmPtr
-            peekCStringLen (buf, written)
+            CStr.peekCStringLen (buf, written)
 
 -- | Zero-pads a millisecond value (0-999) to three digits.
 pad3 :: Int -> String
@@ -129,6 +129,7 @@ pad3 n
     | n < 100 = "0" ++ show n
     | otherwise = show n
 
+-- | The byte size of the buffer strftime renders a timestamp into.
 timestampBufferBytes :: Int
 timestampBufferBytes = 64
 
@@ -152,10 +153,10 @@ no line is lost or misfiled. @keep@ is expected to be at least 1.
 rotatingAppender :: Int -> Int -> FilePath -> IO (String -> IO ())
 rotatingAppender maxBytes keep path = do
     initial <- currentFileSize path
-    sizeVar <- newMVar initial
+    sizeVar <- MVar.newMVar initial
     pure $ \line -> do
         let chunk = BS.pack (line ++ "\n")
-        modifyMVar_ sizeVar $ \size -> do
+        MVar.modifyMVar_ sizeVar $ \size -> do
             rotated <- if size >= maxBytes then rotateLog path keep >> pure 0 else pure size
             BS.appendFile path chunk
             pure (rotated + BS.length chunk)
@@ -167,7 +168,7 @@ rotatingFileLogfmtLogger maxBytes keep path = fmap logfmtTo (rotatingAppender ma
 -- | The current size of a file in bytes, or 0 if it does not exist.
 currentFileSize :: FilePath -> IO Int
 currentFileSize path = do
-    exists <- doesFileExist path
+    exists <- Directory.doesFileExist path
     if exists then fmap BS.length (BS.readFile path) else pure 0
 
 {- | The rename-cascade: drop @path.\<keep\>@, shift each @path.\<n\>@ up to
@@ -177,7 +178,7 @@ step is guarded by existence so a missing archive is simply skipped.
 rotateLog :: FilePath -> Int -> IO ()
 rotateLog path keep = do
     dropIfExists (archivePath path keep)
-    forM_ (reverse [1 .. keep - 1]) $ \n -> renameIfExists (archivePath path n) (archivePath path (n + 1))
+    Monad.forM_ (reverse [1 .. keep - 1]) $ \n -> renameIfExists (archivePath path n) (archivePath path (n + 1))
     renameIfExists path (archivePath path 1)
 
 -- | The nth rotated-archive path for a log file: @path.\<n\>@.
@@ -187,14 +188,14 @@ archivePath path n = path ++ "." ++ show n
 -- | Renames a file via libc when it exists, discarding the result (best-effort).
 renameIfExists :: FilePath -> FilePath -> IO ()
 renameIfExists from to = do
-    exists <- doesFileExist from
-    when exists (void (renamePath from to))
+    exists <- Directory.doesFileExist from
+    Monad.when exists (Monad.void (FileSystem.renamePath from to))
 
 -- | Unlinks a file via libc when it exists, discarding the result (best-effort).
 dropIfExists :: FilePath -> IO ()
 dropIfExists path = do
-    exists <- doesFileExist path
-    when exists (void (removeFilePath path))
+    exists <- Directory.doesFileExist path
+    Monad.when exists (Monad.void (FileSystem.removeFilePath path))
 
 -- | Renders an access event as a single logfmt line, stamped with @ts@ first.
 formatLogfmt :: String -> AccessEvent -> String
@@ -209,7 +210,7 @@ formatLogfmt ts event =
                 ++ peerField conn
                 ++ lineFields line
                 ++ " status="
-                ++ show (statusCode status)
+                ++ show (Http.statusCode status)
                 ++ " req_bytes="
                 ++ show reqBytes
                 ++ " resp_bytes="
@@ -227,14 +228,17 @@ formatLogfmt ts event =
                 ++ " dur_ms="
                 ++ show durationMillis
 
-peerField :: ConnectionInfo -> String
-peerField conn = " peer=" ++ renderHost (connPeerHost conn)
+-- | The logfmt @peer=@ field for a connection, rendering its host.
+peerField :: Socket.ConnectionInfo -> String
+peerField conn = " peer=" ++ renderHost (Socket.connPeerHost conn)
 
-renderHost :: Host -> String
-renderHost HostAny = "0.0.0.0"
-renderHost (HostIPv4 a b c d) =
+-- | Renders a host as a dotted-quad string (@0.0.0.0@ for 'Socket.HostAny').
+renderHost :: Socket.Host -> String
+renderHost Socket.HostAny = "0.0.0.0"
+renderHost (Socket.HostIPv4 a b c d) =
     show a ++ "." ++ show b ++ "." ++ show c ++ "." ++ show d
 
+-- | The logfmt @method=@ and @path=@ fields, dashed when no line was seen.
 lineFields :: Maybe RequestLine -> String
 lineFields Nothing = " method=- path=-"
 lineFields (Just line) =

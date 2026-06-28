@@ -11,17 +11,19 @@ module MicroHttp.Router (
 ) where
 
 import qualified Data.ByteString.Char8 as BS
-import Data.Char (isDigit)
-import Data.List (intercalate)
-import MicroHttp.Http
-import MicroHttp.Iteratee (Iter (..), Stream (..), takeN)
-import MicroHttp.Stream (StreamError (..))
+import qualified Data.Char as Char
+import qualified Data.List as List
+import qualified MicroHttp.Http as Http
+import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Stream as Stream
 
+-- | Path captures collected while matching a route, as name/value pairs.
 type Captures = [(String, String)]
 
-type Handler = Captures -> RequestHead -> Iter StreamError Response
+-- | A request handler: captures and the parsed head to a response iteratee.
+type Handler = Captures -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
 
-data Route = Route Method [PathPart] Handler
+data Route = Route Http.Method [PathPart] Handler
 
 data PathPart
     = Lit String
@@ -29,21 +31,27 @@ data PathPart
     | Rest String
     deriving (Eq, Show)
 
+-- | A route matching @GET@ on the given path pattern.
 get :: String -> Handler -> Route
-get = routeFor GET
+get = routeFor Http.GET
 
+-- | A route matching @POST@ on the given path pattern.
 post :: String -> Handler -> Route
-post = routeFor POST
+post = routeFor Http.POST
 
+-- | A route matching @DELETE@ on the given path pattern.
 delete :: String -> Handler -> Route
-delete = routeFor DELETE
+delete = routeFor Http.DELETE
 
-route :: [Route] -> RequestHead -> Iter StreamError Response
+{- | Dispatches a request to the first matching route, distinguishing an unknown
+path (404) from a known path with no matching method (405).
+-}
+route :: [Route] -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
 route routes request =
-    case matchingPath routes (requestPath request) of
+    case matchingPath routes (Http.requestPath request) of
         [] -> pure notFound
         pathMatches ->
-            case matchingMethod pathMatches (requestMethod request) of
+            case matchingMethod pathMatches (Http.requestMethod request) of
                 Just (captures, handler) -> handler captures request
                 Nothing -> pure methodNotAllowed
 
@@ -52,53 +60,56 @@ to the declared @Content-Length@ (rejecting an over-limit or malformed length),
 then dispatch. Framing lives here, at the bottom of the application stack, not
 in the server. The connection metadata is unused for now.
 -}
-serveRoutes :: ParseLimits -> [Route] -> Application
+serveRoutes :: Http.ParseLimits -> [Route] -> Http.Application
 serveRoutes limits routes conn =
-    frameAndParse limits >>= \head -> withBody head{requestPeer = conn}
+    frameAndParse limits >>= \head -> withBody head{Http.requestPeer = conn}
   where
     withBody head =
-        case declaredContentLength (requestHeaders head) of
-            Left err -> failWith (StreamParseError err)
+        case declaredContentLength (Http.requestHeaders head) of
+            Left err -> failWith (Stream.StreamParseError err)
             Right bodyLength
-                | bodyLength > maxBodyBytes limits ->
-                    failWith (StreamParseError BodyTooLarge)
-                | otherwise -> takeN bodyLength (route routes head)
+                | bodyLength > Http.maxBodyBytes limits ->
+                    failWith (Stream.StreamParseError Http.BodyTooLarge)
+                | otherwise -> Iteratee.takeN bodyLength (route routes head)
 
 -- | Frames the header block and parses it, failing the stream on a bad head.
-frameAndParse :: ParseLimits -> Iter StreamError RequestHead
+frameAndParse :: Http.ParseLimits -> Iteratee.Iter Stream.StreamError Http.RequestHead
 frameAndParse limits =
-    frameHeadersI limits >>= parsed
+    Http.frameHeadersI limits >>= parsed
   where
     parsed headerBytes =
-        case parseRequestHead headerBytes of
-            Left err -> failWith (StreamParseError err)
+        case Http.parseRequestHead headerBytes of
+            Left err -> failWith (Stream.StreamParseError err)
             Right head -> pure head
 
 -- | A pipeline failure becomes an iteratee failure with empty residue.
-failWith :: StreamError -> Iter StreamError a
-failWith err = IterFailed err (Chunk BS.empty)
+failWith :: Stream.StreamError -> Iteratee.Iter Stream.StreamError a
+failWith err = Iteratee.IterFailed err (Iteratee.Chunk BS.empty)
 
 {- | The declared body length: a missing @Content-Length@ means no body, a
 well-formed value is its length, and a non-numeric value is rejected.
 -}
-declaredContentLength :: Headers -> Either ParseError Int
+declaredContentLength :: Http.Headers -> Either Http.ParseError Int
 declaredContentLength headers =
     case lookupHeaderValue "content-length" headers of
         Nothing -> Right 0
         Just value
-            | value /= "" && all isDigit value -> Right (read value)
-            | otherwise -> Left (BadRequest "invalid content-length")
+            | value /= "" && all Char.isDigit value -> Right (read value)
+            | otherwise -> Left (Http.BadRequest "invalid content-length")
 
-lookupHeaderValue :: String -> Headers -> Maybe String
+-- | Looks up a header value by name, comparing on the normalised header name.
+lookupHeaderValue :: String -> Http.Headers -> Maybe String
 lookupHeaderValue _ [] = Nothing
 lookupHeaderValue name ((key, value) : rest)
-    | normaliseHeaderName (BS.pack name) == key = Just (BS.unpack value)
+    | Http.normaliseHeaderName (BS.pack name) == key = Just (BS.unpack value)
     | otherwise = lookupHeaderValue name rest
 
-routeFor :: Method -> String -> Handler -> Route
+-- | Builds a route for a method from a path pattern and handler.
+routeFor :: Http.Method -> String -> Handler -> Route
 routeFor method patternText =
     Route method (parsePattern patternText)
 
+-- | All routes whose path pattern matches, each paired with its captures.
 matchingPath :: [Route] -> [String] -> [(Captures, Route)]
 matchingPath [] _ = []
 matchingPath (candidate : rest) path =
@@ -106,18 +117,20 @@ matchingPath (candidate : rest) path =
         Just captures -> (captures, candidate) : matchingPath rest path
         Nothing -> matchingPath rest path
 
-matchingMethod :: [(Captures, Route)] -> Method -> Maybe (Captures, Handler)
+-- | The first path match whose route method equals the request method.
+matchingMethod :: [(Captures, Route)] -> Http.Method -> Maybe (Captures, Handler)
 matchingMethod [] _ = Nothing
 matchingMethod ((captures, Route routeMethod _ handler) : rest) method
     | routeMethod == method = Just (captures, handler)
     | otherwise = matchingMethod rest method
 
+-- | Matches a route's path parts against path segments, collecting captures.
 matchPath :: Route -> [String] -> Maybe Captures
 matchPath (Route _ parts _) path = go parts path []
   where
     go [] [] captures = Just (reverse captures)
     go (Rest name : _) restPath captures =
-        Just (reverse ((name, intercalate "/" restPath) : captures))
+        Just (reverse ((name, List.intercalate "/" restPath) : captures))
     go (Lit expected : restParts) (actual : restPath) captures
         | expected == actual = go restParts restPath captures
         | otherwise = Nothing
@@ -125,6 +138,7 @@ matchPath (Route _ parts _) path = go parts path []
         go restParts restPath ((name, actual) : captures)
     go _ _ _ = Nothing
 
+-- | Parses a path pattern into its parts, dropping empty segments.
 parsePattern :: String -> [PathPart]
 parsePattern patternText = map parsePart (filter (/= "") (splitOn '/' patternText))
   where
@@ -132,22 +146,25 @@ parsePattern patternText = map parsePart (filter (/= "") (splitOn '/' patternTex
     parsePart ('*' : name) = Rest name
     parsePart text = Lit text
 
+-- | Splits a string on a separator character into segments.
 splitOn :: Char -> String -> [String]
 splitOn separator text =
     case break (== separator) text of
         (before, _ : after) -> before : splitOn separator after
         (before, []) -> [before]
 
-notFound :: Response
+-- | The 404 response for an unmatched path.
+notFound :: Http.Response
 notFound =
-    Response
-        (Status 404 "Not Found")
-        [(normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/plain")]
-        (StrictBody (BS.pack "not found\n"))
+    Http.Response
+        (Http.Status 404 "Not Found")
+        [(Http.normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/plain")]
+        (Http.StrictBody (BS.pack "not found\n"))
 
-methodNotAllowed :: Response
+-- | The 405 response for a matched path with no matching method.
+methodNotAllowed :: Http.Response
 methodNotAllowed =
-    Response
-        (Status 405 "Method Not Allowed")
-        [(normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/plain")]
-        (StrictBody (BS.pack "method not allowed\n"))
+    Http.Response
+        (Http.Status 405 "Method Not Allowed")
+        [(Http.normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/plain")]
+        (Http.StrictBody (BS.pack "method not allowed\n"))

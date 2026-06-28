@@ -10,16 +10,16 @@ module MicroHttp.Settings (
     parseLimits,
 ) where
 
-import MicroHttp.Http.Parse (ParseLimits (..))
-import MicroHttp.Network.Socket (Host (..), Port (..))
+import qualified MicroHttp.Http.Parse as Parse
+import qualified MicroHttp.Network.Socket as Socket
 
 {- | Server configuration. Pure, inert data: framing limits, the handler cap,
 the read buffer, and the idle read/write timeouts. The access logger is not here
 -- logging is a middleware (RFC-0012) the application composes.
 -}
 data Settings = Settings
-    { settingsHost :: Host
-    , settingsPort :: Port
+    { settingsHost :: Socket.Host
+    , settingsPort :: Socket.Port
     , settingsBacklog :: Int
     , settingsMaxActiveHandlers :: Int
     , settingsMaxHeaderBytes :: Int
@@ -30,11 +30,14 @@ data Settings = Settings
     }
     deriving (Eq, Show)
 
+{- | Sensible defaults: bind to any host on port 8080 with conservative framing
+limits, handler cap, read buffer, and idle read/write timeouts.
+-}
 defaultSettings :: Settings
 defaultSettings =
     Settings
-        { settingsHost = HostAny
-        , settingsPort = Port 8080
+        { settingsHost = Socket.HostAny
+        , settingsPort = Socket.Port 8080
         , settingsBacklog = 16
         , settingsMaxActiveHandlers = 32
         , settingsMaxHeaderBytes = 8192
@@ -47,10 +50,10 @@ defaultSettings =
         , settingsIdleWriteTimeoutMicros = 30000000
         }
 
--- | The 'ParseLimits' derived from settings, for an application's framing.
-parseLimits :: Settings -> ParseLimits
+-- | The 'Parse.ParseLimits' derived from settings, for an application's framing.
+parseLimits :: Settings -> Parse.ParseLimits
 parseLimits settings =
-    ParseLimits
-        { maxHeaderBytes = settingsMaxHeaderBytes settings
-        , maxBodyBytes = settingsMaxBodyBytes settings
+    Parse.ParseLimits
+        { Parse.maxHeaderBytes = settingsMaxHeaderBytes settings
+        , Parse.maxBodyBytes = settingsMaxBodyBytes settings
         }

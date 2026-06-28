@@ -24,14 +24,14 @@ module MicroHttp.Config (
     configMounts,
 ) where
 
-import Data.Char (isDigit, isSpace, toLower)
-import Data.List (isPrefixOf)
-import Data.Maybe (fromMaybe)
-import Data.Word (Word8)
-import MicroHttp.Network.Socket (Host (..), Port (..))
-import MicroHttp.Settings (Settings (..), defaultSettings)
-import System.Directory (doesFileExist)
-import System.Environment (getEnvironment)
+import qualified Data.Char as Char
+import qualified Data.List as List
+import qualified Data.Maybe as Maybe
+import qualified Data.Word as Word
+import qualified MicroHttp.Network.Socket as Socket
+import qualified MicroHttp.Settings as Settings
+import qualified System.Directory as Directory
+import qualified System.Environment as Environment
 
 -- | A parsed configuration: key/value entries, earliest entry winning.
 newtype Config = Config [(String, String)]
@@ -62,9 +62,9 @@ application supplies the overlays so it creates both the framework config (the
 -}
 loadConfigWith :: [(String, [String])] -> FilePath -> IO (Either ConfigError Config)
 loadConfigWith overlays path = do
-    present <- doesFileExist path
+    present <- Directory.doesFileExist path
     fileText <- if present then readFile path else return ""
-    environment <- getEnvironment
+    environment <- Environment.getEnvironment
     return (fmap (overlay environment) (parseConfig fileText))
   where
     overlay environment cfg =
@@ -82,8 +82,8 @@ applyEnvironment prefix ownedKeys environment (Config fileEntries) =
     overrides =
         [ (key, value)
         | (name, value) <- environment
-        , prefix `isPrefixOf` name
-        , let key = map toLower (drop (length prefix) name)
+        , prefix `List.isPrefixOf` name
+        , let key = map Char.toLower (drop (length prefix) name)
         , key `elem` ownedKeys
         ]
 
@@ -105,36 +105,37 @@ serverEnvKeys =
     ]
 
 -- | Maps the known server keys onto 'defaultSettings', failing on a bad value.
-toSettings :: Config -> Either ConfigError Settings
+toSettings :: Config -> Either ConfigError Settings.Settings
 toSettings cfg = do
-    host <- configHost "host" (settingsHost defaultSettings) cfg
-    port <- configInt "port" (portNumber (settingsPort defaultSettings)) cfg
-    backlog <- configInt "backlog" (settingsBacklog defaultSettings) cfg
-    maxActive <- configInt "max_active_handlers" (settingsMaxActiveHandlers defaultSettings) cfg
-    maxHeader <- configInt "max_header_bytes" (settingsMaxHeaderBytes defaultSettings) cfg
-    maxBody <- configInt "max_body_bytes" (settingsMaxBodyBytes defaultSettings) cfg
-    readBuffer <- configInt "read_buffer_bytes" (settingsReadBufferBytes defaultSettings) cfg
-    idleRead <- configInt "idle_read_timeout_micros" (settingsIdleReadTimeoutMicros defaultSettings) cfg
-    idleWrite <- configInt "idle_write_timeout_micros" (settingsIdleWriteTimeoutMicros defaultSettings) cfg
+    host <- configHost "host" (Settings.settingsHost Settings.defaultSettings) cfg
+    port <- configInt "port" (portNumber (Settings.settingsPort Settings.defaultSettings)) cfg
+    backlog <- configInt "backlog" (Settings.settingsBacklog Settings.defaultSettings) cfg
+    maxActive <- configInt "max_active_handlers" (Settings.settingsMaxActiveHandlers Settings.defaultSettings) cfg
+    maxHeader <- configInt "max_header_bytes" (Settings.settingsMaxHeaderBytes Settings.defaultSettings) cfg
+    maxBody <- configInt "max_body_bytes" (Settings.settingsMaxBodyBytes Settings.defaultSettings) cfg
+    readBuffer <- configInt "read_buffer_bytes" (Settings.settingsReadBufferBytes Settings.defaultSettings) cfg
+    idleRead <- configInt "idle_read_timeout_micros" (Settings.settingsIdleReadTimeoutMicros Settings.defaultSettings) cfg
+    idleWrite <- configInt "idle_write_timeout_micros" (Settings.settingsIdleWriteTimeoutMicros Settings.defaultSettings) cfg
     return
-        defaultSettings
-            { settingsHost = host
-            , settingsPort = Port port
-            , settingsBacklog = backlog
-            , settingsMaxActiveHandlers = maxActive
-            , settingsMaxHeaderBytes = maxHeader
-            , settingsMaxBodyBytes = maxBody
-            , settingsReadBufferBytes = readBuffer
-            , settingsIdleReadTimeoutMicros = idleRead
-            , settingsIdleWriteTimeoutMicros = idleWrite
+        Settings.defaultSettings
+            { Settings.settingsHost = host
+            , Settings.settingsPort = Socket.Port port
+            , Settings.settingsBacklog = backlog
+            , Settings.settingsMaxActiveHandlers = maxActive
+            , Settings.settingsMaxHeaderBytes = maxHeader
+            , Settings.settingsMaxBodyBytes = maxBody
+            , Settings.settingsReadBufferBytes = readBuffer
+            , Settings.settingsIdleReadTimeoutMicros = idleRead
+            , Settings.settingsIdleWriteTimeoutMicros = idleWrite
             }
 
-portNumber :: Port -> Int
-portNumber (Port n) = n
+-- | Extracts the numeric port from a 'Port'.
+portNumber :: Socket.Port -> Int
+portNumber (Socket.Port n) = n
 
 -- | A string value, or the default when the key is absent.
 configString :: String -> String -> Config -> String
-configString key def cfg = fromMaybe def (lookupConfig key cfg)
+configString key def cfg = Maybe.fromMaybe def (lookupConfig key cfg)
 
 -- | An integer value, the default when absent, an error when present but not numeric.
 configInt :: String -> Int -> Config -> Either ConfigError Int
@@ -169,10 +170,12 @@ configMounts key cfg =
             [prefix, root] -> [(prefix, root)]
             _ -> []
 
+-- | Looks up a key in the config entries, earliest entry winning.
 lookupConfig :: String -> Config -> Maybe String
 lookupConfig key (Config entries) = lookup key entries
 
-configHost :: String -> Host -> Config -> Either ConfigError Host
+-- | A host value, the default when absent, an error when present but not a host.
+configHost :: String -> Socket.Host -> Config -> Either ConfigError Socket.Host
 configHost key def cfg =
     case lookupConfig key cfg of
         Nothing -> Right def
@@ -181,32 +184,37 @@ configHost key def cfg =
                 Just host -> Right host
                 Nothing -> Left (ConfigError ("config key " ++ key ++ " expects a host, got: " ++ value))
 
-parseHost :: String -> Maybe Host
-parseHost "0.0.0.0" = Just HostAny
+-- | Parses a host: @0.0.0.0@ is any, otherwise a dotted IPv4 quad.
+parseHost :: String -> Maybe Socket.Host
+parseHost "0.0.0.0" = Just Socket.HostAny
 parseHost value =
     case splitOn '.' value of
         [a, b, c, d] ->
             case traverse octet [a, b, c, d] of
-                Just [pa, pb, pc, pd] -> Just (HostIPv4 pa pb pc pd)
+                Just [pa, pb, pc, pd] -> Just (Socket.HostIPv4 pa pb pc pd)
                 _ -> Nothing
         _ -> Nothing
 
-octet :: String -> Maybe Word8
+-- | Parses a single IPv4 octet (0-255).
+octet :: String -> Maybe Word.Word8
 octet s =
     case readInt s of
         Just n | n >= 0 && n <= 255 -> Just (fromIntegral n)
         _ -> Nothing
 
+-- | Parses a non-empty all-digit string as an 'Int', otherwise nothing.
 readInt :: String -> Maybe Int
 readInt s
-    | not (null s) && all isDigit s = Just (read s)
+    | not (null s) && all Char.isDigit s = Just (read s)
     | otherwise = Nothing
 
+-- | Trims leading and trailing whitespace from a string.
 trim :: String -> String
-trim = dropWhileEnd isSpace . dropWhile isSpace
+trim = dropWhileEnd Char.isSpace . dropWhile Char.isSpace
   where
     dropWhileEnd p = reverse . dropWhile p . reverse
 
+-- | Splits a string on a separator character into segments.
 splitOn :: Char -> String -> [String]
 splitOn separator text =
     case break (== separator) text of

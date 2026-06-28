@@ -86,7 +86,7 @@ two modules share a last segment, the framework one keeps the short alias and th
 application one is distinguished.
 
 | Module | Alias |
-|---|---|
+| --- | --- |
 | `Data.ByteString.Char8` | `BS` (sole) / `BSC` (when `Data.ByteString` also imported) |
 | `Data.ByteString` | `BS` (sole) / `B` (alongside Char8) |
 | `Data.Map` / `.Strict` | `Map` |
@@ -152,10 +152,12 @@ Each phase/group is one commit, `make format` + `make check` green first.
    re-pointed at `MicroHttp.Http`. Updated importers (Middleware, Router, Server,
    Settings, Verso.App) and the `MicroHttp.hs` umbrella. Unified BS alias
    (`BS`=Data.ByteString, `BSC`=Char8) in the merged module.
-2. **Phase 2 -- Qualify + Haddock, framework core.** `MicroHttp.{Iteratee,
-   Stream, Network.Socket, Http, Http.Parse, Server, Settings, Config, Router,
-   Static, Middleware, Log, Html, FileSystem}` and `MicroHttp.hs`: qualify all
-   imports, add Haddock to every top-level binding. Commit in sensible sub-groups.
+2. **[DONE] Phase 2 -- Qualify + Haddock, framework core.** All 14 framework
+   modules (`MicroHttp.{Iteratee, Stream, Network.Socket, Http, Http.Parse,
+   Server, Settings, Config, Router, Static, Middleware, Log, Html, FileSystem}`)
+   qualified with aliases and Haddock added to every top-level binding. The
+   `MicroHttp.hs` umbrella is a pure re-export facade (its imports cannot be
+   qualified) and is left as-is.
 3. **Phase 3 -- Qualify + Haddock, Verso app.** All `Verso.*` modules + the
    executables (`Main`, `ReplayTool`).
 4. **Phase 4 -- Qualify tests.** Qualify module/stdlib imports across `test/`

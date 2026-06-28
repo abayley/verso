@@ -273,12 +273,13 @@ Each phase is one commit, `make check` green before committing.
    Attachment, TreeMove, OperationLog, Trash}` -> `Verso.*`: module headers + all
    importers + relocated specs + test driver. (`MicroHttp.TestApp` and
    `ReplayTool` import `Verso.*` until renamed in phase 4 -- transient, no cycle.)
-4. **Phase 4 -- Rename the app assembly + executables.**
+4. **[DONE] Phase 4 -- Rename the app assembly + executables.**
    `MicroHttp.TestApp` -> `Verso.App`; `src/TestApp.hs` -> `src/Verso/Main.hs`;
-   `src/ReplayTool.hs` -> `src/Verso/ReplayTool.hs`. Update Makefile
+   `src/ReplayTool.hs` -> `src/Verso/ReplayTool.hs`; `MicroHttp.TestAppSpec` ->
+   `Verso.AppSpec` and `MicroHttp.ClientErrorSpec` -> `Verso.ClientErrorSpec`
+   (unit + integration); qualified aliases `TestApp` -> `App`. Updated Makefile
    (`build/test-app` -> `build/verso`, `run-test-app` -> `run-verso`),
-   `.claude/launch.json`, `scripts/http-bench.sh`, and `TestAppSpec` ->
-   `Verso.AppSpec` (unit + integration).
+   `.claude/launch.json`, `scripts/http-bench.sh`, `scripts/editor-smoke.cjs`.
 5. **Phase 5 -- Move editor TS.** `src/TestApp/Editor` -> `src/Verso/Editor`;
    update `knip.json`, `package.json`, `tsconfig.json`,
    `scripts/build-editor.mjs`, `test/editor` import paths. `editor-check` green.

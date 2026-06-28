@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end HTTP request-rate benchmark for the TestApp server. It builds and
+# End-to-end HTTP request-rate benchmark for the Verso server. It builds and
 # starts the server on a private port, then drives it with ApacheBench (ab) over
 # new connections (the server sends Connection: close), comparing the in-memory
 # builder path (StrictBody) against the zero-copy sendfile path (FileBody) at a
@@ -23,7 +23,7 @@ command -v ab >/dev/null 2>&1 || { echo "ab (ApacheBench) not found on PATH" >&2
 command -v mhs >/dev/null 2>&1 || { echo "mhs not found on PATH" >&2; exit 1; }
 
 mkdir -p "$BUILD"
-mhs -a"$DB" -i"$ROOT/src" "$ROOT/src/TestApp.hs" -o "$BUILD/test-app"
+mhs -a"$DB" -i"$ROOT/src" "$ROOT/src/Verso/Main.hs" -o "$BUILD/verso"
 
 # A private config so the user's micro-http.conf and port 8080 are untouched.
 CONF="$(mktemp)"
@@ -42,7 +42,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Start the server from ROOT (its static/document roots are relative).
-( cd "$ROOT" && MICROHTTP_CONFIG="$CONF" "$BUILD/test-app" ) &
+( cd "$ROOT" && MICROHTTP_CONFIG="$CONF" "$BUILD/verso" ) &
 SERVER_PID=$!
 
 # Wait for the port to accept requests. mhs buffers stdout, so poll the socket,

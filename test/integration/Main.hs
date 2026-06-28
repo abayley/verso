@@ -8,9 +8,9 @@ import qualified MicroHttp.ServerLoggingSpec as ServerLoggingSpec
 import qualified MicroHttp.ServerSocketSpec as ServerSocketSpec
 import qualified MicroHttp.StaticSpec as StaticSpec
 import qualified MicroHttp.StreamSpec as StreamSpec
-import qualified MicroHttp.TestAppSpec as TestAppSpec
 import System.IO
 import Test.Hspec
+import qualified Verso.AppSpec as AppSpec
 
 main :: IO ()
 main = do
@@ -24,4 +24,4 @@ main = do
         ServerSocketSpec.spec
         StaticSpec.spec
         StreamSpec.spec
-        TestAppSpec.spec
+        AppSpec.spec

@@ -1,42 +1,42 @@
-module MicroHttp.TestAppSpec (spec) where
+module Verso.AppSpec (spec) where
 
 import Control.Monad (when)
 import qualified Data.ByteString.Char8 as BS
 import MicroHttp.Http
 import MicroHttp.Server (respondToRequestBytes)
-import qualified MicroHttp.TestApp as TestApp
 import System.Directory (createDirectoryIfMissing, doesFileExist, removeFile)
 import Test.Hspec
+import qualified Verso.App as App
 
 spec :: Spec
 spec = do
-    describe "MicroHttp.TestApp persistence" $
+    describe "Verso.App persistence" $
         it "given an ordinary form post, when saving, then markdown is persisted and it redirects to the edit page" $ do
             let body = "markdown=%23+Saved+heading"
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentRoot documentRoot)
+                    (App.appWithDocumentRoot documentRoot)
                     (BS.pack (postRequest "/documents/home" body))
             saved <- readFile documentFile
             removeFile documentFile
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 303
             fmap locationOf outcome `shouldBe` Right (Just (BS.pack "/documents/home/edit"))
             saved `shouldBe` "# Saved heading"
-    describe "MicroHttp.TestApp static serving" $
+    describe "Verso.App static serving" $
         it "given an editor stylesheet request, when routing, then it is served as a sized text/css file body" $ do
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentRoot documentRoot)
+                    (App.appWithDocumentRoot documentRoot)
                     (BS.pack (getRequest "/static/editor/markdown-editor.css"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
             fmap contentTypeOf outcome `shouldBe` Right (Just (BS.pack "text/css"))
             fmap isSizedFileBody outcome `shouldBe` Right True
-    describe "MicroHttp.TestApp document tree" $ do
+    describe "Verso.App document tree" $ do
         it "given an edit request for a tree document, when routing, then the editor page is returned with its content" $ do
             root <- setupTreeFixture
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (getRequest "/documents/sec/page.md?edit"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
             fmap (bodyContains (BS.pack "markdown-editor")) outcome `shouldBe` Right True
@@ -45,7 +45,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (getRequest "/documents/sec/page.md"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
             fmap (bodyContains (BS.pack "markdown-editor")) outcome `shouldBe` Right True
@@ -55,14 +55,14 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (getRequest "/documents/sec/missing.md"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 404
         it "given a ?raw request, when routing, then the file is served verbatim as a sized text/markdown body" $ do
             root <- setupTreeFixture
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (getRequest "/documents/sec/page.md?raw"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
             fmap contentTypeOf outcome `shouldBe` Right (Just (BS.pack "text/markdown"))
@@ -72,7 +72,7 @@ spec = do
             BS.writeFile (root ++ "/sec/utf8.md") (BS.pack "# T\n\nnbsp[\xc2\xa0] acute[\xc3\xa9] emoji[\xf0\x9f\x98\x80]\n")
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (getRequest "/documents/sec/utf8.md"))
             fmap (bodyContains (BS.pack "nbsp[\xc2\xa0]")) outcome `shouldBe` Right True
             fmap (bodyContains (BS.pack "acute[\xc3\xa9]")) outcome `shouldBe` Right True
@@ -81,7 +81,7 @@ spec = do
             root <- setupTreeFixture
             _ <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=caf%C3%A9%20%E2%9C%93"))
             saved <- BS.readFile (root ++ "/sec/page.md")
             saved `shouldBe` BS.pack "caf\xc3\xa9 \xe2\x9c\x93"
@@ -89,7 +89,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (getRequest "/"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 303
             fmap locationOf outcome `shouldBe` Right (Just (BS.pack "/documents/"))
@@ -97,7 +97,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (getRequest "/index.html"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 303
             fmap locationOf outcome `shouldBe` Right (Just (BS.pack "/documents/"))
@@ -105,7 +105,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (getRequest "/documents/"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
             fmap (bodyContains (BS.pack "data-readonly")) outcome `shouldBe` Right True
@@ -114,7 +114,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (getRequest "/documents/sec/missing.md?edit"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
             fmap (bodyContains (BS.pack "markdown-editor")) outcome `shouldBe` Right True
@@ -122,7 +122,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (getRequest "/documents/sec/assets/pixel.png"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
             fmap contentTypeOf outcome `shouldBe` Right (Just (BS.pack "image/png"))
@@ -131,7 +131,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Edited+tree"))
             saved <- readFile (root ++ "/sec/page.md")
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 303
@@ -141,14 +141,14 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (getRequest "/documents/sec/../../secret.md"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 404
         it "given a save containing raw HTML, when routing, then it is written (the tree is trusted, no guard)" $ do
             root <- setupTreeFixture
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=%3C%21--+note+--%3E%0A%0A%23+H"))
             saved <- readFile (root ++ "/sec/page.md")
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 303
@@ -157,7 +157,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "PNGDATA"))
             stored <- readFile (root ++ "/sec/assets/diagram.png")
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 200
@@ -167,22 +167,22 @@ spec = do
             root <- setupTreeFixture
             _ <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "SAME"))
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "SAME"))
             fmap (bodyContains (BS.pack "{\"url\":\"assets/diagram.png\"}")) outcome `shouldBe` Right True
         it "given a name collision with different content, when routing, then the upload is suffixed" $ do
             root <- setupTreeFixture
             _ <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "FIRST"))
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "SECOND"))
             suffixed <- readFile (root ++ "/sec/assets/diagram-2.png")
             fmap (bodyContains (BS.pack "{\"url\":\"assets/diagram-2.png\"}")) outcome `shouldBe` Right True
@@ -191,14 +191,14 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "evil.exe" "MZ"))
             fmap (statusCode . responseStatus) outcome `shouldBe` Right 415
         it "given an image upload, when routing, then it is recorded in the page's images.yaml" $ do
             root <- setupTreeFixture
             _ <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "Diagram One.png" "PNGDATA"))
             recorded <- readFile (root ++ "/sec/meta/page.meta/images.yaml")
             recorded
@@ -209,7 +209,7 @@ spec = do
             root <- setupTreeFixture
             _ <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "My Report.pdf" "PDFDATA"))
             recorded <- readFile (root ++ "/sec/meta/page.meta/attachments.yaml")
             recorded
@@ -221,11 +221,11 @@ spec = do
             root <- setupTreeFixture
             _ <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "My Report.pdf" "PDFDATA"))
             outcome <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (getRequest "/documents/sec/page.md?edit"))
             fmap (bodyContains (BS.pack "data-attachments")) outcome `shouldBe` Right True
             fmap (bodyContains (BS.pack "My Report.pdf")) outcome `shouldBe` Right True
@@ -234,11 +234,11 @@ spec = do
             root <- setupTreeFixture
             _ <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "Diagram One.png" "PNGDATA"))
             _ <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     ( BS.pack
                         ( postRequest
                             "/documents/sec/page.md"
@@ -254,11 +254,11 @@ spec = do
             root <- setupTreeFixture
             _ <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "My Report.pdf" "PDFDATA"))
             _ <-
                 respondToRequestBytes
-                    (TestApp.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "My Report.pdf" "PDFDATA"))
             recorded <- readFile (root ++ "/sec/meta/page.meta/attachments.yaml")
             recorded

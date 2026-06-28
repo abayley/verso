@@ -2,9 +2,9 @@
     "version": "0.0.1",
     "configurations": [
         {
-            "name": "test-app",
+            "name": "verso",
             "runtimeExecutable": "make",
-            "runtimeArgs": ["run-test-app"],
+            "runtimeArgs": ["run-verso"],
             "port": 8080
         }
     ]

@@ -179,7 +179,7 @@ appendEntryFile file localPath block = do
             writeMetaFile file revised
 
 {- | Read and write a @.meta@ file as opaque (UTF-8) bytes -- never decoding, so multibyte characters in
-attachment names survive verbatim (see 'MicroHttp.TestApp' for the same rationale on document bodies). The
+attachment names survive verbatim (see 'Verso.App' for the same rationale on document bodies). The
 @BS.readFile@ is strict, so reading then overwriting the same file is safe.
 -}
 readMetaFile :: FilePath -> IO String

@@ -15,7 +15,7 @@ DOCS = docs
 DOC_FILES = README.md INSTALL.md STANDARDS.md TODO.md "$(DOCS)/**/*.md"
 HS_FILES = $(shell find $(SRC) $(TEST) -name '*.hs' | sort)
 
-.PHONY: docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-test-app replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11 all-spikes check clean
+.PHONY: docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11 all-spikes check clean
 
 spike1:
 	mkdir -p $(BUILD)
@@ -95,16 +95,16 @@ format-check:
 lint:
 	hlint $(SRC) $(TEST)
 
-run-test-app: editor-build
+run-verso: editor-build
 	mkdir -p $(BUILD)
-	$(MHS) $(MHSFLAGS) -i$(SRC) $(SRC)/TestApp.hs -o $(BUILD)/test-app
-	$(BUILD)/test-app
+	$(MHS) $(MHSFLAGS) -i$(SRC) $(SRC)/Verso/Main.hs -o $(BUILD)/verso
+	$(BUILD)/verso
 
 # Replay the operation log onto the tree (RFC-0028), after a corpus refresh. Reads
 # the same config as the server (MICROHTTP_CONFIG, default micro-http.conf).
 replay-tool:
 	mkdir -p $(BUILD)
-	$(MHS) $(MHSFLAGS) -i$(SRC) $(SRC)/ReplayTool.hs -o $(BUILD)/replay-tool
+	$(MHS) $(MHSFLAGS) -i$(SRC) $(SRC)/Verso/ReplayTool.hs -o $(BUILD)/replay-tool
 	$(BUILD)/replay-tool
 
 test-editor-browser:

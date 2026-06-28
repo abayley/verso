@@ -8,10 +8,10 @@ import MicroHttp.Network.Socket
 import MicroHttp.Router (serveRoutes)
 import MicroHttp.Server
 import MicroHttp.Stream (StreamError (..))
-import qualified MicroHttp.TestApp as TestApp
 import System.Directory (doesFileExist, removeFile)
 import System.Timeout (timeout)
 import Test.Hspec
+import qualified Verso.App as App
 
 spec :: Spec
 spec =
@@ -178,14 +178,14 @@ testGuardMicros = 5000000
 -- | The document application wrapped with the 400/408 error-response middleware.
 documentApp :: Application
 documentApp =
-    withErrorResponses (TestApp.appWithDocumentRoot documentRoot)
+    withErrorResponses (App.appWithDocumentRoot documentRoot)
 
 {- | The document application composed with a small body limit, since the body
 bound now lives in the application stack (serveRoutes), not the server.
 -}
 smallBodyApp :: Application
 smallBodyApp =
-    withErrorResponses (serveRoutes (parseLimits smallBodySettings) (TestApp.documentRoutes "paper" documentRoot))
+    withErrorResponses (serveRoutes (parseLimits smallBodySettings) (App.documentRoutes "paper" documentRoot))
 
 documentRoot :: FilePath
 documentRoot = "build"

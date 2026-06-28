@@ -1,4 +1,4 @@
-module MicroHttp.ClientErrorSpec (spec) where
+module Verso.ClientErrorSpec (spec) where
 
 import Control.Concurrent.MVar (modifyMVar_, newMVar, readMVar)
 import qualified Data.ByteString.Char8 as BS
@@ -6,12 +6,12 @@ import Data.List (isInfixOf)
 import MicroHttp.Http
 import MicroHttp.Iteratee (run, strictEnumerator)
 import qualified MicroHttp.Router as Router
-import MicroHttp.TestApp (clientErrorRoute)
 import Test.Hspec
+import Verso.App (clientErrorRoute)
 
 spec :: Spec
 spec =
-    describe "MicroHttp.TestApp client-error endpoint (RFC-0023)" $ do
+    describe "Verso.App client-error endpoint (RFC-0023)" $ do
         it "given a report, when posted, then it records one logfmt line and returns 204" $ do
             (status, recorded) <- postClientError "message=boom&stack=at+foo&path=/documents/x&kind=error"
             statusCode status `shouldBe` 204

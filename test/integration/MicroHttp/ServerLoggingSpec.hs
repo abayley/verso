@@ -9,9 +9,9 @@ import MicroHttp.Log (AccessEvent (..), Logger, RequestLine (..), fileLogfmtLogg
 import MicroHttp.Middleware (Application, logRequests, withErrorResponses)
 import MicroHttp.Network.Socket
 import MicroHttp.Server
-import qualified MicroHttp.TestApp as TestApp
 import System.Directory (doesFileExist, removeFile)
 import Test.Hspec
+import qualified Verso.App as App
 
 spec :: Spec
 spec =
@@ -64,7 +64,7 @@ spec =
 
 -- | The document application (frames and routes; no middleware).
 documentApp :: Application
-documentApp = TestApp.appWithDocumentRoot documentRoot
+documentApp = App.appWithDocumentRoot documentRoot
 
 -- | Wraps an application with a capturing logging middleware (outermost).
 logged :: IORef [AccessEvent] -> Application -> Application

@@ -726,7 +726,7 @@ function portIsOpen() {
 }
 
 function startServer() {
-  const server = spawn("make", ["run-test-app"], {
+  const server = spawn("make", ["run-verso"], {
     cwd: process.cwd(),
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],

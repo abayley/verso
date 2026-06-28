@@ -5,10 +5,10 @@ import MicroHttp.Config (Config, ConfigError (..), toSettings)
 import MicroHttp.Log (consoleLog)
 import MicroHttp.Network.Socket (Host (..), Port (..))
 import qualified MicroHttp.Server as Server
-import qualified MicroHttp.TestApp as TestApp
 import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
 import System.IO (hFlush, stdout)
+import qualified Verso.App as App
 import Verso.Config (loadConfig)
 
 {- | The default config file path, overridable by the @MICROHTTP_CONFIG@
@@ -28,7 +28,7 @@ main = do
             -- Build the application (which warms the link index, RFC-0029) before
             -- announcing the listen address, so "listening on" appears once the server
             -- is actually about to accept connections, after the index is ready.
-            application <- TestApp.appFromConfig settings cfg
+            application <- App.appFromConfig settings cfg
             consoleLog ("listening on " ++ listenAddress settings)
             result <- Server.serve settings application
             case result of

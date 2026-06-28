@@ -136,7 +136,7 @@ timestampBufferBytes = 64
 opens the file in append mode for each line, so writes go to the end without a
 shared handle; adequate for low to moderate request volume. The line is written
 as bytes (the request target is byte-valued UTF-8); 'appendFile' would re-encode
-it as UTF-8 and double-encode a non-ASCII target (see MicroHttp.TestApp).
+it as UTF-8 and double-encode a non-ASCII target (see Verso.App).
 -}
 fileLogfmtLogger :: FilePath -> Logger
 fileLogfmtLogger path = logfmtTo (\line -> BS.appendFile path (BS.pack (line ++ "\n")))

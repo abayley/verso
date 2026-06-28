@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module MicroHttp.TestApp (
+module Verso.App (
     DocumentStore (..),
     NodeKind (..),
     TreeNode (..),
@@ -1513,7 +1513,7 @@ indexPage =
             Html.main [] $ do
                 Html.h1 [] "MicroHttp"
                 Html.p [] "The MicroHs HTTP server is running."
-                Html.custom "status-card" [Html.attr "data-state" "ok"] "Served by src/TestApp.hs"
+                Html.custom "status-card" [Html.attr "data-state" "ok"] "Served by src/Verso/Main.hs"
 
 {- | The visual themes the editor implements (RFC-0015). The page default and
 the pre-paint bootstrap validate against this set, so an unknown configured or

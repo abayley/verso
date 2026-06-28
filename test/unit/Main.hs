@@ -1,6 +1,5 @@
 module Main (main) where
 
-import qualified MicroHttp.ClientErrorSpec as ClientErrorSpec
 import qualified MicroHttp.ConfigSpec as ConfigSpec
 import qualified MicroHttp.FileSystemSpec as FileSystemSpec
 import qualified MicroHttp.HtmlSpec as HtmlSpec
@@ -15,10 +14,11 @@ import qualified MicroHttp.Network.SocketAddrSpec as SocketAddrSpec
 import qualified MicroHttp.RouterSpec as RouterSpec
 import qualified MicroHttp.ServerSpec as ServerSpec
 import qualified MicroHttp.StaticSpec as StaticSpec
-import qualified MicroHttp.TestAppSpec as TestAppSpec
 import qualified MicroHttpSpec as FacadeSpec
 import Test.Hspec
+import qualified Verso.AppSpec as AppSpec
 import qualified Verso.AttachmentSpec as AttachmentSpec
+import qualified Verso.ClientErrorSpec as ClientErrorSpec
 import qualified Verso.ConfigSpec as VersoConfigSpec
 import qualified Verso.DocumentLinksSpec as DocumentLinksSpec
 import qualified Verso.DocumentListingSpec as DocumentListingSpec
@@ -58,5 +58,5 @@ main = hspec $ do
     MiddlewareSpec.spec
     SocketAddrSpec.spec
     OperationLogSpec.spec
-    TestAppSpec.spec
+    AppSpec.spec
     VersoConfigSpec.spec

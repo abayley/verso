@@ -30,7 +30,6 @@ import qualified Data.ByteString.Char8 as BS
 import Data.Char (digitToInt, isAsciiLower, isAsciiUpper, isDigit, isSpace, toLower, toUpper)
 import Data.List (intercalate, isSuffixOf, sortBy)
 import Data.Maybe (catMaybes, fromMaybe)
-import MicroHttp.Config (Config, configInt, configMounts, configString)
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http as Http
 import MicroHttp.Http.Parse (ParseError (..))
@@ -46,6 +45,7 @@ import MicroHttp.Stream (StreamError (..))
 import System.Directory (createDirectoryIfMissing, doesDirectoryExist, doesFileExist, listDirectory)
 import System.IO (hPutStrLn, stderr)
 import Verso.Attachment (allowedExtension, attachmentRoutes, extensionOf, fileAttachmentStore, inlineImageExtension, originalUploadFilename, uploadFilename)
+import Verso.Config (VersoConfig (..))
 import qualified Verso.DocumentMeta as DocumentMeta
 import Verso.LinkIndexStore (LinkIndexStore, addSubtreeToIndex, applyChanges, newLinkIndexStore, openLinkIndex, refreshLinkIndex, relocateInIndex, removeSubtreeInIndex)
 import Verso.OperationLog (OpType (..), Operation (..), appendOperation, nextSeq, readOperations, renderOperation)
@@ -74,17 +74,17 @@ appWith logger =
 path, document root, and static mounts come from the config, and the parse
 limits from the (config-derived) settings. Logging is the outermost middleware.
 -}
-appFromConfig :: Server.Settings -> Config -> IO Server.Application
-appFromConfig settings cfg = do
-    accessLogger <- rotatingFileLogfmtLogger logMaxBytes logKeep accessLogPath
-    clientErrorSink <- rotatingAppender logMaxBytes logKeep clientErrorLogPath
+appFromConfig :: Server.Settings -> VersoConfig -> IO Server.Application
+appFromConfig settings vc = do
+    accessLogger <- rotatingFileLogfmtLogger (logMaxBytes vc) (logKeep vc) (accessLog vc)
+    clientErrorSink <- rotatingAppender (logMaxBytes vc) (logKeep vc) (clientErrorLog vc)
     -- Open the link index at startup in tree mode (RFC-0029): load the persisted index if
     -- its fingerprint still matches the tree, else build and persist. Move/delete then read
     -- it warm with no per-request walk, and re-export calls POST /index/refresh.
     indexStore <- newLinkIndexStore
-    unless (null treeRoot) $ do
+    unless (null (documentTreeRoot vc)) $ do
         consoleLog "opening link index..."
-        opened <- openLinkIndex treeRoot indexPath indexStore
+        opened <- openLinkIndex (documentTreeRoot vc) (linkIndex vc) indexStore
         consoleLog (either ("link index FAILED (move/delete degraded until refresh): " ++) (const "link index ready") opened)
     -- Serialize structural tree mutations across the server's connection threads (see 'WriteLock').
     writeLock <- newMVar ()
@@ -94,51 +94,27 @@ appFromConfig settings cfg = do
             ( withErrorResponses
                 ( Router.serveRoutes
                     (Server.parseLimits settings)
-                    (configuredRoutes (Just writeLock) (Just indexStore) cfg clientErrorSink)
+                    (configuredRoutes (Just writeLock) (Just indexStore) vc clientErrorSink)
                 )
             )
         )
-  where
-    accessLogPath = configString "access_log" "build/access.log" cfg
-    clientErrorLogPath = configString "client_error_log" "build/client-errors.log" cfg
-    logMaxBytes = configIntOr "log_max_bytes" defaultLogMaxBytes cfg
-    logKeep = configIntOr "log_keep" defaultLogKeep cfg
-    treeRoot = configString "document_tree_root" "" cfg
-    indexPath = configString "link_index" "data/link_index" cfg
 
--- | The default log-rotation threshold in bytes (10 MiB) and retained-file count (RFC-0024).
-defaultLogMaxBytes :: Int
-defaultLogMaxBytes = 10485760
-
-defaultLogKeep :: Int
-defaultLogKeep = 5
-
--- | A total config-int read: the default on an absent or malformed value.
-configIntOr :: String -> Int -> Config -> Int
-configIntOr key def cfg = case configInt key def cfg of
-    Right value -> value
-    Left _ -> def
-
-{- | The route set chosen by configuration. Setting @document_tree_root@ selects
-the filesystem-tree mode (a MkDocs-style tree served and edited in place, with
-per-page peer @assets/@); otherwise the flat single-document store is used.
+{- | The route set chosen by configuration. A non-empty @document_tree_root@
+selects the filesystem-tree mode (a MkDocs-style tree served and edited in place,
+with per-page peer @assets/@); otherwise the flat single-document store is used.
 -}
-configuredRoutes :: WriteLock -> Maybe LinkIndexStore -> Config -> (String -> IO ()) -> [Router.Route]
-configuredRoutes writeLock indexStore cfg clientErrorSink =
+configuredRoutes :: WriteLock -> Maybe LinkIndexStore -> VersoConfig -> (String -> IO ()) -> [Router.Route]
+configuredRoutes writeLock indexStore vc clientErrorSink =
     clientErrorRoute clientErrorSink
-        : case configString "document_tree_root" "" cfg of
+        : case documentTreeRoot vc of
             "" ->
-                documentRoutes editorTheme (configString "document_root" "data/documents" cfg)
-                    ++ attachmentRoutes (fileAttachmentStore (configString "attachment_root" "data/attachments" cfg))
+                documentRoutes (editorTheme vc) (documentRoot vc)
+                    ++ attachmentRoutes (fileAttachmentStore (attachmentRoot vc))
                     ++ mounts
             treeRoot ->
-                treeRoutes writeLock indexStore editorTheme treeRoot logPath trashRoot indexPath ++ mounts
+                treeRoutes writeLock indexStore (editorTheme vc) treeRoot (operationLog vc) (trashRoot vc) (linkIndex vc) ++ mounts
   where
-    editorTheme = configString "editor_theme" "paper" cfg
-    logPath = configString "operation_log" "data/operation_log" cfg
-    trashRoot = configString "trash_root" "data/trash" cfg
-    indexPath = configString "link_index" "data/link_index" cfg
-    mounts = [Static.static prefix root | (prefix, root) <- configMounts "static_mounts" cfg]
+    mounts = [Static.static prefix root | (prefix, root) <- staticMounts vc]
 
 appWithDocumentRoot :: FilePath -> Server.Application
 appWithDocumentRoot root =

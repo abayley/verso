@@ -9,7 +9,7 @@ import System.Environment (lookupEnv)
 import System.Exit (exitFailure)
 import System.IO (hFlush, stdout)
 import qualified Verso.App as App
-import Verso.Config (loadConfig)
+import Verso.Config (VersoConfig, fromConfig, loadConfig)
 
 {- | The default config file path, overridable by the @MICROHTTP_CONFIG@
 environment variable. A missing file means built-in defaults (RFC-0011).
@@ -22,25 +22,27 @@ main = do
     consoleLog "MicroHTTP startup"
     configPath <- fromMaybe defaultConfigPath <$> lookupEnv "MICROHTTP_CONFIG"
     loaded <- loadConfig configPath
-    case loaded >>= withSettings of
+    case loaded >>= prepare of
         Left err -> failWith err
-        Right (settings, cfg) -> do
+        Right (settings, versoCfg) -> do
             -- Build the application (which warms the link index, RFC-0029) before
             -- announcing the listen address, so "listening on" appears once the server
             -- is actually about to accept connections, after the index is ready.
-            application <- App.appFromConfig settings cfg
+            application <- App.appFromConfig settings versoCfg
             consoleLog ("listening on " ++ listenAddress settings)
             result <- Server.serve settings application
             case result of
                 Left err -> consoleLog ("server failed: " ++ show err)
                 Right () -> return ()
 
--- | Pairs the config with the settings it maps to, failing on a bad value.
-withSettings :: Config -> Either ConfigError (Server.Settings, Config)
-withSettings cfg =
-    case toSettings cfg of
-        Left err -> Left err
-        Right settings -> Right (settings, cfg)
+{- | The framework settings and the application config, both mapped from the
+loaded config and failing fast on a bad value.
+-}
+prepare :: Config -> Either ConfigError (Server.Settings, VersoConfig)
+prepare cfg = do
+    settings <- toSettings cfg
+    versoCfg <- fromConfig cfg
+    pure (settings, versoCfg)
 
 failWith :: ConfigError -> IO ()
 failWith (ConfigError message) = do

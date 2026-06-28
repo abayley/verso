@@ -6,7 +6,7 @@ import qualified MicroHttp.ConfigSpec as ConfigSpec
 import qualified MicroHttp.DocumentLinksSpec as DocumentLinksSpec
 import qualified MicroHttp.DocumentListingSpec as DocumentListingSpec
 import qualified MicroHttp.DocumentMetaSpec as DocumentMetaSpec
-import qualified MicroHttp.FileOpsSpec as FileOpsSpec
+import qualified MicroHttp.FileSystemSpec as FileSystemSpec
 import qualified MicroHttp.HtmlSpec as HtmlSpec
 import qualified MicroHttp.Http.FramingSpec as FramingSpec
 import qualified MicroHttp.Http.ParserSpec as ParserSpec
@@ -38,7 +38,7 @@ main = hspec $ do
     DocumentLinksSpec.spec
     DocumentListingSpec.spec
     DocumentMetaSpec.spec
-    FileOpsSpec.spec
+    FileSystemSpec.spec
     FramingSpec.spec
     HtmlSpec.spec
     LinkFingerprintSpec.spec

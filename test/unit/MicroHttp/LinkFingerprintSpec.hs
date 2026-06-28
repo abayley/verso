@@ -4,7 +4,7 @@ import Control.Monad (when)
 import qualified Data.ByteString.Char8 as BS
 import Data.List (sort)
 import qualified Data.Map as Map
-import MicroHttp.FileOps (removeEmptyDir)
+import MicroHttp.FileSystem (removeEmptyDir)
 import MicroHttp.LinkFingerprint (fingerprintTree, markdownFiles)
 import System.Directory (
     createDirectoryIfMissing,

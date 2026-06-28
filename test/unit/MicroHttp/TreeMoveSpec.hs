@@ -2,7 +2,7 @@ module MicroHttp.TreeMoveSpec (spec) where
 
 import Control.Monad (forM_, void, when)
 import qualified Data.ByteString.Char8 as BS
-import MicroHttp.FileOps (removeEmptyDir, removeFilePath)
+import MicroHttp.FileSystem (removeEmptyDir, removeFilePath)
 import MicroHttp.LinkIndexStore (newLinkIndexStore, openLinkIndex)
 import MicroHttp.OperationLog (OpType (..), Operation (..))
 import MicroHttp.TreeMove (DeleteOutcome (..), MovePlan (..), ReplayEntry (..), deleteTarget, indexRelevant, movePage, moveSection, replayLog, restoreFromTrash, scanRelevant)

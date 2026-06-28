@@ -3,7 +3,7 @@ module MicroHttp.LinkIndexStoreSpec (spec) where
 import Control.Monad (when)
 import qualified Data.ByteString.Char8 as BS
 import Data.List (sort)
-import MicroHttp.FileOps (removeEmptyDir)
+import MicroHttp.FileSystem (removeEmptyDir)
 import MicroHttp.LinkIndex (inboundOf, outboundOf)
 import MicroHttp.LinkIndexStore (
     addSubtreeToIndex,

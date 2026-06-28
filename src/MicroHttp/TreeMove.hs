@@ -47,7 +47,7 @@ import MicroHttp.DocumentLinks (
  )
 import MicroHttp.DocumentListing (addListingEntry, removeListingEntry)
 import MicroHttp.DocumentMeta (metaDirectoryFor)
-import MicroHttp.FileOps (removeEmptyDir, removeFilePath, renamePath)
+import MicroHttp.FileSystem (removeEmptyDir, removeFilePath, renamePath)
 import MicroHttp.LinkIndex (rewriteCandidates)
 import MicroHttp.LinkIndexStore (LinkIndexStore, currentIndex)
 import MicroHttp.OperationLog (OpType (..), Operation (..))

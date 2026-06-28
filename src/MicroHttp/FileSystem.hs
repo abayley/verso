@@ -19,7 +19,7 @@ The 'fileStat' field offsets are __macOS-specific__ (the @struct stat@ layout is
 platform-dependent). They are isolated behind named constants so the cross-platform
 portability RFC can parameterise them; ADR-067.
 -}
-module MicroHttp.FileOps (
+module MicroHttp.FileSystem (
     renamePath,
     removeFilePath,
     removeEmptyDir,

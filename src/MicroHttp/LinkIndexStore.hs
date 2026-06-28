@@ -36,7 +36,7 @@ import Data.List (foldl', intercalate, isPrefixOf)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes, fromMaybe, isNothing)
-import MicroHttp.FileOps (FileStat (..), fileStat, renamePath)
+import MicroHttp.FileSystem (FileStat (..), fileStat, renamePath)
 import MicroHttp.LinkFingerprint (Fingerprint, fingerprintTree, markdownFiles)
 import MicroHttp.LinkIndex (
     LinkIndex,

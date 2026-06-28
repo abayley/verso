@@ -22,7 +22,7 @@ import Data.List (isSuffixOf)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.Maybe (catMaybes)
-import MicroHttp.FileOps (FileStat, fileStat)
+import MicroHttp.FileSystem (FileStat, fileStat)
 import System.Directory (doesDirectoryExist, listDirectory)
 
 -- | The tree's freshness fingerprint: each @.md@ tree path to its modification time and size.

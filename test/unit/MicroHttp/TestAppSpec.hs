@@ -3,7 +3,7 @@ module MicroHttp.TestAppSpec (spec) where
 import Control.Monad (forM_, void, when)
 import qualified Data.ByteString.Char8 as BS
 import Data.List (isInfixOf)
-import MicroHttp.FileOps (removeEmptyDir, removeFilePath)
+import MicroHttp.FileSystem (removeEmptyDir, removeFilePath)
 import MicroHttp.Http
 import MicroHttp.Iteratee (Iter, run, strictEnumerator)
 import qualified MicroHttp.Router as Router

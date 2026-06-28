@@ -1,8 +1,8 @@
-module MicroHttp.FileOpsSpec (spec) where
+module MicroHttp.FileSystemSpec (spec) where
 
 import Control.Monad (when)
 import qualified Data.ByteString.Char8 as BS
-import MicroHttp.FileOps (FileStat (..), fileStat, removeEmptyDir, removeFilePath, renamePath)
+import MicroHttp.FileSystem (FileStat (..), fileStat, removeEmptyDir, removeFilePath, renamePath)
 import System.Directory (
     createDirectoryIfMissing,
     doesDirectoryExist,
@@ -42,7 +42,7 @@ writeText path = BS.writeFile path . BS.pack
 
 spec :: Spec
 spec =
-    describe "MicroHttp.FileOps" $ do
+    describe "MicroHttp.FileSystem" $ do
         describe "renamePath" $ do
             it "renames an existing file and reports success" $ do
                 freshDir

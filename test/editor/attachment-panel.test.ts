@@ -4,7 +4,7 @@ import {
     attachmentLinkMarkdown,
     type PanelAttachment,
     parseEmbeddedAttachments,
-} from "../../src/TestApp/Editor/attachment-panel.js";
+} from "../../src/Verso/Editor/attachment-panel.js";
 
 describe("attachmentLinkMarkdown", (): void => {
     it("builds a Markdown link from the name and local path", (): void => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdown } from "../../src/TestApp/Editor/markdown-parse.js";
+import { parseMarkdown } from "../../src/Verso/Editor/markdown-parse.js";
 
 describe("parseMarkdown", (): void => {
     it("parses supported block and inline nodes into an editor document", (): void => {

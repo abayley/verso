@@ -4,9 +4,9 @@
     "scripts": {
         "editor:build": "bun scripts/build-editor.mjs",
         "editor:check": "bun run editor:lint && bun run editor:typecheck && bun run editor:test && bun run editor:build",
-        "editor:format": "biome check --write src/TestApp/Editor test/editor package.json tsconfig.json biome.json knip.json",
+        "editor:format": "biome check --write src/Verso/Editor test/editor package.json tsconfig.json biome.json knip.json",
         "editor:knip": "knip",
-        "editor:lint": "biome check src/TestApp/Editor test/editor package.json tsconfig.json biome.json knip.json && bun run editor:knip",
+        "editor:lint": "biome check src/Verso/Editor test/editor package.json tsconfig.json biome.json knip.json && bun run editor:knip",
         "editor:test": "vitest run --dom",
         "editor:typecheck": "tsc --noEmit"
     },

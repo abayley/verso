@@ -280,9 +280,11 @@ Each phase is one commit, `make check` green before committing.
    (unit + integration); qualified aliases `TestApp` -> `App`. Updated Makefile
    (`build/test-app` -> `build/verso`, `run-test-app` -> `run-verso`),
    `.claude/launch.json`, `scripts/http-bench.sh`, `scripts/editor-smoke.cjs`.
-5. **Phase 5 -- Move editor TS.** `src/TestApp/Editor` -> `src/Verso/Editor`;
-   update `knip.json`, `package.json`, `tsconfig.json`,
-   `scripts/build-editor.mjs`, `test/editor` import paths. `editor-check` green.
+5. **[DONE] Phase 5 -- Move editor TS.** `src/TestApp/Editor` ->
+   `src/Verso/Editor`; updated `knip.json`, `package.json`, `tsconfig.json`,
+   `scripts/build-editor.mjs`, 21 `test/editor` import paths, and the dangling
+   `spike/editor-lit` import. Served bundle path `static/editor/` unchanged.
+   `editor-check` green.
 6. **Phase 6 -- Docs + memory.** Update `docs/design/project-organisation.md`,
    `README.md`, add an ADR for the framework/app split, refresh the
    decision-register reference, and update the auto-memory index. Mark this RFC

@@ -35,5 +35,5 @@
         "forceConsistentCasingInFileNames": true,
         "types": ["vitest/globals"]
     },
-    "include": ["src/TestApp/Editor/**/*.ts", "test/editor/**/*.ts"]
+    "include": ["src/Verso/Editor/**/*.ts", "test/editor/**/*.ts"]
 }

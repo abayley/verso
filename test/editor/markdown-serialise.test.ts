@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdown } from "../../src/TestApp/Editor/markdown-parse.js";
-import { documentFromElements, documentToMarkdown } from "../../src/TestApp/Editor/markdown-serialise.js";
+import { parseMarkdown } from "../../src/Verso/Editor/markdown-parse.js";
+import { documentFromElements, documentToMarkdown } from "../../src/Verso/Editor/markdown-serialise.js";
 
 describe("documentFromElements", (): void => {
     it("serialises supported DOM blocks into an editor document", (): void => {

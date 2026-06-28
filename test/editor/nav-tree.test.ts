@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeNodePath, parseTreeChildren, parseTreeSpine } from "../../src/TestApp/Editor/nav-tree.js";
+import { activeNodePath, parseTreeChildren, parseTreeSpine } from "../../src/Verso/Editor/nav-tree.js";
 
 describe("parseTreeChildren", () => {
     it("parses well-formed nodes, defaulting hasChildren", () => {

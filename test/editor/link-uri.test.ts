@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAllowedLinkUri } from "../../src/TestApp/Editor/link-uri.js";
+import { isAllowedLinkUri } from "../../src/Verso/Editor/link-uri.js";
 
 const rejectAll = (): boolean => false;
 const acceptAll = (): boolean => true;

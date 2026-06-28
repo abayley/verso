@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdownLocally } from "../../src/TestApp/Editor/markdown-parse-local.js";
-import { badgeSpans, parseMarkdownWithRemark, rawHtmlSpans } from "../../src/TestApp/Editor/remark-adapter.js";
+import { parseMarkdownLocally } from "../../src/Verso/Editor/markdown-parse-local.js";
+import { badgeSpans, parseMarkdownWithRemark, rawHtmlSpans } from "../../src/Verso/Editor/remark-adapter.js";
 
 describe("parseMarkdownWithRemark", (): void => {
     it("given supported Markdown, when parsed through remark, then it matches the legacy local parser", (): void => {

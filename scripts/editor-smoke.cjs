@@ -560,7 +560,7 @@ async function assertNoScriptFallback() {
 
 async function assertPortFree() {
   if (await portIsOpen()) {
-    throw new Error(`${baseUrl} is already in use; stop the existing TestApp server before running smoke tests.`);
+    throw new Error(`${baseUrl} is already in use; stop the existing Verso server before running smoke tests.`);
   }
 }
 
@@ -747,7 +747,7 @@ function waitForServer(server) {
     const timeout = setTimeout(() => {
       reject(
         new Error(
-          `Timed out waiting for TestApp server to start.\n${serverOutput}`,
+          `Timed out waiting for Verso server to start.\n${serverOutput}`,
         ),
       );
     }, 30000);
@@ -768,7 +768,7 @@ function waitForServer(server) {
       clearTimeout(timeout);
       reject(
         new Error(
-          `TestApp server exited early with code ${code}.\n${serverOutput}`,
+          `Verso server exited early with code ${code}.\n${serverOutput}`,
         ),
       );
     });

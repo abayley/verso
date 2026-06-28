@@ -5,7 +5,7 @@
 // Tiptap/CodeMirror editing -- per the decision test, the adapters are unchanged
 // and only the view layer is rebuilt. Findings: docs/design/markdown-editor-spike.md.
 import { LitElement, html, nothing } from "lit";
-import { SaveStateController, type SaveStateView } from "../../src/TestApp/Editor/save-state-controller.js";
+import { SaveStateController, type SaveStateView } from "../../src/Verso/Editor/save-state-controller.js";
 
 interface BlockStyle {
     value: string;

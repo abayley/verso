@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdown } from "../../src/TestApp/Editor/markdown-parse.js";
-import { documentFromElements, documentToMarkdown } from "../../src/TestApp/Editor/markdown-serialise.js";
+import { parseMarkdown } from "../../src/Verso/Editor/markdown-parse.js";
+import { documentFromElements, documentToMarkdown } from "../../src/Verso/Editor/markdown-serialise.js";
 
 describe("admonition parsing", (): void => {
     it("given a NOTE alert blockquote, when parsed, then it becomes a custom admonition block", (): void => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseBreadcrumbs } from "../../src/TestApp/Editor/breadcrumbs.js";
+import { parseBreadcrumbs } from "../../src/Verso/Editor/breadcrumbs.js";
 
 describe("parseBreadcrumbs", (): void => {
     it("given a trail with links and a current page, when parsed, then crumbs are returned in order", (): void => {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MarkdownEditorElement } from "../../src/TestApp/Editor/markdown-editor-element.js";
+import { MarkdownEditorElement } from "../../src/Verso/Editor/markdown-editor-element.js";
 
 const elementName = "markdown-editor-test";
 
@@ -1857,7 +1857,7 @@ function saveError(editor: Element): HTMLElement {
     return error;
 }
 
-/** Creates an editor inside the same htmx form shape used by TestApp. */
+/** Creates an editor inside the same htmx form shape used by Verso. */
 async function initialiseEditorForm(): Promise<{ editor: MarkdownEditorElement }> {
     const form = document.createElement("form");
     const editor = document.createElement(elementName) as MarkdownEditorElement;

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { attachmentMarkdown, isInlineImage, uploadAttachment } from "../../src/TestApp/Editor/attachment-upload.js";
+import { attachmentMarkdown, isInlineImage, uploadAttachment } from "../../src/Verso/Editor/attachment-upload.js";
 
 /** Builds a minimal File-like value for classification and upload tests. */
 function fileLike(name: string, type = ""): File {

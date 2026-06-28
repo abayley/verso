@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentHeadings } from "../../src/TestApp/Editor/table-of-contents.js";
+import { documentHeadings } from "../../src/Verso/Editor/table-of-contents.js";
 
 describe("documentHeadings", (): void => {
     it("given ATX headings, when parsed, then it returns them in order with levels", (): void => {

@@ -8,7 +8,7 @@ const webAwesomeCssOutfile = "static/editor/webawesome.css";
 process.env.NODE_ENV = "production";
 
 const result = await Bun.build({
-    entrypoints: ["src/TestApp/Editor/index.ts"],
+    entrypoints: ["src/Verso/Editor/index.ts"],
     define: { "process.env.NODE_ENV": '"production"' },
     format: "iife",
     minify: true,

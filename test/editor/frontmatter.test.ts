@@ -4,7 +4,7 @@ import {
     joinFrontmatter,
     setFrontmatterName,
     splitFrontmatter,
-} from "../../src/TestApp/Editor/frontmatter.js";
+} from "../../src/Verso/Editor/frontmatter.js";
 
 describe("splitFrontmatter", (): void => {
     it("given a document with YAML frontmatter, when split, then the frontmatter and body are separated", (): void => {

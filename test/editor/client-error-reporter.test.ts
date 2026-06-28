@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ClientErrorReporter } from "../../src/TestApp/Editor/client-error-reporter.js";
+import { ClientErrorReporter } from "../../src/Verso/Editor/client-error-reporter.js";
 
 describe("ClientErrorReporter", (): void => {
     const beacon = vi.fn((_url: string, _body?: BodyInit | null): boolean => true);

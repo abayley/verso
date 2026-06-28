@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { imageShortTitles } from "../../src/TestApp/Editor/image-metadata.js";
+import { imageShortTitles } from "../../src/Verso/Editor/image-metadata.js";
 
 describe("imageShortTitles", (): void => {
     it("uses the alt text as the short_title", (): void => {

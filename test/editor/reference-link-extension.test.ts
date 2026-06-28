@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdown } from "../../src/TestApp/Editor/markdown-parse.js";
-import { documentFromElements, documentToMarkdown } from "../../src/TestApp/Editor/markdown-serialise.js";
+import { parseMarkdown } from "../../src/Verso/Editor/markdown-parse.js";
+import { documentFromElements, documentToMarkdown } from "../../src/Verso/Editor/markdown-serialise.js";
 
 describe("reference link parsing", (): void => {
     it("given a full reference and its definition, when parsed, then it becomes a custom reference-link inline and a definition block", (): void => {

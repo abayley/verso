@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { badgeExtension } from "../../src/TestApp/Editor/badge-extension.js";
-import { registerExtension } from "../../src/TestApp/Editor/content-extension.js";
-import { parseMarkdown } from "../../src/TestApp/Editor/markdown-parse.js";
-import { documentFromElements, documentToMarkdown } from "../../src/TestApp/Editor/markdown-serialise.js";
+import { badgeExtension } from "../../src/Verso/Editor/badge-extension.js";
+import { registerExtension } from "../../src/Verso/Editor/content-extension.js";
+import { parseMarkdown } from "../../src/Verso/Editor/markdown-parse.js";
+import { documentFromElements, documentToMarkdown } from "../../src/Verso/Editor/markdown-serialise.js";
 
 // Badge support is opt-in (the document-tree mode enables it); register it for this suite. Vitest isolates
 // module state per file, so this does not affect the other suites' strict parse.

@@ -51,6 +51,7 @@ import qualified Verso.Config as VConfig
 import qualified Verso.DocumentMeta as DocumentMeta
 import qualified Verso.Draft as Draft
 import qualified Verso.Git as Git
+import qualified Verso.Identity as Identity
 import qualified Verso.LinkIndexStore as LinkIndexStore
 import qualified Verso.OperationLog as OperationLog
 import qualified Verso.TreeMove as TreeMove
@@ -133,7 +134,16 @@ configuredRoutes writeLock indexStore vc clientErrorSink =
 
 -- | The tree handlers' versioning context, read from configuration (RFC-0032).
 versioningFromConfig :: VConfig.VersoConfig -> Versioning
-versioningFromConfig vc = Versioning (VConfig.versioningEnabled vc) (VConfig.draftRoot vc)
+versioningFromConfig vc =
+    Versioning
+        (VConfig.versioningEnabled vc)
+        (VConfig.draftRoot vc)
+        ( Identity.IdentityConfig
+            { Identity.idcHeader = VConfig.identityHeader vc
+            , Identity.idcDefault = VConfig.identityDefault vc
+            , Identity.idcEmailDomain = VConfig.identityEmailDomain vc
+            }
+        )
 
 -- | The author of the one-time import commit, with an email synthesised from the configured domain (RFC-0032).
 importIdentity :: VConfig.VersoConfig -> Git.Identity
@@ -185,12 +195,22 @@ handlers behave as before (autosave writes the live page directly).
 data Versioning = Versioning
     { versioningOn :: Bool
     , draftStagingRoot :: FilePath
+    , versioningIdentity :: Identity.IdentityConfig
     }
     deriving (Eq, Show)
 
 -- | Versioning disabled (legacy behaviour): used by the non-versioned entry points and tests.
 noVersioning :: Versioning
-noVersioning = Versioning False ""
+noVersioning = Versioning False "" defaultIdentityConfig
+
+-- | A default identity configuration (header @X-Remote-User@, default name @anonymous@), for tests and the off case.
+defaultIdentityConfig :: Identity.IdentityConfig
+defaultIdentityConfig =
+    Identity.IdentityConfig
+        { Identity.idcHeader = "X-Remote-User"
+        , Identity.idcDefault = "anonymous"
+        , Identity.idcEmailDomain = "verso.local"
+        }
 
 {- | Routes that serve and edit a documentation tree on the filesystem. The whole
 tree is reachable under @/documents/@; the editor opens at a document's own URL
@@ -622,7 +642,7 @@ appWithDocumentTreeVersioned :: String -> FilePath -> FilePath -> Server.Applica
 appWithDocumentTreeVersioned editorThemeDefault root draftRoot =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
-        (treeRoutes Nothing Nothing (Versioning True draftRoot) editorThemeDefault root "data/operation_log" "data/trash" "data/link_index")
+        (treeRoutes Nothing Nothing (Versioning True draftRoot defaultIdentityConfig) editorThemeDefault root "data/operation_log" "data/trash" "data/link_index")
 
 {- | A GET under the tree: the editor page for @?edit@ on a Markdown file,
 otherwise the file served statically (raw Markdown, images, attachments).
@@ -708,6 +728,8 @@ document's peer @assets/@ folder, or otherwise a document save.
 treePost :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
 treePost versioning maint root captures request
     | hasQueryFlag "asset" request = treeUpload root captures request
+    | hasQueryFlag "publish" request = treePublish versioning maint root captures request
+    | hasQueryFlag "discard-draft" request = treeDiscard versioning root captures request
     | otherwise = treeSave versioning maint root captures request
 
 -- | The maximum accepted tree asset upload size in bytes.
@@ -1317,6 +1339,68 @@ saveResponse request path markdown =
     if isHtmxRequest request
         then pure (htmlResponseChunks (saveStatusFragment markdown))
         else pure (seeOtherResponse ("/documents/" ++ path ++ "?edit"))
+
+{- | Publishes the editor's content (RFC-0032): writes it to the live page through
+the publish-time path (page write, sidecar image-title sync, link-index update),
+records a git commit attributed to the acting author, clears the draft, and exits
+to read (view) mode. The submitted @markdown@ (and image fields) are authoritative
+-- they equal the resumed draft -- so an unchanged page yields no commit but still
+clears the draft.
+-}
+treePublish :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
+treePublish versioning maint root captures request = do
+    bodyBytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) formBodyLimit
+    let fields = formFields (BS.unpack bodyBytes)
+        markdown = normaliseNewlines (capture "markdown" fields)
+        path = capture "path" captures
+    case Static.resolveStaticPath root (pathSegments path) of
+        Nothing -> pure treeNotFound
+        Just fsPath -> do
+            Iteratee.liftIO (Directory.createDirectoryIfMissing True (parentDirectory fsPath))
+            Iteratee.liftIO (writeDocumentText fsPath markdown)
+            Iteratee.liftIO (syncImageTitles root path fields)
+            Iteratee.liftIO (onSave maint path)
+            let author = Identity.currentIdentity (versioningIdentity versioning) request
+            _ <- Iteratee.liftIO (Git.commitAll root author (publishMessage path markdown))
+            Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) path)
+            clientRedirect request ("/documents/" ++ path)
+
+{- | Discards a page's staged draft without publishing (RFC-0032) and returns to
+read (view) mode. The path is validated against the tree before the draft is
+touched.
+-}
+treeDiscard :: Versioning -> FilePath -> Router.Handler
+treeDiscard versioning root captures request =
+    case Static.resolveStaticPath root (pathSegments path) of
+        Nothing -> pure treeNotFound
+        Just _ -> do
+            Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) path)
+            clientRedirect request ("/documents/" ++ path)
+  where
+    path = capture "path" captures
+
+-- | The auto-generated commit message for a publish: the page's frontmatter title, falling back to its path.
+publishMessage :: String -> String -> String
+publishMessage path markdown =
+    case frontmatterTitle markdown of
+        Just title -> "Publish " ++ title
+        Nothing -> "Publish " ++ path
+
+{- | Sends the client to @target@: an @HX-Redirect@ header for an htmx request (so
+htmx does a full navigation), or a @303@ for a plain form post. Used to leave edit
+mode after publishing or discarding.
+-}
+clientRedirect :: Http.RequestHead -> String -> Iteratee.Iter Stream.StreamError Http.Response
+clientRedirect request target =
+    if isHtmxRequest request
+        then
+            pure
+                ( Http.Response
+                    Http.okStatus
+                    [(Http.normaliseHeaderName (BS.pack "HX-Redirect"), BS.pack target)]
+                    (Http.StrictBody BS.empty)
+                )
+        else pure (seeOtherResponse target)
 
 {- | Sync the page's @images.yaml@ @short_title@s to the alt-derived values the
 editor sends with a tree save (RFC-0019, ADR-049): @image_count@ indexed

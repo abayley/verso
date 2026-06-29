@@ -21,6 +21,7 @@ module Verso.Git (
     gitAvailable,
     ensureRepository,
     commitPaths,
+    commitAll,
     logForPath,
 ) where
 
@@ -99,6 +100,17 @@ with stderr on error.
 commitPaths :: FilePath -> Identity -> String -> [FilePath] -> IO CommitResult
 commitPaths root author message paths = do
     mapM_ (\p -> git root ["add", "--", p]) paths
+    commitStaged root author message
+
+{- | Stages every change in the tree (@git add -A@) and commits it as one
+revision. This is the "commit the resulting tree state" form used by Publish and
+structural operations, which can each touch a page plus its sidecar metadata,
+assets, and (for moves) rewritten referrers and listings. Returns
+'NothingToCommit' when nothing changed.
+-}
+commitAll :: FilePath -> Identity -> String -> IO CommitResult
+commitAll root author message = do
+    _ <- git root ["add", "-A"]
     commitStaged root author message
 
 {- | Commits whatever is currently staged, attributed to @author@. Detects an

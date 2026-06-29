@@ -60,6 +60,17 @@ spec =
             fmap Git.revAuthor (listToMaybe revs) `shouldBe` Just "Test Author"
             fmap Git.revSubject (listToMaybe revs) `shouldBe` Just "Add page"
 
+        it "commits all tree changes in one revision (commitAll)" $ do
+            root <- freshRepo
+            writeText (root ++ "/x.md") "x body"
+            writeText (root ++ "/y.md") "y body"
+            result <- Git.commitAll root author "Publish batch"
+            isCommitted result `shouldBe` True
+            rx <- Git.logForPath root "x.md"
+            ry <- Git.logForPath root "y.md"
+            length rx `shouldBe` 1
+            length ry `shouldBe` 1
+
         it "reports nothing to commit when there is no change" $ do
             root <- freshRepo
             writeText (root ++ "/page.md") "# Hello"

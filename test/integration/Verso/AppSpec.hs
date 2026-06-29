@@ -3,10 +3,12 @@ module Verso.AppSpec (spec) where
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified MicroHttp.Http as Http
+import qualified MicroHttp.Process as Process
 import qualified MicroHttp.Server as Server
 import qualified System.Directory as Directory
 import Test.Hspec
 import qualified Verso.App as App
+import qualified Verso.Git as Git
 
 spec :: Spec
 spec = do
@@ -290,6 +292,39 @@ spec = do
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
                     (BS.pack (getRequest "/documents/sec/page.md?edit"))
             fmap (bodyContains (BS.pack "Drafted heading")) outcome `shouldBe` Right True
+    describe "Verso.App publish and discard (RFC-0032)" $ do
+        it "given a staged draft, when publishing, then the page is written, committed, and the draft cleared" $ do
+            root <- setupVersionedFixture
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Published+content"))
+            outcome <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md?publish" "markdown=%23+Published+content"))
+            live <- readFile (root ++ "/sec/page.md")
+            stillDrafted <- Directory.doesFileExist (treeDraftRoot ++ "/sec/page.md")
+            revs <- Git.logForPath root "sec/page.md"
+            live `shouldBe` "# Published content"
+            stillDrafted `shouldBe` False
+            any ((== "anonymous") . Git.revAuthor) revs `shouldBe` True
+            fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 303
+            fmap locationOf outcome `shouldBe` Right (Just (BS.pack "/documents/sec/page.md"))
+        it "given a staged draft, when discarding, then the draft is removed and the live page is unchanged" $ do
+            root <- setupVersionedFixture
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Throwaway+draft"))
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md?discard-draft" ""))
+            stillDrafted <- Directory.doesFileExist (treeDraftRoot ++ "/sec/page.md")
+            live <- readFile (root ++ "/sec/page.md")
+            stillDrafted `shouldBe` False
+            live `shouldBe` "# Hello tree\n\nA tree document."
 
 getRequest :: String -> String
 getRequest target =
@@ -365,3 +400,15 @@ documentFile =
 treeDraftRoot :: FilePath
 treeDraftRoot =
     "build/tree-drafts"
+
+-- | A fresh, git-initialised tree fixture (with empty drafts) for the RFC-0032 publish tests.
+setupVersionedFixture :: IO FilePath
+setupVersionedFixture = do
+    let root = "build/tree-versioned"
+    _ <- Process.runProcess "rm" ["-rf", root] Nothing Nothing
+    _ <- Process.runProcess "rm" ["-rf", treeDraftRoot] Nothing Nothing
+    Directory.createDirectoryIfMissing True (root ++ "/sec")
+    writeFile (root ++ "/index.md") "# Home\n"
+    writeFile (root ++ "/sec/page.md") "# Hello tree\n\nA tree document."
+    _ <- Git.ensureRepository root (Git.Identity "Verso Import" "verso@verso.local")
+    return root

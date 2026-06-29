@@ -448,19 +448,27 @@ server.
 
 ## Rollout Plan
 
-1. Phase 0 — `MicroHttp.Process` framework primitive (`runProcess`, `ProcResult`)
-   with its test suite. No app behaviour change.
-2. Phase 1 — `Verso.Git` wrapper and `ensureRepository`; startup git check and
-   one-time import commit behind `versioning_enabled`. No editing change yet.
-3. Phase 2 — Draft staging: `draft_root`, autosave-to-draft, edit-resumes-draft,
-   read-view draft marker. Publish not wired yet (drafts accumulate).
-4. Phase 3 — `Verso.Identity` header-derived identity with a configured default.
-5. Phase 4 — Publish flow (commit on publish), discard-draft, and the
-   Publish/Edit chrome replacing View/Edit.
-6. Phase 5 — Structural-operation commits and draft consistency on move/delete.
-7. Phase 6 — Revision history view, diff of two revisions, and rollback.
-8. Phase 7 — CONTEXT.md glossary additions and ADR-070 (and any further ADRs for
-   the subprocess primitive and the in-place-git decision).
+Phases are completed as committed green slices (the order is pragmatic, not
+strictly sequential: the configuration-agnostic backend slices land first, the
+browser-driven editor/visual slices follow).
+
+- [x] Phase 0 — `MicroHttp.Process` framework primitive (`runProcess`,
+  `ProcResult`) with its test suite. No app behaviour change.
+- [x] Phase 1 — `Verso.Git` wrapper (`ensureRepository`, `commitPaths`,
+  `logForPath`, `gitAvailable`), integration-tested against a real repository.
+- [x] Phase 3 — `Verso.Identity` header-derived identity with a configured
+  default, and the five `VERSO_` config keys.
+- [ ] Phase 2 — Draft staging: autosave-to-draft, edit-resumes-draft, read-view
+  draft marker, and the startup git check + import commit behind
+  `versioning_enabled`. Publish not wired yet (drafts accumulate).
+- [ ] Phase 4 — Publish flow (commit on publish), discard-draft, and the
+  Publish/Edit chrome replacing View/Edit (browser-first).
+- [ ] Phase 5 — Structural-operation commits and draft consistency on
+  move/delete (draft to trash on delete).
+- [ ] Phase 6 — Revision history view, word/line diff of two revisions, and
+  rollback (browser-first).
+- [ ] Phase 7 — CONTEXT.md glossary additions and ADR-070 (and any further ADRs
+  for the subprocess primitive and the in-place-git decision).
 
 ### Rollout Plan Escape Hatch
 

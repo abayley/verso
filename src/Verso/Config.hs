@@ -32,6 +32,11 @@ data VersoConfig = VersoConfig
     , logMaxBytes :: Int
     , logKeep :: Int
     , staticMounts :: [(String, String)]
+    , versioningEnabled :: Bool
+    , draftRoot :: String
+    , identityHeader :: String
+    , identityDefault :: String
+    , identityEmailDomain :: String
     }
     deriving (Eq, Show)
 
@@ -52,6 +57,11 @@ appEnvKeys =
     , "log_max_bytes"
     , "log_keep"
     , "static_mounts"
+    , "versioning_enabled"
+    , "draft_root"
+    , "identity_header"
+    , "identity_default"
+    , "identity_email_domain"
     ]
 
 -- | The default log-rotation threshold in bytes (10 MiB) and retained-file count (RFC-0024).
@@ -70,6 +80,7 @@ fromConfig :: Config.Config -> Either Config.ConfigError VersoConfig
 fromConfig cfg = do
     maxBytes <- Config.configInt "log_max_bytes" defaultLogMaxBytes cfg
     keep <- Config.configInt "log_keep" defaultLogKeep cfg
+    versioning <- Config.configBool "versioning_enabled" True cfg
     pure
         VersoConfig
             { documentTreeRoot = Config.configString "document_tree_root" "" cfg
@@ -84,6 +95,11 @@ fromConfig cfg = do
             , logMaxBytes = maxBytes
             , logKeep = keep
             , staticMounts = Config.configMounts "static_mounts" cfg
+            , versioningEnabled = versioning
+            , draftRoot = Config.configString "draft_root" "data/drafts" cfg
+            , identityHeader = Config.configString "identity_header" "X-Remote-User" cfg
+            , identityDefault = Config.configString "identity_default" "anonymous" cfg
+            , identityEmailDomain = Config.configString "identity_email_domain" "verso.local" cfg
             }
 
 {- | Loads the configuration file, layering the framework's @MICROHTTP_@ overlay

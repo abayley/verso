@@ -24,6 +24,7 @@ import qualified Verso.ConfigSpec as VersoConfigSpec
 import qualified Verso.DocumentLinksSpec as DocumentLinksSpec
 import qualified Verso.DocumentListingSpec as DocumentListingSpec
 import qualified Verso.DocumentMetaSpec as DocumentMetaSpec
+import qualified Verso.IdentitySpec as IdentitySpec
 import qualified Verso.LinkFingerprintSpec as LinkFingerprintSpec
 import qualified Verso.LinkIndexSpec as LinkIndexSpec
 import qualified Verso.LinkIndexStoreSpec as LinkIndexStoreSpec
@@ -59,6 +60,7 @@ main = hspec $ do
     MiddlewareSpec.spec
     SocketAddrSpec.spec
     ProcessSpec.spec
+    IdentitySpec.spec
     OperationLogSpec.spec
     AppSpec.spec
     VersoConfigSpec.spec

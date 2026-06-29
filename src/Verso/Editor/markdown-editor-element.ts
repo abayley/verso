@@ -686,27 +686,66 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /**
-     * The read/edit navigation link for tree documents (RFC-0020): "Edit" in the read view (-> `?edit`) and
-     * "View" in the edit view (-> the plain read URL). Plain navigation, so it works without JavaScript.
+     * The read/edit toggle for tree documents. In the read view it is an "Edit" link (-> `?edit`), with an
+     * "(unpublished draft)" marker appended when the page has a staged draft (RFC-0032, signalled by the
+     * server's `data-has-draft` attribute). In the edit view it is a "Publish" button (RFC-0032): publishing
+     * commits the staged edit to the tree and exits to the read view -- the way to leave edit mode. The "Edit"
+     * link is plain navigation (works without JavaScript); Publish needs JavaScript, as editing itself does.
      * Returns null outside tree mode, where the read/edit selectors do not apply.
      */
-    private createReadEditLink(): HTMLAnchorElement | null {
+    private createReadEditLink(): HTMLElement | null {
         if (!this.isTreeMode()) {
             return null;
         }
 
-        const document = this.getAttribute("data-document") ?? "";
-        const link = window.document.createElement("a");
-        link.className = "markdown-editor__view-toggle";
+        const documentPath = this.getAttribute("data-document") ?? "";
+        const group = window.document.createElement("span");
+        group.className = "markdown-editor__view-toggle-group";
+
         if (this.isReadonly()) {
-            link.href = `/documents/${document}?edit`;
+            const link = window.document.createElement("a");
+            link.className = "markdown-editor__view-toggle";
+            link.href = `/documents/${documentPath}?edit`;
             link.textContent = "Edit";
+            group.append(link);
+
+            if (this.hasAttribute("data-has-draft")) {
+                const marker = window.document.createElement("span");
+                marker.className = "markdown-editor__draft-marker";
+                marker.textContent = "(unpublished draft)";
+                group.append(marker);
+            }
         } else {
-            link.href = `/documents/${document}`;
-            link.textContent = "View";
+            const publish = window.document.createElement("button");
+            publish.type = "button";
+            publish.className = "markdown-editor__view-toggle markdown-editor__publish";
+            publish.textContent = "Publish";
+            publish.addEventListener("click", (): void => {
+                void this.publishDocument(documentPath);
+            });
+            group.append(publish);
         }
 
-        return link;
+        return group;
+    }
+
+    /**
+     * Publishes the staged edit (RFC-0032): posts the current document (and image metadata, as autosave does)
+     * to `?publish`, which commits it to the tree and clears the draft, then navigates to the read view.
+     */
+    private async publishDocument(documentPath: string): Promise<void> {
+        const parameters: Record<string, string> = { markdown: this.documentMarkdown() };
+        this.attachImageMetadata(parameters);
+
+        try {
+            await fetch(`/documents/${documentPath}?publish`, {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams(parameters).toString(),
+            });
+        } finally {
+            window.location.href = `/documents/${documentPath}`;
+        }
     }
 
     /** Creates the floating Lit command bar and routes its command events to the active editor. */

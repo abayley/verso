@@ -652,7 +652,7 @@ treeGet versioning editorThemeDefault root captures request
     | not (isMarkdownPath path) = treeServeFile root path
     | hasQueryFlag "edit" request = treeEdit versioning editorThemeDefault root path request
     | hasQueryFlag "raw" request = treeServeFile root path
-    | otherwise = treeRead editorThemeDefault root path request
+    | otherwise = treeRead versioning editorThemeDefault root path request
   where
     -- The tree root (@/documents@ or @/documents/@) resolves to its @index.md@ page.
     path = case capture "path" captures of
@@ -680,14 +680,14 @@ treeEdit versioning editorThemeDefault root path request =
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
             breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
             spine <- Iteratee.liftIO (treeSpineFor root path)
-            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True True attachments breadcrumbs spine Nothing))
+            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True True (Maybe.isJust mDraft) attachments breadcrumbs spine Nothing))
 
 {- | Renders the read-only view for a tree document (the default @GET@, RFC-0020):
 the editor shell with editing disabled. A missing page is a @404@ -- reading never
 seeds (that stays an @?edit@ affordance).
 -}
-treeRead :: String -> FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
-treeRead editorThemeDefault root path request =
+treeRead :: Versioning -> String -> FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
+treeRead versioning editorThemeDefault root path request =
     case Static.resolveStaticPath root (pathSegments path) of
         Nothing -> pure treeNotFound
         Just fsPath -> do
@@ -699,7 +699,12 @@ treeRead editorThemeDefault root path request =
                     attachments <- Iteratee.liftIO (loadPageAttachments root path)
                     breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
                     spine <- Iteratee.liftIO (treeSpineFor root path)
-                    pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True False attachments breadcrumbs spine Nothing))
+                    -- RFC-0032: flag an unpublished draft so the read view can mark it next to "Edit".
+                    hasDraft <-
+                        if versioningOn versioning
+                            then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
+                            else pure False
+                    pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True False hasDraft attachments breadcrumbs spine Nothing))
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
 treeServeFile :: FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
@@ -1483,7 +1488,7 @@ editDocument :: String -> DocumentStore -> Router.Handler
 editDocument editorThemeDefault store captures request = do
     let docId = documentId captures
     content <- Iteratee.liftIO (loadDocument store docId)
-    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault (BS.pack content) False True [] [] "" Nothing))
+    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault (BS.pack content) False True False [] [] "" Nothing))
 
 -- | The flat-mode handler that serves a document's raw Markdown.
 showDocument :: DocumentStore -> Router.Handler
@@ -1506,7 +1511,7 @@ saveDocument editorThemeDefault store captures request = do
         Just err
             | isHtmxRequest request -> pure (htmlResponseChunks (validationStatusFragment err))
             | otherwise ->
-                pure (documentResponse (editorPage docId Nothing editorThemeDefault (BS.pack markdown) False True [] [] "" (Just err)))
+                pure (documentResponse (editorPage docId Nothing editorThemeDefault (BS.pack markdown) False True False [] [] "" (Just err)))
         Nothing -> do
             Iteratee.liftIO (saveDocumentContent store docId markdown)
             if isHtmxRequest request
@@ -1715,8 +1720,8 @@ in form submission through @ElementInternals@, and htmx autosaves; the textarea
 is disabled so it does not double-submit. @maybeError@ re-renders a validation
 message after a failed ordinary post.
 -}
-editorPage :: String -> Maybe String -> String -> BS.ByteString -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Maybe String -> Html.Html ()
-editorPage docId mode themeDefault content treeMode editable attachments breadcrumbs treeSpine maybeError =
+editorPage :: String -> Maybe String -> String -> BS.ByteString -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Maybe String -> Html.Html ()
+editorPage docId mode themeDefault content treeMode editable hasDraft attachments breadcrumbs treeSpine maybeError =
     Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
@@ -1740,17 +1745,17 @@ editorPage docId mode themeDefault content treeMode editable attachments breadcr
                         ]
                         $ do
                             maybe (return ()) validationStatusFragment maybeError
-                            editorElement docId mode treeMode editable attachments breadcrumbs treeSpine content
+                            editorElement docId mode treeMode editable hasDraft attachments breadcrumbs treeSpine content
                             Html.custom "noscript" [] $
                                 Html.button_ [Html.attr "type" "submit"] (Html.text "Save")
-                    else editorElement docId mode treeMode editable attachments breadcrumbs treeSpine content
+                    else editorElement docId mode treeMode editable hasDraft attachments breadcrumbs treeSpine content
 
 {- | The @\<markdown-editor\>@ custom element with its server-set attributes and the
 no-script @\<textarea\>@ fallback holding the document. @data-readonly@ is set in the
 read view (RFC-0020); the element disables editing and hides the editing chrome.
 -}
-editorElement :: String -> Maybe String -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> BS.ByteString -> Html.Html ()
-editorElement docId mode treeMode editable attachments breadcrumbs treeSpine content =
+editorElement :: String -> Maybe String -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> BS.ByteString -> Html.Html ()
+editorElement docId mode treeMode editable hasDraft attachments breadcrumbs treeSpine content =
     Html.custom
         "markdown-editor"
         ( [Html.attr "name" "markdown", Html.attr "data-document" docId]
@@ -1760,6 +1765,8 @@ editorElement docId mode treeMode editable attachments breadcrumbs treeSpine con
             ++ [Html.attr "data-breadcrumbs" (breadcrumbsJson breadcrumbs) | not (null breadcrumbs)]
             ++ [Html.attr "data-tree-spine" treeSpine | treeMode, not (null treeSpine)]
             ++ [Html.attr "data-readonly" "" | not editable]
+            -- RFC-0032: marks a page that has an unpublished draft, so the read view can flag it.
+            ++ [Html.attr "data-has-draft" "" | hasDraft]
         )
         ( Html.custom
             "textarea"

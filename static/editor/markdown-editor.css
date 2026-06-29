@@ -452,6 +452,31 @@ a.markdown-editor__crumb:hover {
   color: var(--markdown-editor-text);
 }
 
+/* RFC-0032: the toggle group holds the Edit/Publish control and the draft marker, kept left-aligned. */
+.markdown-editor__view-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-right: auto;
+}
+
+.markdown-editor__view-toggle-group .markdown-editor__view-toggle {
+  margin-right: 0;
+}
+
+.markdown-editor__publish {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+
+.markdown-editor__draft-marker {
+  color: var(--markdown-editor-muted);
+  font-size: 0.85em;
+  font-style: italic;
+}
+
 .markdown-editor__mode-group,
 .markdown-editor__width-group,
 .markdown-editor__theme-group {

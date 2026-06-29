@@ -353,6 +353,48 @@ spec = do
             BS.isInfixOf (BS.pack "Delete sec/page.md") (BS.pack deleteSubject) `shouldBe` True
             draftAfterRestore `shouldBe` True
 
+    describe "Verso.App revision history and rollback (RFC-0032)" $ do
+        it "lists a page's revisions in the history view" $ do
+            root <- setupVersionedFixture
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md?publish" "markdown=%23+Version+one"))
+            history <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (getRequest "/documents/sec/page.md?history"))
+            fmap (Http.statusCode . Http.responseStatus) history `shouldBe` Right 200
+            fmap (bodyContains (BS.pack "Revision history")) history `shouldBe` Right True
+            fmap (bodyContains (BS.pack "anonymous")) history `shouldBe` Right True
+        it "rolls a page back to an earlier revision as a new commit" $ do
+            root <- setupVersionedFixture
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md?publish" "markdown=%23+Version+one"))
+            v1Hash <- gitRevParse root "HEAD"
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md?publish" "markdown=%23+Version+two"))
+            liveAfterV2 <- readFile (root ++ "/sec/page.md")
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md?rollback" ("rev=" ++ v1Hash)))
+            liveAfterRollback <- readFile (root ++ "/sec/page.md")
+            rollbackSubject <- lastCommitSubject root
+            liveAfterV2 `shouldBe` "# Version two"
+            liveAfterRollback `shouldBe` "# Version one"
+            BS.isInfixOf (BS.pack "Roll back") (BS.pack rollbackSubject) `shouldBe` True
+
+-- | The commit hash a ref resolves to in the repository at @root@ (newline stripped).
+gitRevParse :: FilePath -> String -> IO String
+gitRevParse root ref = do
+    res <- Process.runProcess "git" ["-C", root, "rev-parse", ref] Nothing Nothing
+    return (filter (/= '\n') (BS.unpack (Process.procOut res)))
+
 -- | The subject line of the latest git commit in the repository at @root@.
 lastCommitSubject :: FilePath -> IO String
 lastCommitSubject root = do

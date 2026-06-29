@@ -78,6 +78,17 @@ spec =
             again <- Git.commitPaths root author "No change" ["page.md"]
             again `shouldBe` Git.NothingToCommit
 
+        it "reads a page at a revision and diffs two revisions" $ do
+            root <- freshRepo
+            writeText (root ++ "/p.md") "alpha beta\n"
+            c1 <- Git.commitPaths root author "v1" ["p.md"]
+            writeText (root ++ "/p.md") "alpha gamma\n"
+            c2 <- Git.commitPaths root author "v2" ["p.md"]
+            atV1 <- Git.showFileAtRevision root (hashOf c1) "p.md"
+            atV1 `shouldBe` BS.pack "alpha beta\n"
+            diff <- Git.diffBetween root (hashOf c1) (hashOf c2) "p.md"
+            (("beta" `isIn` diff) && ("gamma" `isIn` diff)) `shouldBe` True
+
         it "follows a page's history across a rename" $ do
             root <- freshRepo
             writeText (root ++ "/a.md") "stable content"
@@ -89,3 +100,6 @@ spec =
   where
     listToMaybe [] = Nothing
     listToMaybe (x : _) = Just x
+    hashOf (Git.Committed h) = h
+    hashOf _ = ""
+    isIn needle haystack = BS.isInfixOf (BS.pack needle) (BS.pack haystack)

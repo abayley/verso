@@ -23,6 +23,8 @@ module Verso.Git (
     commitPaths,
     commitAll,
     logForPath,
+    diffBetween,
+    showFileAtRevision,
 ) where
 
 import qualified Data.ByteString.Char8 as BS
@@ -150,6 +152,24 @@ logForPath root path = do
     case Process.procExit res of
         Exit.ExitSuccess -> pure (parseLog (Process.procOut res))
         _ -> pure []
+
+{- | The unified diff of a page between two revisions, as git's standard
+line-based diff text, for the caller to render with per-line add\/remove
+highlighting. Empty when the command fails.
+-}
+diffBetween :: FilePath -> String -> String -> FilePath -> IO String
+diffBetween root fromRev toRev path = do
+    res <- git root ["diff", fromRev, toRev, "--", path]
+    pure (BS.unpack (Process.procOut res))
+
+{- | A page's exact content at a revision (@git show \<rev\>:\<path\>@), as bytes
+so it round-trips losslessly; empty bytes when the path did not exist there or the
+command fails. Used by rollback.
+-}
+showFileAtRevision :: FilePath -> String -> FilePath -> IO BS.ByteString
+showFileAtRevision root rev path = do
+    res <- git root ["show", rev ++ ":" ++ path]
+    pure (case Process.procExit res of Exit.ExitSuccess -> Process.procOut res; _ -> BS.empty)
 
 -- | The @--format@ string: fields separated by a unit-separator byte that cannot appear in the values.
 logFormat :: String

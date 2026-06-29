@@ -469,8 +469,12 @@ browser-driven editor/visual slices follow).
   the resulting tree state via `commitAll`) and draft consistency: a move
   relocates the page's draft, a delete stashes it into the trash entry and
   restore brings it back. (Draft consistency through undo is a known gap.)
-- [ ] Phase 6 — Revision history view, word/line diff of two revisions, and
-  rollback (browser-first).
+- [x] Phase 6 — Revision history view (`?history`, lists revisions with a
+  compare form and per-row roll-back), line-highlighted diff of two revisions
+  (`?diff`), rollback as a new forward-only commit (`?rollback`), and a
+  "Revision history" link in the metadata pane. Backend covered by integration
+  tests (history returns the revision list; rollback reverts content and commits
+  "Roll back ..."); the standalone history/diff pages are server-rendered HTML.
 - [ ] Phase 7 — CONTEXT.md glossary additions and ADR-070 (and any further ADRs
   for the subprocess primitive and the in-place-git decision).
 

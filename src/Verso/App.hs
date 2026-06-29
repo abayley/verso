@@ -735,6 +735,8 @@ otherwise the file served statically (raw Markdown, images, attachments).
 treeGet :: Versioning -> String -> FilePath -> Router.Handler
 treeGet versioning editorThemeDefault root captures request
     | not (isMarkdownPath path) = treeServeFile root path
+    | hasQueryFlag "history" request = treeHistory root path
+    | hasQueryFlag "diff" request = treeDiff root path request
     | hasQueryFlag "edit" request = treeEdit versioning editorThemeDefault root path request
     | hasQueryFlag "raw" request = treeServeFile root path
     | otherwise = treeRead versioning editorThemeDefault root path request
@@ -820,6 +822,7 @@ treePost versioning maint root captures request
     | hasQueryFlag "asset" request = treeUpload root captures request
     | hasQueryFlag "publish" request = treePublish versioning maint root captures request
     | hasQueryFlag "discard-draft" request = treeDiscard versioning root captures request
+    | hasQueryFlag "rollback" request = treeRollback versioning maint root captures request
     | otherwise = treeSave versioning maint root captures request
 
 -- | The maximum accepted tree asset upload size in bytes.
@@ -1491,6 +1494,127 @@ clientRedirect request target =
                     (Http.StrictBody BS.empty)
                 )
         else pure (seeOtherResponse target)
+
+{- | The revision-history view (RFC-0032): @GET /documents/\<path\>?history@ renders
+the page's git revisions (newest first) with a compare form (pick two revisions to
+diff) and a per-row roll-back button. An empty history (no repository, or an
+untracked page) renders an empty-state page.
+-}
+treeHistory :: FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
+treeHistory root path = do
+    revs <- Iteratee.liftIO (Git.logForPath root path)
+    pure (documentResponse (historyPage path revs))
+
+{- | The diff view (RFC-0032): @GET /documents/\<path\>?diff&from=\<rev\>&to=\<rev\>@
+renders the unified diff of the page between the two revisions with per-line
+add\/remove highlighting.
+-}
+treeDiff :: FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
+treeDiff root path request = do
+    let fromRev = queryValue "from" request
+        toRev = queryValue "to" request
+    diff <- Iteratee.liftIO (Git.diffBetween root fromRev toRev path)
+    pure (documentResponse (diffPage path fromRev toRev diff))
+
+{- | The rollback action (RFC-0032): @POST /documents/\<path\>?rollback@ with a
+@rev@ field restores the page's content at that revision, writes it through the
+publish-time path, commits it as a new revision (forward-only -- history is never
+rewritten), and returns to the read view.
+-}
+treeRollback :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
+treeRollback versioning maint root captures request = do
+    bodyBytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) treeCreateMaxBytes
+    let fields = formFields (BS.unpack bodyBytes)
+        rev = capture "rev" fields
+        path = capture "path" captures
+    case Static.resolveStaticPath root (pathSegments path) of
+        Nothing -> pure treeNotFound
+        Just fsPath -> do
+            content <- Iteratee.liftIO (Git.showFileAtRevision root rev path)
+            if BS.null content
+                then pure (statusResponse 409 "Conflict" "cannot read that revision\n")
+                else do
+                    Iteratee.liftIO (BS.writeFile fsPath content)
+                    Iteratee.liftIO (onSave maint path)
+                    let author = Identity.currentIdentity (versioningIdentity versioning) request
+                    _ <- Iteratee.liftIO (Git.commitAll root author ("Roll back " ++ path ++ " to " ++ rev))
+                    clientRedirect request ("/documents/" ++ path)
+
+-- | The full-page shell shared by the history and diff views (a minimal standalone HTML document).
+versionPageShell :: String -> Html.Html () -> Html.Html ()
+versionPageShell pageTitle bodyContent =
+    Html.html [Html.lang "en"] $ do
+        Html.head [] $ do
+            Html.meta [Html.attr "charset" "utf-8"]
+            Html.title [] (Html.text pageTitle)
+            Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
+        Html.body [Html.class_ "markdown-editor-page verso-version-page"] $
+            Html.main [] bodyContent
+
+-- | Renders the revision-history page: a back link, a compare form, and a table of revisions with roll-back buttons.
+historyPage :: String -> [Git.Revision] -> Html.Html ()
+historyPage path revs =
+    versionPageShell ("Revision history: " ++ path) $ do
+        Html.el "h1" [] (Html.text "Revision history")
+        Html.p [] (Html.a [Html.href ("/documents/" ++ path)] (Html.text ("\8592 " ++ path)))
+        if null revs
+            then Html.p [] (Html.text "No revisions yet.")
+            else do
+                diffCompareForm path revs
+                Html.el "table" [Html.class_ "verso-history"] $ do
+                    Html.el "thead" [] (Html.el "tr" [] (mapM_ (Html.el "th" [] . Html.text) ["When", "Who", "Message", ""]))
+                    Html.el "tbody" [] (mapM_ (revisionRow path) revs)
+
+-- | The compare form: two revision dropdowns and a submit that GETs the diff view.
+diffCompareForm :: String -> [Git.Revision] -> Html.Html ()
+diffCompareForm path revs =
+    Html.el "form" [Html.attr "method" "get", Html.attr "action" ("/documents/" ++ path), Html.class_ "verso-compare"] $ do
+        Html.input [Html.attr "type" "hidden", Html.attr "name" "diff", Html.attr "value" ""]
+        Html.text "Compare "
+        revSelect "from" revs
+        Html.text " to "
+        revSelect "to" revs
+        Html.text " "
+        Html.el "button" [Html.attr "type" "submit"] (Html.text "Compare")
+  where
+    revSelect name rs = Html.el "select" [Html.attr "name" name] (mapM_ option rs)
+    option r = Html.el "option" [Html.attr "value" (Git.revHash r)] (Html.text (Git.revShort r ++ " - " ++ Git.revSubject r))
+
+-- | One history-table row: timestamp, author, subject, and a roll-back form.
+revisionRow :: String -> Git.Revision -> Html.Html ()
+revisionRow path rev =
+    Html.el "tr" [] $ do
+        Html.el "td" [] (Html.text (Git.revTimestamp rev))
+        Html.el "td" [] (Html.text (Git.revAuthor rev))
+        Html.el "td" [] (Html.text (Git.revSubject rev ++ " (" ++ Git.revShort rev ++ ")"))
+        Html.el "td" [] $
+            Html.el "form" [Html.attr "method" "post", Html.attr "action" ("/documents/" ++ path ++ "?rollback")] $ do
+                Html.input [Html.attr "type" "hidden", Html.attr "name" "rev", Html.attr "value" (Git.revHash rev)]
+                Html.el "button" [Html.attr "type" "submit"] (Html.text "Roll back to this")
+
+-- | Renders the diff page: a back link and the unified diff with per-line add\/remove highlighting.
+diffPage :: String -> String -> String -> String -> Html.Html ()
+diffPage path fromRev toRev diff =
+    versionPageShell ("Diff: " ++ path) $ do
+        Html.el "h1" [] (Html.text "Diff")
+        Html.p [] (Html.a [Html.href ("/documents/" ++ path ++ "?history")] (Html.text "\8592 history"))
+        Html.p [] (Html.text (shortRev fromRev ++ " \8594 " ++ shortRev toRev))
+        if null diff
+            then Html.p [] (Html.text "No differences.")
+            else Html.el "pre" [Html.class_ "verso-diff"] (mapM_ diffLine (lines diff))
+  where
+    shortRev = take 12
+    diffLine l = Html.el "div" [Html.class_ (diffLineClass l)] (Html.text l)
+
+-- | Classifies a unified-diff line for CSS styling: meta header, hunk header, addition, removal, or context.
+diffLineClass :: String -> String
+diffLineClass line = case line of
+    ('+' : '+' : '+' : _) -> "verso-diff-meta"
+    ('-' : '-' : '-' : _) -> "verso-diff-meta"
+    ('@' : '@' : _) -> "verso-diff-hunk"
+    ('+' : _) -> "verso-diff-add"
+    ('-' : _) -> "verso-diff-del"
+    _ -> "verso-diff-ctx"
 
 {- | Sync the page's @images.yaml@ @short_title@s to the alt-derived values the
 editor sends with a tree save (RFC-0019, ADR-049): @image_count@ indexed

@@ -449,6 +449,7 @@ export class MarkdownEditorElement extends HTMLElement {
             );
             this.attachmentPanel.setAttachments(parseEmbeddedAttachments(this.getAttribute("data-attachments")));
             this.sidebar.append(this.attachmentPanel.element());
+            this.sidebar.append(this.createHistoryPanel());
             if (!this.isReadonly()) {
                 this.enableAttachmentDrop(this.body);
             }
@@ -746,6 +747,25 @@ export class MarkdownEditorElement extends HTMLElement {
         } finally {
             window.location.href = `/documents/${documentPath}`;
         }
+    }
+
+    /** The metadata-pane panel linking to the page's revision history (RFC-0032), tree mode only. */
+    private createHistoryPanel(): HTMLElement {
+        const documentPath = this.getAttribute("data-document") ?? "";
+        const panel = document.createElement("aside");
+        panel.className = "markdown-editor__metadata-panel markdown-editor__history-panel";
+
+        const heading = document.createElement("h2");
+        heading.className = "markdown-editor__metadata-heading";
+        heading.textContent = "History";
+
+        const link = document.createElement("a");
+        link.className = "markdown-editor__history-link";
+        link.href = `/documents/${documentPath}?history`;
+        link.textContent = "Revision history";
+
+        panel.append(heading, link);
+        return panel;
     }
 
     /** Creates the floating Lit command bar and routes its command events to the active editor. */

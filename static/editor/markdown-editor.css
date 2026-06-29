@@ -477,6 +477,64 @@ a.markdown-editor__crumb:hover {
   font-style: italic;
 }
 
+.markdown-editor__history-link {
+  color: var(--markdown-editor-muted);
+  text-decoration: none;
+}
+
+.markdown-editor__history-link:hover {
+  color: var(--markdown-editor-text);
+  text-decoration: underline;
+}
+
+/* RFC-0032 revision-history and diff views (standalone pages). */
+.verso-version-page {
+  max-width: 70rem;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.verso-history {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.verso-history th,
+.verso-history td {
+  text-align: left;
+  padding: 0.35rem 0.75rem;
+  border-bottom: 1px solid var(--markdown-editor-border, #ddd);
+  vertical-align: top;
+}
+
+.verso-compare {
+  margin: 1rem 0;
+}
+
+.verso-diff {
+  overflow-x: auto;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.verso-diff-add {
+  background: rgba(46, 160, 67, 0.18);
+}
+
+.verso-diff-del {
+  background: rgba(248, 81, 73, 0.18);
+}
+
+.verso-diff-hunk {
+  color: var(--markdown-editor-muted);
+}
+
+.verso-diff-meta {
+  color: var(--markdown-editor-muted);
+  opacity: 0.7;
+}
+
 .markdown-editor__mode-group,
 .markdown-editor__width-group,
 .markdown-editor__theme-group {

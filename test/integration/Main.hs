@@ -11,6 +11,7 @@ import qualified MicroHttp.StreamSpec as StreamSpec
 import qualified System.IO as IO
 import Test.Hspec
 import qualified Verso.AppSpec as AppSpec
+import qualified Verso.GitSpec as GitSpec
 
 main :: IO ()
 main = do
@@ -24,4 +25,5 @@ main = do
         ServerSocketSpec.spec
         StaticSpec.spec
         StreamSpec.spec
+        GitSpec.spec
         AppSpec.spec

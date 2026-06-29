@@ -11,6 +11,7 @@ import qualified MicroHttp.IterateeSpec as IterateeSpec
 import qualified MicroHttp.LogSpec as LogSpec
 import qualified MicroHttp.MiddlewareSpec as MiddlewareSpec
 import qualified MicroHttp.Network.SocketAddrSpec as SocketAddrSpec
+import qualified MicroHttp.ProcessSpec as ProcessSpec
 import qualified MicroHttp.RouterSpec as RouterSpec
 import qualified MicroHttp.ServerSpec as ServerSpec
 import qualified MicroHttp.StaticSpec as StaticSpec
@@ -57,6 +58,7 @@ main = hspec $ do
     LogSpec.spec
     MiddlewareSpec.spec
     SocketAddrSpec.spec
+    ProcessSpec.spec
     OperationLogSpec.spec
     AppSpec.spec
     VersoConfigSpec.spec

@@ -14,11 +14,11 @@ superseded_by: null
 
 # Git-backed page versioning with drafts, publish, and revision history
 
-| Stage     | Timestamp  |
-| --------- | ---------- |
-| Authored  | 2026-06-30 |
-| Started   |            |
-| Completed |            |
+| Stage     | Timestamp              |
+| --------- | ---------------------- |
+| Authored  | 2026-06-30 10:18 NZST  |
+| Started   | 2026-06-30 10:21 NZST  |
+| Completed |                        |
 
 ## Summary
 
@@ -138,18 +138,23 @@ libc FFI shim) exposing one primitive:
 
 ```haskell
 data ProcResult = ProcResult
-    { procExit :: ExitCode  -- decoded from WEXITSTATUS
-    , procOut  :: String    -- captured stdout
-    , procErr  :: String    -- captured stderr
+    { procExit :: ExitCode    -- decoded from WEXITSTATUS
+    , procOut  :: ByteString  -- captured stdout
+    , procErr  :: ByteString  -- captured stderr
     }
 
 runProcess
-    :: FilePath        -- executable, PATH-resolved by execvp
-    -> [String]        -- argv (argv[0] set to the executable); no shell, no quoting
-    -> Maybe FilePath  -- optional working directory (chdir in the child)
-    -> Maybe String    -- optional stdin
+    :: FilePath          -- executable, PATH-resolved by execvp
+    -> [String]          -- argv (argv[0] set to the executable); no shell, no quoting
+    -> Maybe FilePath    -- optional working directory (chdir in the child)
+    -> Maybe ByteString  -- optional stdin
     -> IO ProcResult
 ```
+
+Output and stdin are `ByteString` (not `String`) for byte-exactness: page content
+stays bytes (the project's UTF-8/Char8 distinction, ADR-038), so `git show` of a
+page round-trips losslessly. Callers decode to text where they need it (log/diff
+parsing).
 
 Implementation (validated by spike on macOS, MicroHs 0.16.3.0):
 

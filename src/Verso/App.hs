@@ -33,6 +33,7 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
+import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http as Http
 import qualified MicroHttp.Http.Parse as Parse
@@ -149,6 +150,69 @@ versioningFromConfig vc =
 importIdentity :: VConfig.VersoConfig -> Git.Identity
 importIdentity vc = Git.Identity "Verso Import" ("verso@" ++ VConfig.identityEmailDomain vc)
 
+{- | Commits the resulting tree state after an applied structural operation
+(RFC-0032), when versioning is on. A failed commit is logged, not fatal -- the
+tree mutation already succeeded and the operation log remains the source of truth
+for replay. A no-op when versioning is off.
+-}
+commitStructural :: Versioning -> FilePath -> Git.Identity -> String -> IO ()
+commitStructural versioning root author message =
+    Monad.when (versioningOn versioning) $ do
+        result <- Git.commitAll root author message
+        case result of
+            Git.CommitFailed err -> IO.hPutStrLn IO.stderr ("git commit (structural) failed: " ++ err)
+            _ -> pure ()
+
+{- | Relocates a moved page's (or section's) staged draft alongside the move
+(RFC-0032), so a draft is not orphaned at its old tree path. A no-op when
+versioning is off or there is no draft.
+-}
+relocateDraftForMove :: Versioning -> String -> String -> IO ()
+relocateDraftForMove versioning fromPath toPath =
+    Monad.when (versioningOn versioning) $ do
+        let src = Draft.draftFsPath (draftStagingRoot versioning) fromPath
+            dst = Draft.draftFsPath (draftStagingRoot versioning) toPath
+        present <- draftPathPresent src
+        Monad.when present $ do
+            Directory.createDirectoryIfMissing True (parentDirectory dst)
+            Monad.void (FileSystem.renamePath src dst)
+
+{- | Moves a deleted page's (or section's) staged draft into the trash entry
+(RFC-0032), so the draft is recoverable with the page rather than orphaned. A
+no-op when versioning is off or there is no draft.
+-}
+stashDraftToTrash :: Versioning -> FilePath -> String -> String -> IO ()
+stashDraftToTrash versioning trashRoot path tid =
+    Monad.when (versioningOn versioning) $ do
+        let src = Draft.draftFsPath (draftStagingRoot versioning) path
+        present <- draftPathPresent src
+        Monad.when present (Monad.void (FileSystem.renamePath src (trashDraftPath trashRoot tid)))
+
+{- | Restores a trashed page's staged draft back to the draft root when its trash
+entry holds one (RFC-0032), the inverse of 'stashDraftToTrash'. A no-op when
+versioning is off or the entry has no draft.
+-}
+restoreDraftFromTrash :: Versioning -> FilePath -> String -> String -> IO ()
+restoreDraftFromTrash versioning trashRoot trashId path =
+    Monad.when (versioningOn versioning) $ do
+        let src = trashDraftPath trashRoot trashId
+            dst = Draft.draftFsPath (draftStagingRoot versioning) path
+        present <- draftPathPresent src
+        Monad.when present $ do
+            Directory.createDirectoryIfMissing True (parentDirectory dst)
+            Monad.void (FileSystem.renamePath src dst)
+
+-- | The reserved location of a draft stashed inside a trash entry (a page draft file or a section draft subtree).
+trashDraftPath :: FilePath -> String -> FilePath
+trashDraftPath trashRoot tid = trashRoot ++ "/" ++ tid ++ "/__draft"
+
+-- | Whether a draft path exists as either a page draft (file) or a section draft (directory).
+draftPathPresent :: FilePath -> IO Bool
+draftPathPresent path = do
+    isFile <- Directory.doesFileExist path
+    isDir <- Directory.doesDirectoryExist path
+    pure (isFile || isDir)
+
 -- | The bare flat-mode application backed by a filesystem document root.
 appWithDocumentRoot :: FilePath -> Server.Application
 appWithDocumentRoot root =
@@ -226,11 +290,11 @@ treeRoutes writeLock indexStore versioning editorThemeDefault root logPath trash
     , Router.get "/index.html" (redirectTo "/documents/")
     , Static.static "/static/editor" "static/editor"
     , Router.get "/tree/*path" (treeChildrenHandler root)
-    , Router.post "/tree/*path" (treePostDispatch writeLock findRelevant maint root logPath trashRoot)
+    , Router.post "/tree/*path" (treePostDispatch versioning writeLock findRelevant maint root logPath trashRoot)
     , Router.get "/trash" (treeTrashListHandler trashRoot)
-    , Router.post "/trash/*id" (treeRestoreHandler writeLock maint root logPath trashRoot)
+    , Router.post "/trash/*id" (treeRestoreHandler versioning writeLock maint root logPath trashRoot)
     , Router.get "/operations" (treeOperationsHandler logPath)
-    , Router.post "/undo" (treeUndoHandler writeLock findRelevant maint root logPath trashRoot)
+    , Router.post "/undo" (treeUndoHandler versioning writeLock findRelevant maint root logPath trashRoot)
     , Router.post "/index/refresh" (treeRefreshHandler writeLock refresh)
     , Router.post "/documents/*path" (treePost versioning maint root)
     , Router.get "/documents/*path" (treeGet versioning editorThemeDefault root)
@@ -350,32 +414,40 @@ treeCreateHandler writeLock maint root captures _ = do
 {- | Dispatches a @POST /tree/*path@: a section/page move when the @?move@ flag is
 present (RFC-0027), otherwise a create (RFC-0026).
 -}
-treePostDispatch :: WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> FilePath -> Router.Handler
-treePostDispatch writeLock findRelevant maint root logPath trashRoot captures request
-    | hasQueryFlag "move" request = treeMoveHandler writeLock findRelevant maint root logPath captures
-    | hasQueryFlag "delete" request = treeDeleteHandler writeLock findRelevant maint root logPath trashRoot captures
+treePostDispatch :: Versioning -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> FilePath -> Router.Handler
+treePostDispatch versioning writeLock findRelevant maint root logPath trashRoot captures request
+    | hasQueryFlag "move" request = treeMoveHandler versioning author writeLock findRelevant maint root logPath captures
+    | hasQueryFlag "delete" request = treeDeleteHandler versioning author writeLock findRelevant maint root logPath trashRoot captures
     | otherwise = treeCreateHandler writeLock maint root captures request
+  where
+    author = Identity.currentIdentity (versioningIdentity versioning) request
 
 {- | The section-move endpoint (RFC-0027): @POST /tree/*path?move@ with form fields
 @to@ (destination parent tree path), @slug@ (optional new slug), and @confirm@
 (@true@ to apply, otherwise a dry-run preview). Returns the impact plan as JSON, or a
 @409@ with the reason on refusal (root, cycle, collision, unsafe path).
 -}
-treeMoveHandler :: WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> Router.Captures -> Iteratee.Iter Stream.StreamError Http.Response
-treeMoveHandler writeLock findRelevant maint root logPath captures = do
+treeMoveHandler :: Versioning -> Git.Identity -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> Router.Captures -> Iteratee.Iter Stream.StreamError Http.Response
+treeMoveHandler versioning author writeLock findRelevant maint root logPath captures = do
     bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) treeCreateMaxBytes
     let fields = formFields (BS.unpack bytes)
         srcRel = capture "path" captures
         confirm = capture "confirm" fields == "true"
         isPage = isMarkdownPath srcRel
         move = if isPage then TreeMove.movePage else TreeMove.moveSection
-    -- The whole mutation (move + op-log append + index relocate) runs under the write lock so a
-    -- concurrent move/delete cannot interleave it; the body read above stays outside the lock.
+    -- The whole mutation (move + op-log append + index relocate + draft relocate + commit) runs under the
+    -- write lock so a concurrent move/delete cannot interleave it; the body read above stays outside the lock.
     result <- Iteratee.liftIO $
         withWriteLock writeLock $ do
             r <- move findRelevant root srcRel (capture "to" fields) (capture "slug" fields) confirm
             recordAppliedMove logPath isPage r
             maintainMove maint r -- an applied move relocates its subtree; maintain the index in place (no walk)
+            case r of
+                Right plan
+                    | TreeMove.planApplied plan -> do
+                        relocateDraftForMove versioning (TreeMove.planFrom plan) (TreeMove.planTo plan)
+                        commitStructural versioning root author ("Move " ++ TreeMove.planFrom plan ++ " to " ++ TreeMove.planTo plan)
+                _ -> pure ()
             pure r
     pure (either (statusResponse 409 "Conflict" . (++ "\n")) (jsonResponse . TreeMove.movePlanJson) result)
 
@@ -412,8 +484,8 @@ Refuses with @409@ and the referrer list when another page links in; otherwise m
 the target to trash, appends a @delete@ record to the operation log, and returns the
 trash id. The trash id is the delete record's @seq@.
 -}
-treeDeleteHandler :: WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> FilePath -> Router.Captures -> Iteratee.Iter Stream.StreamError Http.Response
-treeDeleteHandler writeLock findRelevant maint root logPath trashRoot captures = Iteratee.liftIO $ withWriteLock writeLock $ do
+treeDeleteHandler :: Versioning -> Git.Identity -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> FilePath -> Router.Captures -> Iteratee.Iter Stream.StreamError Http.Response
+treeDeleteHandler versioning author writeLock findRelevant maint root logPath trashRoot captures = Iteratee.liftIO $ withWriteLock writeLock $ do
     let path = capture "path" captures
         isPage = isMarkdownPath path
     seqNo <- logSeq logPath
@@ -424,6 +496,9 @@ treeDeleteHandler writeLock findRelevant maint root logPath trashRoot captures =
         Right (TreeMove.Deleted tid p _) -> do
             ts <- Log.localTimestamp
             onDelete maint p
+            -- RFC-0032: stash any staged draft into the trash entry (recoverable), then commit the deletion.
+            stashDraftToTrash versioning trashRoot p tid
+            commitStructural versioning root author ("Delete " ++ p)
             appendOp
                 logPath
                 OperationLog.Operation
@@ -441,9 +516,10 @@ treeDeleteHandler writeLock findRelevant maint root logPath trashRoot captures =
 its origin (re-adding the listing), appends a @restore@ record, and returns the
 restored path; a @409@ if the origin is now occupied or the entry is missing.
 -}
-treeRestoreHandler :: WriteLock -> IndexMaintenance -> FilePath -> FilePath -> FilePath -> Router.Handler
-treeRestoreHandler writeLock maint root logPath trashRoot captures _ = Iteratee.liftIO $ withWriteLock writeLock $ do
+treeRestoreHandler :: Versioning -> WriteLock -> IndexMaintenance -> FilePath -> FilePath -> FilePath -> Router.Handler
+treeRestoreHandler versioning writeLock maint root logPath trashRoot captures request = Iteratee.liftIO $ withWriteLock writeLock $ do
     let trashId = capture "id" captures
+        author = Identity.currentIdentity (versioningIdentity versioning) request
     result <- TreeMove.restoreFromTrash root trashRoot trashId
     case result of
         Left err -> pure (statusResponse 409 "Conflict" (err ++ "\n"))
@@ -451,6 +527,9 @@ treeRestoreHandler writeLock maint root logPath trashRoot captures _ = Iteratee.
             seqNo <- logSeq logPath
             ts <- Log.localTimestamp
             onRestore maint path
+            -- RFC-0032: bring back any draft stashed with the entry, then commit the restore.
+            restoreDraftFromTrash versioning trashRoot trashId path
+            commitStructural versioning root author ("Restore " ++ path)
             appendOp
                 logPath
                 OperationLog.Operation
@@ -504,11 +583,12 @@ the log is empty, the seq is unknown, or the inverse cannot be applied (its targ
 occupied, missing, or now referenced -- so inverting a non-latest move that has since
 moved refuses cleanly rather than corrupting the tree).
 -}
-treeUndoHandler :: WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> FilePath -> Router.Handler
-treeUndoHandler writeLock findRelevant maint root logPath trashRoot _ _ = do
+treeUndoHandler :: Versioning -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> FilePath -> Router.Handler
+treeUndoHandler versioning writeLock findRelevant maint root logPath trashRoot _ request = do
     bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) treeCreateMaxBytes
     let fields = formFields (BS.unpack bytes)
         wantedSeq = parseSeq (capture "seq" fields)
+        author = Identity.currentIdentity (versioningIdentity versioning) request
     Iteratee.liftIO $ withWriteLock writeLock $ do
         ops <- OperationLog.readOperations logPath
         let chosen = case wantedSeq of
@@ -518,6 +598,11 @@ treeUndoHandler writeLock findRelevant maint root logPath trashRoot _ _ = do
             Nothing -> pure (statusResponse 409 "Conflict" "nothing to undo\n")
             Just op -> do
                 result <- applyInverse findRelevant maint root logPath trashRoot op
+                -- RFC-0032: commit the resulting tree state when the inverse applied (draft consistency
+                -- through undo is not maintained -- a known limitation noted in the RFC).
+                case result of
+                    Right _ -> commitStructural versioning root author ("Undo operation " ++ show (OperationLog.opSeq op))
+                    Left _ -> pure ()
                 pure (either (statusResponse 409 "Conflict" . (++ "\n")) jsonResponse result)
 
 -- | The first operation of a list, if any.

@@ -465,8 +465,10 @@ browser-driven editor/visual slices follow).
   and the Publish/Edit chrome replacing View/Edit. Verified end-to-end in the
   browser against a scratch versioned tree (publish writes + commits + clears the
   draft + returns to the read view; marker appears/clears correctly).
-- [ ] Phase 5 — Structural-operation commits and draft consistency on
-  move/delete (draft to trash on delete).
+- [x] Phase 5 — Structural-operation commits (move/delete/restore/undo commit
+  the resulting tree state via `commitAll`) and draft consistency: a move
+  relocates the page's draft, a delete stashes it into the trash entry and
+  restore brings it back. (Draft consistency through undo is a known gap.)
 - [ ] Phase 6 — Revision history view, word/line diff of two revisions, and
   rollback (browser-first).
 - [ ] Phase 7 — CONTEXT.md glossary additions and ADR-070 (and any further ADRs

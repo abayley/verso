@@ -2,6 +2,7 @@ module Verso.AppSpec (spec) where
 
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.List as List
 import qualified MicroHttp.Http as Http
 import qualified MicroHttp.Process as Process
 import qualified MicroHttp.Server as Server
@@ -325,6 +326,49 @@ spec = do
             live <- readFile (root ++ "/sec/page.md")
             stillDrafted `shouldBe` False
             live `shouldBe` "# Hello tree\n\nA tree document."
+    describe "Verso.App structural-op commits (RFC-0032)" $
+        it "given a deleted page with a draft, then the deletion is committed and the draft round-trips through trash on restore" $ do
+            root <- setupVersionedFixture
+            let draftPath = treeDraftRoot ++ "/sec/page.md"
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Draft+before+delete"))
+            draftBeforeDelete <- Directory.doesFileExist draftPath
+            deleteOutcome <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest "/tree/sec/page.md?delete" ""))
+            draftAfterDelete <- Directory.doesFileExist draftPath
+            deleteSubject <- lastCommitSubject root
+            -- the trash id comes from the delete response (its op-log seq), not assumed
+            let trashId = either (const "") trashIdOf deleteOutcome
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest ("/trash/" ++ trashId) ""))
+            draftAfterRestore <- Directory.doesFileExist draftPath
+            draftBeforeDelete `shouldBe` True
+            draftAfterDelete `shouldBe` False
+            BS.isInfixOf (BS.pack "Delete sec/page.md") (BS.pack deleteSubject) `shouldBe` True
+            draftAfterRestore `shouldBe` True
+
+-- | The subject line of the latest git commit in the repository at @root@.
+lastCommitSubject :: FilePath -> IO String
+lastCommitSubject root = do
+    res <- Process.runProcess "git" ["-C", root, "log", "-1", "--format=%s"] Nothing Nothing
+    return (BS.unpack (Process.procOut res))
+
+-- | Extracts the @trashId@ string from a delete response body (@{"deleted":...,"trashId":"<id>"}@).
+trashIdOf :: Http.Response -> String
+trashIdOf response = case Http.responseBody response of
+    Http.StrictBody bytes -> takeWhile (/= '"') (afterMarker "\"trashId\":\"" (BS.unpack bytes))
+    _ -> ""
+  where
+    afterMarker marker s = go (List.tails s)
+      where
+        go [] = ""
+        go (t : ts) = if marker `List.isPrefixOf` t then drop (length marker) t else go ts
 
 getRequest :: String -> String
 getRequest target =

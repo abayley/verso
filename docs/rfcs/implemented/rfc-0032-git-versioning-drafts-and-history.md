@@ -1,7 +1,7 @@
 ---
 id: RFC-0032
 name: Git-backed page versioning with drafts, publish, and revision history
-status: Draft
+status: Implemented
 owners:
     - alistair
 created: 2026-06-30
@@ -18,7 +18,7 @@ superseded_by: null
 | --------- | ---------------------- |
 | Authored  | 2026-06-30 10:18 NZST  |
 | Started   | 2026-06-30 10:21 NZST  |
-| Completed |                        |
+| Completed | 2026-06-30 11:40 NZST  |
 
 ## Summary
 
@@ -475,8 +475,10 @@ browser-driven editor/visual slices follow).
   "Revision history" link in the metadata pane. Backend covered by integration
   tests (history returns the revision list; rollback reverts content and commits
   "Roll back ..."); the standalone history/diff pages are server-rendered HTML.
-- [ ] Phase 7 — CONTEXT.md glossary additions and ADR-070 (and any further ADRs
-  for the subprocess primitive and the in-place-git decision).
+- [x] Phase 7 — CONTEXT.md glossary additions (draft, publish, revision,
+  revision history, author identity) and ADR-070 (covering the in-place-git
+  decision, the draft/publish workflow, identity, and the `MicroHttp.Process`
+  subprocess primitive).
 
 ### Rollout Plan Escape Hatch
 

@@ -48,8 +48,10 @@ An append-only log, held outside the **document tree**, of the **navigation
 tree**'s structural operations -- **moves** and deletes -- as _logical_ records
 (the intent: kind and paths), not file-level diffs (RFC-0028). It is replayed on a
 refreshed corpus to re-apply the reorganisation; undo appends each operation's
-inverse (a move's reverse move, a delete's restore).
-_Avoid_: move log (it records deletes too), history, audit trail.
+inverse (a move's reverse move, a delete's restore). Distinct from the
+**revision history** (git content history); the two coexist (RFC-0032).
+_Avoid_: move log (it records deletes too), revision history (that is the git
+history), audit trail.
 
 **Trash**:
 The area outside the **document tree** (but on the same filesystem) a deleted
@@ -58,6 +60,41 @@ record of its original tree path, so it can be restored (RFC-0028). Browsed and
 recovered through a Trash view in the **navigation tree**; restore is refused if
 the original location is now occupied.
 _Avoid_: recycle bin, archive, bin.
+
+**Draft**:
+An unpublished, staged edit of a **page** (RFC-0032). Autosave in the **edit
+view** writes the draft -- held under a draft root _outside_ the **document
+tree** -- rather than the live page, so an in-progress edit never changes what a
+reader sees and survives navigating away. Editing a page with a draft resumes it;
+the **read view** marks the page "(unpublished draft)".
+_Avoid_: working copy, scratch, autosave (autosave is the mechanism that writes a draft).
+
+**Publish**:
+The author action (RFC-0032) that promotes a **draft** into the **document
+tree** as a new **revision** and clears the draft. The **edit view**'s primary
+control is "Publish"; it commits and returns to the **read view** -- the way to
+leave edit mode.
+_Avoid_: save (save is the autosave-to-draft step), commit (the git mechanism), submit.
+
+**Revision**:
+A git commit that changed one or more **pages** (RFC-0032): a **publish**, a
+structural operation (**move**/delete/restore), or a **rollback**. Identified by
+its commit hash, timestamp, **author identity**, and message.
+_Avoid_: version (overloaded), commit (the git term), snapshot.
+
+**Revision history**:
+The ordered **revisions** affecting a **page**, read from git and followed across
+**moves** (RFC-0032). Shown in a per-page history view reachable from the
+**metadata panel**, where two revisions can be diffed and a page rolled back to an
+earlier one. Distinct from the **operation log**.
+_Avoid_: history (ambiguous -- it is the git revision history), changelog, audit log.
+
+**Author identity**:
+The faked author name attached to a **revision** and shown in the **revision
+history** (RFC-0032). Derived from a configurable request header (default
+`X-Remote-User`), falling back to a configured default name; there is no
+authentication. The single seam real auth would later replace.
+_Avoid_: user, account, login (there is no authentication).
 
 **Read view**:
 The default rendered, read-only presentation of a **page** (a plain `GET` of its

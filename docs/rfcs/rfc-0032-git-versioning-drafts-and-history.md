@@ -458,9 +458,10 @@ browser-driven editor/visual slices follow).
   `logForPath`, `gitAvailable`), integration-tested against a real repository.
 - [x] Phase 3 — `Verso.Identity` header-derived identity with a configured
   default, and the five `VERSO_` config keys.
-- [ ] Phase 2 — Draft staging: autosave-to-draft, edit-resumes-draft, read-view
-  draft marker, and the startup git check + import commit behind
-  `versioning_enabled`. Publish not wired yet (drafts accumulate).
+- [~] Phase 2 — Draft staging: `Verso.Draft` store, autosave-to-draft,
+  edit-resumes-draft, and the startup git check + import commit behind
+  `versioning_enabled` are done; the read-view draft marker is deferred to the
+  browser-first slice with the Publish/Edit chrome. Publish not wired yet.
 - [ ] Phase 4 — Publish flow (commit on publish), discard-draft, and the
   Publish/Edit chrome replacing View/Edit (browser-first).
 - [ ] Phase 5 — Structural-operation commits and draft consistency on

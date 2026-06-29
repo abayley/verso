@@ -266,6 +266,30 @@ spec = do
                            \  local_path: assets/My_Report.pdf\n\
                            \  extension: pdf\n\
                            \  external: false\n"
+    describe "Verso.App draft staging (RFC-0032)" $ do
+        it "given versioning on, when autosaving, then a draft is staged and the live page is unchanged" $ do
+            root <- setupTreeFixture
+            removeIfExists (treeDraftRoot ++ "/sec/page.md")
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Draft+edit"))
+            live <- readFile (root ++ "/sec/page.md")
+            drafted <- readFile (treeDraftRoot ++ "/sec/page.md")
+            live `shouldBe` "# Hello tree\n\nA tree document."
+            drafted `shouldBe` "# Draft edit"
+        it "given a staged draft, when editing, then the editor resumes the draft over the published page" $ do
+            root <- setupTreeFixture
+            removeIfExists (treeDraftRoot ++ "/sec/page.md")
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Drafted+heading"))
+            outcome <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (getRequest "/documents/sec/page.md?edit"))
+            fmap (bodyContains (BS.pack "Drafted heading")) outcome `shouldBe` Right True
 
 getRequest :: String -> String
 getRequest target =
@@ -336,3 +360,8 @@ documentRoot =
 documentFile :: FilePath
 documentFile =
     documentRoot ++ "/home.md"
+
+-- | The draft staging root for the RFC-0032 draft-staging tests.
+treeDraftRoot :: FilePath
+treeDraftRoot =
+    "build/tree-drafts"

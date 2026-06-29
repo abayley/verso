@@ -4,11 +4,14 @@ module Verso.App (
     DocumentStore (..),
     NodeKind (..),
     TreeNode (..),
+    Versioning (..),
+    noVersioning,
     app,
     appFromConfig,
     appWith,
     appWithDocumentRoot,
     appWithDocumentTree,
+    appWithDocumentTreeVersioned,
     appWithStore,
     childrenOf,
     clientErrorRoute,
@@ -46,6 +49,8 @@ import qualified System.IO as IO
 import qualified Verso.Attachment as Attachment
 import qualified Verso.Config as VConfig
 import qualified Verso.DocumentMeta as DocumentMeta
+import qualified Verso.Draft as Draft
+import qualified Verso.Git as Git
 import qualified Verso.LinkIndexStore as LinkIndexStore
 import qualified Verso.OperationLog as OperationLog
 import qualified Verso.TreeMove as TreeMove
@@ -86,6 +91,16 @@ appFromConfig settings vc = do
         Log.consoleLog "opening link index..."
         opened <- LinkIndexStore.openLinkIndex (VConfig.documentTreeRoot vc) (VConfig.linkIndex vc) indexStore
         Log.consoleLog (either ("link index FAILED (move/delete degraded until refresh): " ++) (const "link index ready") opened)
+    -- Ensure the document tree is a git repository when versioning is on (RFC-0032): a one-time
+    -- import commit on first run, then reused. A missing git degrades to no versioning, not a crash.
+    Monad.when (not (null (VConfig.documentTreeRoot vc)) && VConfig.versioningEnabled vc) $ do
+        available <- Git.gitAvailable
+        if not available
+            then Log.consoleLog "versioning ON but git not found on PATH (history/publish degraded)"
+            else do
+                Log.consoleLog "ensuring git repository..."
+                outcome <- Git.ensureRepository (VConfig.documentTreeRoot vc) (importIdentity vc)
+                Log.consoleLog (case outcome of Git.Initialised -> "git repository initialised (import commit)"; Git.AlreadyPresent -> "git repository present")
     -- Serialize structural tree mutations across the server's connection threads (see 'WriteLock').
     writeLock <- MVar.newMVar ()
     pure
@@ -112,9 +127,17 @@ configuredRoutes writeLock indexStore vc clientErrorSink =
                     ++ Attachment.attachmentRoutes (Attachment.fileAttachmentStore (VConfig.attachmentRoot vc))
                     ++ mounts
             treeRoot ->
-                treeRoutes writeLock indexStore (VConfig.editorTheme vc) treeRoot (VConfig.operationLog vc) (VConfig.trashRoot vc) (VConfig.linkIndex vc) ++ mounts
+                treeRoutes writeLock indexStore (versioningFromConfig vc) (VConfig.editorTheme vc) treeRoot (VConfig.operationLog vc) (VConfig.trashRoot vc) (VConfig.linkIndex vc) ++ mounts
   where
     mounts = [Static.static prefix root | (prefix, root) <- VConfig.staticMounts vc]
+
+-- | The tree handlers' versioning context, read from configuration (RFC-0032).
+versioningFromConfig :: VConfig.VersoConfig -> Versioning
+versioningFromConfig vc = Versioning (VConfig.versioningEnabled vc) (VConfig.draftRoot vc)
+
+-- | The author of the one-time import commit, with an email synthesised from the configured domain (RFC-0032).
+importIdentity :: VConfig.VersoConfig -> Git.Identity
+importIdentity vc = Git.Identity "Verso Import" ("verso@" ++ VConfig.identityEmailDomain vc)
 
 -- | The bare flat-mode application backed by a filesystem document root.
 appWithDocumentRoot :: FilePath -> Server.Application
@@ -155,6 +178,20 @@ routes editorThemeDefault store =
     , Static.static "/static/editor" "static/editor"
     ]
 
+{- | The per-request versioning context for the tree handlers (RFC-0032): whether
+draft/publish versioning is on, and the draft staging root. When off, the tree
+handlers behave as before (autosave writes the live page directly).
+-}
+data Versioning = Versioning
+    { versioningOn :: Bool
+    , draftStagingRoot :: FilePath
+    }
+    deriving (Eq, Show)
+
+-- | Versioning disabled (legacy behaviour): used by the non-versioned entry points and tests.
+noVersioning :: Versioning
+noVersioning = Versioning False ""
+
 {- | Routes that serve and edit a documentation tree on the filesystem. The whole
 tree is reachable under @/documents/@; the editor opens at a document's own URL
 with @?edit@ (so the page's base path is the file's directory and relative
@@ -163,8 +200,8 @@ and every other tree file (images, attachments, raw Markdown) is served
 statically and path-safely (reusing 'Static.resolveStaticPath'). The document id
 is the tree-relative path including the @.md@ extension.
 -}
-treeRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> String -> FilePath -> FilePath -> FilePath -> FilePath -> [Router.Route]
-treeRoutes writeLock indexStore editorThemeDefault root logPath trashRoot indexPath =
+treeRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Versioning -> String -> FilePath -> FilePath -> FilePath -> FilePath -> [Router.Route]
+treeRoutes writeLock indexStore versioning editorThemeDefault root logPath trashRoot indexPath =
     [ Router.get "/" (redirectTo "/documents/")
     , Router.get "/index.html" (redirectTo "/documents/")
     , Static.static "/static/editor" "static/editor"
@@ -175,8 +212,8 @@ treeRoutes writeLock indexStore editorThemeDefault root logPath trashRoot indexP
     , Router.get "/operations" (treeOperationsHandler logPath)
     , Router.post "/undo" (treeUndoHandler writeLock findRelevant maint root logPath trashRoot)
     , Router.post "/index/refresh" (treeRefreshHandler writeLock refresh)
-    , Router.post "/documents/*path" (treePost maint root)
-    , Router.get "/documents/*path" (treeGet editorThemeDefault root)
+    , Router.post "/documents/*path" (treePost versioning maint root)
+    , Router.get "/documents/*path" (treeGet versioning editorThemeDefault root)
     ]
   where
     -- The server backs page lookups with the warm index (no per-request walk) and
@@ -578,15 +615,22 @@ appWithDocumentTree :: String -> FilePath -> Server.Application
 appWithDocumentTree editorThemeDefault root =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
-        (treeRoutes Nothing Nothing editorThemeDefault root "data/operation_log" "data/trash" "data/link_index")
+        (treeRoutes Nothing Nothing noVersioning editorThemeDefault root "data/operation_log" "data/trash" "data/link_index")
+
+-- | A tree-mode app with draft/publish versioning on and drafts staged under @draftRoot@ (RFC-0032; tests).
+appWithDocumentTreeVersioned :: String -> FilePath -> FilePath -> Server.Application
+appWithDocumentTreeVersioned editorThemeDefault root draftRoot =
+    Router.serveRoutes
+        (Server.parseLimits Server.defaultSettings)
+        (treeRoutes Nothing Nothing (Versioning True draftRoot) editorThemeDefault root "data/operation_log" "data/trash" "data/link_index")
 
 {- | A GET under the tree: the editor page for @?edit@ on a Markdown file,
 otherwise the file served statically (raw Markdown, images, attachments).
 -}
-treeGet :: String -> FilePath -> Router.Handler
-treeGet editorThemeDefault root captures request
+treeGet :: Versioning -> String -> FilePath -> Router.Handler
+treeGet versioning editorThemeDefault root captures request
     | not (isMarkdownPath path) = treeServeFile root path
-    | hasQueryFlag "edit" request = treeEdit editorThemeDefault root path request
+    | hasQueryFlag "edit" request = treeEdit versioning editorThemeDefault root path request
     | hasQueryFlag "raw" request = treeServeFile root path
     | otherwise = treeRead editorThemeDefault root path request
   where
@@ -598,13 +642,21 @@ treeGet editorThemeDefault root captures request
 {- | Renders the editable editor for a tree document, loading its current content
 (or a seed if the file is absent, so a missing page can be created by editing).
 -}
-treeEdit :: String -> FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
-treeEdit editorThemeDefault root path request =
+treeEdit :: Versioning -> String -> FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
+treeEdit versioning editorThemeDefault root path request =
     case Static.resolveStaticPath root (pathSegments path) of
         Nothing -> pure treeNotFound
         Just fsPath -> do
-            exists <- Iteratee.liftIO (Directory.doesFileExist fsPath)
-            content <- if exists then Iteratee.liftIO (BS.readFile fsPath) else pure (BS.pack seededMarkdown)
+            -- Resume a staged draft if one exists (RFC-0032); otherwise the published page, or a seed.
+            mDraft <-
+                if versioningOn versioning
+                    then Iteratee.liftIO (Draft.readDraft (draftStagingRoot versioning) path)
+                    else pure Nothing
+            content <- case mDraft of
+                Just drafted -> pure drafted
+                Nothing -> do
+                    exists <- Iteratee.liftIO (Directory.doesFileExist fsPath)
+                    if exists then Iteratee.liftIO (BS.readFile fsPath) else pure (BS.pack seededMarkdown)
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
             breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
             spine <- Iteratee.liftIO (treeSpineFor root path)
@@ -653,10 +705,10 @@ treeServeFile root path =
 {- | A POST under the tree: an asset upload (@?asset@, a raw-body file) into the
 document's peer @assets/@ folder, or otherwise a document save.
 -}
-treePost :: IndexMaintenance -> FilePath -> Router.Handler
-treePost maint root captures request
+treePost :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
+treePost versioning maint root captures request
     | hasQueryFlag "asset" request = treeUpload root captures request
-    | otherwise = treeSave maint root captures request
+    | otherwise = treeSave versioning maint root captures request
 
 -- | The maximum accepted tree asset upload size in bytes.
 treeAssetMaxBytes :: Int
@@ -1233,23 +1285,38 @@ raw HTML would block legitimate saves -- the editor preserves it verbatim, and
 nothing renders it as live HTML (the trust boundary that guard defends does not
 apply to first-party files).
 -}
-treeSave :: IndexMaintenance -> FilePath -> Router.Handler
-treeSave maint root captures request = do
+treeSave :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
+treeSave versioning maint root captures request = do
     bodyBytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) formBodyLimit
     let fields = formFields (BS.unpack bodyBytes)
         markdown = normaliseNewlines (capture "markdown" fields)
         path = capture "path" captures
     case Static.resolveStaticPath root (pathSegments path) of
         Nothing -> pure treeNotFound
-        Just fsPath -> do
-            Iteratee.liftIO (Directory.createDirectoryIfMissing True (parentDirectory fsPath))
-            Iteratee.liftIO (writeDocumentText fsPath markdown)
-            Iteratee.liftIO (syncImageTitles root path fields)
-            -- The page's body (and so its outbound links) changed; maintain its index entry.
-            Iteratee.liftIO (onSave maint path)
-            if isHtmxRequest request
-                then pure (htmlResponseChunks (saveStatusFragment markdown))
-                else pure (seeOtherResponse ("/documents/" ++ path ++ "?edit"))
+        Just fsPath ->
+            if versioningOn versioning
+                then do
+                    -- Versioning on: autosave stages a draft; the live page, its sidecar
+                    -- metadata, and the link index are untouched until Publish (RFC-0032).
+                    Iteratee.liftIO (Draft.writeDraft (draftStagingRoot versioning) path (BS.pack markdown))
+                    saveResponse request path markdown
+                else do
+                    Iteratee.liftIO (Directory.createDirectoryIfMissing True (parentDirectory fsPath))
+                    Iteratee.liftIO (writeDocumentText fsPath markdown)
+                    Iteratee.liftIO (syncImageTitles root path fields)
+                    -- The page's body (and so its outbound links) changed; maintain its index entry.
+                    Iteratee.liftIO (onSave maint path)
+                    saveResponse request path markdown
+
+{- | The response shared by a draft autosave and a direct (non-versioned) save: an
+htmx save-status fragment for the editor, or a redirect back to the edit page for
+a no-JavaScript form post.
+-}
+saveResponse :: Http.RequestHead -> String -> String -> Iteratee.Iter Stream.StreamError Http.Response
+saveResponse request path markdown =
+    if isHtmxRequest request
+        then pure (htmlResponseChunks (saveStatusFragment markdown))
+        else pure (seeOtherResponse ("/documents/" ++ path ++ "?edit"))
 
 {- | Sync the page's @images.yaml@ @short_title@s to the alt-derived values the
 editor sends with a tree save (RFC-0019, ADR-049): @image_count@ indexed

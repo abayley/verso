@@ -1931,10 +1931,12 @@ editorThemeBootstrapScript =
         ++ "var t=localStorage.getItem('editor-theme');"
         ++ "if(t&&K.indexOf(t)>=0){r.setAttribute('data-editor-theme',t);}"
         ++ "var s=localStorage.getItem('editor-color-scheme');"
-        -- Resolve dark/light/system the same way the editor element does (RFC-0032): an explicit
-        -- 'dark'/'light' wins, otherwise (system or unset) follow the OS preference. Applied here so
-        -- every page -- editor, reader, and the standalone history/diff views -- paints consistently.
-        ++ "var d=s==='dark'||((!s||s==='system')&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);"
+        -- Resolve dark/light/system exactly as the editor element's resolvedEditorTheme does (RFC-0032):
+        -- only the literal 'dark'/'light' are explicit; ANY other value (unset, or the stored
+        -- 'match-system') follows the OS preference. Applied here so every page -- editor, reader, and the
+        -- standalone history/diff views -- paints consistently. (Earlier this only matched 'system', so the
+        -- stored 'match-system' fell through to light.)
+        ++ "var d=s==='dark'||(s!=='light'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);"
         ++ "r.classList.toggle('wa-dark',d);r.classList.toggle('wa-light',!d);"
         ++ "}catch(e){}})();</script>"
 

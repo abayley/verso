@@ -567,11 +567,70 @@ a.markdown-editor__crumb:hover {
   cursor: default;
 }
 
+/* Theme/appearance selectors on the version pages. */
+.verso-version-controls {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  margin: 1rem 0;
+  color: var(--markdown-editor-muted);
+  font-size: 0.9em;
+}
+
+.verso-version-controls select {
+  font: inherit;
+}
+
+/* The revision list is a fixed-height scroll region with a sticky header. */
+.verso-history-scroll {
+  max-height: 24rem;
+  overflow-y: auto;
+  border: 1px solid var(--markdown-editor-border, rgba(128, 128, 128, 0.25));
+  border-radius: 0.3rem;
+}
+
+.verso-history thead th {
+  position: sticky;
+  top: 0;
+  background: var(--markdown-editor-background);
+  z-index: 1;
+}
+
+.verso-history td a {
+  color: var(--markdown-editor-text);
+}
+
+/* The diff pane below the table. */
+.verso-diff-pane {
+  margin-top: 1.25rem;
+}
+
+.verso-diff-revs {
+  color: var(--markdown-editor-muted);
+  font-size: 0.85em;
+}
+
 .verso-diff {
   overflow-x: auto;
   font-family: ui-monospace, monospace;
   font-size: 0.85rem;
   line-height: 1.5;
+}
+
+/* Side-by-side diff: two equal columns, removed left / added right. */
+.verso-diff-side {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.verso-diff-side td {
+  width: 50%;
+  vertical-align: top;
+  padding: 0 0.5rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-bottom: 1px solid var(--markdown-editor-border, rgba(128, 128, 128, 0.12));
 }
 
 .verso-diff-add {
@@ -580,6 +639,17 @@ a.markdown-editor__crumb:hover {
 
 .verso-diff-del {
   background: rgba(248, 81, 73, 0.18);
+}
+
+.verso-diff-empty {
+  background: rgba(128, 128, 128, 0.06);
+}
+
+.verso-diff-side tr.verso-diff-hunk td {
+  color: var(--markdown-editor-muted);
+  background: rgba(128, 128, 128, 0.08);
+  font-size: 0.8em;
+  padding: 0.2rem 0.5rem;
 }
 
 .verso-diff-hunk {

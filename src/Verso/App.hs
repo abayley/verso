@@ -737,6 +737,7 @@ treeGet versioning editorThemeDefault root captures request
     | not (isMarkdownPath path) = treeServeFile root path
     | hasQueryFlag "history" request = treeHistory editorThemeDefault root path
     | hasQueryFlag "diff" request = treeDiff editorThemeDefault root path request
+    | hasQueryFlag "at" request = treeReadAt editorThemeDefault root path request
     | hasQueryFlag "edit" request = treeEdit versioning editorThemeDefault root path request
     | hasQueryFlag "raw" request = treeServeFile root path
     | otherwise = treeRead versioning editorThemeDefault root path request
@@ -1506,15 +1507,36 @@ treeHistory editorThemeDefault root path = do
     pure (documentResponse (historyPage editorThemeDefault path revs))
 
 {- | The diff view (RFC-0032): @GET /documents/\<path\>?diff&from=\<rev\>&to=\<rev\>@
-renders the unified diff of the page between the two revisions with per-line
-add\/remove highlighting.
+renders a side-by-side diff of the page between the two revisions. With the
+@pane@ flag it returns just the diff fragment (for the history page's diff pane);
+otherwise a full standalone page.
 -}
 treeDiff :: String -> FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
 treeDiff editorThemeDefault root path request = do
     let fromRev = queryValue "from" request
         toRev = queryValue "to" request
     diff <- Iteratee.liftIO (Git.diffBetween root fromRev toRev path)
-    pure (documentResponse (diffPage editorThemeDefault path fromRev toRev diff))
+    if hasQueryFlag "pane" request
+        then pure (htmlResponseChunks (diffBody fromRev toRev diff))
+        else pure (documentResponse (diffPage editorThemeDefault path fromRev toRev diff))
+
+{- | View a page as it was at a revision (RFC-0032): @GET /documents/\<path\>?at=\<rev\>@
+renders the read-only editor over the page's content at that revision. Assets
+referenced by the old content resolve against the /current/ tree, so an asset
+removed since then will be missing -- an accepted limitation. A revision where the
+page did not exist is a @404@.
+-}
+treeReadAt :: String -> FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
+treeReadAt editorThemeDefault root path request = do
+    let rev = queryValue "at" request
+    content <- Iteratee.liftIO (Git.showFileAtRevision root rev path)
+    if BS.null content
+        then pure treeNotFound
+        else do
+            attachments <- Iteratee.liftIO (loadPageAttachments root path)
+            breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
+            spine <- Iteratee.liftIO (treeSpineFor root path)
+            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True False False attachments breadcrumbs spine Nothing))
 
 {- | The rollback action (RFC-0032): @POST /documents/\<path\>?rollback@ with a
 @rev@ field restores the page's content at that revision, writes it through the
@@ -1557,28 +1579,56 @@ versionPageShell themeDefault pageTitle bodyContent =
         Html.body [Html.class_ "markdown-editor-page verso-version-page"] $
             Html.main [] bodyContent
 
--- | Renders the revision-history page: a back link, a checkbox-per-revision table with a Compare control, and per-row roll-back.
+{- | Renders the revision-history page: theme/appearance controls, a Compare
+control, a fixed-height scrollable table of revisions (each timestamp links to
+that revision in the read-only view, with a per-row roll-back), and a diff pane
+below that the Compare control populates side-by-side.
+-}
 historyPage :: String -> String -> [Git.Revision] -> Html.Html ()
 historyPage themeDefault path revs =
     versionPageShell themeDefault ("Revision history: " ++ path) $ do
         Html.el "h1" [] (Html.text "Revision history")
         Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href ("/documents/" ++ path)] (Html.text ("Back to " ++ path)))
+        versionControls
         if null revs
             then Html.p [] (Html.text "No revisions yet.")
             else do
                 Html.p [Html.class_ "verso-compare"] $
                     Html.el "button" [Html.attr "type" "button", Html.class_ "verso-compare-button", Html.attr "data-path" path, Html.attr "disabled" ""] (Html.text "Compare selected")
-                Html.el "table" [Html.class_ "verso-history"] $ do
-                    Html.el "thead" [] (Html.el "tr" [] (mapM_ (Html.el "th" [] . Html.text) ["", "When", "Who", "Message", ""]))
-                    Html.el "tbody" [] (mapM_ (revisionRow path) revs)
-                Html.rawTrusted historyCompareScript
+                Html.div [Html.class_ "verso-history-scroll"] $
+                    Html.el "table" [Html.class_ "verso-history"] $ do
+                        Html.el "thead" [] (Html.el "tr" [] (mapM_ (Html.el "th" [] . Html.text) ["", "When", "Who", "Message", ""]))
+                        Html.el "tbody" [] (mapM_ (revisionRow path) revs)
+                Html.div [Html.attr "id" "verso-diff-pane", Html.class_ "verso-diff-pane"] $
+                    Html.p [] (Html.text "Select two revisions and Compare to see a side-by-side diff.")
+                Html.rawTrusted historyScript
 
--- | One history-table row: a select checkbox, timestamp, author, subject, and a roll-back form.
+{- | The theme and appearance (light\/dark\/match-system) selectors on the version
+pages. Plain selects wired by 'historyScript' to the same @localStorage@ keys the
+editor uses, so a choice here carries over to the editor and back.
+-}
+versionControls :: Html.Html ()
+versionControls =
+    Html.div [Html.class_ "verso-version-controls"] $ do
+        Html.el "label" [] $ do
+            Html.text "Theme "
+            Html.el "select" [Html.attr "id" "verso-theme-select"] (mapM_ themeOption knownEditorThemes)
+        Html.el "label" [] $ do
+            Html.text "Appearance "
+            Html.el "select" [Html.attr "id" "verso-scheme-select"] (mapM_ schemeOption schemeOptions)
+  where
+    themeOption t = Html.el "option" [Html.attr "value" t] (Html.text (capitalise t))
+    schemeOption (v, lbl) = Html.el "option" [Html.attr "value" v] (Html.text lbl)
+    schemeOptions = [("light", "Light"), ("dark", "Dark"), ("match-system", "Match system")]
+    capitalise [] = []
+    capitalise (c : cs) = Char.toUpper c : cs
+
+-- | One history-table row: a select checkbox, the timestamp linking to that revision's read view, author, subject, and roll-back.
 revisionRow :: String -> Git.Revision -> Html.Html ()
 revisionRow path rev =
     Html.el "tr" [] $ do
         Html.el "td" [] (Html.input [Html.attr "type" "checkbox", Html.class_ "verso-pick", Html.attr "name" "rev", Html.attr "value" (Git.revHash rev)])
-        Html.el "td" [] (Html.text (Git.revTimestamp rev))
+        Html.el "td" [] (Html.a [Html.href ("/documents/" ++ path ++ "?at=" ++ Git.revHash rev), Html.attr "title" "View the page at this revision"] (Html.text (Git.revTimestamp rev)))
         Html.el "td" [] (Html.text (Git.revAuthor rev))
         Html.el "td" [] (Html.text (Git.revSubject rev ++ " (" ++ Git.revShort rev ++ ")"))
         Html.el "td" [] $
@@ -1586,48 +1636,87 @@ revisionRow path rev =
                 Html.input [Html.attr "type" "hidden", Html.attr "name" "rev", Html.attr "value" (Git.revHash rev)]
                 Html.el "button" [Html.attr "type" "submit", Html.class_ "verso-rollback-button"] (Html.text "Roll back to this")
 
-{- | The history page's client script: limits selection to two revision
-checkboxes (disabling the rest once two are picked), enables the Compare button
-only when exactly two are selected, and on click navigates to the diff of the two
-(older as @from@, newer as @to@, since the list is newest-first).
+{- | The history page's client script: wires the theme/appearance selects to the
+editor's @localStorage@ keys, limits revision selection to two (enabling Compare
+only at two), and on Compare fetches the side-by-side diff fragment of the two
+(older as @from@, newer as @to@) into the diff pane.
 -}
-historyCompareScript :: String
-historyCompareScript =
-    "<script>(function(){"
+historyScript :: String
+historyScript =
+    "<script>(function(){var r=document.documentElement;"
+        ++ "var ts=document.getElementById('verso-theme-select');"
+        ++ "if(ts){var ct=localStorage.getItem('editor-theme')||r.getAttribute('data-editor-theme');if(ct){ts.value=ct;}"
+        ++ "ts.addEventListener('change',function(){localStorage.setItem('editor-theme',ts.value);r.setAttribute('data-editor-theme',ts.value);});}"
+        ++ "var ss=document.getElementById('verso-scheme-select');"
+        ++ "function applyScheme(s){var d=s==='dark'||(s!=='light'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);r.classList.toggle('wa-dark',d);r.classList.toggle('wa-light',!d);}"
+        ++ "if(ss){ss.value=localStorage.getItem('editor-color-scheme')||'match-system';"
+        ++ "ss.addEventListener('change',function(){localStorage.setItem('editor-color-scheme',ss.value);applyScheme(ss.value);});}"
         ++ "var boxes=[].slice.call(document.querySelectorAll('.verso-pick'));"
-        ++ "var btn=document.querySelector('.verso-compare-button');"
+        ++ "var btn=document.querySelector('.verso-compare-button');var pane=document.getElementById('verso-diff-pane');"
         ++ "function picked(){return boxes.filter(function(b){return b.checked;});}"
         ++ "function update(){var c=picked();boxes.forEach(function(b){b.disabled=(c.length>=2&&!b.checked);});if(btn){btn.disabled=(c.length!==2);}}"
         ++ "boxes.forEach(function(b){b.addEventListener('change',update);});"
         ++ "if(btn){btn.addEventListener('click',function(){var c=picked();if(c.length!==2){return;}"
-        ++ "var to=c[0].value,from=c[1].value;var p=btn.getAttribute('data-path');"
-        ++ "window.location.href='/documents/'+p+'?diff&from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to);});}"
-        ++ "update();"
-        ++ "})();</script>"
+        ++ "var to=c[0].value,from=c[1].value,p=btn.getAttribute('data-path');pane.textContent='Loading diff...';"
+        ++ "fetch('/documents/'+p+'?diff&pane&from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to))"
+        ++ ".then(function(x){return x.text();}).then(function(h){pane.innerHTML=h;}).catch(function(){pane.textContent='Could not load diff.';});});}"
+        ++ "update();})();</script>"
 
--- | Renders the diff page: a back link and the unified diff with per-line add\/remove highlighting.
+-- | Renders the standalone diff page (a back link plus the diff body), for a direct @?diff@ link.
 diffPage :: String -> String -> String -> String -> String -> Html.Html ()
 diffPage themeDefault path fromRev toRev diff =
     versionPageShell themeDefault ("Diff: " ++ path) $ do
         Html.el "h1" [] (Html.text "Diff")
         Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href ("/documents/" ++ path ++ "?history")] (Html.text "Back to history"))
-        Html.p [] (Html.text (shortRev fromRev ++ " to " ++ shortRev toRev))
-        if null diff
-            then Html.p [] (Html.text "No differences.")
-            else Html.el "pre" [Html.class_ "verso-diff"] (mapM_ diffLine (lines diff))
-  where
-    shortRev = take 12
-    diffLine l = Html.el "div" [Html.class_ (diffLineClass l)] (Html.text l)
+        diffBody fromRev toRev diff
 
--- | Classifies a unified-diff line for CSS styling: meta header, hunk header, addition, removal, or context.
-diffLineClass :: String -> String
-diffLineClass line = case line of
-    ('+' : '+' : '+' : _) -> "verso-diff-meta"
-    ('-' : '-' : '-' : _) -> "verso-diff-meta"
-    ('@' : '@' : _) -> "verso-diff-hunk"
-    ('+' : _) -> "verso-diff-add"
-    ('-' : _) -> "verso-diff-del"
-    _ -> "verso-diff-ctx"
+-- | The diff content (a revision-range caption and the side-by-side table), shared by the diff page and the history pane.
+diffBody :: String -> String -> String -> Html.Html ()
+diffBody fromRev toRev diff = do
+    Html.p [Html.class_ "verso-diff-revs"] (Html.text (take 12 fromRev ++ " to " ++ take 12 toRev))
+    if null diff
+        then Html.p [] (Html.text "No differences.")
+        else sideBySideHtml (sideBySide diff)
+
+-- | A side-by-side diff row: a hunk header, a context line shown on both sides, or a change (removed left, added right; either side may be absent).
+data SideRow
+    = SideHunk String
+    | SideContext String
+    | SideChange (Maybe String) (Maybe String)
+
+{- | Parses git's unified (line-based) diff into side-by-side rows: context lines
+appear on both sides; within a change block removed lines pair positionally with
+added lines (surplus removals show left-only, surplus additions right-only). The
+pre-hunk headers (@diff@\/@index@\/@---@\/@+++@) are dropped.
+-}
+sideBySide :: String -> [SideRow]
+sideBySide input = go (dropWhile (not . isHunk) (lines input)) [] []
+  where
+    isHunk l = take 2 l == "@@"
+    go [] dels adds = flush dels adds
+    go (l : ls) dels adds = case l of
+        ('@' : '@' : _) -> flush dels adds ++ (SideHunk l : go ls [] [])
+        (' ' : rest) -> flush dels adds ++ (SideContext rest : go ls [] [])
+        ('-' : rest) -> go ls (rest : dels) adds
+        ('+' : rest) -> go ls dels (rest : adds)
+        _ -> go ls dels adds
+    flush dels adds = pair (reverse dels) (reverse adds)
+    pair (d : ds) (a : as) = SideChange (Just d) (Just a) : pair ds as
+    pair (d : ds) [] = SideChange (Just d) Nothing : pair ds []
+    pair [] (a : as) = SideChange Nothing (Just a) : pair [] as
+    pair [] [] = []
+
+-- | Renders side-by-side rows as a two-column table with per-cell add/remove highlighting.
+sideBySideHtml :: [SideRow] -> Html.Html ()
+sideBySideHtml rows =
+    Html.el "table" [Html.class_ "verso-diff verso-diff-side"] $
+        Html.el "tbody" [] (mapM_ row rows)
+  where
+    row (SideHunk h) = Html.el "tr" [Html.class_ "verso-diff-hunk"] (Html.el "td" [Html.attr "colspan" "2"] (Html.text h))
+    row (SideContext s) = Html.el "tr" [] (cell "verso-diff-ctx" (Just s) >> cell "verso-diff-ctx" (Just s))
+    row (SideChange ml mr) = Html.el "tr" [] (cell "verso-diff-del" ml >> cell "verso-diff-add" mr)
+    cell _ Nothing = Html.el "td" [Html.class_ "verso-diff-empty"] (Html.text "")
+    cell cls (Just s) = Html.el "td" [Html.class_ cls] (Html.text s)
 
 {- | Sync the page's @images.yaml@ @short_title@s to the alt-derived values the
 editor sends with a tree save (RFC-0019, ADR-049): @image_count@ indexed

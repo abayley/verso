@@ -374,7 +374,13 @@ spec = do
             fmap (bodyContains (BS.pack "verso-compare-button")) history `shouldBe` Right True
             -- the theme bootstrap resolves dark/light/system (not always light)
             fmap (bodyContains (BS.pack "prefers-color-scheme")) history `shouldBe` Right True
-        it "renders a diff between two revisions with per-line highlighting" $ do
+            -- theme/appearance controls, scrollable table, in-page diff pane, and per-revision view links
+            fmap (bodyContains (BS.pack "verso-theme-select")) history `shouldBe` Right True
+            fmap (bodyContains (BS.pack "verso-scheme-select")) history `shouldBe` Right True
+            fmap (bodyContains (BS.pack "verso-history-scroll")) history `shouldBe` Right True
+            fmap (bodyContains (BS.pack "verso-diff-pane")) history `shouldBe` Right True
+            fmap (bodyContains (BS.pack "?at=")) history `shouldBe` Right True
+        it "renders a side-by-side diff between two revisions, and a bare fragment for the diff pane" $ do
             root <- setupVersionedFixture
             _ <-
                 Server.respondToRequestBytes
@@ -386,9 +392,35 @@ spec = do
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
                     (BS.pack (getRequest ("/documents/sec/page.md?diff&from=" ++ fromRev ++ "&to=" ++ toRev)))
+            pane <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (getRequest ("/documents/sec/page.md?diff&pane&from=" ++ fromRev ++ "&to=" ++ toRev)))
             fmap (Http.statusCode . Http.responseStatus) diff `shouldBe` Right 200
+            fmap (bodyContains (BS.pack "verso-diff-side")) diff `shouldBe` Right True
             fmap (bodyContains (BS.pack "verso-diff-add")) diff `shouldBe` Right True
             fmap (bodyContains (BS.pack "verso-diff-del")) diff `shouldBe` Right True
+            -- the pane variant is a bare fragment (no page shell) carrying the side-by-side table
+            fmap (bodyContains (BS.pack "verso-diff-side")) pane `shouldBe` Right True
+            fmap (bodyContains (BS.pack "<html")) pane `shouldBe` Right False
+        it "views a page at a past revision, read-only, showing that revision's content" $ do
+            root <- setupVersionedFixture
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md?publish" "markdown=%23+First+version"))
+            firstRev <- gitRevParse root "HEAD"
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md?publish" "markdown=%23+Second+version"))
+            atFirst <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (getRequest ("/documents/sec/page.md?at=" ++ firstRev)))
+            fmap (Http.statusCode . Http.responseStatus) atFirst `shouldBe` Right 200
+            fmap (bodyContains (BS.pack "data-readonly")) atFirst `shouldBe` Right True
+            fmap (bodyContains (BS.pack "First version")) atFirst `shouldBe` Right True
 
         it "rolls a page back to an earlier revision as a new commit" $ do
             root <- setupVersionedFixture

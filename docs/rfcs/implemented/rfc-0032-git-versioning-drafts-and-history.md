@@ -300,19 +300,28 @@ attachments). The link targets a per-page history view.
 
 The history view is a standalone page that reuses the editor's theme head (the
 `wa-` palette classes, `data-editor-theme`, the theme-bootstrap script, and both
-stylesheets) so it matches the editor/reader look.
+stylesheets) so it matches the editor/reader look, and carries its own
+theme/appearance (light/dark/match-system) selectors wired to the same
+`localStorage` keys the editor uses (choices carry over both ways).
 
 History view: `GET /documents/<path>?history` renders the page's revisions
-(timestamp, author, subject + short hash), newest first, from `logForPath`. Each
-row has a select checkbox. The view supports:
+(timestamp, author, subject + short hash), newest first, from `logForPath`, in a
+fixed-height scrollable table with a sticky header. Each row has a select
+checkbox, and its timestamp links to that revision in the read-only view
+(`?at=<rev>`). The view supports:
 
+- **View a past revision**: `GET /documents/<path>?at=<rev>` renders the
+  read-only editor over the page's content at that revision (`showFileAtRevision`).
+  Assets resolve against the current tree, so an asset removed since then is
+  missing -- an accepted limitation.
 - **Diff two revisions**: tick two rows (a small inline script limits selection to
   two and enables the Compare button only when exactly two are picked), then
-  Compare navigates to `GET /documents/<path>?diff&from=<rev>&to=<rev>`, which
-  renders `diffBetween` as server-side HTML with per-line add/remove highlighting
-  (`+`/`-` lines coloured, hunk and `---`/`+++` headers de-emphasised). A
-  line-level diff was chosen over word-level for robustness; the renderer can be
-  upgraded to word granularity later without changing the route.
+  Compare fetches `GET /documents/<path>?diff&pane&from=<rev>&to=<rev>` -- a bare
+  HTML fragment -- and injects it into a diff pane below the table (no page
+  reload). The diff is rendered **side-by-side**: context lines on both sides,
+  removed lines left and added lines right (paired positionally within a change
+  block), parsed from git's unified diff. The full-page `?diff` (without `pane`)
+  remains for a direct link.
 - **Roll back to a revision**: select one row, then `POST
   /documents/<path>?rollback&rev=<rev>`. Rollback reads the page content at that
   revision via `showFileAtRevision`, writes it through the publish-time path

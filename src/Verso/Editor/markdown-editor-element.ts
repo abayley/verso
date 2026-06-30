@@ -724,10 +724,39 @@ export class MarkdownEditorElement extends HTMLElement {
             publish.addEventListener("click", (): void => {
                 void this.publishDocument(documentPath);
             });
-            group.append(publish);
+
+            const cancel = window.document.createElement("button");
+            cancel.type = "button";
+            cancel.className = "markdown-editor__view-toggle markdown-editor__cancel";
+            cancel.textContent = "Cancel";
+            cancel.addEventListener("click", (): void => {
+                void this.discardDraft(documentPath);
+            });
+
+            group.append(publish, cancel);
         }
 
         return group;
+    }
+
+    /**
+     * Discards the staged draft (RFC-0032): drops it via ?discard-draft so the page reverts to its last
+     * published (committed) version, then returns to the read view. Confirms first, since it abandons changes.
+     */
+    private async discardDraft(documentPath: string): Promise<void> {
+        if (!window.confirm("Discard unpublished changes and revert to the last published version?")) {
+            return;
+        }
+
+        try {
+            await fetch(`/documents/${documentPath}?discard-draft`, {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: "",
+            });
+        } finally {
+            window.location.href = `/documents/${documentPath}`;
+        }
     }
 
     /**

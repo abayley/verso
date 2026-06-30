@@ -735,8 +735,8 @@ otherwise the file served statically (raw Markdown, images, attachments).
 treeGet :: Versioning -> String -> FilePath -> Router.Handler
 treeGet versioning editorThemeDefault root captures request
     | not (isMarkdownPath path) = treeServeFile root path
-    | hasQueryFlag "history" request = treeHistory root path
-    | hasQueryFlag "diff" request = treeDiff root path request
+    | hasQueryFlag "history" request = treeHistory editorThemeDefault root path
+    | hasQueryFlag "diff" request = treeDiff editorThemeDefault root path request
     | hasQueryFlag "edit" request = treeEdit versioning editorThemeDefault root path request
     | hasQueryFlag "raw" request = treeServeFile root path
     | otherwise = treeRead versioning editorThemeDefault root path request
@@ -1500,21 +1500,21 @@ the page's git revisions (newest first) with a compare form (pick two revisions 
 diff) and a per-row roll-back button. An empty history (no repository, or an
 untracked page) renders an empty-state page.
 -}
-treeHistory :: FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
-treeHistory root path = do
+treeHistory :: String -> FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
+treeHistory editorThemeDefault root path = do
     revs <- Iteratee.liftIO (Git.logForPath root path)
-    pure (documentResponse (historyPage path revs))
+    pure (documentResponse (historyPage editorThemeDefault path revs))
 
 {- | The diff view (RFC-0032): @GET /documents/\<path\>?diff&from=\<rev\>&to=\<rev\>@
 renders the unified diff of the page between the two revisions with per-line
 add\/remove highlighting.
 -}
-treeDiff :: FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
-treeDiff root path request = do
+treeDiff :: String -> FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
+treeDiff editorThemeDefault root path request = do
     let fromRev = queryValue "from" request
         toRev = queryValue "to" request
     diff <- Iteratee.liftIO (Git.diffBetween root fromRev toRev path)
-    pure (documentResponse (diffPage path fromRev toRev diff))
+    pure (documentResponse (diffPage editorThemeDefault path fromRev toRev diff))
 
 {- | The rollback action (RFC-0032): @POST /documents/\<path\>?rollback@ with a
 @rev@ field restores the page's content at that revision, writes it through the
@@ -1540,65 +1540,78 @@ treeRollback versioning maint root captures request = do
                     _ <- Iteratee.liftIO (Git.commitAll root author ("Roll back " ++ path ++ " to " ++ rev))
                     clientRedirect request ("/documents/" ++ path)
 
--- | The full-page shell shared by the history and diff views (a minimal standalone HTML document).
-versionPageShell :: String -> Html.Html () -> Html.Html ()
-versionPageShell pageTitle bodyContent =
-    Html.html [Html.lang "en"] $ do
+{- | The full-page shell shared by the history and diff views. It reuses the
+editor page's theming (the @wa-@ palette classes, the @data-editor-theme@ default,
+the theme-bootstrap script, and both stylesheets) so the version pages match the
+editor\/reader look (RFC-0032).
+-}
+versionPageShell :: String -> String -> Html.Html () -> Html.Html ()
+versionPageShell themeDefault pageTitle bodyContent =
+    Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
+            Html.rawTrusted editorThemeBootstrapScript
             Html.title [] (Html.text pageTitle)
+            Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/webawesome.css\">"
             Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
         Html.body [Html.class_ "markdown-editor-page verso-version-page"] $
             Html.main [] bodyContent
 
--- | Renders the revision-history page: a back link, a compare form, and a table of revisions with roll-back buttons.
-historyPage :: String -> [Git.Revision] -> Html.Html ()
-historyPage path revs =
-    versionPageShell ("Revision history: " ++ path) $ do
+-- | Renders the revision-history page: a back link, a checkbox-per-revision table with a Compare control, and per-row roll-back.
+historyPage :: String -> String -> [Git.Revision] -> Html.Html ()
+historyPage themeDefault path revs =
+    versionPageShell themeDefault ("Revision history: " ++ path) $ do
         Html.el "h1" [] (Html.text "Revision history")
-        Html.p [] (Html.a [Html.href ("/documents/" ++ path)] (Html.text ("\8592 " ++ path)))
+        Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href ("/documents/" ++ path)] (Html.text ("Back to " ++ path)))
         if null revs
             then Html.p [] (Html.text "No revisions yet.")
             else do
-                diffCompareForm path revs
+                Html.p [Html.class_ "verso-compare"] $
+                    Html.el "button" [Html.attr "type" "button", Html.class_ "verso-compare-button", Html.attr "data-path" path, Html.attr "disabled" ""] (Html.text "Compare selected")
                 Html.el "table" [Html.class_ "verso-history"] $ do
-                    Html.el "thead" [] (Html.el "tr" [] (mapM_ (Html.el "th" [] . Html.text) ["When", "Who", "Message", ""]))
+                    Html.el "thead" [] (Html.el "tr" [] (mapM_ (Html.el "th" [] . Html.text) ["", "When", "Who", "Message", ""]))
                     Html.el "tbody" [] (mapM_ (revisionRow path) revs)
+                Html.rawTrusted historyCompareScript
 
--- | The compare form: two revision dropdowns and a submit that GETs the diff view.
-diffCompareForm :: String -> [Git.Revision] -> Html.Html ()
-diffCompareForm path revs =
-    Html.el "form" [Html.attr "method" "get", Html.attr "action" ("/documents/" ++ path), Html.class_ "verso-compare"] $ do
-        Html.input [Html.attr "type" "hidden", Html.attr "name" "diff", Html.attr "value" ""]
-        Html.text "Compare "
-        revSelect "from" revs
-        Html.text " to "
-        revSelect "to" revs
-        Html.text " "
-        Html.el "button" [Html.attr "type" "submit"] (Html.text "Compare")
-  where
-    revSelect name rs = Html.el "select" [Html.attr "name" name] (mapM_ option rs)
-    option r = Html.el "option" [Html.attr "value" (Git.revHash r)] (Html.text (Git.revShort r ++ " - " ++ Git.revSubject r))
-
--- | One history-table row: timestamp, author, subject, and a roll-back form.
+-- | One history-table row: a select checkbox, timestamp, author, subject, and a roll-back form.
 revisionRow :: String -> Git.Revision -> Html.Html ()
 revisionRow path rev =
     Html.el "tr" [] $ do
+        Html.el "td" [] (Html.input [Html.attr "type" "checkbox", Html.class_ "verso-pick", Html.attr "name" "rev", Html.attr "value" (Git.revHash rev)])
         Html.el "td" [] (Html.text (Git.revTimestamp rev))
         Html.el "td" [] (Html.text (Git.revAuthor rev))
         Html.el "td" [] (Html.text (Git.revSubject rev ++ " (" ++ Git.revShort rev ++ ")"))
         Html.el "td" [] $
             Html.el "form" [Html.attr "method" "post", Html.attr "action" ("/documents/" ++ path ++ "?rollback")] $ do
                 Html.input [Html.attr "type" "hidden", Html.attr "name" "rev", Html.attr "value" (Git.revHash rev)]
-                Html.el "button" [Html.attr "type" "submit"] (Html.text "Roll back to this")
+                Html.el "button" [Html.attr "type" "submit", Html.class_ "verso-rollback-button"] (Html.text "Roll back to this")
+
+{- | The history page's client script: limits selection to two revision
+checkboxes (disabling the rest once two are picked), enables the Compare button
+only when exactly two are selected, and on click navigates to the diff of the two
+(older as @from@, newer as @to@, since the list is newest-first).
+-}
+historyCompareScript :: String
+historyCompareScript =
+    "<script>(function(){"
+        ++ "var boxes=[].slice.call(document.querySelectorAll('.verso-pick'));"
+        ++ "var btn=document.querySelector('.verso-compare-button');"
+        ++ "function picked(){return boxes.filter(function(b){return b.checked;});}"
+        ++ "function update(){var c=picked();boxes.forEach(function(b){b.disabled=(c.length>=2&&!b.checked);});if(btn){btn.disabled=(c.length!==2);}}"
+        ++ "boxes.forEach(function(b){b.addEventListener('change',update);});"
+        ++ "if(btn){btn.addEventListener('click',function(){var c=picked();if(c.length!==2){return;}"
+        ++ "var to=c[0].value,from=c[1].value;var p=btn.getAttribute('data-path');"
+        ++ "window.location.href='/documents/'+p+'?diff&from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to);});}"
+        ++ "update();"
+        ++ "})();</script>"
 
 -- | Renders the diff page: a back link and the unified diff with per-line add\/remove highlighting.
-diffPage :: String -> String -> String -> String -> Html.Html ()
-diffPage path fromRev toRev diff =
-    versionPageShell ("Diff: " ++ path) $ do
+diffPage :: String -> String -> String -> String -> String -> Html.Html ()
+diffPage themeDefault path fromRev toRev diff =
+    versionPageShell themeDefault ("Diff: " ++ path) $ do
         Html.el "h1" [] (Html.text "Diff")
-        Html.p [] (Html.a [Html.href ("/documents/" ++ path ++ "?history")] (Html.text "\8592 history"))
-        Html.p [] (Html.text (shortRev fromRev ++ " \8594 " ++ shortRev toRev))
+        Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href ("/documents/" ++ path ++ "?history")] (Html.text "Back to history"))
+        Html.p [] (Html.text (shortRev fromRev ++ " to " ++ shortRev toRev))
         if null diff
             then Html.p [] (Html.text "No differences.")
             else Html.el "pre" [Html.class_ "verso-diff"] (mapM_ diffLine (lines diff))

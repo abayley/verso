@@ -367,6 +367,27 @@ spec = do
             fmap (Http.statusCode . Http.responseStatus) history `shouldBe` Right 200
             fmap (bodyContains (BS.pack "Revision history")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "anonymous")) history `shouldBe` Right True
+            -- the restyled page carries the editor theme head, a per-revision checkbox, and the compare control
+            fmap (bodyContains (BS.pack "data-editor-theme")) history `shouldBe` Right True
+            fmap (bodyContains (BS.pack "webawesome.css")) history `shouldBe` Right True
+            fmap (bodyContains (BS.pack "verso-pick")) history `shouldBe` Right True
+            fmap (bodyContains (BS.pack "verso-compare-button")) history `shouldBe` Right True
+        it "renders a diff between two revisions with per-line highlighting" $ do
+            root <- setupVersionedFixture
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md?publish" "markdown=%23+Changed+line"))
+            toRev <- gitRevParse root "HEAD"
+            fromRev <- gitRevParse root "HEAD^"
+            diff <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (getRequest ("/documents/sec/page.md?diff&from=" ++ fromRev ++ "&to=" ++ toRev)))
+            fmap (Http.statusCode . Http.responseStatus) diff `shouldBe` Right 200
+            fmap (bodyContains (BS.pack "verso-diff-add")) diff `shouldBe` Right True
+            fmap (bodyContains (BS.pack "verso-diff-del")) diff `shouldBe` Right True
+
         it "rolls a page back to an earlier revision as a new commit" $ do
             root <- setupVersionedFixture
             _ <-

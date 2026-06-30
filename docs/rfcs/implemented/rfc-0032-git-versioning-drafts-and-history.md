@@ -248,11 +248,11 @@ no authorization decision depends on it.
 ### Publish Flow
 
 The View/Edit toggle becomes a Publish/Edit toggle: in read mode the control
-reads "Edit" (enters edit mode, current behaviour); in edit mode the control
-reads "Publish". Publish is the way to leave edit mode -- it commits the draft
-and returns to read (view) mode. There is no separate "view without publishing"
-button; to leave a page without publishing, the author navigates away and the
-draft persists for next time.
+reads "Edit" (enters edit mode); in edit mode the controls are "Publish" and
+"Cancel". Publish commits the draft and returns to read mode. Cancel (after a
+confirm) discards the draft via `?discard-draft` so the page reverts to its last
+published version, and returns to read mode. Either control leaves edit mode;
+navigating away without using either keeps the draft for next time.
 
 Add an explicit publish action. Endpoint: `POST /documents/<path>?publish` (a
 form POST, since it mutates). Behaviour:
@@ -298,18 +298,21 @@ Replace the metadata pane's attachments-only content with an added **Revision
 history** link (the pane sits below the table of contents and currently shows
 attachments). The link targets a per-page history view.
 
-History view: `GET /documents/<path>?history` renders a list of the page's
-revisions (short hash, timestamp, author, subject), newest first, from
-`logForPath`. Each row offers selection. The view supports:
+The history view is a standalone page that reuses the editor's theme head (the
+`wa-` palette classes, `data-editor-theme`, the theme-bootstrap script, and both
+stylesheets) so it matches the editor/reader look.
 
-- **Diff two revisions**: select two rows, then request
-  `GET /documents/<path>?diff&from=<rev>&to=<rev>`, which renders `diffBetween`
-  as server-side HTML (consistent with the app's combinator-based HTML pipeline).
-  The diff uses word/line-level highlighting (the readable kind, like a code
-  host's side-by-side or inline view) rather than a raw unified-diff dump:
-  changed lines are marked, and within a changed line the specific added/removed
-  spans are highlighted. Git's own `--word-diff` (or `--color-words` parsed into
-  spans) provides the word-level granularity; the HTML layer styles it.
+History view: `GET /documents/<path>?history` renders the page's revisions
+(timestamp, author, subject + short hash), newest first, from `logForPath`. Each
+row has a select checkbox. The view supports:
+
+- **Diff two revisions**: tick two rows (a small inline script limits selection to
+  two and enables the Compare button only when exactly two are picked), then
+  Compare navigates to `GET /documents/<path>?diff&from=<rev>&to=<rev>`, which
+  renders `diffBetween` as server-side HTML with per-line add/remove highlighting
+  (`+`/`-` lines coloured, hunk and `---`/`+++` headers de-emphasised). A
+  line-level diff was chosen over word-level for robustness; the renderer can be
+  upgraded to word granularity later without changing the route.
 - **Roll back to a revision**: select one row, then `POST
   /documents/<path>?rollback&rev=<rev>`. Rollback reads the page content at that
   revision via `showFileAtRevision`, writes it through the publish-time path

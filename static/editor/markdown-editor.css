@@ -487,11 +487,21 @@ a.markdown-editor__crumb:hover {
   text-decoration: underline;
 }
 
-/* RFC-0032 revision-history and diff views (standalone pages). */
-.verso-version-page {
+/* RFC-0032 revision-history and diff views (standalone pages; share the editor theme). */
+.verso-version-page main {
   max-width: 70rem;
   margin: 0 auto;
-  padding: 2rem;
+  padding: 2rem 1.5rem;
+}
+
+.verso-version-back a {
+  color: var(--markdown-editor-muted);
+  text-decoration: none;
+}
+
+.verso-version-back a:hover {
+  color: var(--markdown-editor-text);
+  text-decoration: underline;
 }
 
 .verso-history {
@@ -502,13 +512,45 @@ a.markdown-editor__crumb:hover {
 .verso-history th,
 .verso-history td {
   text-align: left;
-  padding: 0.35rem 0.75rem;
-  border-bottom: 1px solid var(--markdown-editor-border, #ddd);
-  vertical-align: top;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--markdown-editor-border, rgba(128, 128, 128, 0.25));
+  vertical-align: middle;
+}
+
+.verso-history th {
+  color: var(--markdown-editor-muted);
+  font-weight: 600;
+  font-size: 0.85em;
+}
+
+.verso-history td:first-child,
+.verso-history th:first-child {
+  width: 1.5rem;
+  text-align: center;
 }
 
 .verso-compare {
   margin: 1rem 0;
+}
+
+.verso-compare-button,
+.verso-rollback-button {
+  font: inherit;
+  cursor: pointer;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--markdown-editor-border, rgba(128, 128, 128, 0.4));
+  border-radius: 0.3rem;
+  background: var(--markdown-editor-pill-background, transparent);
+  color: var(--markdown-editor-text);
+}
+
+.verso-rollback-button {
+  font-size: 0.85em;
+}
+
+.verso-compare-button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .verso-diff {

@@ -87,12 +87,20 @@ appFromConfig settings vc = do
     clientErrorSink <- Log.rotatingAppender (VConfig.logMaxBytes vc) (VConfig.logKeep vc) (VConfig.clientErrorLog vc)
     -- Open the link index at startup in tree mode (RFC-0029): load the persisted index if
     -- its fingerprint still matches the tree, else build and persist. Move/delete then read
-    -- it warm with no per-request walk, and re-export calls POST /index/refresh.
-    indexStore <- LinkIndexStore.newLinkIndexStore
-    Monad.unless (null (VConfig.documentTreeRoot vc)) $ do
-        Log.consoleLog "opening link index..."
-        opened <- LinkIndexStore.openLinkIndex (VConfig.documentTreeRoot vc) (VConfig.linkIndex vc) indexStore
-        Log.consoleLog (either ("link index FAILED (move/delete degraded until refresh): " ++) (const "link index ready") opened)
+    -- it warm with no per-request walk, and re-export calls POST /index/refresh. When
+    -- link_index_enabled is off the index is not opened and move/delete use the byte-scan
+    -- fallback (RFC-0032 escape hatch: skip the index entirely).
+    maybeIndexStore <-
+        if not (null (VConfig.documentTreeRoot vc)) && VConfig.linkIndexEnabled vc
+            then do
+                indexStore <- LinkIndexStore.newLinkIndexStore
+                Log.consoleLog "opening link index..."
+                opened <- LinkIndexStore.openLinkIndex (VConfig.documentTreeRoot vc) (VConfig.linkIndex vc) indexStore
+                Log.consoleLog (either ("link index FAILED (move/delete degraded until refresh): " ++) (const "link index ready") opened)
+                pure (Just indexStore)
+            else do
+                Monad.unless (null (VConfig.documentTreeRoot vc)) (Log.consoleLog "link index disabled (move/delete use the byte-scan fallback)")
+                pure Nothing
     -- Ensure the document tree is a git repository when versioning is on (RFC-0032): a one-time
     -- import commit on first run, then reused. A missing git degrades to no versioning, not a crash.
     Monad.when (not (null (VConfig.documentTreeRoot vc)) && VConfig.versioningEnabled vc) $ do
@@ -111,7 +119,7 @@ appFromConfig settings vc = do
             ( Middleware.withErrorResponses
                 ( Router.serveRoutes
                     (Server.parseLimits settings)
-                    (configuredRoutes (Just writeLock) (Just indexStore) vc clientErrorSink)
+                    (configuredRoutes (Just writeLock) maybeIndexStore vc clientErrorSink)
                 )
             )
         )

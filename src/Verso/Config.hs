@@ -33,6 +33,7 @@ data VersoConfig = VersoConfig
     , logKeep :: Int
     , staticMounts :: [(String, String)]
     , versioningEnabled :: Bool
+    , linkIndexEnabled :: Bool
     , draftRoot :: String
     , identityHeader :: String
     , identityDefault :: String
@@ -58,6 +59,7 @@ appEnvKeys =
     , "log_keep"
     , "static_mounts"
     , "versioning_enabled"
+    , "link_index_enabled"
     , "draft_root"
     , "identity_header"
     , "identity_default"
@@ -81,6 +83,7 @@ fromConfig cfg = do
     maxBytes <- Config.configInt "log_max_bytes" defaultLogMaxBytes cfg
     keep <- Config.configInt "log_keep" defaultLogKeep cfg
     versioning <- Config.configBool "versioning_enabled" True cfg
+    indexEnabled <- Config.configBool "link_index_enabled" True cfg
     pure
         VersoConfig
             { documentTreeRoot = Config.configString "document_tree_root" "" cfg
@@ -96,6 +99,7 @@ fromConfig cfg = do
             , logKeep = keep
             , staticMounts = Config.configMounts "static_mounts" cfg
             , versioningEnabled = versioning
+            , linkIndexEnabled = indexEnabled
             , draftRoot = Config.configString "draft_root" "data/drafts" cfg
             , identityHeader = Config.configString "identity_header" "X-Remote-User" cfg
             , identityDefault = Config.configString "identity_default" "anonymous" cfg

@@ -25,6 +25,12 @@ spec =
                         VConfig.trashRoot vc `shouldBe` "data/trash"
                         VConfig.logMaxBytes vc `shouldBe` 10485760
                         VConfig.logKeep vc `shouldBe` 5
+                        VConfig.versioningEnabled vc `shouldBe` True
+                        VConfig.linkIndexEnabled vc `shouldBe` True
+            it "given link_index_enabled = false, when read, then the index is disabled" $
+                case VConfig.fromConfig (parsed "link_index_enabled = false") of
+                    Left err -> expect ("unexpected config error: " ++ show err) False
+                    Right vc -> VConfig.linkIndexEnabled vc `shouldBe` False
             it "given a malformed integer key, when read, then it fails" $
                 isLeft (VConfig.fromConfig (parsed "log_max_bytes = lots")) `shouldBe` True
         describe "VERSO_ overlay" $ do

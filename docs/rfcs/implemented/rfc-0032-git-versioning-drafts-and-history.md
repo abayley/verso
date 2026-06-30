@@ -335,6 +335,9 @@ New `VERSO_`-scoped keys (per the RFC-0030 config split), all with safe defaults
 
 - `versioning_enabled` (bool, default true): master switch. When off, the app
   behaves as today (autosave writes the tree directly; no drafts, no git).
+- `link_index_enabled` (bool, default true): when off, the RFC-0029 link index is
+  not opened at startup and move/delete use the byte-scan fallback. An escape
+  hatch for environments where opening the index misbehaves.
 - `draft_root` (string, default `data/drafts`): draft staging directory.
 - `identity_header` (string, default `X-Remote-User`): request header the author
   name is read from.

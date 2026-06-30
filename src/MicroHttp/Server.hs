@@ -21,6 +21,7 @@ import qualified MicroHttp.Network.Socket as Socket
 import MicroHttp.Settings (Settings (..), defaultSettings, parseLimits)
 import qualified MicroHttp.Settings as Settings
 import qualified MicroHttp.Stream as Stream
+import qualified System.IO as IO
 
 -- | Failure modes surfaced by the server while accepting, reading, or writing.
 data ServerError
@@ -103,8 +104,32 @@ acceptLoop settings app sem socket = do
 runCappedHandler :: Settings.Settings -> Http.Application -> QSem.QSem -> Socket.ClientSocket -> Socket.ConnectionInfo -> IO ()
 runCappedHandler settings app sem client conn = do
     QSem.waitQSem sem
-    _ <- handleClient settings app client conn
+    result <- handleClient settings app client conn
+    reportConnectionFailure conn result
     QSem.signalQSem sem
+
+{- | Surfaces a connection-level failure (RFC-0032 robustness): a read/parse/write
+or idle-timeout error that happens before or outside the application stack is
+invisible to the request logger -- it never became a logged request -- and was
+previously discarded silently. Logging it to stderr makes stalled or failing
+connections visible (e.g. a flood of idle-read timeouts when clients connect but
+no request is ever read). A successful exchange logs nothing here (the request
+logger already recorded it). Note: a total event-manager wedge in which the read
+never returns and the idle timer never fires cannot be reported from inside the
+frozen runtime; that is an environmental fault, signalled by clients hanging with
+no entries in either log.
+-}
+reportConnectionFailure :: Socket.ConnectionInfo -> Either ServerError () -> IO ()
+reportConnectionFailure _ (Right ()) = pure ()
+reportConnectionFailure conn (Left err) =
+    IO.hPutStrLn IO.stderr ("micro-http: connection from " ++ showPeer conn ++ " failed: " ++ show err)
+
+-- | Formats a peer as @a.b.c.d:port@ for connection diagnostics.
+showPeer :: Socket.ConnectionInfo -> String
+showPeer (Socket.ConnectionInfo host (Socket.Port port)) = showHost host ++ ":" ++ show port
+  where
+    showHost (Socket.HostIPv4 a b c d) = show a ++ "." ++ show b ++ "." ++ show c ++ "." ++ show d
+    showHost _ = "?"
 
 -- | Accept a single connection and handle it inline.
 acceptAndHandle :: Settings.Settings -> Http.Application -> Socket.ListenSocket -> IO (Either ServerError ())

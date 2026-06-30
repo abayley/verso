@@ -1931,7 +1931,11 @@ editorThemeBootstrapScript =
         ++ "var t=localStorage.getItem('editor-theme');"
         ++ "if(t&&K.indexOf(t)>=0){r.setAttribute('data-editor-theme',t);}"
         ++ "var s=localStorage.getItem('editor-color-scheme');"
-        ++ "if(s==='dark'){r.classList.add('wa-dark');}else if(s==='light'){r.classList.add('wa-light');}"
+        -- Resolve dark/light/system the same way the editor element does (RFC-0032): an explicit
+        -- 'dark'/'light' wins, otherwise (system or unset) follow the OS preference. Applied here so
+        -- every page -- editor, reader, and the standalone history/diff views -- paints consistently.
+        ++ "var d=s==='dark'||((!s||s==='system')&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);"
+        ++ "r.classList.toggle('wa-dark',d);r.classList.toggle('wa-light',!d);"
         ++ "}catch(e){}})();</script>"
 
 {- | The Markdown editor page (RFC-0001). It is a complete, server-rendered form

@@ -372,6 +372,8 @@ spec = do
             fmap (bodyContains (BS.pack "webawesome.css")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "verso-pick")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "verso-compare-button")) history `shouldBe` Right True
+            -- the theme bootstrap resolves dark/light/system (not always light)
+            fmap (bodyContains (BS.pack "prefers-color-scheme")) history `shouldBe` Right True
         it "renders a diff between two revisions with per-line highlighting" $ do
             root <- setupVersionedFixture
             _ <-

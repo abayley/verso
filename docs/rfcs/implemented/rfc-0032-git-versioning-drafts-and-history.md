@@ -405,6 +405,12 @@ server.
   recovery from a bad rollback is another rollback.
 - `MicroHttp.Process` uses temp capture files (no pipe-deadlock risk) and reaps
   children with `waitpid` (no zombies).
+- Connection-level failures (read/parse/write or idle-timeout errors that occur
+  before or outside the application stack) are now logged to stderr by the server
+  rather than silently discarded, so stalled or failing connections are visible
+  in the logs. A total runtime event-manager wedge (the read never returns and
+  the idle timer never fires) remains an environmental fault that cannot be
+  self-reported from inside the frozen runtime.
 
 ## Compatibility Impact
 

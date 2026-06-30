@@ -22,6 +22,7 @@ import {
     type CommandStructureEventDetail,
     type InsertStructureKind,
 } from "./command-bar-element.js";
+import { themedConfirm } from "./confirm-dialog.js";
 import { registerExtension } from "./content-extension.js";
 import { INLINE_COMMANDS } from "./editor-toolbar-shared.js";
 import { frontmatterName, joinFrontmatter, setFrontmatterName, splitFrontmatter } from "./frontmatter.js";
@@ -744,7 +745,14 @@ export class MarkdownEditorElement extends HTMLElement {
      * published (committed) version, then returns to the read view. Confirms first, since it abandons changes.
      */
     private async discardDraft(documentPath: string): Promise<void> {
-        if (!window.confirm("Discard unpublished changes and revert to the last published version?")) {
+        const confirmed = await themedConfirm({
+            title: "Discard changes?",
+            message: "Discard your unpublished changes and revert to the last published version?",
+            confirmLabel: "Discard",
+            cancelLabel: "Keep editing",
+            danger: true,
+        });
+        if (!confirmed) {
             return;
         }
 

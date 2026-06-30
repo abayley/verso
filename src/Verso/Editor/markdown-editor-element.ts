@@ -190,6 +190,12 @@ export class MarkdownEditorElement extends HTMLElement {
     private sourceEditor: CodeMirrorSourceEditor | null = null;
     private syncingEditors = false;
     /**
+     * Whether there is unpublished work to discard (RFC-0032): true once the author edits the document, and
+     * seeded true when a staged draft was resumed on load. Cancel only confirms when this is set, so cancelling
+     * an untouched page (no draft, no edits) leaves quietly without a dialog.
+     */
+    private hasUnpublishedChanges = false;
+    /**
      * True while {@link renderMode} is (re)building the editors. Their construction normalises the loaded
      * Markdown and dispatches transactions that fire the change handlers; those are not user edits, so they
      * must not mark the document dirty (which would otherwise autosave on load and on every mode switch).
@@ -382,6 +388,8 @@ export class MarkdownEditorElement extends HTMLElement {
             (): string => this.toMarkdown(),
             (view: SaveStateView): void => this.applySaveView(view),
         );
+        // A resumed draft is itself unpublished work to discard (RFC-0032); a fresh page starts clean.
+        this.hasUnpublishedChanges = this.hasAttribute("data-has-draft");
 
         this.tooltipController = new ToolbarTooltipController();
         this.toolbar = this.createToolbar();
@@ -745,6 +753,12 @@ export class MarkdownEditorElement extends HTMLElement {
      * published (committed) version, then returns to the read view. Confirms first, since it abandons changes.
      */
     private async discardDraft(documentPath: string): Promise<void> {
+        // Nothing edited and no resumed draft: leave edit mode quietly, no dialog and no request.
+        if (!this.hasUnpublishedChanges) {
+            window.location.href = `/documents/${documentPath}`;
+            return;
+        }
+
         const confirmed = await themedConfirm({
             title: "Discard changes?",
             message: "Discard your unpublished changes and revert to the last published version?",
@@ -2029,6 +2043,7 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Records a valid Markdown change and notifies htmx autosave listeners. */
     private dispatchMarkdownChange(markdown: string): void {
         this.markdown = markdown;
+        this.hasUnpublishedChanges = true;
         this.internals?.setFormValue(this.documentMarkdown());
         this.saveController?.markDirty();
         this.updateWordCount();

@@ -1573,7 +1573,10 @@ treeRollback versioning maint root captures request = do
 {- | The full-page shell shared by the history and diff views. It reuses the
 editor page's theming (the @wa-@ palette classes, the @data-editor-theme@ default,
 the theme-bootstrap script, and both stylesheets) so the version pages match the
-editor\/reader look (RFC-0032).
+editor\/reader look, and loads the editor bundle so the Web Awesome components
+(@wa-dropdown@, @wa-radio-group@, @wa-icon@) used by the theme controls register
+and render exactly as in the editor (RFC-0032). The @\<markdown-editor\>@ element
+the bundle also defines is simply unused on these pages.
 -}
 versionPageShell :: String -> String -> Html.Html () -> Html.Html ()
 versionPageShell themeDefault pageTitle bodyContent =
@@ -1584,6 +1587,7 @@ versionPageShell themeDefault pageTitle bodyContent =
             Html.title [] (Html.text pageTitle)
             Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/webawesome.css\">"
             Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
+            Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\"></script>"
         Html.body [Html.class_ "markdown-editor-page verso-version-page"] $
             Html.main [] bodyContent
 
@@ -1597,7 +1601,7 @@ historyPage themeDefault path revs =
     versionPageShell themeDefault ("Revision history: " ++ path) $ do
         Html.el "h1" [] (Html.text "Revision history")
         Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href ("/documents/" ++ path)] (Html.text ("Back to " ++ path)))
-        versionControls
+        versionControls themeDefault
         if null revs
             then Html.p [] (Html.text "No revisions yet.")
             else do
@@ -1611,25 +1615,52 @@ historyPage themeDefault path revs =
                     Html.p [] (Html.text "Select two revisions and Compare to see a side-by-side diff.")
                 Html.rawTrusted historyScript
 
-{- | The theme and appearance (light\/dark\/match-system) selectors on the version
-pages. Plain selects wired by 'historyScript' to the same @localStorage@ keys the
-editor uses, so a choice here carries over to the editor and back.
+{- | The theme and appearance (light\/dark\/match-system) controls on the version
+pages, rendered with the same Web Awesome components, classes, and top-toolbar
+layout as the editor (a @wa-dropdown@ for the visual theme and a @wa-radio-group@
+of icon buttons for the colour scheme). 'historyScript' wires them to the same
+@localStorage@ keys the editor uses, so a choice here carries over to the editor
+and back. @themeDefault@ sets the initial dropdown label.
 -}
-versionControls :: Html.Html ()
-versionControls =
-    Html.div [Html.class_ "verso-version-controls"] $ do
-        Html.el "label" [] $ do
-            Html.text "Theme "
-            Html.el "select" [Html.attr "id" "verso-theme-select"] (mapM_ themeOption knownEditorThemes)
-        Html.el "label" [] $ do
-            Html.text "Appearance "
-            Html.el "select" [Html.attr "id" "verso-scheme-select"] (mapM_ schemeOption schemeOptions)
+versionControls :: String -> Html.Html ()
+versionControls themeDefault =
+    Html.div [Html.class_ "markdown-editor__toolbar markdown-editor__toolbar--top verso-version-toolbar"] $
+        Html.div [Html.class_ "markdown-editor__toolbar-controls"] $ do
+            themeDropdown
+            appearanceGroup
   where
-    themeOption t = Html.el "option" [Html.attr "value" t] (Html.text (capitalise t))
-    schemeOption (v, lbl) = Html.el "option" [Html.attr "value" v] (Html.text lbl)
-    schemeOptions = [("light", "Light"), ("dark", "Dark"), ("match-system", "Match system")]
-    capitalise [] = []
-    capitalise (c : cs) = Char.toUpper c : cs
+    themeDropdown =
+        Html.el
+            "wa-dropdown"
+            [Html.class_ "markdown-editor__theme-dropdown", Html.attr "aria-label" "Visual theme", Html.attr "size" "s", Html.attr "id" "verso-theme-dropdown"]
+            $ do
+                Html.el
+                    "wa-button"
+                    [ Html.class_ "markdown-editor__button markdown-editor__theme-trigger"
+                    , Html.attr "slot" "trigger"
+                    , Html.attr "with-caret" ""
+                    , Html.attr "appearance" "plain"
+                    , Html.attr "size" "s"
+                    , Html.attr "type" "button"
+                    , Html.attr "id" "verso-theme-trigger"
+                    , Html.attr "aria-label" "Visual theme"
+                    ]
+                    (Html.text (themeLabelFor (safeEditorTheme themeDefault)))
+                mapM_ themeItem visualThemeOptions
+    themeItem (value, label) = Html.el "wa-dropdown-item" [Html.attr "value" value] (Html.text label)
+    appearanceGroup =
+        Html.el
+            "wa-radio-group"
+            [Html.class_ "markdown-editor__theme-group", Html.attr "aria-label" "Editor colour theme", Html.attr "orientation" "horizontal", Html.attr "size" "s", Html.attr "id" "verso-scheme-group"]
+            (mapM_ schemeRadio schemeOptions)
+    schemeRadio (value, label, icon) =
+        Html.el
+            "wa-radio"
+            [Html.class_ "markdown-editor__theme-option", Html.attr "appearance" "button", Html.attr "aria-label" label, Html.attr "value" value]
+            (Html.el "wa-icon" [Html.class_ "markdown-editor__button-icon", Html.attr "name" icon, Html.attr "variant" "solid", Html.attr "label" label] (Html.text ""))
+    visualThemeOptions = [("paper", "Paper"), ("aurora", "Aurora"), ("blueprint", "Blueprint"), ("workbench", "Workbench"), ("studio", "Studio")]
+    schemeOptions = [("light", "Light", "sun"), ("dark", "Dark", "moon"), ("match-system", "Match system", "display")]
+    themeLabelFor t = Maybe.fromMaybe "Paper" (lookup t visualThemeOptions)
 
 -- | One history-table row: a select checkbox, the timestamp linking to that revision's read view, author, subject, and roll-back.
 revisionRow :: String -> Git.Revision -> Html.Html ()
@@ -1644,21 +1675,26 @@ revisionRow path rev =
                 Html.input [Html.attr "type" "hidden", Html.attr "name" "rev", Html.attr "value" (Git.revHash rev)]
                 Html.el "button" [Html.attr "type" "submit", Html.class_ "verso-rollback-button"] (Html.text "Roll back to this")
 
-{- | The history page's client script: wires the theme/appearance selects to the
-editor's @localStorage@ keys, limits revision selection to two (enabling Compare
-only at two), and on Compare fetches the side-by-side diff fragment of the two
-(older as @from@, newer as @to@) into the diff pane.
+{- | The history page's client script: wires the Web Awesome theme dropdown and
+appearance radio-group to the editor's @localStorage@ keys (matching the editor's
+events: @wa-select@ on the dropdown, @change@ on the radio-group), limits revision
+selection to two (enabling Compare only at two), and on Compare fetches the
+side-by-side diff fragment of the two (older as @from@, newer as @to@) into the
+diff pane.
 -}
 historyScript :: String
 historyScript =
     "<script>(function(){var r=document.documentElement;"
-        ++ "var ts=document.getElementById('verso-theme-select');"
-        ++ "if(ts){var ct=localStorage.getItem('editor-theme')||r.getAttribute('data-editor-theme');if(ct){ts.value=ct;}"
-        ++ "ts.addEventListener('change',function(){localStorage.setItem('editor-theme',ts.value);r.setAttribute('data-editor-theme',ts.value);});}"
-        ++ "var ss=document.getElementById('verso-scheme-select');"
+        ++ "var labels={paper:'Paper',aurora:'Aurora',blueprint:'Blueprint',workbench:'Workbench',studio:'Studio'};"
+        ++ "var dd=document.getElementById('verso-theme-dropdown');var trig=document.getElementById('verso-theme-trigger');"
+        ++ "var ct=localStorage.getItem('editor-theme')||r.getAttribute('data-editor-theme');"
+        ++ "if(trig&&ct&&labels[ct]){trig.textContent=labels[ct];}"
+        ++ "if(dd){dd.addEventListener('wa-select',function(e){var it=e.detail&&e.detail.item;var v=it&&it.getAttribute('value');"
+        ++ "if(v&&labels[v]){localStorage.setItem('editor-theme',v);r.setAttribute('data-editor-theme',v);if(trig){trig.textContent=labels[v];}}});}"
+        ++ "var rg=document.getElementById('verso-scheme-group');"
         ++ "function applyScheme(s){var d=s==='dark'||(s!=='light'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);r.classList.toggle('wa-dark',d);r.classList.toggle('wa-light',!d);}"
-        ++ "if(ss){ss.value=localStorage.getItem('editor-color-scheme')||'match-system';"
-        ++ "ss.addEventListener('change',function(){localStorage.setItem('editor-color-scheme',ss.value);applyScheme(ss.value);});}"
+        ++ "if(rg){rg.value=localStorage.getItem('editor-color-scheme')||'match-system';"
+        ++ "rg.addEventListener('change',function(){var v=rg.value;localStorage.setItem('editor-color-scheme',v);applyScheme(v);});}"
         ++ "var boxes=[].slice.call(document.querySelectorAll('.verso-pick'));"
         ++ "var btn=document.querySelector('.verso-compare-button');var pane=document.getElementById('verso-diff-pane');"
         ++ "function picked(){return boxes.filter(function(b){return b.checked;});}"

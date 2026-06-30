@@ -567,18 +567,11 @@ a.markdown-editor__crumb:hover {
   cursor: default;
 }
 
-/* Theme/appearance selectors on the version pages. */
-.verso-version-controls {
-  display: flex;
-  gap: 1.5rem;
-  align-items: center;
-  margin: 1rem 0;
-  color: var(--markdown-editor-muted);
-  font-size: 0.9em;
-}
-
-.verso-version-controls select {
-  font: inherit;
+/* Theme/appearance controls on the version pages reuse the editor's toolbar
+   styling (markdown-editor__toolbar--top + the wa-dropdown/wa-radio-group classes);
+   this just spaces the bar within the page. */
+.verso-version-toolbar {
+  margin: 0 0 1rem;
 }
 
 /* The revision list is a fixed-height scroll region with a sticky header. */

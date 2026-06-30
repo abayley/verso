@@ -300,9 +300,11 @@ attachments). The link targets a per-page history view.
 
 The history view is a standalone page that reuses the editor's theme head (the
 `wa-` palette classes, `data-editor-theme`, the theme-bootstrap script, and both
-stylesheets) so it matches the editor/reader look, and carries its own
-theme/appearance (light/dark/match-system) selectors wired to the same
-`localStorage` keys the editor uses (choices carry over both ways).
+stylesheets) so it matches the editor/reader look. It loads the editor bundle and
+renders the editor's own theme and appearance (light/dark/match-system) controls
+-- the same Web Awesome `wa-dropdown` and icon `wa-radio-group`, in a matching top
+toolbar -- wired to the same `localStorage` keys the editor uses (choices carry
+over both ways).
 
 History view: `GET /documents/<path>?history` renders the page's revisions
 (timestamp, author, subject + short hash), newest first, from `logForPath`, in a

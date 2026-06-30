@@ -374,9 +374,11 @@ spec = do
             fmap (bodyContains (BS.pack "verso-compare-button")) history `shouldBe` Right True
             -- the theme bootstrap resolves dark/light/system (not always light)
             fmap (bodyContains (BS.pack "prefers-color-scheme")) history `shouldBe` Right True
-            -- theme/appearance controls, scrollable table, in-page diff pane, and per-revision view links
-            fmap (bodyContains (BS.pack "verso-theme-select")) history `shouldBe` Right True
-            fmap (bodyContains (BS.pack "verso-scheme-select")) history `shouldBe` Right True
+            -- theme/appearance controls (Web Awesome, matching the editor), scrollable table,
+            -- in-page diff pane, and per-revision view links
+            fmap (bodyContains (BS.pack "verso-theme-dropdown")) history `shouldBe` Right True
+            fmap (bodyContains (BS.pack "verso-scheme-group")) history `shouldBe` Right True
+            fmap (bodyContains (BS.pack "markdown-editor__theme-group")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "verso-history-scroll")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "verso-diff-pane")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "?at=")) history `shouldBe` Right True

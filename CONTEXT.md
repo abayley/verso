@@ -183,6 +183,15 @@ attribute list, e.g. `` `TODO`{.badge.yellow} ``; rendered as a coloured pill
 formatting.
 _Avoid_: label, tag, pill (pill is the rendered shape, not the construct).
 
+**Mermaid diagram**:
+A fenced code block whose language is `mermaid`, shown as a rendered diagram in the
+**read view** and the **visual view**; its source is revealed for editing only while
+that block is focused (RFC-0033). The Markdown fence is the single source of truth --
+no rendered image is stored, so it stays plain, portable Markdown. Distinct from an
+**inline image** and an **attachment** (both are files in **peer assets**); a diagram
+has no file.
+_Avoid_: chart, graph, figure, drawing.
+
 **Navigation tree**:
 The editor chrome panel, on the left of the **read view** and **edit view**, that
 shows the **document tree**'s **sections** and **pages** for browsing and managing

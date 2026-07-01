@@ -7,6 +7,7 @@ import {
     INLINE_COMMANDS,
     inlineShortcut,
     preventDefault,
+    STRUCTURE_COMMANDS,
     type WaDropdownSelectEvent,
 } from "./editor-toolbar-shared.js";
 import type { VisualInlineStyle, VisualStructureStyle } from "./tiptap-visual-editor.js";
@@ -49,15 +50,6 @@ const CALLOUT_KINDS: { value: string; label: string }[] = [
     { value: "important", label: "Important" },
     { value: "tip", label: "Tip" },
     { value: "caution", label: "Caution" },
-];
-
-/** The structural command buttons, in toolbar order (specific to the persistent command bar). */
-const STRUCTURE_COMMANDS: { style: VisualStructureStyle; label: string; icon: string }[] = [
-    { style: "bullet-list", label: "Bullet List", icon: "list" },
-    { style: "ordered-list", label: "Ordered List", icon: "list-ol" },
-    { style: "blockquote", label: "Blockquote", icon: "quote-left" },
-    { style: "code-block", label: "Code Block", icon: "file-code" },
-    { style: "thematic-break", label: "Horizontal rule", icon: "window-minimize" },
 ];
 
 /** The block-insert command buttons (table, callout, collapsible), in toolbar order. */

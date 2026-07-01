@@ -9,7 +9,7 @@ import {
 import type { EditorBlock } from "./editor-model.js";
 
 /** The GFM alert kinds recognised as admonitions. */
-const ADMONITION_KINDS = ["note", "tip", "important", "warning", "caution"] as const;
+export const ADMONITION_KINDS = ["note", "tip", "important", "warning", "caution"] as const;
 
 export type AdmonitionKind = (typeof ADMONITION_KINDS)[number];
 

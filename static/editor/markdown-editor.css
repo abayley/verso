@@ -410,6 +410,22 @@ markdown-editor {
   gap: 1.25rem;
 }
 
+/* Web Awesome dropdown panels (the style / badge / callout / theme menus) default to
+   WA's own light/dark palette, which does not match the editor's per-theme colours.
+   Remap the surface/text/border tokens the panel and its items use to the editor
+   palette so every dropdown matches its theme. Scoped to wa-dropdown, so other Web
+   Awesome components are untouched. (body.markdown-editor-page also covers the version
+   pages, which carry that class alongside verso-version-page.) */
+body.markdown-editor-page wa-dropdown {
+  --wa-color-surface-raised: var(--markdown-editor-background);
+  --wa-color-surface-default: var(--markdown-editor-background);
+  --wa-color-surface-border: var(--markdown-editor-border, rgba(128, 128, 128, 0.3));
+  --wa-color-text-normal: var(--markdown-editor-text);
+  --wa-color-text-quiet: var(--markdown-editor-muted);
+  --wa-color-neutral-fill-quiet: color-mix(in srgb, var(--markdown-editor-text) 10%, transparent);
+  --wa-color-neutral-fill-normal: color-mix(in srgb, var(--markdown-editor-text) 16%, transparent);
+}
+
 /* The document name sits below the controls in a matching centred column (it is a
    sibling of the controls now, not nested, so it carries the toolbar's type and
    alignment itself). Workbench overrides this to a file tab in the top bar. */
@@ -1694,7 +1710,9 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 }
 
 :root[data-editor-theme="workbench"] markdown-editor {
-  column-gap: 1.25rem;
+  /* No column gap: the breadcrumb and command bar butt against the rail's right
+     border so they line up with it (a gap here reads as a misalignment). */
+  column-gap: 0;
   display: grid;
   grid-template-areas:
     "rail format"
@@ -1704,8 +1722,10 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   grid-template-columns: 7rem 1fr;
   grid-template-rows: auto auto 1fr auto;
   /* A fixed-viewport IDE frame: the toolbar (format), breadcrumb (tab), rail, and
-     status bar stay put, and only the content pane (main, below) scrolls. */
+     status bar stay put, and only the content pane (main, below) scrolls. Positioned
+     so the top-right appearance controls anchor to the frame. */
   height: 100vh;
+  position: relative;
 }
 
 /* The navigation tree scrolls with the Workbench content pane (it is inside the
@@ -1756,21 +1776,24 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 }
 
 /* Stack Publish above Cancel: side by side the pair overflows the narrow rail and
-   nudges the breadcrumb/command bar across. Stacked, each fits the rail. */
-:root[data-editor-theme="workbench"] .markdown-editor__view-toggle-group {
+   nudges the breadcrumb/command bar across. Stacked, each fits the rail. The
+   min-height reserves the two-line (Publish + Cancel) height so switching to the
+   read view -- a single "Edit" line -- does not shift the rest of the rail up. */
+:root[data-editor-theme="workbench"] markdown-editor .markdown-editor__view-toggle-group {
   align-items: flex-start;
   flex-direction: column;
   gap: 0.25rem;
+  min-height: 2.75rem;
 }
 
-/* Lift the theme + appearance controls out of the left rail to the top-right of the
-   IDE frame (matching the other themes' top-right placement). They land on the
-   breadcrumb row, whose right side is empty; the rail keeps only the Edit/Publish
-   toggle and the mode/width groups. */
-:root[data-editor-theme="workbench"] .markdown-editor__appearance {
-  position: fixed;
-  top: 2.6rem;
-  right: 0.85rem;
+/* Lift the theme + appearance controls out of the left rail and overlay them on the
+   top-right of the IDE frame's command bar (matching the other themes' top-right
+   placement). Scoped to the editor element so the standalone version pages -- which
+   reuse these classes but are not the IDE frame -- keep the default top-right layout. */
+:root[data-editor-theme="workbench"] markdown-editor .markdown-editor__appearance {
+  position: absolute;
+  top: 0.15rem;
+  right: 0.5rem;
   gap: 0.75rem;
   z-index: 6;
 }
@@ -1795,7 +1818,7 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 /* The presentation controls become the left rail, stacked vertically. box-sizing
    keeps the rail (with its padding and right border) inside its grid track rather
    than spilling its padding into the centre column. */
-:root[data-editor-theme="workbench"] .markdown-editor__toolbar--top {
+:root[data-editor-theme="workbench"] markdown-editor .markdown-editor__toolbar--top {
   border-right: 1px solid var(--markdown-editor-divider);
   box-sizing: border-box;
   font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -1808,19 +1831,19 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 
 /* Tighten the theme dropdown's trigger so its caret stays inside the rail rather
    than spilling into the centre column. */
-:root[data-editor-theme="workbench"] .markdown-editor__theme-dropdown wa-button::part(base) {
+:root[data-editor-theme="workbench"] markdown-editor .markdown-editor__theme-dropdown wa-button::part(base) {
   font-size: 12px;
   gap: 0.15rem;
   padding-inline: 0.2rem;
 }
 
-:root[data-editor-theme="workbench"] .markdown-editor__theme-dropdown wa-button::part(caret) {
+:root[data-editor-theme="workbench"] markdown-editor .markdown-editor__theme-dropdown wa-button::part(caret) {
   margin-inline-start: 0.2rem;
 }
 
 /* Each control group stacks vertically, with the groups spaced apart (the radio
    groups themselves are switched to vertical orientation in the element). */
-:root[data-editor-theme="workbench"] .markdown-editor__toolbar-controls {
+:root[data-editor-theme="workbench"] markdown-editor .markdown-editor__toolbar-controls {
   align-items: flex-start;
   flex-direction: column;
   gap: 1.5rem;
@@ -1855,6 +1878,10 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   justify-content: flex-start;
   max-width: none;
   padding-block: 0.1rem;
+  /* Reserve the right slice of the row for the appearance controls overlaid there, so
+     the command buttons/Save wrap before that zone rather than running under it (they
+     only wrap at narrow widths; wide windows have ample room and stay single-line). */
+  padding-inline-end: 12.5rem;
   width: 100%;
 }
 

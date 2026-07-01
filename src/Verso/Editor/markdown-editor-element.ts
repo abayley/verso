@@ -1,4 +1,4 @@
-import type { AdmonitionKind } from "./admonition-extension.js";
+import { ADMONITION_KINDS, type AdmonitionKind, admonitionTitle } from "./admonition-extension.js";
 import {
     ATTACHMENT_DRAG_TYPE,
     AttachmentPanel,
@@ -94,6 +94,17 @@ const visualThemes: { value: VisualTheme; label: string }[] = [
 /** Narrows an arbitrary string to a known visual theme. */
 function isVisualTheme(value: string | null): value is VisualTheme {
     return value !== null && visualThemes.some((theme) => theme.value === value);
+}
+
+/**
+ * One entry in the Studio slash command menu. A leaf carries `run`; a group carries `children` and, when
+ * chosen, opens those as a submenu instead of running; the synthetic back entry carries `back`.
+ */
+interface SlashCommand {
+    label: string;
+    run?: () => void;
+    children?: SlashCommand[];
+    back?: boolean;
 }
 
 /** The display label for a visual theme. */
@@ -250,20 +261,31 @@ export class MarkdownEditorElement extends HTMLElement {
         } else if (event.key === "Enter") {
             event.preventDefault();
             event.stopPropagation();
-            const command = this.slashCommands[this.slashIndex];
-
-            if (command) {
-                this.runSlashCommand(command.run);
-            }
+            this.selectSlashItem(this.slashIndex);
+        } else if (event.key === "ArrowLeft" && this.slashStack.length > 0) {
+            // Inside a submenu, Left steps back a level (mirrors Right/Enter opening one).
+            event.preventDefault();
+            event.stopPropagation();
+            this.exitSlashSubmenu();
         } else if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();
-            this.closeSlashMenu();
+            // Escape backs out of a submenu one level at a time, then closes the menu.
+            if (this.slashStack.length > 0) {
+                this.exitSlashSubmenu();
+            } else {
+                this.closeSlashMenu();
+            }
         }
     };
     private bubbleToolbar: BubbleToolbarElement | null = null;
     private slashMenu: SlashMenuElement | null = null;
-    private slashCommands: { label: string; run: () => void }[] = [];
+    /** The top-level slash commands (the root menu level). */
+    private slashRoot: SlashCommand[] = [];
+    /** The slash commands currently displayed (the root, or an opened submenu with a leading Back entry). */
+    private slashCommands: SlashCommand[] = [];
+    /** Parent levels awaiting return, pushed when a submenu opens and popped by Back. */
+    private slashStack: SlashCommand[][] = [];
     private slashIndex = 0;
     private tableControls: TableControlsElement | null = null;
     private commandBar: CommandBarElement | null = null;
@@ -1353,6 +1375,14 @@ export class MarkdownEditorElement extends HTMLElement {
             this.toggleInlineStyle((event as CustomEvent<CommandInlineEventDetail>).detail.style);
             this.updateBubbleToolbar();
         });
+        bubble.addEventListener("command-structure", (event: Event): void => {
+            this.toggleStructure((event as CustomEvent<CommandStructureEventDetail>).detail.style);
+            this.updateBubbleToolbar();
+        });
+        bubble.addEventListener("command-badge", (event: Event): void => {
+            this.applyBadge((event as CustomEvent<CommandBadgeEventDetail>).detail.value);
+            this.updateBubbleToolbar();
+        });
 
         return bubble;
     }
@@ -1398,7 +1428,10 @@ export class MarkdownEditorElement extends HTMLElement {
         menu.className = "markdown-editor__slash-menu";
         menu.setAttribute("role", "listbox");
         menu.hidden = true;
-        this.slashCommands = [
+        // Callout opens a submenu of its kinds so Studio -- which has no command bar -- can insert any callout
+        // from the slash menu. Inline marks (Badge, bold, etc.) are not block inserts, so they live on the
+        // selection bubble toolbar instead, not here.
+        this.slashRoot = [
             { label: "Heading 1", run: (): void => this.applyBlockStyle("heading-1") },
             { label: "Heading 2", run: (): void => this.applyBlockStyle("heading-2") },
             { label: "Heading 3", run: (): void => this.applyBlockStyle("heading-3") },
@@ -1409,19 +1442,23 @@ export class MarkdownEditorElement extends HTMLElement {
             { label: "Numbered list", run: (): void => this.toggleStructure("ordered-list") },
             { label: "Quote", run: (): void => this.toggleStructure("blockquote") },
             { label: "Code block", run: (): void => this.toggleStructure("code-block") },
-            { label: "Note callout", run: (): void => this.insertAdmonition("note") },
+            {
+                label: "Callout",
+                children: ADMONITION_KINDS.map((kind) => ({
+                    label: admonitionTitle(kind),
+                    run: (): void => this.insertAdmonition(kind),
+                })),
+            },
             { label: "Collapsible", run: (): void => this.insertCollapsible("note") },
             { label: "Table", run: (): void => this.insertTable() },
             { label: "Image", run: (): void => this.openFilePicker("image") },
             { label: "File", run: (): void => this.openFilePicker("file") },
         ];
-        menu.items = this.slashCommands.map((command) => command.label);
+        this.slashStack = [];
+        this.slashCommands = this.slashRoot;
+        menu.items = this.slashItemLabels();
         menu.addEventListener("slash-select", (event: Event): void => {
-            const command = this.slashCommands[(event as CustomEvent<SlashSelectEventDetail>).detail.index];
-
-            if (command) {
-                this.runSlashCommand(command.run);
-            }
+            this.selectSlashItem((event as CustomEvent<SlashSelectEventDetail>).detail.index);
         });
 
         return menu;
@@ -1503,7 +1540,7 @@ export class MarkdownEditorElement extends HTMLElement {
         }
     }
 
-    /** Hides the slash menu and removes its keyboard navigation. */
+    /** Hides the slash menu, removes its keyboard navigation, and resets to the root level for the next open. */
     private closeSlashMenu(): void {
         this.removeEventListener("keydown", this.handleSlashKeydown, true);
 
@@ -1512,6 +1549,15 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         this.slashIndex = 0;
+
+        if (this.slashStack.length > 0) {
+            this.slashStack = [];
+            this.slashCommands = this.slashRoot;
+
+            if (this.slashMenu) {
+                this.slashMenu.items = this.slashItemLabels();
+            }
+        }
     }
 
     /** Reflects the highlighted slash command onto the menu items. */
@@ -1519,6 +1565,64 @@ export class MarkdownEditorElement extends HTMLElement {
         if (this.slashMenu) {
             this.slashMenu.activeIndex = this.slashIndex;
             this.slashMenu.flush();
+        }
+    }
+
+    /** The display labels for the current menu level; group entries carry a trailing chevron affordance. */
+    private slashItemLabels(): string[] {
+        return this.slashCommands.map((command) => (command.children ? `${command.label} ›` : command.label));
+    }
+
+    /** Runs a leaf command, opens a group's submenu, or steps back a level -- from a click or from Enter. */
+    private selectSlashItem(index: number): void {
+        const command = this.slashCommands[index];
+
+        if (!command) {
+            return;
+        }
+
+        if (command.back) {
+            this.exitSlashSubmenu();
+        } else if (command.children) {
+            this.enterSlashSubmenu(command.children);
+        } else if (command.run) {
+            this.runSlashCommand(command.run);
+        }
+    }
+
+    /** Opens a submenu: shows its children beneath a Back entry, highlighted from the top. */
+    private enterSlashSubmenu(children: SlashCommand[]): void {
+        this.slashStack.push(this.slashCommands);
+        this.slashCommands = [{ label: "‹ Back", back: true }, ...children];
+        this.slashIndex = 0;
+        this.refreshSlashMenu();
+    }
+
+    /** Returns to the parent menu level. */
+    private exitSlashSubmenu(): void {
+        const parent = this.slashStack.pop();
+
+        if (!parent) {
+            return;
+        }
+
+        this.slashCommands = parent;
+        this.slashIndex = 0;
+        this.refreshSlashMenu();
+    }
+
+    /** Repaints the menu for the current level and repositions it against the caret (its size just changed). */
+    private refreshSlashMenu(): void {
+        if (!this.slashMenu) {
+            return;
+        }
+
+        this.slashMenu.items = this.slashItemLabels();
+        this.highlightSlashItem();
+        const caret = this.visualEditor?.slashCaretRect() ?? this.activeEditPaneRect();
+
+        if (caret) {
+            this.positionOverlay(this.slashMenu, caret);
         }
     }
 

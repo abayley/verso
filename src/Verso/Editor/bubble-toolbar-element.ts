@@ -1,5 +1,11 @@
 import { html, LitElement } from "lit";
-import type { CommandBlockStyleEventDetail, CommandInlineEventDetail } from "./command-bar-element.js";
+import { badgeStyle, COMMON_BADGE_COLOURS } from "./badge-syntax.js";
+import type {
+    CommandBadgeEventDetail,
+    CommandBlockStyleEventDetail,
+    CommandInlineEventDetail,
+    CommandStructureEventDetail,
+} from "./command-bar-element.js";
 import {
     BLOCK_STYLES,
     blockLabel,
@@ -7,9 +13,10 @@ import {
     INLINE_COMMANDS,
     inlineShortcut,
     preventDefault,
+    STRUCTURE_COMMANDS,
     type WaDropdownSelectEvent,
 } from "./editor-toolbar-shared.js";
-import type { VisualInlineStyle } from "./tiptap-visual-editor.js";
+import type { VisualInlineStyle, VisualStructureStyle } from "./tiptap-visual-editor.js";
 import type { ToolbarTooltipController } from "./toolbar-tooltip-controller.js";
 
 /**
@@ -64,6 +71,22 @@ export class BubbleToolbarElement extends LitElement {
                 this.tooltipController?.register(button, command.label, inlineShortcut(command));
             }
         }
+
+        for (const command of STRUCTURE_COMMANDS) {
+            const button = this.querySelector<HTMLElement>(
+                `.markdown-editor__bubble-button[data-structure-style="${command.style}"]`,
+            );
+
+            if (button) {
+                this.tooltipController?.register(button, command.label);
+            }
+        }
+
+        const badge = this.querySelector<HTMLElement>(".markdown-editor__bubble-badge-trigger");
+
+        if (badge) {
+            this.tooltipController?.register(badge, "Badge colour");
+        }
     }
 
     /** Dispatches the chosen block style for the host to validate and apply. */
@@ -93,6 +116,34 @@ export class BubbleToolbarElement extends LitElement {
             }),
         );
     }
+
+    /** Dispatches a structural-style toggle to the host. */
+    private emitStructure(style: VisualStructureStyle): void {
+        this.dispatchEvent(
+            new CustomEvent<CommandStructureEventDetail>("command-structure", {
+                bubbles: true,
+                composed: true,
+                detail: { style },
+            }),
+        );
+    }
+
+    /** Dispatches the chosen badge colour (or "remove") for the host to apply to the selection. */
+    private readonly handleBadgeSelect = (event: Event): void => {
+        const item = (event as WaDropdownSelectEvent).detail.item;
+
+        if (!(item instanceof HTMLElement)) {
+            return;
+        }
+
+        this.dispatchEvent(
+            new CustomEvent<CommandBadgeEventDetail>("command-badge", {
+                bubbles: true,
+                composed: true,
+                detail: { value: elementValue(item) },
+            }),
+        );
+    };
 
     protected override render(): unknown {
         return html`
@@ -142,6 +193,52 @@ export class BubbleToolbarElement extends LitElement {
                     </wa-button>
                 `,
             )}
+            ${STRUCTURE_COMMANDS.map(
+                (command) => html`
+                    <wa-button
+                        class="markdown-editor__button markdown-editor__bubble-button"
+                        appearance="plain"
+                        size="s"
+                        type="button"
+                        aria-label=${command.label}
+                        data-structure-style=${command.style}
+                        @mousedown=${preventDefault}
+                        @click=${(): void => this.emitStructure(command.style)}
+                    >
+                        <wa-icon
+                            class="markdown-editor__button-icon"
+                            name=${command.icon}
+                            variant="solid"
+                            label=${command.label}
+                        ></wa-icon>
+                    </wa-button>
+                `,
+            )}
+            <wa-dropdown
+                class="markdown-editor__bubble-badge"
+                aria-label="Badge colour"
+                size="s"
+                @wa-select=${this.handleBadgeSelect}
+            >
+                <wa-button
+                    slot="trigger"
+                    class="markdown-editor__button markdown-editor__bubble-badge-trigger"
+                    appearance="plain"
+                    size="s"
+                    type="button"
+                    aria-label="Badge"
+                    with-caret
+                    @mousedown=${preventDefault}
+                >Badge</wa-button>
+                ${COMMON_BADGE_COLOURS.map(
+                    (colour) => html`
+                        <wa-dropdown-item value=${colour}>
+                            <span class="badge" style=${badgeStyle(colour)}>${colour}</span>
+                        </wa-dropdown-item>
+                    `,
+                )}
+                <wa-dropdown-item value="remove">Remove badge</wa-dropdown-item>
+            </wa-dropdown>
         `;
     }
 }

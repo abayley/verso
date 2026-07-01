@@ -1,4 +1,4 @@
-import type { VisualInlineStyle } from "./tiptap-visual-editor.js";
+import type { VisualInlineStyle, VisualStructureStyle } from "./tiptap-visual-editor.js";
 
 /** The `wa-select` event shape emitted by a Web Awesome dropdown. */
 export interface WaDropdownSelectEvent extends Event {
@@ -33,6 +33,22 @@ export const INLINE_COMMANDS: InlineCommand[] = [
     { style: "strikethrough", label: "Strike", icon: "strikethrough", shortcut: "Shift+S" },
     { style: "code", label: "Code", icon: "code", shortcut: "E" },
     { style: "link", label: "Link", icon: "link", shortcut: "K" },
+];
+
+/** A structural command button shared by the command bar and the bubble toolbar. */
+export interface StructureCommand {
+    style: VisualStructureStyle;
+    label: string;
+    icon: string;
+}
+
+/** The structural command buttons, in toolbar order. */
+export const STRUCTURE_COMMANDS: StructureCommand[] = [
+    { style: "bullet-list", label: "Bullet List", icon: "list" },
+    { style: "ordered-list", label: "Ordered List", icon: "list-ol" },
+    { style: "blockquote", label: "Blockquote", icon: "quote-left" },
+    { style: "code-block", label: "Code Block", icon: "file-code" },
+    { style: "thematic-break", label: "Horizontal rule", icon: "window-minimize" },
 ];
 
 /** Returns the display label for a block style value, defaulting to Paragraph. */

@@ -1480,6 +1480,32 @@ describe("MarkdownEditorElement studio surfaces", (): void => {
         expect(bubbleToolbar(editor).hidden).toBe(true);
     });
 
+    it("given the studio bubble toolbar, when a badge colour is chosen, then the badge applies to the selection", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("Edit this Markdown document.");
+
+        selectText(editor, "Markdown");
+        dispatchSelectionChange();
+        const dropdown = bubbleToolbar(editor).querySelector(".markdown-editor__bubble-badge");
+        const item = dropdown?.querySelector('wa-dropdown-item[value="yellow"]');
+        dropdown?.dispatchEvent(new CustomEvent("wa-select", { detail: { item } }));
+
+        // The badge mark's span renders through a canvas call jsdom does not implement, so assert on the
+        // editor state (the mark applied to the selection) rather than the rendered DOM.
+        expect(badgeMarkActive(editor)).toBe(true);
+    });
+
+    it("given the studio bubble toolbar, when Bullet List is clicked, then the block becomes a list", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("Turn me into a list.");
+
+        selectText(editor, "list");
+        dispatchSelectionChange();
+        bubbleStructureButton(editor, "bullet-list").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+        expect(editor.querySelector(".markdown-editor__surface ul li")).toBeInstanceOf(HTMLElement);
+    });
+
     it("given the studio theme and a block typed as a slash, when the selection changes, then the slash menu opens", async (): Promise<void> => {
         window.localStorage.setItem("editor-theme", "studio");
         const editor = await mountStudioEditor("/");
@@ -1489,6 +1515,49 @@ describe("MarkdownEditorElement studio surfaces", (): void => {
 
         expect(slashMenu(editor).hidden).toBe(false);
         expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(15);
+    });
+
+    it("given the studio slash menu, when Callout is chosen, then a submenu of callout kinds opens", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("/");
+
+        placeCaretAfterText(editor, "/");
+        dispatchSelectionChange();
+        slashItem(editor, "Callout").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+        const labels = Array.from(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item")).map(
+            (item): string => (item.textContent ?? "").replace(/[‹›]/g, "").trim(),
+        );
+        expect(labels).toEqual(["Back", "Note", "Tip", "Important", "Warning", "Caution"]);
+        expect(slashMenu(editor).hidden).toBe(false);
+    });
+
+    it("given a studio callout submenu, when a kind is chosen, then that callout is inserted and the menu closes", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("/");
+
+        placeCaretAfterText(editor, "/");
+        dispatchSelectionChange();
+        slashItem(editor, "Callout").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        slashItem(editor, "Warning").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+        expect(editor.querySelector(".markdown-editor__surface .markdown-alert")).toBeInstanceOf(HTMLElement);
+        expect(slashMenu(editor).hidden).toBe(true);
+    });
+
+    it("given a studio submenu, when Back is chosen, then the root menu returns", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("/");
+
+        placeCaretAfterText(editor, "/");
+        dispatchSelectionChange();
+        slashItem(editor, "Callout").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(6);
+
+        slashItem(editor, "Back").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+        expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(15);
+        expect(slashItem(editor, "Callout")).toBeInstanceOf(HTMLElement);
     });
 
     it("given the studio slash menu, when Heading 1 is chosen, then the block becomes a heading", async (): Promise<void> => {
@@ -1613,6 +1682,26 @@ function bubbleButton(editor: Element, style: string): HTMLElement {
     return button;
 }
 
+/** Reports whether the badge mark is active on the visual editor's current selection. */
+function badgeMarkActive(editor: Element): boolean {
+    const host = editor as unknown as { visualEditor?: { editor?: { isActive(name: string): boolean } } };
+
+    return host.visualEditor?.editor?.isActive("badge") ?? false;
+}
+
+/** Returns one bubble-toolbar structure button by its structure style. */
+function bubbleStructureButton(editor: Element, style: string): HTMLElement {
+    const button = bubbleToolbar(editor).querySelector(
+        `.markdown-editor__bubble-button[data-structure-style="${style}"]`,
+    );
+
+    if (!(button instanceof HTMLElement)) {
+        throw new Error(`Expected a bubble structure button: ${style}`);
+    }
+
+    return button;
+}
+
 /** Chooses a block style from the bubble toolbar's block selector. */
 function selectBubbleStyle(editor: Element, style: string): void {
     const dropdown = bubbleToolbar(editor).querySelector(".markdown-editor__bubble-style");
@@ -1641,10 +1730,11 @@ function slashMenu(editor: Element): HTMLElement {
     return menu;
 }
 
-/** Returns one slash menu item by its label. */
+/** Returns one slash menu item by its label, ignoring the group/back affordance glyphs (‹ ›). */
 function slashItem(editor: Element, label: string): HTMLElement {
+    const clean = (text: string | null): string => (text ?? "").replace(/[‹›]/g, "").trim();
     const item = Array.from(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item")).find(
-        (candidate): boolean => candidate.textContent === label,
+        (candidate): boolean => clean(candidate.textContent) === label,
     );
 
     if (!(item instanceof HTMLElement)) {

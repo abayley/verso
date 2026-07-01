@@ -1,3 +1,4 @@
+import type { NodeViewRendererProps } from "@tiptap/core";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import bash from "highlight.js/lib/languages/bash";
 import c from "highlight.js/lib/languages/c";
@@ -19,6 +20,7 @@ import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 import { createLowlight } from "lowlight";
+import { CodeBlockView } from "./tiptap-code-block-view.js";
 
 /**
  * The curated set of highlight.js grammars registered for fenced code blocks (RFC-0033). Kept small on
@@ -76,10 +78,19 @@ for (const [alias, canonical] of Object.entries(LANGUAGE_ALIASES)) {
     lowlight.registerAlias(canonical, alias);
 }
 
+/** The canonical language keywords offered by the code-block language picker, alphabetical. */
+const CODE_BLOCK_LANGUAGES: readonly string[] = Object.keys(GRAMMARS).sort();
+
 /**
  * The fenced-code-block node (RFC-0033): highlight.js highlighting via lowlight over the curated grammars,
  * replacing StarterKit's plain `codeBlock`. Keeps the standard code-block schema (a `language` attribute and
  * a text body) and the `codeBlock` node name, so existing insert commands and the DOM serialiser
- * (`codeBlockFromElement`, which reads `textContent` and the `language-` class) are unaffected.
+ * (`codeBlockFromElement`, which reads `textContent` and the `language-` class) are unaffected. The NodeView
+ * adds the language picker (edit view) / language label (read view) on top of the highlighted content.
  */
-export const CodeBlock = CodeBlockLowlight.configure({ lowlight });
+export const CodeBlock = CodeBlockLowlight.extend({
+    addNodeView() {
+        return (props: NodeViewRendererProps): CodeBlockView =>
+            new CodeBlockView(props.node, props.editor, props.getPos, CODE_BLOCK_LANGUAGES);
+    },
+}).configure({ lowlight });

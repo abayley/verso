@@ -245,6 +245,20 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain(["```brainfuck", "+++.", "```"].join("\n"));
     });
 
+    it("given the code-block language picker, when a language is chosen, then the fence language changes (RFC-0033)", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = ["```", "x = 1", "```"].join("\n");
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        const dropdown = editor.querySelector(".markdown-editor__surface pre .markdown-editor__code-language-dropdown");
+        const item = dropdown?.querySelector('wa-dropdown-item[value="python"]');
+        dropdown?.dispatchEvent(new CustomEvent("wa-select", { bubbles: true, detail: { item } }));
+
+        expect(editor.querySelector(".markdown-editor__surface pre code")?.className).toContain("language-python");
+        expect(editor.toMarkdown()).toContain(["```python", "x = 1", "```"].join("\n"));
+    });
+
     it("given a list item with several fenced code blocks, when loaded, then each is restored", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = [
@@ -271,7 +285,8 @@ describe("MarkdownEditorElement", (): void => {
         await waitForInitialisation();
 
         // Continuation sentinels in a loose list item come back indented; all three fences must still restore.
-        const codeBlocks = [...(editor.querySelectorAll(".markdown-editor__surface pre") ?? [])];
+        // Read the <code> content, not the <pre> (the <pre> now also holds the language-picker toolbar chrome).
+        const codeBlocks = [...(editor.querySelectorAll(".markdown-editor__surface pre code") ?? [])];
         expect(codeBlocks.length).toBe(3);
         expect(codeBlocks.map((p) => (p.textContent ?? "").trim())).toEqual(["first", "second", "third"]);
     });

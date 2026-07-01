@@ -1011,6 +1011,28 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   padding: 0.75rem;
 }
 
+/* The code-block toolbar (RFC-0033): the language picker while editing / a muted language label in the read
+   view. It sits above the code as a compact right-aligned bar. `white-space: normal` is essential -- the
+   enclosing <pre> sets `white-space: pre`, which otherwise breaks the Web Awesome dropdown's own layout. */
+.markdown-editor__code-toolbar {
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.4rem;
+  white-space: normal;
+}
+
+.markdown-editor__code-language {
+  color: var(--markdown-editor-muted);
+  font: 12px system-ui, sans-serif;
+  letter-spacing: 0.03em;
+}
+
+.markdown-editor__code-language-trigger::part(base) {
+  color: var(--markdown-editor-muted);
+  font: 12px system-ui, sans-serif;
+}
+
 /* Syntax highlighting (RFC-0033): lowlight emits highlight.js `hljs-*` token classes inside the code block;
    map them to the editor palette so code reads correctly in every theme and flips with light/dark (the
    palette variables flip under :root.wa-dark), rather than shipping a fixed highlight.js theme. */

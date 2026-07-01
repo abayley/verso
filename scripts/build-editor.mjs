@@ -1,4 +1,7 @@
 const outfile = "static/editor/markdown-editor.js";
+// The Mermaid diagram runtime is built as its own bundle, loaded on demand (RFC-0033, ADR-071): it is large,
+// so pages without a `mermaid` fence never pay for it.
+const mermaidOutfile = "static/editor/mermaid.js";
 const webAwesomeCssEntry = "node_modules/@awesome.me/webawesome/dist/styles/themes/default.css";
 const webAwesomeCssOutfile = "static/editor/webawesome.css";
 
@@ -7,37 +10,42 @@ const webAwesomeCssOutfile = "static/editor/webawesome.css";
 // build so the leaner production builds are bundled and the dev-mode warnings are dropped.
 process.env.NODE_ENV = "production";
 
-const result = await Bun.build({
-    entrypoints: ["src/Verso/Editor/index.ts"],
-    define: { "process.env.NODE_ENV": '"production"' },
-    format: "iife",
-    minify: true,
-    target: "browser",
-});
-
-if (!result.success) {
-    for (const log of result.logs) {
-        console.error(log);
-    }
-
-    process.exit(1);
-}
-
-const output = result.outputs[0];
-
-if (!output) {
-    console.error("Editor bundle build did not produce an output file.");
-    process.exit(1);
-}
-
-const bundle = await output.text();
-const normalisedBundle = bundle.replaceAll("`  \n`", '"  \\n"');
-
+const normalisedBundle = (await buildBundle("src/Verso/Editor/index.ts")).replaceAll("`  \n`", '"  \\n"');
 await Bun.write(outfile, normalisedBundle);
+await Bun.write(mermaidOutfile, await buildBundle("src/Verso/Editor/mermaid-entry.ts"));
 await Bun.write(webAwesomeCssOutfile, await bundledCss(webAwesomeCssEntry));
 
 console.log(`Bundled editor to ${outfile}`);
+console.log(`Bundled Mermaid runtime to ${mermaidOutfile}`);
 console.log(`Bundled Web Awesome styles to ${webAwesomeCssOutfile}`);
+
+/** Builds one IIFE browser bundle from an entrypoint and returns its source, exiting on failure. */
+async function buildBundle(entrypoint) {
+    const result = await Bun.build({
+        entrypoints: [entrypoint],
+        define: { "process.env.NODE_ENV": '"production"' },
+        format: "iife",
+        minify: true,
+        target: "browser",
+    });
+
+    if (!result.success) {
+        for (const log of result.logs) {
+            console.error(log);
+        }
+
+        process.exit(1);
+    }
+
+    const output = result.outputs[0];
+
+    if (!output) {
+        console.error(`Bundle build for ${entrypoint} produced no output file.`);
+        process.exit(1);
+    }
+
+    return output.text();
+}
 
 /** Bundles a CSS file by recursively inlining relative @import URLs. */
 async function bundledCss(path, seen = new Set()) {

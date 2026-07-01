@@ -27,6 +27,7 @@
         "happy-dom": "^20.10.2",
         "knip": "^6.16.1",
         "lowlight": "^3.3.0",
+        "mermaid": "11.16.0",
         "playwright": "^1.60.0",
         "rehype-stringify": "^10.0.1",
         "remark-gfm": "^4.0.1",

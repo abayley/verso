@@ -2,6 +2,7 @@
     "$schema": "https://unpkg.com/knip@6/schema.json",
     "entry": [
         "src/Verso/Editor/index.ts",
+        "src/Verso/Editor/mermaid-entry.ts",
         "scripts/editor-smoke.cjs",
         "scripts/remark-ast-spike.mjs",
         "test/editor/**/*.test.ts"

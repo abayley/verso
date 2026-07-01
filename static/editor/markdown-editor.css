@@ -1028,6 +1028,35 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   letter-spacing: 0.03em;
 }
 
+/* The rendered Mermaid diagram (RFC-0033) shown in place of a mermaid fence's source. Centred, with the
+   generated SVG scaled to fit; white-space is reset since the enclosing <pre> is `white-space: pre`. */
+.markdown-editor__mermaid {
+  display: flex;
+  justify-content: center;
+  white-space: normal;
+}
+
+.markdown-editor__mermaid[hidden] {
+  display: none;
+}
+
+.markdown-editor__mermaid svg {
+  height: auto;
+  max-width: 100%;
+}
+
+.markdown-editor__mermaid--empty {
+  color: var(--markdown-editor-muted);
+  font: 13px system-ui, sans-serif;
+}
+
+.markdown-editor__mermaid--error {
+  color: var(--markdown-editor-error-text);
+  font: 13px ui-monospace, monospace;
+  justify-content: flex-start;
+  white-space: pre-wrap;
+}
+
 .markdown-editor__code-language-trigger::part(base) {
   color: var(--markdown-editor-muted);
   font: 12px system-ui, sans-serif;

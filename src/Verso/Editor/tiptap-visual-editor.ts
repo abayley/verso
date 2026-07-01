@@ -783,6 +783,19 @@ export class TiptapVisualEditor {
         return this.editor.chain().focus().wrapIn("collapsible", { collapsibleType: kind }).run();
     }
 
+    /** Inserts a Mermaid diagram code block seeded with a minimal valid flowchart (RFC-0033). */
+    public insertMermaid(): boolean {
+        return this.editor
+            .chain()
+            .focus()
+            .insertContent({
+                attrs: { language: "mermaid" },
+                content: [{ text: "flowchart TD\n    A[Start] --> B[End]", type: "text" }],
+                type: "codeBlock",
+            })
+            .run();
+    }
+
     /**
      * Promotes a mkdocs collapsible (a `??? type` marker paragraph followed by the indented body, which
      * marked loads as a code block) into a collapsible node after content loads, re-parsing the body

@@ -245,6 +245,18 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain(["```brainfuck", "+++.", "```"].join("\n"));
     });
 
+    it("given a mermaid fence, when loaded, then it becomes a diagram node and round-trips (RFC-0033)", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = ["```mermaid", "flowchart TD", "    A --> B", "```"].join("\n");
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        const pre = editor.querySelector(".markdown-editor__surface pre");
+        expect(pre?.querySelector("code")?.className).toContain("language-mermaid");
+        expect(pre?.querySelector(".markdown-editor__mermaid")).toBeInstanceOf(HTMLElement);
+        expect(editor.toMarkdown()).toContain(["```mermaid", "flowchart TD", "    A --> B", "```"].join("\n"));
+    });
+
     it("given the code-block language picker, when a language is chosen, then the fence language changes (RFC-0033)", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = ["```", "x = 1", "```"].join("\n");
@@ -1561,7 +1573,7 @@ describe("MarkdownEditorElement studio surfaces", (): void => {
         dispatchSelectionChange();
 
         expect(slashMenu(editor).hidden).toBe(false);
-        expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(15);
+        expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(16);
     });
 
     it("given the studio slash menu, when Callout is chosen, then a submenu of callout kinds opens", async (): Promise<void> => {
@@ -1603,7 +1615,7 @@ describe("MarkdownEditorElement studio surfaces", (): void => {
 
         slashItem(editor, "Back").dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
-        expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(15);
+        expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(16);
         expect(slashItem(editor, "Callout")).toBeInstanceOf(HTMLElement);
     });
 

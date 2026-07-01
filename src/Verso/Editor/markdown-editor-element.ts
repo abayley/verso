@@ -1450,6 +1450,7 @@ export class MarkdownEditorElement extends HTMLElement {
                 })),
             },
             { label: "Collapsible", run: (): void => this.insertCollapsible("note") },
+            { label: "Mermaid diagram", run: (): void => this.insertMermaid() },
             { label: "Table", run: (): void => this.insertTable() },
             { label: "Image", run: (): void => this.openFilePicker("image") },
             { label: "File", run: (): void => this.openFilePicker("file") },
@@ -1981,6 +1982,13 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Inserts a table at the current visual selection. */
     private insertTable(): void {
         if (this.visualEditor?.insertTable()) {
+            this.handleVisualInput();
+        }
+    }
+
+    /** Inserts a Mermaid diagram code block at the current visual selection (RFC-0033). */
+    private insertMermaid(): void {
+        if (this.visualEditor?.insertMermaid()) {
             this.handleVisualInput();
         }
     }

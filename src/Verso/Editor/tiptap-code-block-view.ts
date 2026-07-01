@@ -1,17 +1,32 @@
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
+import { loadMermaid } from "./mermaid-loader.js";
 
 /** The label shown for a code block with no language set (a plain, unhighlighted block). */
 const PLAIN_LABEL = "Plain text";
 
+/** The fence language that renders as a diagram rather than highlighted source (RFC-0033). */
+const MERMAID_LANGUAGE = "mermaid";
+
+/** Debounce for re-rendering a diagram after its source changes, in milliseconds. */
+const RENDER_DEBOUNCE_MS = 250;
+
+/** A process-wide counter giving each Mermaid render a unique element id (Mermaid requires one per render). */
+let mermaidRenderSeq = 0;
+
+/** Whether the page is currently in the dark colour scheme (drives the Mermaid theme). */
+function isDarkScheme(): boolean {
+    return document.documentElement.classList.contains("wa-dark");
+}
+
 /**
- * The NodeView for the fenced-code-block node (RFC-0033). It keeps the code-block DOM shape a `<pre>` root
- * with a `<code class="language-...">` content element, so both the serialiser (`codeBlockFromElement`, which
- * keys on `tagName === "PRE"` and reads `code.textContent`) and CodeBlockLowlight's decoration plugin (which
- * targets the content) keep working unchanged. On top of that content it adds, while editing, a language
- * picker that sets the node's `language` attribute; in the read view it shows the language as a muted label.
- * The Mermaid diagram behaviour is layered on in a later slice.
+ * The NodeView for the fenced-code-block node (RFC-0033). It keeps the code-block DOM shape — a `<pre>` root
+ * with a `<code class="language-...">` content element — so both the serialiser (`codeBlockFromElement`, which
+ * keys on `tagName === "PRE"` and reads `code.textContent`) and CodeBlockLowlight's decoration plugin keep
+ * working unchanged. On top of that content it adds a language picker (edit view) / language label (read
+ * view), and, for a `mermaid` fence, renders the diagram: source is shown only while the node is focused in
+ * the edit view; otherwise (unfocused, or the read view) the diagram is shown in its place.
  */
 export class CodeBlockView {
     public readonly dom: HTMLPreElement;
@@ -19,10 +34,16 @@ export class CodeBlockView {
     private readonly toolbar: HTMLDivElement;
     private readonly picker: HTMLElement;
     private readonly label: HTMLElement;
+    private readonly diagram: HTMLDivElement;
     private node: ProseMirrorNode;
     private readonly editor: Editor;
     private readonly getPos: () => number | undefined;
     private readonly languages: readonly string[];
+    private focused = false;
+    private renderedDiagramSource: string | null = null;
+    private renderTimer: ReturnType<typeof setTimeout> | null = null;
+    private readonly onSelectionUpdate: () => void;
+    private readonly schemeObserver: MutationObserver;
 
     public constructor(
         node: ProseMirrorNode,
@@ -45,7 +66,21 @@ export class CodeBlockView {
         this.toolbar.append(this.picker, this.label);
 
         this.contentDOM = document.createElement("code");
-        this.dom.append(this.toolbar, this.contentDOM);
+        this.diagram = document.createElement("div");
+        this.diagram.className = "markdown-editor__mermaid";
+        this.diagram.contentEditable = "false";
+        // Clicking a rendered diagram moves the caret into the source so it can be edited (the SVG itself is
+        // not editable, so this is how a pointer user reveals the source).
+        this.diagram.addEventListener("mousedown", (event: Event): void => this.enterSource(event));
+
+        this.dom.append(this.toolbar, this.contentDOM, this.diagram);
+
+        this.focused = this.selectionInside();
+        this.onSelectionUpdate = (): void => this.handleSelectionUpdate();
+        this.editor.on("selectionUpdate", this.onSelectionUpdate);
+        // Re-render diagrams when the light/dark scheme flips live (Mermaid bakes the theme into the SVG).
+        this.schemeObserver = new MutationObserver((): void => this.handleSchemeChange());
+        this.schemeObserver.observe(document.documentElement, { attributeFilter: ["class"] });
 
         this.render();
     }
@@ -67,6 +102,7 @@ export class CodeBlockView {
 
         const entries: [string, string][] = [
             ["", PLAIN_LABEL],
+            [MERMAID_LANGUAGE, "Mermaid"],
             ...this.languages.map((lang): [string, string] => [lang, lang]),
         ];
 
@@ -79,8 +115,7 @@ export class CodeBlockView {
 
         dropdown.addEventListener("wa-select", (event: Event): void => {
             const item = (event as CustomEvent<{ item?: Element }>).detail?.item;
-            const value = item?.getAttribute("value") ?? "";
-            this.setLanguage(value);
+            this.setLanguage(item?.getAttribute("value") ?? "");
         });
 
         return dropdown;
@@ -105,11 +140,63 @@ export class CodeBlockView {
         return typeof this.node.attrs["language"] === "string" ? this.node.attrs["language"] : "";
     }
 
-    /** Reflects the current language and edit/read state onto the DOM. */
+    /** Whether this is a Mermaid fence (rendered as a diagram rather than highlighted source). */
+    private isMermaid(): boolean {
+        return this.language() === MERMAID_LANGUAGE;
+    }
+
+    /** Whether the editor selection currently sits inside this node. */
+    private selectionInside(): boolean {
+        const pos = this.getPos();
+
+        if (pos === undefined) {
+            return false;
+        }
+
+        const { from } = this.editor.state.selection;
+
+        return from >= pos && from <= pos + this.node.nodeSize;
+    }
+
+    /** On a selection change, re-render if the focus state of this node flipped (source vs diagram). */
+    private handleSelectionUpdate(): void {
+        const inside = this.selectionInside();
+
+        if (inside !== this.focused) {
+            this.focused = inside;
+            this.render();
+        }
+    }
+
+    /** On a live scheme change, re-render the diagram (only meaningful while it is shown). */
+    private handleSchemeChange(): void {
+        if (this.isMermaid() && !this.diagram.hidden) {
+            this.renderedDiagramSource = null;
+            this.renderDiagram();
+        }
+    }
+
+    /** Moves the caret into the source so a Mermaid diagram can be edited. */
+    private enterSource(event: Event): void {
+        const pos = this.getPos();
+
+        if (pos === undefined || !this.editor.isEditable) {
+            return;
+        }
+
+        event.preventDefault();
+        this.editor
+            .chain()
+            .setTextSelection(pos + 1)
+            .focus()
+            .run();
+    }
+
+    /** Reflects the current language, edit/read state, and Mermaid mode onto the DOM. */
     private render(): void {
         const language = this.language();
         this.contentDOM.className = language ? `language-${language}` : "";
-        const triggerLabel = language || PLAIN_LABEL;
+        const triggerLabel = this.isMermaid() ? "Mermaid" : language || PLAIN_LABEL;
         const trigger = this.picker.querySelector(".markdown-editor__code-language-trigger");
 
         if (trigger) {
@@ -118,9 +205,77 @@ export class CodeBlockView {
 
         this.label.textContent = triggerLabel;
         const editable = this.editor.isEditable;
-        this.picker.hidden = !editable;
-        // In the read view the language shows as a muted label; while editing, the picker carries it instead.
+        // The Web Awesome dropdown host overrides the `hidden` attribute, so toggle display directly.
+        this.picker.style.display = editable ? "" : "none";
         this.label.hidden = editable;
+
+        // Mermaid: show the source only while editing this node; otherwise show the diagram in its place.
+        const showDiagram = this.isMermaid() && !(editable && this.focused);
+        this.contentDOM.hidden = showDiagram;
+        this.diagram.hidden = !showDiagram;
+
+        if (showDiagram) {
+            this.renderDiagram();
+        }
+    }
+
+    /** Renders (or re-renders) the Mermaid diagram from the current source, debounced, into the diagram area. */
+    private renderDiagram(): void {
+        const source = this.node.textContent.trim();
+
+        if (source === this.renderedDiagramSource) {
+            return;
+        }
+
+        if (this.renderTimer !== null) {
+            clearTimeout(this.renderTimer);
+        }
+
+        if (source.length === 0) {
+            this.renderedDiagramSource = "";
+            this.diagram.textContent = "Empty diagram.";
+            this.diagram.classList.add("markdown-editor__mermaid--empty");
+
+            return;
+        }
+
+        this.renderTimer = setTimeout((): void => {
+            this.renderedDiagramSource = source;
+            mermaidRenderSeq += 1;
+            const id = `verso-mermaid-${mermaidRenderSeq}`;
+            loadMermaid()
+                .then(
+                    (mermaid): Promise<void> =>
+                        mermaid.render(id, source, isDarkScheme()).then((result): void => {
+                            // A stale render (the source changed again while awaiting) is discarded.
+                            if (this.renderedDiagramSource !== source) {
+                                return;
+                            }
+
+                            if (typeof result.svg === "string") {
+                                this.diagram.innerHTML = result.svg;
+                                this.diagram.classList.remove(
+                                    "markdown-editor__mermaid--empty",
+                                    "markdown-editor__mermaid--error",
+                                );
+                            } else {
+                                this.showDiagramError(result.error ?? "Could not render diagram.");
+                            }
+                        }),
+                )
+                .catch((): void => {
+                    // Bundle load / engine failure: fall back to a notice; the source stays intact and editable.
+                    this.renderedDiagramSource = null;
+                    this.showDiagramError("Could not load the diagram renderer.");
+                });
+        }, RENDER_DEBOUNCE_MS);
+    }
+
+    /** Shows an error message in the diagram area (a syntax error or a renderer failure). */
+    private showDiagramError(message: string): void {
+        this.diagram.textContent = message;
+        this.diagram.classList.add("markdown-editor__mermaid--error");
+        this.diagram.classList.remove("markdown-editor__mermaid--empty");
     }
 
     /** Keeps the NodeView on attribute/content changes to the same node type (so decorations re-apply). */
@@ -135,7 +290,7 @@ export class CodeBlockView {
         return true;
     }
 
-    /** Chrome (toolbar) is not editor content: never treat its mutations as document changes. */
+    /** Chrome (toolbar, diagram) is not editor content: never treat its mutations as document changes. */
     public ignoreMutation(mutation: MutationRecord | { type: "selection"; target: Node }): boolean {
         if (mutation.type === "selection") {
             return false;
@@ -144,8 +299,18 @@ export class CodeBlockView {
         return !this.contentDOM.contains(mutation.target as Node);
     }
 
-    /** Let the picker handle its own pointer/keyboard events rather than the editor. */
+    /** Let the picker and diagram handle their own pointer/keyboard events rather than the editor. */
     public stopEvent(event: Event): boolean {
-        return this.toolbar.contains(event.target as Node);
+        return this.toolbar.contains(event.target as Node) || this.diagram.contains(event.target as Node);
+    }
+
+    /** Detaches listeners when the NodeView is torn down. */
+    public destroy(): void {
+        this.editor.off("selectionUpdate", this.onSelectionUpdate);
+        this.schemeObserver.disconnect();
+
+        if (this.renderTimer !== null) {
+            clearTimeout(this.renderTimer);
+        }
     }
 }

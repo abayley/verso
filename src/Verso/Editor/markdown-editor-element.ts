@@ -681,10 +681,16 @@ export class MarkdownEditorElement extends HTMLElement {
         controls.append(this.modeGroup);
         this.widthGroup = this.createWidthGroup();
         controls.append(this.widthGroup);
+        // The visual-theme dropdown and the light/dark appearance group travel together as one unit
+        // ("appearance"). The default themes render it inline at the right of the top bar; Workbench pins
+        // it to the top-right of its IDE frame (out of the left rail) via this wrapper.
+        const appearance = document.createElement("div");
+        appearance.className = "markdown-editor__appearance";
         this.themeDropdown = this.createThemeDropdown();
-        controls.append(this.themeDropdown);
+        appearance.append(this.themeDropdown);
         this.themeGroup = this.createThemeGroup();
-        controls.append(this.themeGroup);
+        appearance.append(this.themeGroup);
+        controls.append(appearance);
 
         // The document name is a sibling of the controls (not nested), so the layout can place the two
         // independently: stacked below the controls under the default themes (controls, then the name on its

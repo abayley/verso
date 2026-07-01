@@ -328,7 +328,7 @@ checkbox, and its timestamp links to that revision in the read-only view
   /documents/<path>?rollback&rev=<rev>`. Rollback reads the page content at that
   revision via `showFileAtRevision`, writes it through the publish-time path
   (tree write, sidecar sync, index update), and commits it as a new revision
-  ("Roll back <path> to <short-hash>"). History is never rewritten; rollback is
+  (`Roll back <path> to <short-hash>`). History is never rewritten; rollback is
   forward-only.
 
 ### Configuration Keys

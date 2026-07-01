@@ -367,11 +367,11 @@ spec = do
             fmap (Http.statusCode . Http.responseStatus) history `shouldBe` Right 200
             fmap (bodyContains (BS.pack "Revision history")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "anonymous")) history `shouldBe` Right True
-            -- the restyled page carries the editor theme head, a per-revision checkbox, and the compare control
+            -- the restyled page carries the editor theme head, a per-revision checkbox, and the diff hint
             fmap (bodyContains (BS.pack "data-editor-theme")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "webawesome.css")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "verso-pick")) history `shouldBe` Right True
-            fmap (bodyContains (BS.pack "verso-compare-button")) history `shouldBe` Right True
+            fmap (bodyContains (BS.pack "verso-diff-hint")) history `shouldBe` Right True
             -- the theme bootstrap resolves dark/light/system (not always light)
             fmap (bodyContains (BS.pack "prefers-color-scheme")) history `shouldBe` Right True
             -- theme/appearance controls (Web Awesome, matching the editor), scrollable table,

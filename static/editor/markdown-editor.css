@@ -401,6 +401,15 @@ markdown-editor {
   justify-content: flex-end;
 }
 
+/* The visual-theme dropdown and the light/dark appearance group sit together as one
+   unit at the right of the top bar. Workbench repositions this whole unit (see below). */
+.markdown-editor__appearance {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+}
+
 /* The document name sits below the controls in a matching centred column (it is a
    sibling of the controls now, not nested, so it carries the toolbar's type and
    alignment itself). Workbench overrides this to a file tab in the top bar. */
@@ -505,7 +514,9 @@ a.markdown-editor__crumb:hover {
 .verso-version-page main {
   max-width: 70rem;
   margin: 0 auto;
-  padding: 2rem 1.5rem;
+  /* No top padding: the theme/appearance toolbar sits flush at the top like the
+     editor page (whose own top toolbar has no space above it). */
+  padding: 0 1.5rem 2rem;
 }
 
 .verso-version-back a {
@@ -582,11 +593,29 @@ a.markdown-editor__crumb:hover {
   border-radius: 0.3rem;
 }
 
+/* Compact rows: small type and tight cell padding so the revision list stays dense. */
+.verso-history {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.verso-history th,
+.verso-history td {
+  padding: 0.15rem 0.5rem;
+  text-align: left;
+}
+
 .verso-history thead th {
   position: sticky;
   top: 0;
   background: var(--markdown-editor-background);
   z-index: 1;
+}
+
+/* The hint shown below the list until two revisions are selected. */
+.verso-diff-hint {
+  color: var(--markdown-editor-muted);
 }
 
 .verso-history td a {
@@ -1724,6 +1753,26 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
    padding the plain link otherwise lacks. */
 :root[data-editor-theme="workbench"] .markdown-editor__view-toggle {
   padding-left: 0.45rem;
+}
+
+/* Stack Publish above Cancel: side by side the pair overflows the narrow rail and
+   nudges the breadcrumb/command bar across. Stacked, each fits the rail. */
+:root[data-editor-theme="workbench"] .markdown-editor__view-toggle-group {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* Lift the theme + appearance controls out of the left rail to the top-right of the
+   IDE frame (matching the other themes' top-right placement). They land on the
+   breadcrumb row, whose right side is empty; the rail keeps only the Edit/Publish
+   toggle and the mode/width groups. */
+:root[data-editor-theme="workbench"] .markdown-editor__appearance {
+  position: fixed;
+  top: 2.6rem;
+  right: 0.85rem;
+  gap: 0.75rem;
+  z-index: 6;
 }
 
 /* The radio groups size to their content rather than stretching to the rail (a

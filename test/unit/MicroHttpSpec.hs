@@ -1,7 +1,7 @@
 module MicroHttpSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
-import qualified MicroHttp as MicroHttp
+import qualified MicroHttp
 import Test.Hspec
 
 spec :: Spec

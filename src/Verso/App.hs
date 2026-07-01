@@ -1591,28 +1591,26 @@ versionPageShell themeDefault pageTitle bodyContent =
         Html.body [Html.class_ "markdown-editor-page verso-version-page"] $
             Html.main [] bodyContent
 
-{- | Renders the revision-history page: theme/appearance controls, a Compare
-control, a fixed-height scrollable table of revisions (each timestamp links to
-that revision in the read-only view, with a per-row roll-back), and a diff pane
-below that the Compare control populates side-by-side.
+{- | Renders the revision-history page: theme/appearance controls, a fixed-height
+scrollable table of revisions (each timestamp links to that revision in the
+read-only view, with a per-row Restore), and a diff pane below that appears
+automatically, side-by-side, once two revisions are selected.
 -}
 historyPage :: String -> String -> [Git.Revision] -> Html.Html ()
 historyPage themeDefault path revs =
     versionPageShell themeDefault ("Revision history: " ++ path) $ do
+        versionControls themeDefault
         Html.el "h1" [] (Html.text "Revision history")
         Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href ("/documents/" ++ path)] (Html.text ("Back to " ++ path)))
-        versionControls themeDefault
         if null revs
             then Html.p [] (Html.text "No revisions yet.")
             else do
-                Html.p [Html.class_ "verso-compare"] $
-                    Html.el "button" [Html.attr "type" "button", Html.class_ "verso-compare-button", Html.attr "data-path" path, Html.attr "disabled" ""] (Html.text "Compare selected")
                 Html.div [Html.class_ "verso-history-scroll"] $
                     Html.el "table" [Html.class_ "verso-history"] $ do
                         Html.el "thead" [] (Html.el "tr" [] (mapM_ (Html.el "th" [] . Html.text) ["", "When", "Who", "Message", ""]))
                         Html.el "tbody" [] (mapM_ (revisionRow path) revs)
-                Html.div [Html.attr "id" "verso-diff-pane", Html.class_ "verso-diff-pane"] $
-                    Html.p [] (Html.text "Select two revisions and Compare to see a side-by-side diff.")
+                Html.p [Html.attr "id" "verso-diff-hint", Html.class_ "verso-diff-hint"] (Html.text "Select two revisions to see a side-by-side diff.")
+                Html.div [Html.attr "id" "verso-diff-pane", Html.class_ "verso-diff-pane", Html.attr "data-path" path, Html.attr "hidden" ""] (pure ())
                 Html.rawTrusted historyScript
 
 {- | The theme and appearance (light\/dark\/match-system) controls on the version
@@ -1625,9 +1623,10 @@ and back. @themeDefault@ sets the initial dropdown label.
 versionControls :: String -> Html.Html ()
 versionControls themeDefault =
     Html.div [Html.class_ "markdown-editor__toolbar markdown-editor__toolbar--top verso-version-toolbar"] $
-        Html.div [Html.class_ "markdown-editor__toolbar-controls"] $ do
-            themeDropdown
-            appearanceGroup
+        Html.div [Html.class_ "markdown-editor__toolbar-controls"] $
+            Html.div [Html.class_ "markdown-editor__appearance"] $ do
+                themeDropdown
+                appearanceGroup
   where
     themeDropdown =
         Html.el
@@ -1662,7 +1661,7 @@ versionControls themeDefault =
     schemeOptions = [("light", "Light", "sun"), ("dark", "Dark", "moon"), ("match-system", "Match system", "display")]
     themeLabelFor t = Maybe.fromMaybe "Paper" (lookup t visualThemeOptions)
 
--- | One history-table row: a select checkbox, the timestamp linking to that revision's read view, author, subject, and roll-back.
+-- | One history-table row: a select checkbox, the timestamp linking to that revision's read view, author, subject, and a Restore button.
 revisionRow :: String -> Git.Revision -> Html.Html ()
 revisionRow path rev =
     Html.el "tr" [] $ do
@@ -1673,14 +1672,14 @@ revisionRow path rev =
         Html.el "td" [] $
             Html.el "form" [Html.attr "method" "post", Html.attr "action" ("/documents/" ++ path ++ "?rollback")] $ do
                 Html.input [Html.attr "type" "hidden", Html.attr "name" "rev", Html.attr "value" (Git.revHash rev)]
-                Html.el "button" [Html.attr "type" "submit", Html.class_ "verso-rollback-button"] (Html.text "Roll back to this")
+                Html.el "button" [Html.attr "type" "submit", Html.class_ "verso-rollback-button"] (Html.text "Restore")
 
 {- | The history page's client script: wires the Web Awesome theme dropdown and
 appearance radio-group to the editor's @localStorage@ keys (matching the editor's
 events: @wa-select@ on the dropdown, @change@ on the radio-group), limits revision
-selection to two (enabling Compare only at two), and on Compare fetches the
-side-by-side diff fragment of the two (older as @from@, newer as @to@) into the
-diff pane.
+selection to two, and as soon as two are selected fetches the side-by-side diff
+fragment of the pair (older as @from@, newer as @to@) into the diff pane; with
+fewer than two selected the pane is hidden and the hint is shown.
 -}
 historyScript :: String
 historyScript =
@@ -1696,14 +1695,16 @@ historyScript =
         ++ "if(rg){rg.value=localStorage.getItem('editor-color-scheme')||'match-system';"
         ++ "rg.addEventListener('change',function(){var v=rg.value;localStorage.setItem('editor-color-scheme',v);applyScheme(v);});}"
         ++ "var boxes=[].slice.call(document.querySelectorAll('.verso-pick'));"
-        ++ "var btn=document.querySelector('.verso-compare-button');var pane=document.getElementById('verso-diff-pane');"
+        ++ "var pane=document.getElementById('verso-diff-pane');var hint=document.getElementById('verso-diff-hint');"
+        ++ "var p=pane?pane.getAttribute('data-path'):'';"
         ++ "function picked(){return boxes.filter(function(b){return b.checked;});}"
-        ++ "function update(){var c=picked();boxes.forEach(function(b){b.disabled=(c.length>=2&&!b.checked);});if(btn){btn.disabled=(c.length!==2);}}"
-        ++ "boxes.forEach(function(b){b.addEventListener('change',update);});"
-        ++ "if(btn){btn.addEventListener('click',function(){var c=picked();if(c.length!==2){return;}"
-        ++ "var to=c[0].value,from=c[1].value,p=btn.getAttribute('data-path');pane.textContent='Loading diff...';"
+        ++ "function showHint(){if(pane){pane.hidden=true;pane.innerHTML='';}if(hint){hint.hidden=false;}}"
+        ++ "function update(){var c=picked();boxes.forEach(function(b){b.disabled=(c.length>=2&&!b.checked);});"
+        ++ "if(c.length===2){var to=c[0].value,from=c[1].value;if(hint){hint.hidden=true;}if(pane){pane.hidden=false;pane.textContent='Loading diff...';"
         ++ "fetch('/documents/'+p+'?diff&pane&from='+encodeURIComponent(from)+'&to='+encodeURIComponent(to))"
-        ++ ".then(function(x){return x.text();}).then(function(h){pane.innerHTML=h;}).catch(function(){pane.textContent='Could not load diff.';});});}"
+        ++ ".then(function(x){return x.text();}).then(function(h){if(pane){pane.innerHTML=h;}}).catch(function(){if(pane){pane.textContent='Could not load diff.';}});}}"
+        ++ "else{showHint();}}"
+        ++ "boxes.forEach(function(b){b.addEventListener('change',update);});"
         ++ "update();})();</script>"
 
 -- | Renders the standalone diff page (a back link plus the diff body), for a direct @?diff@ link.

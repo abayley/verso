@@ -213,6 +213,38 @@ describe("MarkdownEditorElement", (): void => {
         expect(out).toContain("more output");
     });
 
+    it("given a fenced code block with a language, when loaded and serialised, then it round-trips (RFC-0033)", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = ["```python", "x = 1", "```"].join("\n");
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        const code = editor.querySelector(".markdown-editor__surface pre code");
+        expect(code?.className).toContain("language-python");
+        expect(editor.toMarkdown()).toContain(["```python", "x = 1", "```"].join("\n"));
+    });
+
+    it("given a registered language, when loaded, then the code block is syntax-highlighted (RFC-0033)", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = ["```python", "def f():", "    return 1", "```"].join("\n");
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        const tokens = editor.querySelectorAll(".markdown-editor__surface pre code .hljs-keyword");
+        expect(tokens.length).toBeGreaterThan(0);
+    });
+
+    it("given an unregistered language, when loaded, then it stays a plain code block and round-trips (RFC-0033)", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = ["```brainfuck", "+++.", "```"].join("\n");
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        const tokens = editor.querySelectorAll(".markdown-editor__surface pre code .hljs-keyword");
+        expect(tokens.length).toBe(0);
+        expect(editor.toMarkdown()).toContain(["```brainfuck", "+++.", "```"].join("\n"));
+    });
+
     it("given a list item with several fenced code blocks, when loaded, then each is restored", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = [

@@ -22,6 +22,7 @@ import { documentFromElements, documentToMarkdown } from "./markdown-serialise.j
 import { badgeSpans, rawHtmlSpans } from "./remark-adapter.js";
 import { Admonition } from "./tiptap-admonition-node.js";
 import { Badge } from "./tiptap-badge-mark.js";
+import { CodeBlock } from "./tiptap-code-block-node.js";
 import { Collapsible } from "./tiptap-collapsible-node.js";
 import { FootnoteDefinition, FootnoteReference } from "./tiptap-footnote-node.js";
 import { Image } from "./tiptap-image-node.js";
@@ -406,6 +407,9 @@ export class TiptapVisualEditor {
             extensions: [
                 StarterKit.configure({
                     heading: false,
+                    // Replaced by the lowlight-highlighting CodeBlock below (RFC-0033); the custom node keeps
+                    // the `codeBlock` name and schema, so insert commands and serialisation are unchanged.
+                    codeBlock: false,
                     // Page-relative links (`assets/x.pdf`, RFC-0019) have no URI scheme; Tiptap's default
                     // href sanitisation drops them to an empty href. `isAllowedLinkUri` permits scheme-less
                     // relative URLs while keeping the default validation for absolute ones.
@@ -423,6 +427,7 @@ export class TiptapVisualEditor {
                     },
                 }),
                 HeadingWithoutInputRules,
+                CodeBlock,
                 Admonition,
                 Collapsible,
                 FootnoteReference,

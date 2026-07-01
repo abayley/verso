@@ -1011,6 +1011,56 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   padding: 0.75rem;
 }
 
+/* Syntax highlighting (RFC-0033): lowlight emits highlight.js `hljs-*` token classes inside the code block;
+   map them to the editor palette so code reads correctly in every theme and flips with light/dark (the
+   palette variables flip under :root.wa-dark), rather than shipping a fixed highlight.js theme. */
+.markdown-editor__surface :is(.hljs-comment, .hljs-quote) {
+  color: var(--markdown-editor-muted);
+  font-style: italic;
+}
+
+.markdown-editor__surface :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-type, .hljs-name, .hljs-tag) {
+  color: var(--markdown-editor-emphasis);
+}
+
+.markdown-editor__surface :is(.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-addition) {
+  color: var(--markdown-editor-success);
+}
+
+.markdown-editor__surface :is(.hljs-number, .hljs-bullet) {
+  color: var(--markdown-editor-warning);
+}
+
+.markdown-editor__surface
+  :is(.hljs-title, .hljs-section, .hljs-attr, .hljs-attribute, .hljs-selector-id, .hljs-selector-class) {
+  color: var(--markdown-editor-info);
+}
+
+.markdown-editor__surface .hljs-built_in {
+  color: var(--markdown-editor-accent);
+}
+
+.markdown-editor__surface :is(.hljs-meta, .hljs-comment .hljs-doctag) {
+  color: var(--markdown-editor-muted);
+}
+
+.markdown-editor__surface .hljs-deletion {
+  color: var(--markdown-editor-danger);
+}
+
+.markdown-editor__surface .hljs-emphasis {
+  font-style: italic;
+}
+
+.markdown-editor__surface .hljs-strong {
+  font-weight: 600;
+}
+
+.markdown-editor__surface .hljs-link {
+  color: var(--markdown-editor-accent);
+  text-decoration: underline;
+}
+
 .markdown-editor__surface blockquote,
 .markdown-editor__preview blockquote {
   border-left: 3px solid var(--markdown-editor-quote-border);

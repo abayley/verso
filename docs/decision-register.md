@@ -2081,7 +2081,7 @@ CONTEXT.md.
 
 ### ADR-071: Mermaid as a Lazily-Loaded Code Block, Not a Bundled Node Type
 
-Status: Proposed (RFC-0033).
+Status: Accepted (RFC-0033).
 
 Context: RFC-0033 adds syntax highlighting to fenced code blocks and renders a
 `mermaid` fence as a diagram. Rendering is entirely client-side in the Tiptap

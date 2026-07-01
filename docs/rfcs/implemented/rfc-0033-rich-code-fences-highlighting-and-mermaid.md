@@ -1,11 +1,11 @@
 ---
 id: RFC-0033
 name: Rich code fences — syntax highlighting and Mermaid diagrams
-status: Draft
+status: Implemented
 owners:
     - alistairbayley
 created: 2026-07-01
-updated: 2026-07-01
+updated: 2026-07-02
 supersedes: []
 superseded_by: null
 ---
@@ -17,8 +17,8 @@ superseded_by: null
 | Stage     | Timestamp        |
 |-----------|------------------|
 | Authored  | 2026-07-01       |
-| Started   |                  |
-| Completed |                  |
+| Started   | 2026-07-02       |
+| Completed | 2026-07-02       |
 
 ## Summary
 
@@ -314,6 +314,9 @@ match the page.
 - Focus granularity for the Visual-view source/diagram swap: does the source appear
   on node selection, on caret-inside, or on an explicit "edit" affordance — and how
   is a keyboard-only author expected to enter and leave the source?
-- Placeholder content for the Studio `/`-menu "Mermaid diagram" insert (a minimal
-  valid diagram, e.g. a two-node flowchart, so the node renders something rather than
-  an empty-source error on insert).
+- Placeholder content for the Studio `/`-menu "Mermaid diagram" insert: implemented
+  as `flowchart TD\n    A[Start] --> B[End]`.
+- Follow-up: a Mermaid bundle-load/engine failure currently shows an inline notice
+  and keeps the source editable, but is not yet routed to the client-error sink
+  (RFC-0023) as the Reliability section intends; wiring it through the editor's error
+  boundary is deferred (syntax errors correctly stay inline-only).

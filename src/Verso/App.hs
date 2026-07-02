@@ -1657,7 +1657,7 @@ versionControls themeDefault =
             "wa-radio"
             [Html.class_ "markdown-editor__theme-option", Html.attr "appearance" "button", Html.attr "aria-label" label, Html.attr "value" value]
             (Html.el "wa-icon" [Html.class_ "markdown-editor__button-icon", Html.attr "name" icon, Html.attr "variant" "solid", Html.attr "label" label] (Html.text ""))
-    visualThemeOptions = [("paper", "Paper"), ("aurora", "Aurora"), ("blueprint", "Blueprint"), ("workbench", "Workbench"), ("studio", "Studio")]
+    visualThemeOptions = [("aurora", "Aurora"), ("blueprint", "Blueprint"), ("paper", "Paper"), ("studio", "Studio"), ("workbench", "Workbench")]
     schemeOptions = [("light", "Light", "sun"), ("dark", "Dark", "moon"), ("match-system", "Match system", "display")]
     themeLabelFor t = Maybe.fromMaybe "Paper" (lookup t visualThemeOptions)
 

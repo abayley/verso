@@ -368,7 +368,7 @@ export class NavTreePanel {
         label.className = "markdown-editor__nav-label";
         label.textContent = node.name;
         this.options.registerTooltip(label, node.name); // full label on hover, since deep rows truncate
-        label.addEventListener("click", (): void => this.options.navigate(this.documentUrlFor(node)));
+        label.addEventListener("click", (): void => this.openNode(node));
         row.append(label);
 
         if (node.kind === "section") {
@@ -439,6 +439,19 @@ export class NavTreePanel {
         }
         this.saveExpanded();
         this.render();
+    }
+
+    /**
+     * Opens a node: navigates to it and, for a section with children, expands it too, so clicking a section
+     * both shows its landing page and reveals its contents. The expanded set is persisted before navigating,
+     * so the section is open when the destination page's tree renders.
+     */
+    private openNode(node: TreeNodeData): void {
+        if (node.kind === "section" && node.hasChildren && !this.expanded.has(node.path)) {
+            this.expanded.add(node.path);
+            this.saveExpanded();
+        }
+        this.options.navigate(this.documentUrlFor(node));
     }
 
     /** Fetches a folder's children into the cache, recording a failure so the node can show an inline error. */
@@ -957,10 +970,24 @@ export class NavTreePanel {
         return item;
     }
 
+    /**
+     * Collapses every folder except the one leading to the open page: the open page's ancestor spine stays
+     * expanded, and the open section keeps its own subtree open, so "collapse all" tidies away other branches
+     * without hiding where you are.
+     */
     private collapseAll(): void {
         this.expanded.clear();
+        for (const entry of this.options.spine) {
+            this.expanded.add(entry.path);
+        }
+        if (this.activePath !== "") {
+            this.expanded.add(this.activePath);
+        }
         this.saveExpanded();
         this.render();
+        // Any kept-expanded folder whose children were never cached (e.g. the open section itself) is fetched
+        // and re-rendered, so it shows its contents rather than an empty expanded node.
+        void this.hydrate();
     }
 
     private toggleCollapsed(): void {

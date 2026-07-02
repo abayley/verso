@@ -82,13 +82,13 @@ function isBodyWidth(value: string | null): value is BodyWidth {
     return value !== null && bodyWidths.some((width) => width.value === value);
 }
 
-/** The selectable visual themes, in dropdown order; the first is the default. */
+/** The selectable visual themes, in lexicographic dropdown order (the default is Paper, set explicitly). */
 const visualThemes: { value: VisualTheme; label: string }[] = [
-    { value: "paper", label: "Paper" },
     { value: "aurora", label: "Aurora" },
     { value: "blueprint", label: "Blueprint" },
-    { value: "workbench", label: "Workbench" },
+    { value: "paper", label: "Paper" },
     { value: "studio", label: "Studio" },
+    { value: "workbench", label: "Workbench" },
 ];
 
 /** Narrows an arbitrary string to a known visual theme. */
@@ -314,6 +314,9 @@ export class MarkdownEditorElement extends HTMLElement {
     };
     private documentName: HTMLElement | null = null;
     private toolbar: HTMLDivElement | null = null;
+    private topBar: HTMLDivElement | null = null;
+    /** Publishes the sticky top bar's height as a CSS variable so the nav/sidebar can sit clear of it. */
+    private topBarResizeObserver: ResizeObserver | null = null;
     private visualEditor: TiptapVisualEditor | null = null;
     private visualEditorChanged = false;
     private wordCount: HTMLSpanElement | null = null;
@@ -361,6 +364,23 @@ export class MarkdownEditorElement extends HTMLElement {
         this.sourceEditor = null;
         this.visualEditor?.destroy();
         this.visualEditor = null;
+        this.topBarResizeObserver?.disconnect();
+        this.topBarResizeObserver = null;
+    }
+
+    /** Publishes the sticky top bar's height to `--markdown-editor-topbar-height`, tracking it as it wraps. */
+    private observeTopBarHeight(): void {
+        if (!this.topBar) {
+            return;
+        }
+
+        const publish = (): void => {
+            const height = this.topBar?.offsetHeight ?? 0;
+            this.style.setProperty("--markdown-editor-topbar-height", `${height}px`);
+        };
+        publish();
+        this.topBarResizeObserver = new ResizeObserver(publish);
+        this.topBarResizeObserver.observe(this.topBar);
     }
 
     /** Initialises the editor UI from inline content or a Markdown `src`. */
@@ -495,9 +515,15 @@ export class MarkdownEditorElement extends HTMLElement {
         }
         workspace.append(this.sidebar);
 
+        // The top bar (presentation controls + breadcrumb) is one unit so it can stick to the top of the
+        // viewport as a whole while the content scrolls (RFC-0026 follow-up); Workbench flattens it back to
+        // two grid items with `display: contents`.
+        this.topBar = document.createElement("div");
+        this.topBar.className = "markdown-editor__topbar";
+        this.topBar.append(this.toolbar, this.documentName);
+
         this.append(
-            this.toolbar,
-            this.documentName,
+            this.topBar,
             this.linkController.editorElement(),
             this.linkController.actionsElement(),
             this.bubbleToolbar,
@@ -509,6 +535,7 @@ export class MarkdownEditorElement extends HTMLElement {
             this.wordCount,
         );
         this.applyBodyWidth();
+        this.observeTopBarHeight();
         this.renderMode();
         this.updateToolbarState();
         this.updateWordCount();

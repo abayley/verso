@@ -67,24 +67,47 @@ markdown-editor {
   position: relative;
 }
 
+/* The top bar (presentation controls + breadcrumb) is one sticky unit pinned to the
+   top of the viewport, so it stays visible while the page scrolls; content scrolls
+   under its opaque background. Its height is published to --markdown-editor-topbar-height
+   (by the element) so the nav and sidebar can sit clear of it. Workbench flattens this
+   wrapper (its grid pins the rows individually). */
+.markdown-editor__topbar {
+  background: var(--markdown-editor-background);
+  /* Full-bleed to the viewport edges (breaking out of main's 1.5rem gutters) so the
+     opaque bar covers the themed page background on the sides; padding keeps the
+     controls and breadcrumb where they were. */
+  margin-inline: -1.5rem;
+  padding-inline: 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 6;
+}
+
 /* The navigation tree (RFC-0026) is the workspace's leading column: it sits below
    the top bar and breadcrumbs (which span the full width), to the left of the
-   editing pane, in every theme. It scrolls with its container (the page, or the
-   Workbench content pane) rather than owning a scrollbar, so there is a single
-   scrollbar; it collapses to just its toggle. */
+   editing pane. Like the right-hand sidebar it sticks to the top of the viewport and
+   scrolls independently (its own scrollbar), so the tree stays put while the editing
+   pane scrolls; it collapses to just its toggle. (Workbench resets this below: its
+   IDE frame owns the scroll model.) */
 .markdown-editor__nav {
   align-self: start;
   border-right: 1px solid var(--markdown-editor-divider);
   box-sizing: border-box;
   color: var(--markdown-editor-muted);
   display: flex;
-  flex: 0 0 var(--markdown-editor-nav-width, 15rem);
+  flex: 0 0 var(--markdown-editor-nav-width, 17rem);
   flex-direction: column;
-  font: 13px system-ui, sans-serif;
+  font: 14px system-ui, sans-serif;
   gap: 0.5rem;
   margin-right: 1rem;
+  /* Sit just below the sticky top bar and scroll independently for the rest of the viewport. */
+  max-height: calc(100vh - var(--markdown-editor-topbar-height, 4.5rem) - 1rem);
   min-width: 0;
+  overflow: hidden auto;
   padding-right: 0.75rem;
+  position: sticky;
+  top: calc(var(--markdown-editor-topbar-height, 4.5rem) + 0.5rem);
 }
 
 .markdown-editor__nav[data-collapsed="true"] {
@@ -220,12 +243,12 @@ markdown-editor {
 
 .markdown-editor__nav-disclosure,
 .markdown-editor__nav-spacer {
-  flex: 0 0 1.5rem;
+  flex: 0 0 1.65rem;
   text-align: center;
 }
 
 .markdown-editor__nav-disclosure {
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   transition: transform 0.15s ease;
 }
 
@@ -466,15 +489,23 @@ a.markdown-editor__crumb:hover {
   opacity: 0.6;
 }
 
+/* Edit / Publish / Cancel look like actual buttons (the Edit control is an <a>, Publish and Cancel are
+   <button>s -- all share this class so they match). */
 .markdown-editor__view-toggle {
-  color: var(--markdown-editor-muted);
-  /* Pull the Edit/View toggle to the left edge of the top bar; the other controls stay right-aligned. */
-  margin-right: auto;
+  background: var(--markdown-editor-pill-background);
+  border: 1px solid var(--markdown-editor-pill-border);
+  border-radius: 6px;
+  color: var(--markdown-editor-text);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1.2;
+  padding: 0.3rem 0.8rem;
   text-decoration: none;
 }
 
 .markdown-editor__view-toggle:hover {
-  color: var(--markdown-editor-text);
+  border-color: var(--markdown-editor-accent);
+  color: var(--markdown-editor-accent);
 }
 
 /* RFC-0032: the toggle group holds the Edit/Publish control and the draft marker, kept left-aligned. */
@@ -485,29 +516,9 @@ a.markdown-editor__crumb:hover {
   margin-right: auto;
 }
 
-.markdown-editor__view-toggle-group .markdown-editor__view-toggle {
-  margin-right: 0;
-}
-
-/* The edit-view controls are <button>s but must align with the "Edit" link (no default
-   button padding/margin), so switching between read and edit modes doesn't shift the toggle. */
-.markdown-editor__publish,
-.markdown-editor__cancel {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font: inherit;
-  padding: 0;
-  margin: 0;
-  color: inherit;
-}
-
+/* Cancel is the secondary action: a muted button next to Publish. */
 .markdown-editor__cancel {
   color: var(--markdown-editor-muted);
-}
-
-.markdown-editor__cancel:hover {
-  color: var(--markdown-editor-text);
 }
 
 .markdown-editor__draft-marker {
@@ -829,7 +840,10 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
      links clip with an ellipsis instead. */
   min-width: 0;
   position: sticky;
-  top: 1rem;
+  top: calc(var(--markdown-editor-topbar-height, 4.5rem) + 0.5rem);
+  /* Sit clear of the sticky top bar and scroll independently, like the nav. */
+  max-height: calc(100vh - var(--markdown-editor-topbar-height, 4.5rem) - 1rem);
+  overflow: hidden auto;
 }
 
 .markdown-editor__sidebar[hidden] {
@@ -1829,10 +1843,16 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   position: relative;
 }
 
-/* The navigation tree scrolls with the Workbench content pane (it is inside the
-   scrolling workspace), so it shares that one scrollbar rather than pinning. */
+/* The navigation tree pins to the top of the Workbench content pane and scrolls
+   independently (its own scrollbar), so it stays put while the editing column
+   scrolls -- like the other themes. The workspace (grid-area main) has a definite
+   height, so max-height: 100% bounds the nav to it. */
 :root[data-editor-theme="workbench"] .markdown-editor__nav {
-  align-self: stretch;
+  align-self: start;
+  max-height: 100%;
+  overflow: hidden auto;
+  position: sticky;
+  top: 0;
 }
 
 /* The client-error banner occupies the status row, overlaying the status bar, so
@@ -1870,21 +1890,15 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   --wa-form-control-padding-inline: 0.25rem;
 }
 
-/* Indent the Edit/View link to line up with the rail's button-group labels, whose buttons carry inline
-   padding the plain link otherwise lacks. */
-:root[data-editor-theme="workbench"] .markdown-editor__view-toggle {
-  padding-left: 0.45rem;
-}
-
 /* Stack Publish above Cancel: side by side the pair overflows the narrow rail and
    nudges the breadcrumb/command bar across. Stacked, each fits the rail. The
-   min-height reserves the two-line (Publish + Cancel) height so switching to the
-   read view -- a single "Edit" line -- does not shift the rest of the rail up. */
+   min-height reserves the two-button (Publish + Cancel) height so switching to the
+   read view -- a single "Edit" button -- does not shift the rest of the rail up. */
 :root[data-editor-theme="workbench"] markdown-editor .markdown-editor__view-toggle-group {
   align-items: flex-start;
   flex-direction: column;
-  gap: 0.25rem;
-  min-height: 2.75rem;
+  gap: 0.35rem;
+  min-height: 4rem;
 }
 
 /* Lift the theme + appearance controls out of the left rail and overlay them on the
@@ -1914,6 +1928,12 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 :root[data-editor-theme="workbench"] markdown-editor[data-readonly] .markdown-editor__footer {
   display: flex !important;
   visibility: hidden;
+}
+
+/* Flatten the top-bar wrapper so its two children (the controls rail and the
+   breadcrumb tab) participate directly in the IDE grid, as before. */
+:root[data-editor-theme="workbench"] .markdown-editor__topbar {
+  display: contents;
 }
 
 /* The presentation controls become the left rail, stacked vertically. box-sizing
@@ -2075,7 +2095,9 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 /* Chrome: a breadcrumb-style top strip; no persistent command bar (the bubble
    toolbar and slash menu replace it); autosave keeps content saved without the
    explicit Save control. */
-:root[data-editor-theme="studio"] .markdown-editor__toolbar--top {
+/* Studio's separating rule sits below the whole top bar (controls + breadcrumb), so
+   the breadcrumb reads as part of the top bar, above the rule -- not below it. */
+:root[data-editor-theme="studio"] .markdown-editor__topbar {
   border-bottom: 1px solid var(--markdown-editor-divider);
   margin-bottom: 0.75rem;
   padding-bottom: 0.6rem;

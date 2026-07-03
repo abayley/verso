@@ -1,29 +1,39 @@
 # Markdown Editor Redesign Mockups
 
-This document records alternative visual designs for the TestApp Markdown
-editor page at `/documents/home/edit`. The first round (designs A to H) was
+This document records alternative visual designs for the Verso Markdown
+editor page at `/documents/:id?edit`. The first round (designs A to H) was
 produced on 2026-06-10 as static HTML files in this directory: A to D are
 practical directions, E to H deliberately extreme style explorations. A second
 round (designs I to M) was added on 2026-06-15 -- five further directions, each
-distinct from the others and from the first round. They are design references
-only; they are not served by the TestApp and are not part of the editor build.
+distinct from the others and from the first round. A third round (designs N to
+R) was added on 2026-07-03, alongside a refresh of design L to match the
+editor as it now is. They are design references only; they are not served by
+Verso and are not part of the editor build.
 
-Each mockup keeps the current editor functionality: visual, Markdown source,
-and split view modes, block styles, inline marks (bold, italic, strikethrough,
-inline code, link), structure controls (lists, blockquote, code block,
-horizontal rule), save state, and theme switching. Only the visual treatment
-and control placement change.
+Rounds one and two mock the editor functionality of their time: view modes,
+block styles, inline marks, structure controls, save state, and theme
+switching. The refreshed design L and round three mock the current editor
+surface: draft editing with Publish and Cancel, the Visual/Markdown/Split
+modes, Narrow/Medium/Full width, visual theme and light/dark/system scheme
+switching, the page navigation tree (create, move-undo, trash, per-page add
+and delete), the Contents/Attachments/History sidebar, and the floating
+command bar (block style, inline marks, lists, quote, code block, rule,
+badges, callouts, tables, collapsibles, image and file upload, and draft
+save state). Only the visual treatment and control placement change.
 
 The mockup files use the Tabler icon webfont from a CDN, so icons need network
 access to render. Open the files directly in a browser.
 
 ## Markdown Editor Current Design Observations
 
-The current page is the default Web Awesome look: one dense, full-width icon
-toolbar over a borderless white surface. All seventeen or so controls carry
-equal visual weight, so view-mode switching, formatting, save, and theme
-controls compete for attention. All four alternatives address this by demoting
-view-mode and theme switching out of the primary formatting row.
+At the time of the first round, the page was the default Web Awesome look: one
+dense, full-width icon toolbar over a borderless white surface. All seventeen
+or so controls carried equal visual weight, so view-mode switching,
+formatting, save, and theme controls competed for attention. Designs A to D
+address this by demoting view-mode and theme switching out of the primary
+formatting row. The production editor has since adopted several of these
+ideas: a floating command bar, a sticky top bar for mode/width/theme/scheme
+switching, a document sidebar, and passive save state.
 
 ## Markdown Editor Redesign A: Quiet Paper
 
@@ -214,9 +224,19 @@ noise.
 Mockup: [markdown-editor-redesign-l-bauhaus.html](markdown-editor-redesign-l-bauhaus.html)
 
 A constructivist composition. Primary red, blue, and yellow with black on warm
-off-white, a circle/triangle/square mark, inline-mark controls as colour-coded
-tiles down a left rail, a red triangle wedge motif, and a strict asymmetric
-grid. Save is a black slab with a yellow disc.
+off-white, a circle/triangle/square mark, a red triangle wedge motif, and a
+strict asymmetric grid.
+
+Refreshed on 2026-07-03 to match the current editor surface: Publish is a
+black slab with a yellow disc beside a bordered Cancel, the ruled header
+carries mode, width, theme, and scheme switches, the page tree is a left rail
+with geometric bullets, Contents/Attachments/History form a right rail, and
+the command bar is a strip of colour-coded tiles with the draft save state as
+a black tile with a yellow dot. The refresh also borrows from Mondrian's
+neoplasticism: black rules of deliberately unequal weight between regions, a
+small Mondrian composition filling the dead space at the foot of the page
+tree, and a Broadway Boogie Woogie segmented strip as the frame's bottom
+edge.
 
 Trade-offs and effort: a timeless design-school identity, distinct from the
 web-brutalist Bold Press -- refined rather than loud. The colour-coded tiles aid
@@ -239,3 +259,98 @@ catalogue framing maps onto a future versioned store (the Dungeon Scroll archive
 idea, understated). The naturalist theme is decorative for a developer tool, and
 the ruled background is cosmetic only; moderate styling over the existing
 controls.
+
+## Third Round (2026-07-03)
+
+Five further directions, each mocking the current editor surface (drafts,
+navigation tree, sidebar, command bar): a Roy Lichtenstein pop-art panel, a
+Patrick Caulfield interior, a monochrome line-art treatment, a linocut print,
+and a Moebius desert.
+
+## Markdown Editor Redesign N: Ben-Day Pop
+
+Mockup: [markdown-editor-redesign-n-benday-pop.html](markdown-editor-redesign-n-benday-pop.html)
+
+A Roy Lichtenstein pop-art panel. Ben-Day dot screens in primary red, yellow,
+and blue, thick black outlines with hard offset shadows, italic display
+lettering with a colour-pop shadow, sunburst rays behind the frame, the
+sidebar sections as yellow comic caption boxes, the command bar in a speech
+bubble, and the draft save state as a rotated `Saved!` starburst.
+
+Trade-offs and effort: the loudest identity in the set, and clearly separated
+from Inkpress Comic (K), which stays black-and-white -- this is the full-colour
+half of the comic idea. The caption-box sidebar gives the panel headings free
+visual hierarchy. Heavy custom styling with no component library support, the
+dot screens add noise behind small text, and the joke may wear thin for daily
+writing.
+
+## Markdown Editor Redesign O: Caulfield Interior
+
+Mockup: [markdown-editor-redesign-o-caulfield-interior.html](markdown-editor-redesign-o-caulfield-interior.html)
+
+A Patrick Caulfield interior. Flat planes of saturated ultramarine with
+uniform black contour lines and no gradients or shadows anywhere in the
+chrome; a flat yellow lamp casts a flat light beam across the frame;
+lowercase labels throughout. The one Caulfield device worth naming: as in his
+paintings that embed a single photorealistic passage inside a flat room, the
+document is the one naturalistic, finely detailed surface (serif type on
+cream) while every control around it stays flat colour and contour.
+
+Trade-offs and effort: calm, saturated, and unlike anything else in the set;
+the flat-room/detailed-page contrast genuinely expresses "the chrome is
+furniture, the page is the subject". Heavy custom styling, a dark saturated
+ground needs contrast care for small text, and the wit is quieter than
+Ben-Day Pop -- it reads as a designed room rather than a costume.
+
+## Markdown Editor Redesign P: Line Art
+
+Mockup: [markdown-editor-redesign-p-line-art.html](markdown-editor-redesign-p-line-art.html)
+
+A monochrome line-art treatment. Pure white, one 1.5 pixel ink weight for
+every border, icon, divider, and the caret; no colour and no fills. Selection
+and active states are diagonal hatching, the page tree hangs from drawn
+connector lines, the callout label sits in a gap in its own outline, Publish
+is a double-ruled pill, and the command bar is a single outlined pill.
+
+Trade-offs and effort: the cheapest of the round by far -- it is almost
+entirely borders and one hatch pattern, and Tabler's stroke icons already
+match the line weight. Distinct from Blueprint (cyan on navy) and Inkpress
+(halftone screentone) despite sharing the drawn-line idea. State legibility
+carries the risk: with no colour, hover, focus, selection, and error states
+all have to come from hatching, weight, or motion, and a hatched save dot is
+weaker than a coloured one.
+
+## Markdown Editor Redesign Q: Linocut
+
+Mockup: [markdown-editor-redesign-q-linocut.html](markdown-editor-redesign-q-linocut.html)
+
+A linocut / woodcut print. Heavy black ink on cream paper, with white gouge
+strokes carved through every solid area (a repeating-gradient texture), knife
+hatching behind the sidebar panels, and vermillion as the single second block
+colour with off-register offsets. The frame has sawtooth carved edges top and
+bottom, several blocks sit a fraction of a degree off square as if
+hand-pulled, and the page tree ends in a small print of hills and a red sun.
+
+Trade-offs and effort: a warm, handmade identity that is bolder than
+Herbarium and quieter than Ben-Day Pop; the two-colour discipline keeps it
+coherent. The carved texture is one CSS gradient so styling cost is moderate,
+but true rough edges would need SVG masks, the deliberate misalignments fight
+a precise editing surface, and heavy ink areas dominate on large screens.
+
+## Markdown Editor Redesign R: Moebius
+
+Mockup: [markdown-editor-redesign-r-moebius.html](markdown-editor-redesign-r-moebius.html)
+
+A Jean Giraud / Moebius desert. Fine sepia contour lines of one weight
+instead of black, flat colour laid in hard airbrushed sky bands, a banded sun
+and drifting birds in the header, dunes at the foot of the page tree,
+floating crystals over the document, and terracotta and turquoise picking out
+the active controls. Letter-spaced capitals stand in for BD hand-lettering,
+and the callout label sits in a small caption plaque.
+
+Trade-offs and effort: the calmest of the illustrated identities -- vast,
+airy, and closer to a usable daily surface than the other costumes because
+the document plane itself stays plain cream with fine rules. The banded
+palette needs care in dark scheme, the decorative SVGs (sun, dunes, crystals)
+are fixed art that must be drawn per breakpoint, and the sepia-on-cream
+contrast sits close to accessibility limits for small text.

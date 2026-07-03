@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign N: ben-day pop</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root {
+  --paper: #f8f3e3;
+  --ink: #101010;
+  --red: #e5352b;
+  --yellow: #f7d117;
+  --blue: #2456c9;
+  --sky: #bfe3f2;
+  --display: "Archivo Black", "Arial Black", "Helvetica Neue", Arial, sans-serif;
+  --body: "Helvetica Neue", Arial, sans-serif;
+  --dots-red: radial-gradient(circle, var(--red) 1.6px, transparent 1.8px);
+  --dots-blue: radial-gradient(circle, var(--blue) 1.6px, transparent 1.8px);
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; color: var(--ink); font-family: var(--body); padding: 30px;
+  background: var(--paper);
+  background-image: repeating-conic-gradient(from 0deg at 85% -10%, var(--yellow) 0deg 7deg, var(--paper) 7deg 14deg); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+main { max-width: 1200px; margin: 0 auto; border: 4px solid var(--ink); background: #fff;
+  box-shadow: 10px 10px 0 var(--ink); }
+.head { display: grid; grid-template-columns: auto 1fr auto auto; align-items: stretch;
+  border-bottom: 4px solid var(--ink); background-image: var(--dots-red); background-size: 9px 9px;
+  background-color: #fff; }
+.logo { display: flex; align-items: center; padding: 10px 18px; background: var(--red); color: #fff;
+  font-family: var(--display); font-size: 20px; letter-spacing: 0.02em; text-transform: uppercase;
+  border-right: 4px solid var(--ink); text-shadow: 2px 2px 0 var(--ink); font-style: italic; }
+.crumb { display: flex; align-items: center; padding: 0 16px; font-family: var(--display); font-size: 13px;
+  text-transform: uppercase; background: transparent; }
+.crumb span { background: var(--yellow); border: 3px solid var(--ink); padding: 3px 10px; }
+.crumb .sep { background: none; border: 0; padding: 0 6px; }
+.modes { display: flex; }
+.modes span { display: flex; align-items: center; padding: 0 16px; border-left: 4px solid var(--ink);
+  font-family: var(--display); text-transform: uppercase; font-size: 12px; background: #fff; }
+.modes .on { background: var(--blue); color: #fff; }
+.scheme { display: flex; }
+.scheme span { display: flex; align-items: center; justify-content: center; width: 44px;
+  border-left: 4px solid var(--ink); background: #fff; font-size: 16px; }
+.scheme .on { background: var(--yellow); }
+.bar { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 4px solid var(--ink);
+  background: var(--sky); }
+.publish { border: 4px solid var(--ink); background: var(--red); color: #fff; font-family: var(--display);
+  text-transform: uppercase; font-size: 15px; padding: 8px 22px; cursor: pointer; font-style: italic;
+  box-shadow: 5px 5px 0 var(--ink); letter-spacing: 0.03em; }
+.cancel { border: 4px solid var(--ink); background: #fff; font-family: var(--display); text-transform: uppercase;
+  font-size: 12px; padding: 9px 16px; cursor: pointer; box-shadow: 4px 4px 0 var(--ink); }
+.grp { margin-left: auto; display: flex; align-items: center; gap: 8px; font-family: var(--display);
+  font-size: 11px; text-transform: uppercase; }
+.grp b { font-weight: normal; }
+.pill { display: flex; border: 3px solid var(--ink); background: #fff; }
+.pill span { padding: 4px 10px; border-right: 3px solid var(--ink); }
+.pill span:last-child { border-right: 0; }
+.pill .on { background: var(--yellow); }
+.body { display: grid; grid-template-columns: 195px 1fr 185px; }
+.nav { border-right: 4px solid var(--ink); background-image: var(--dots-blue); background-size: 10px 10px;
+  background-color: #fff; }
+.cap { display: flex; align-items: center; gap: 8px; background: var(--yellow); border-bottom: 4px solid var(--ink);
+  font-family: var(--display); font-size: 12px; text-transform: uppercase; padding: 8px 12px; }
+.cap i { margin-left: auto; }
+.cap i + i { margin-left: 0; }
+.tree { list-style: none; margin: 12px; padding: 0; }
+.tree li { display: flex; align-items: center; gap: 8px; font-family: var(--display); font-size: 12px;
+  text-transform: uppercase; padding: 7px 10px; background: #fff; border: 3px solid var(--ink);
+  margin-bottom: 8px; }
+.tree .on { background: var(--red); color: #fff; box-shadow: 4px 4px 0 var(--ink); }
+.tree .ops { margin-left: auto; display: flex; gap: 6px; font-size: 11px; }
+.doc { padding: 38px 40px 30px; position: relative; background: #fff; display: flex; flex-direction: column;
+  min-width: 0; }
+h1 { font-family: var(--display); font-style: italic; text-transform: uppercase; font-size: 44px;
+  line-height: 0.98; margin: 0 0 24px; letter-spacing: -0.01em;
+  text-shadow: 3px 3px 0 var(--yellow), 6px 6px 0 var(--ink); }
+p { font-size: 17px; line-height: 1.65; margin: 0 0 14px; max-width: 88%; }
+.badge { display: inline-block; background: var(--blue); color: #fff; border: 3px solid var(--ink);
+  font-family: var(--display); font-size: 11px; text-transform: uppercase; padding: 1px 8px;
+  box-shadow: 3px 3px 0 var(--ink); }
+.callout { position: relative; border: 4px solid var(--ink); background: var(--yellow); max-width: 88%;
+  padding: 14px 18px 12px; margin: 4px 0 18px; box-shadow: 6px 6px 0 var(--ink); }
+.callout .lbl { position: absolute; top: -14px; left: 14px; background: var(--red); color: #fff;
+  border: 3px solid var(--ink); font-family: var(--display); font-size: 11px; text-transform: uppercase;
+  padding: 2px 10px; font-style: italic; }
+.callout p { margin: 0; font-size: 15px; max-width: none; }
+.caret { display: inline-block; width: 4px; height: 19px; background: var(--red); vertical-align: -3px; }
+.burst { position: absolute; top: 30px; right: 36px; width: 108px; height: 108px; background: var(--yellow);
+  border: 0; display: flex; align-items: center; justify-content: center; font-family: var(--display);
+  font-style: italic; font-size: 15px; text-transform: uppercase; color: var(--red); transform: rotate(8deg);
+  clip-path: polygon(50% 0%, 60% 12%, 74% 4%, 77% 19%, 93% 17%, 88% 32%, 100% 40%, 89% 50%, 100% 60%, 88% 68%, 93% 83%, 77% 81%, 74% 96%, 60% 88%, 50% 100%, 40% 88%, 26% 96%, 23% 81%, 7% 83%, 12% 68%, 0% 60%, 11% 50%, 0% 40%, 12% 32%, 7% 17%, 23% 19%, 26% 4%, 40% 12%); }
+.burst span { text-shadow: 1.5px 1.5px 0 var(--ink); }
+.bubble { position: relative; margin-top: auto; width: fit-content; border: 4px solid var(--ink);
+  border-radius: 26px; background: #fff; padding: 10px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 2px;
+  box-shadow: 6px 6px 0 var(--ink); }
+.bubble::after { content: ""; position: absolute; bottom: -21px; left: 44px; width: 26px; height: 26px;
+  background: #fff; border: 4px solid var(--ink); border-top: 0; border-left: 0; transform: skewX(38deg) rotate(46deg); }
+.bubble i, .bubble .style { width: 33px; height: 34px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: 16px; border-radius: 8px; }
+.bubble .style { width: auto; padding: 0 10px; font-family: var(--display); font-size: 13px; }
+.bubble .r { background: var(--red); color: #fff; }
+.bubble .b { background: var(--blue); color: #fff; }
+.bubble .yw { background: var(--yellow); }
+.bubble .gap { width: 12px; }
+.bubble .save { display: inline-flex; align-items: center; gap: 7px; margin-left: 10px; border: 3px solid var(--ink);
+  background: var(--yellow); font-family: var(--display); font-size: 12px; text-transform: uppercase;
+  padding: 4px 12px; font-style: italic; }
+.bubble .save .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--blue); border: 2px solid var(--ink); }
+.side { border-left: 4px solid var(--ink); background: #fff; font-size: 13px; }
+.side section { border-bottom: 4px solid var(--ink); }
+.side section:last-child { border-bottom: 0; }
+.side .inner { padding: 12px 14px 14px; }
+.side ul { list-style: none; margin: 0; padding: 0; }
+.side li { padding: 3px 0; }
+.side .sub { padding-left: 14px; }
+.side .quiet { color: #777; }
+.side a { color: var(--blue); font-weight: 700; }
+</style>
+</head>
+<body>
+<h2 class="sr-only">Mockup N: a Roy Lichtenstein pop-art composition. Ben-Day dot screens in primary red, yellow, and blue, thick black outlines with hard offset shadows, italic display lettering, a comic caption-box sidebar, the command bar in a speech bubble, and the save state as a starburst.</h2>
+<main>
+  <div class="head">
+    <div class="logo">Verso!</div>
+    <div class="crumb"><span>Pages</span><span class="sep">&#9656;</span><span>Home</span></div>
+    <div class="modes"><span class="on">Visual</span><span>Markdown</span><span>Split</span></div>
+    <div class="scheme">
+      <span class="on" title="Light"><i class="ti ti-sun" aria-hidden="true"></i></span>
+      <span title="Dark"><i class="ti ti-moon" aria-hidden="true"></i></span>
+      <span title="Match system"><i class="ti ti-device-desktop" aria-hidden="true"></i></span>
+    </div>
+  </div>
+  <div class="bar">
+    <button class="publish">Publish!</button>
+    <button class="cancel">Cancel</button>
+    <div class="grp"><b>Width</b>
+      <span class="pill"><span class="on">Narrow</span><span>Medium</span><span>Full</span></span>
+      <b>Theme</b>
+      <span class="pill"><span class="on">Paper &#9662;</span></span>
+    </div>
+  </div>
+  <div class="body">
+    <nav class="nav">
+      <div class="cap">Pages
+        <i class="ti ti-plus" title="New top-level page" aria-hidden="true"></i>
+        <i class="ti ti-arrow-back-up" title="Undo a move" aria-hidden="true"></i>
+        <i class="ti ti-trash" title="Trash" aria-hidden="true"></i>
+      </div>
+      <ul class="tree">
+        <li class="on">Home
+          <span class="ops"><i class="ti ti-plus" title="New page here" aria-hidden="true"></i><i class="ti ti-x" title="Delete" aria-hidden="true"></i></span></li>
+        <li>Guides</li>
+        <li>Projects</li>
+        <li>Notes</li>
+        <li>Archive</li>
+      </ul>
+    </nav>
+    <div class="doc">
+      <div class="burst" title="Draft saved"><span>Saved!</span></div>
+      <h1>Hello from<br>MicroHttp</h1>
+      <p>Edit this Markdown document. <span class="badge">beta</span></p>
+      <div class="callout">
+        <div class="lbl">Note!</div>
+        <p>Why, editing Markdown is just like a dream &mdash; every dot in its place.</p>
+      </div>
+      <p>Drafts hold your changes until you publish them.<span class="caret"></span></p>
+      <div class="bubble">
+        <span class="style" title="Block style">Aa</span>
+        <i class="ti ti-bold r" aria-hidden="true" title="Bold"></i>
+        <i class="ti ti-italic b" aria-hidden="true" title="Italic"></i>
+        <i class="ti ti-strikethrough yw" aria-hidden="true" title="Strikethrough"></i>
+        <i class="ti ti-code" aria-hidden="true" title="Code"></i>
+        <i class="ti ti-link" aria-hidden="true" title="Link"></i>
+        <span class="gap"></span>
+        <i class="ti ti-list" aria-hidden="true" title="Bullet list"></i>
+        <i class="ti ti-list-numbers" aria-hidden="true" title="Numbered list"></i>
+        <i class="ti ti-blockquote" aria-hidden="true" title="Quote"></i>
+        <i class="ti ti-code-dots" aria-hidden="true" title="Code block"></i>
+        <i class="ti ti-separator" aria-hidden="true" title="Rule"></i>
+        <span class="gap"></span>
+        <i class="ti ti-tag yw" aria-hidden="true" title="Badge"></i>
+        <i class="ti ti-info-circle b" aria-hidden="true" title="Callout"></i>
+        <i class="ti ti-table" aria-hidden="true" title="Table"></i>
+        <i class="ti ti-chevron-down" aria-hidden="true" title="Collapsible"></i>
+        <i class="ti ti-photo r" aria-hidden="true" title="Image or file"></i>
+        <span class="save" title="Save draft"><span class="dot"></span>Save</span>
+      </div>
+    </div>
+    <aside class="side">
+      <section>
+        <div class="cap">Contents</div>
+        <div class="inner">
+          <ul>
+            <li>Hello from MicroHttp</li>
+            <li class="sub">Pow</li>
+            <li class="sub">Whaam</li>
+          </ul>
+        </div>
+      </section>
+      <section>
+        <div class="cap">Attachments</div>
+        <div class="inner"><ul><li class="quiet">No attachments yet.</li></ul></div>
+      </section>
+      <section>
+        <div class="cap">History</div>
+        <div class="inner"><ul><li><a href="#">Revision history</a></li></ul></div>
+      </section>
+    </aside>
+  </div>
+</main>
+</body>
+</html>

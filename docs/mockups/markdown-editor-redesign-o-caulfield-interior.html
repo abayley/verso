@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign O: caulfield interior</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root {
+  --room: #23328f;
+  --room-deep: #1a2570;
+  --line: #0d0d12;
+  --lamp: #f5c400;
+  --cream: #f6efdb;
+  --red: #d03a2b;
+  --green: #2e7d4f;
+  --sans: "Avenir Next", "Century Gothic", ui-sans-serif, Arial, sans-serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: var(--room-deep); color: var(--cream);
+  font-family: var(--sans); padding: 30px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+main { max-width: 1200px; margin: 0 auto; border: 3px solid var(--line); background: var(--room);
+  position: relative; overflow: hidden; }
+.beam { position: absolute; top: 0; right: 0; width: 560px; height: 100%; pointer-events: none;
+  background: var(--lamp); opacity: 0.14; clip-path: polygon(78% 0, 92% 0, 100% 100%, 40% 100%); }
+.head { display: flex; align-items: stretch; border-bottom: 3px solid var(--line); position: relative; }
+.lamp { display: flex; align-items: flex-end; padding: 0 16px; }
+.lamp svg { display: block; }
+.title { display: flex; align-items: center; padding: 16px 4px; font-size: 20px; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: lowercase; }
+.title b { color: var(--lamp); font-weight: 600; }
+.modes { display: flex; margin-left: auto; align-items: stretch; }
+.modes span { display: flex; align-items: center; padding: 0 18px; border-left: 3px solid var(--line);
+  font-size: 13px; text-transform: lowercase; letter-spacing: 0.06em; }
+.modes .on { background: var(--lamp); color: var(--line); }
+.scheme { display: flex; }
+.scheme span { display: flex; align-items: center; justify-content: center; width: 46px;
+  border-left: 3px solid var(--line); font-size: 16px; }
+.scheme .on { background: var(--red); color: var(--cream); }
+.bar { display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 3px solid var(--line); }
+.publish { border: 3px solid var(--line); background: var(--lamp); color: var(--line); font-family: var(--sans);
+  font-weight: 600; font-size: 14px; text-transform: lowercase; letter-spacing: 0.06em; padding: 8px 24px;
+  cursor: pointer; }
+.cancel { border: 3px solid var(--line); background: var(--room); color: var(--cream); font-family: var(--sans);
+  font-size: 13px; text-transform: lowercase; letter-spacing: 0.06em; padding: 8px 16px; cursor: pointer; }
+.crumb { font-size: 13px; text-transform: lowercase; letter-spacing: 0.06em; opacity: 0.85; }
+.crumb .sep { color: var(--lamp); padding: 0 6px; }
+.grp { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 12px;
+  text-transform: lowercase; letter-spacing: 0.06em; }
+.pill { display: flex; border: 3px solid var(--line); }
+.pill span { padding: 4px 12px; border-right: 3px solid var(--line); }
+.pill span:last-child { border-right: 0; }
+.pill .on { background: var(--green); }
+.body { display: grid; grid-template-columns: 215px 1fr 195px; position: relative; }
+.nav { border-right: 3px solid var(--line); background: var(--room-deep); }
+.navhead { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 3px solid var(--line);
+  font-size: 12px; text-transform: lowercase; letter-spacing: 0.14em; }
+.navhead i { margin-left: auto; font-size: 14px; color: var(--lamp); }
+.navhead i + i { margin-left: 6px; }
+.tree { list-style: none; margin: 0; padding: 12px 0; font-size: 14px; text-transform: lowercase; }
+.tree li { display: flex; align-items: center; gap: 10px; padding: 8px 16px; letter-spacing: 0.04em; }
+.tree li::before { content: ""; width: 8px; height: 8px; border: 2px solid var(--cream); flex: none; }
+.tree .on { background: var(--lamp); color: var(--line); }
+.tree .on::before { border-color: var(--line); background: var(--red); }
+.tree .ops { margin-left: auto; display: flex; gap: 8px; font-size: 11px; }
+.doc { background: var(--cream); color: #2c2417; padding: 40px 40px 30px; display: flex; flex-direction: column;
+  border-right: 3px solid var(--line); position: relative; min-width: 0; }
+.doc .shade { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;
+  background: var(--room); opacity: 0.08; clip-path: polygon(0 0, 34% 0, 6% 100%, 0 100%); }
+h1 { font-family: var(--serif); font-weight: 600; font-size: 36px; line-height: 1.05; margin: 0 0 20px; }
+p { font-family: var(--serif); font-size: 17px; line-height: 1.7; margin: 0 0 14px; max-width: 88%; }
+.badge { display: inline-block; background: var(--red); color: var(--cream); font-family: var(--sans);
+  font-size: 11px; text-transform: lowercase; letter-spacing: 0.08em; padding: 2px 9px;
+  border: 2px solid var(--line); }
+.callout { border: 3px solid var(--line); background: var(--room); color: var(--cream); max-width: 88%;
+  padding: 12px 16px; margin: 4px 0 16px; }
+.callout .capn { font-family: var(--sans); font-size: 11px; text-transform: lowercase; letter-spacing: 0.16em;
+  color: var(--lamp); margin-bottom: 5px; }
+.callout p { color: var(--cream); margin: 0; font-size: 15px; max-width: none; }
+.caret { display: inline-block; width: 3px; height: 19px; background: var(--red); vertical-align: -3px; }
+.cmdbar { margin-top: auto; width: fit-content; display: flex; flex-wrap: wrap; align-items: center;
+  border: 3px solid var(--line); background: var(--room); color: var(--cream); }
+.cmdbar i, .cmdbar .style { width: 36px; height: 40px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: 15px; }
+.cmdbar .style { width: auto; padding: 0 12px; font-family: var(--sans); font-weight: 600; font-size: 13px; }
+.cmdbar .div { width: 3px; height: 40px; background: var(--line); }
+.cmdbar .hot { background: var(--lamp); color: var(--line); }
+.cmdbar .save { display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; height: 40px;
+  background: var(--red); font-size: 12px; text-transform: lowercase; letter-spacing: 0.1em; }
+.cmdbar .save .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--lamp); }
+.side { background: var(--room); font-size: 13px; }
+.side section { border-bottom: 3px solid var(--line); padding: 14px 16px 16px; }
+.side section:last-child { border-bottom: 0; }
+.side h3 { margin: 0 0 10px; font-size: 11px; font-weight: 600; text-transform: lowercase;
+  letter-spacing: 0.16em; color: var(--lamp); }
+.side ul { list-style: none; margin: 0; padding: 0; }
+.side li { padding: 3px 0; text-transform: lowercase; }
+.side .sub { padding-left: 14px; }
+.side .quiet { opacity: 0.65; }
+.side a { color: var(--cream); text-decoration: underline; text-decoration-color: var(--red);
+  text-decoration-thickness: 2px; text-underline-offset: 3px; }
+</style>
+</head>
+<body>
+<h2 class="sr-only">Mockup O: a Patrick Caulfield interior. Flat planes of saturated ultramarine with uniform black contour lines, a yellow lamp casting a flat light beam, no gradients or shadows anywhere in the chrome, and the document itself as the one naturalistic, finely detailed surface in the room.</h2>
+<main>
+  <div class="beam" aria-hidden="true"></div>
+  <div class="head">
+    <div class="lamp" aria-hidden="true">
+      <svg width="72" height="58" viewBox="0 0 72 58" fill="none">
+        <path d="M20 57 L34 57 L30 30 L24 30 Z" fill="#0d0d12"/>
+        <path d="M10 30 L44 30 L36 12 L18 12 Z" fill="#f5c400" stroke="#0d0d12" stroke-width="3"/>
+        <path d="M44 30 L70 57" stroke="#0d0d12" stroke-width="3"/>
+      </svg>
+    </div>
+    <div class="title"><b>verso</b>&nbsp;&middot;&nbsp;home.md</div>
+    <div class="modes"><span class="on">visual</span><span>markdown</span><span>split</span></div>
+    <div class="scheme">
+      <span title="Light"><i class="ti ti-sun" aria-hidden="true"></i></span>
+      <span class="on" title="Dark"><i class="ti ti-moon" aria-hidden="true"></i></span>
+      <span title="Match system"><i class="ti ti-device-desktop" aria-hidden="true"></i></span>
+    </div>
+  </div>
+  <div class="bar">
+    <button class="publish">publish</button>
+    <button class="cancel">cancel</button>
+    <div class="crumb">pages <span class="sep">/</span> home</div>
+    <div class="grp">
+      width
+      <span class="pill"><span class="on">narrow</span><span>medium</span><span>full</span></span>
+      theme
+      <span class="pill"><span class="on">paper &#9662;</span></span>
+    </div>
+  </div>
+  <div class="body">
+    <nav class="nav">
+      <div class="navhead">pages
+        <i class="ti ti-plus" title="New top-level page" aria-hidden="true"></i>
+        <i class="ti ti-arrow-back-up" title="Undo a move" aria-hidden="true"></i>
+        <i class="ti ti-trash" title="Trash" aria-hidden="true"></i>
+      </div>
+      <ul class="tree">
+        <li class="on">home
+          <span class="ops"><i class="ti ti-plus" title="New page here" aria-hidden="true"></i><i class="ti ti-x" title="Delete" aria-hidden="true"></i></span></li>
+        <li>guides</li>
+        <li>projects</li>
+        <li>notes</li>
+        <li>archive</li>
+      </ul>
+    </nav>
+    <div class="doc">
+      <div class="shade" aria-hidden="true"></div>
+      <h1>Hello from MicroHttp</h1>
+      <p>Edit this Markdown document. <span class="badge">beta</span></p>
+      <div class="callout">
+        <div class="capn">note</div>
+        <p>The room is flat colour and contour; only the page keeps its detail.</p>
+      </div>
+      <p>Drafts wait in the lamplight until you publish them.<span class="caret"></span></p>
+      <div class="cmdbar">
+        <span class="style" title="Block style">Aa</span>
+        <span class="div"></span>
+        <i class="ti ti-bold" aria-hidden="true" title="Bold"></i>
+        <i class="ti ti-italic" aria-hidden="true" title="Italic"></i>
+        <i class="ti ti-strikethrough" aria-hidden="true" title="Strikethrough"></i>
+        <i class="ti ti-code" aria-hidden="true" title="Code"></i>
+        <i class="ti ti-link hot" aria-hidden="true" title="Link"></i>
+        <span class="div"></span>
+        <i class="ti ti-list" aria-hidden="true" title="Bullet list"></i>
+        <i class="ti ti-list-numbers" aria-hidden="true" title="Numbered list"></i>
+        <i class="ti ti-blockquote" aria-hidden="true" title="Quote"></i>
+        <i class="ti ti-code-dots" aria-hidden="true" title="Code block"></i>
+        <i class="ti ti-separator" aria-hidden="true" title="Rule"></i>
+        <span class="div"></span>
+        <i class="ti ti-tag" aria-hidden="true" title="Badge"></i>
+        <i class="ti ti-info-circle" aria-hidden="true" title="Callout"></i>
+        <i class="ti ti-table" aria-hidden="true" title="Table"></i>
+        <i class="ti ti-chevron-down" aria-hidden="true" title="Collapsible"></i>
+        <i class="ti ti-photo" aria-hidden="true" title="Image or file"></i>
+        <span class="save" title="Save draft"><span class="dot"></span>save</span>
+      </div>
+    </div>
+    <aside class="side">
+      <section>
+        <h3>contents</h3>
+        <ul>
+          <li>hello from microhttp</li>
+          <li class="sub">the room</li>
+          <li class="sub">the page</li>
+        </ul>
+      </section>
+      <section>
+        <h3>attachments</h3>
+        <ul><li class="quiet">no attachments yet.</li></ul>
+      </section>
+      <section>
+        <h3>history</h3>
+        <ul><li><a href="#">revision history</a></li></ul>
+      </section>
+    </aside>
+  </div>
+</main>
+</body>
+</html>

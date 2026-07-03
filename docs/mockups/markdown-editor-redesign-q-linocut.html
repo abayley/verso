@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign Q: linocut</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+:root {
+  --paper: #f0e7d3;
+  --ink: #201a15;
+  --red: #c23a24;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  /* white gouge strokes carved out of solid ink */
+  --gouge: repeating-linear-gradient(104deg, transparent 0 6px, rgba(240,231,211,0.22) 6px 7.5px,
+    transparent 7.5px 15px, rgba(240,231,211,0.14) 15px 16px);
+  /* knife hatching over paper */
+  --hatch: repeating-linear-gradient(23deg, transparent 0 5px, rgba(32,26,21,0.16) 5px 6.2px);
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: var(--paper); color: var(--ink);
+  font-family: var(--serif); padding: 34px;
+  background-image: radial-gradient(circle, rgba(32,26,21,0.05) 1px, transparent 1.4px);
+  background-size: 26px 26px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+main { max-width: 1200px; margin: 0 auto; background: var(--paper); border: 7px solid var(--ink);
+  position: relative; }
+.saw { height: 11px; background:
+  linear-gradient(45deg, var(--ink) 25%, transparent 25%),
+  linear-gradient(-45deg, var(--ink) 25%, transparent 25%);
+  background-size: 14px 22px; background-position: 0 0; }
+.saw.flip { transform: scaleY(-1); }
+.head { display: flex; align-items: stretch; background: var(--ink); background-image: var(--gouge);
+  color: var(--paper); }
+.title { display: flex; align-items: center; gap: 12px; padding: 14px 20px; font-weight: 700;
+  font-size: 21px; letter-spacing: 0.06em; }
+.title .cut { display: inline-block; width: 26px; height: 26px; background: var(--red);
+  clip-path: polygon(50% 0, 94% 28%, 82% 90%, 18% 90%, 6% 28%); box-shadow: 2px 2px 0 var(--paper); }
+.modes { display: flex; margin-left: auto; }
+.modes span { display: flex; align-items: center; padding: 0 18px; border-left: 3px solid var(--paper);
+  font-size: 13px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+.modes .on { background: var(--red); background-image: var(--gouge); }
+.scheme { display: flex; }
+.scheme span { display: flex; align-items: center; justify-content: center; width: 48px;
+  border-left: 3px solid var(--paper); font-size: 16px; }
+.scheme .on { background: var(--red); background-image: var(--gouge); }
+.bar { display: flex; align-items: center; gap: 12px; padding: 13px 18px; border-bottom: 4px solid var(--ink); }
+.publish { border: 3px solid var(--ink); background: var(--red); background-image: var(--gouge);
+  color: var(--paper); font-family: var(--serif); font-weight: 700; font-size: 14px;
+  letter-spacing: 0.14em; text-transform: uppercase; padding: 8px 24px; cursor: pointer;
+  box-shadow: 4px 4px 0 var(--ink); }
+.cancel { border: 3px solid var(--ink); background: var(--paper); color: var(--ink);
+  font-family: var(--serif); font-weight: 700; font-size: 12px; letter-spacing: 0.12em;
+  text-transform: uppercase; padding: 9px 16px; cursor: pointer; }
+.crumb { font-size: 14px; font-style: italic; }
+.crumb .sep { color: var(--red); font-style: normal; padding: 0 6px; }
+.grp { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 11px;
+  font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+.pill { display: flex; border: 3px solid var(--ink); }
+.pill span { padding: 4px 12px; border-right: 3px solid var(--ink); }
+.pill span:last-child { border-right: 0; }
+.pill .on { background: var(--ink); background-image: var(--gouge); color: var(--paper); }
+.body { display: grid; grid-template-columns: 195px 1fr 185px; }
+.nav { border-right: 4px solid var(--ink); display: flex; flex-direction: column; }
+.navhead { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--ink);
+  background-image: var(--gouge); color: var(--paper); font-size: 12px; font-weight: 700;
+  letter-spacing: 0.2em; text-transform: uppercase; }
+.navhead i { margin-left: auto; font-size: 14px; }
+.navhead i + i { margin-left: 2px; }
+.tree { list-style: none; margin: 0; padding: 14px 0; font-size: 15px; }
+.tree li { display: flex; align-items: center; gap: 10px; padding: 8px 14px; }
+.tree li::before { content: ""; width: 9px; height: 9px; background: var(--ink); flex: none;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.tree .on { background: var(--ink); background-image: var(--gouge); color: var(--paper); font-weight: 700; }
+.tree .on::before { background: var(--red); }
+.tree .ops { margin-left: auto; display: flex; gap: 7px; font-size: 11px; }
+.stamp { margin-top: auto; padding: 16px; text-align: center; }
+.stamp svg { width: 110px; height: auto; }
+.doc { padding: 40px 40px 30px; display: flex; flex-direction: column; min-width: 0; position: relative; }
+h1 { font-weight: 900; font-size: 42px; line-height: 1.02; margin: 0 0 6px; letter-spacing: 0.01em;
+  transform: rotate(-0.6deg); text-shadow: 3px 3px 0 rgba(194,58,36,0.35); }
+.h1cut { width: 170px; height: 8px; background: var(--ink); background-image: var(--gouge);
+  transform: rotate(-0.6deg); margin: 0 0 26px; }
+p { font-size: 17.5px; line-height: 1.7; margin: 0 0 14px; max-width: 88%; }
+.badge { display: inline-block; background: var(--red); background-image: var(--gouge); color: var(--paper);
+  font-weight: 700; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; padding: 2px 9px;
+  box-shadow: 2px 2px 0 var(--ink); }
+.callout { background: var(--ink); background-image: var(--gouge); color: var(--paper); max-width: 88%;
+  padding: 14px 18px 13px; margin: 4px 0 16px; transform: rotate(0.4deg); box-shadow: 5px 5px 0 rgba(32,26,21,0.25); }
+.callout .capn { font-weight: 700; font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase;
+  color: var(--red); -webkit-text-stroke: 0; margin-bottom: 5px;
+  text-shadow: 1px 1px 0 var(--paper); }
+.callout p { margin: 0; font-size: 15px; max-width: none; }
+.caret { display: inline-block; width: 3.5px; height: 20px; background: var(--red); vertical-align: -4px;
+  transform: rotate(2deg); }
+.cmdbar { margin-top: auto; width: fit-content; display: flex; align-items: center;
+  background: var(--ink); background-image: var(--gouge); padding: 6px; gap: 5px;
+  box-shadow: 5px 5px 0 rgba(32,26,21,0.25); transform: rotate(-0.3deg); }
+.cmdbar i, .cmdbar .style { width: 34px; height: 36px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: 15px; color: var(--paper); }
+.cmdbar .style { width: auto; padding: 0 9px; font-weight: 700; font-size: 14px; }
+.cmdbar .div { width: 2px; height: 26px; background: var(--paper); opacity: 0.55; }
+.cmdbar .active { background: var(--red); background-image: var(--gouge); }
+.cmdbar .save { display: inline-flex; align-items: center; gap: 8px; margin-left: 6px;
+  background: var(--red); background-image: var(--gouge); padding: 7px 14px; font-weight: 700;
+  font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--paper); }
+.cmdbar .save .dot { width: 9px; height: 9px; background: var(--paper);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.side { border-left: 4px solid var(--ink); font-size: 14px; }
+.side section { border-bottom: 4px solid var(--ink); }
+.side section:last-child { border-bottom: 0; }
+.side h3 { margin: 0; padding: 8px 14px; background: var(--ink); background-image: var(--gouge);
+  color: var(--paper); font-size: 11px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; }
+.side .inner { padding: 12px 14px 14px; background-image: var(--hatch); background-size: 100% 100%; }
+.side ul { list-style: none; margin: 0; padding: 0; }
+.side li { padding: 3px 0; background: var(--paper); width: fit-content; padding-right: 8px; }
+.side .sub { margin-left: 14px; }
+.side .quiet { font-style: italic; color: #6b6353; }
+.side a { color: var(--red); font-weight: 700; text-decoration: none; border-bottom: 2px solid var(--ink); }
+</style>
+</head>
+<body>
+<h2 class="sr-only">Mockup Q: a linocut / woodcut print. Heavy black ink on cream paper with white gouge strokes carved through every solid area, knife hatching for shaded panels, a vermillion second block colour with off-register offsets, sawtooth carved edges above and below the frame, and slightly rotated blocks as if hand-pulled.</h2>
+<main>
+  <div class="saw flip" aria-hidden="true"></div>
+  <div class="head">
+    <div class="title"><span class="cut" aria-hidden="true"></span> home.md</div>
+    <div class="modes"><span class="on">Visual</span><span>Markdown</span><span>Split</span></div>
+    <div class="scheme">
+      <span class="on" title="Light"><i class="ti ti-sun" aria-hidden="true"></i></span>
+      <span title="Dark"><i class="ti ti-moon" aria-hidden="true"></i></span>
+      <span title="Match system"><i class="ti ti-device-desktop" aria-hidden="true"></i></span>
+    </div>
+  </div>
+  <div class="bar">
+    <button class="publish">Publish</button>
+    <button class="cancel">Cancel</button>
+    <div class="crumb">Pages <span class="sep">&#10148;</span> Home</div>
+    <div class="grp">
+      Width
+      <span class="pill"><span class="on">Narrow</span><span>Medium</span><span>Full</span></span>
+      Theme
+      <span class="pill"><span class="on">Paper &#9662;</span></span>
+    </div>
+  </div>
+  <div class="body">
+    <nav class="nav">
+      <div class="navhead">Pages
+        <i class="ti ti-plus" title="New top-level page" aria-hidden="true"></i>
+        <i class="ti ti-arrow-back-up" title="Undo a move" aria-hidden="true"></i>
+        <i class="ti ti-trash" title="Trash" aria-hidden="true"></i>
+      </div>
+      <ul class="tree">
+        <li class="on">Home
+          <span class="ops"><i class="ti ti-plus" title="New page here" aria-hidden="true"></i><i class="ti ti-x" title="Delete" aria-hidden="true"></i></span></li>
+        <li>Guides</li>
+        <li>Projects</li>
+        <li>Notes</li>
+        <li>Archive</li>
+      </ul>
+      <div class="stamp" aria-hidden="true">
+        <svg viewBox="0 0 110 70" fill="none">
+          <rect x="3" y="3" width="104" height="64" stroke="#201a15" stroke-width="5"/>
+          <path d="M14 52 C24 34 34 26 44 26 C58 26 60 44 74 44 C84 44 92 36 98 24"
+            stroke="#201a15" stroke-width="6" stroke-linecap="round"/>
+          <path d="M18 50 C27 36 35 30 44 30" stroke="#f0e7d3" stroke-width="1.6"/>
+          <path d="M50 28 C58 30 62 42 74 42" stroke="#f0e7d3" stroke-width="1.6"/>
+          <circle cx="84" cy="18" r="7" fill="#c23a24"/>
+        </svg>
+      </div>
+    </nav>
+    <div class="doc">
+      <h1>Hello from MicroHttp</h1>
+      <div class="h1cut" aria-hidden="true"></div>
+      <p>Edit this Markdown document. <span class="badge">beta</span></p>
+      <div class="callout">
+        <div class="capn">Note</div>
+        <p>Cut away everything that is not the page; what remains takes the ink.</p>
+      </div>
+      <p>Drafts stay on the block until you pull the print.<span class="caret"></span></p>
+      <div class="cmdbar">
+        <span class="style" title="Block style">Aa</span>
+        <span class="div"></span>
+        <i class="ti ti-bold active" aria-hidden="true" title="Bold"></i>
+        <i class="ti ti-italic" aria-hidden="true" title="Italic"></i>
+        <i class="ti ti-strikethrough" aria-hidden="true" title="Strikethrough"></i>
+        <i class="ti ti-code" aria-hidden="true" title="Code"></i>
+        <i class="ti ti-link" aria-hidden="true" title="Link"></i>
+        <span class="div"></span>
+        <i class="ti ti-list" aria-hidden="true" title="Bullet list"></i>
+        <i class="ti ti-list-numbers" aria-hidden="true" title="Numbered list"></i>
+        <i class="ti ti-blockquote" aria-hidden="true" title="Quote"></i>
+        <i class="ti ti-code-dots" aria-hidden="true" title="Code block"></i>
+        <i class="ti ti-separator" aria-hidden="true" title="Rule"></i>
+        <span class="div"></span>
+        <i class="ti ti-tag" aria-hidden="true" title="Badge"></i>
+        <i class="ti ti-info-circle" aria-hidden="true" title="Callout"></i>
+        <i class="ti ti-table" aria-hidden="true" title="Table"></i>
+        <i class="ti ti-chevron-down" aria-hidden="true" title="Collapsible"></i>
+        <i class="ti ti-photo" aria-hidden="true" title="Image or file"></i>
+        <span class="save" title="Save draft"><span class="dot"></span>Save</span>
+      </div>
+    </div>
+    <aside class="side">
+      <section>
+        <h3>Contents</h3>
+        <div class="inner">
+          <ul>
+            <li>Hello from MicroHttp</li>
+            <li class="sub">The block</li>
+            <li class="sub">The pull</li>
+          </ul>
+        </div>
+      </section>
+      <section>
+        <h3>Attachments</h3>
+        <div class="inner"><ul><li class="quiet">No attachments yet.</li></ul></div>
+      </section>
+      <section>
+        <h3>History</h3>
+        <div class="inner"><ul><li><a href="#">Revision history</a></li></ul></div>
+      </section>
+    </aside>
+  </div>
+  <div class="saw" aria-hidden="true"></div>
+</main>
+</body>
+</html>

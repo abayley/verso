@@ -10,7 +10,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="$ROOT/build"
-DB="$HOME/.mcabal/mhs-0.16.0.0"
+# The package database is normally passed by the bench-http Makefile target so
+# the version is defined in one place.
+DB="${MHS_PACKAGE_DB:-$HOME/.mcabal/mhs-0.16.3.0}"
 
 PORT="${MICROHTTP_BENCH_PORT:-8099}"
 CONC="${MICROHTTP_BENCH_CONC:-16}"

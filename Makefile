@@ -146,7 +146,7 @@ bench-socket:
 	$(BUILD)/socket-bench
 
 bench-socket-saturated:
-	bash scripts/socket-saturated-bench.sh
+	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash scripts/socket-saturated-bench.sh
 
 bench-html-builder:
 	mkdir -p $(BUILD)
@@ -154,13 +154,13 @@ bench-html-builder:
 	$(BUILD)/html-builder-bench
 
 bench-iteratee:
-	bash scripts/iteratee-bench.sh
+	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash scripts/iteratee-bench.sh
 
 bench-egress:
-	bash scripts/egress-bench.sh
+	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash scripts/egress-bench.sh
 
 bench-http:
-	bash scripts/http-bench.sh
+	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash scripts/http-bench.sh
 
 spike-remark-ast:
 	bun scripts/remark-ast-spike.mjs

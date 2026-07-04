@@ -46,10 +46,13 @@ operation).
 **Operation log**:
 An append-only log, held outside the **document tree**, of the **navigation
 tree**'s structural operations -- **moves** and deletes -- as _logical_ records
-(the intent: kind and paths), not file-level diffs (RFC-0028). It is replayed on a
-refreshed corpus to re-apply the reorganisation; undo appends each operation's
-inverse (a move's reverse move, a delete's restore). Distinct from the
-**revision history** (git content history); the two coexist (RFC-0032).
+(the intent: kind and paths), not file-level diffs (RFC-0028). It is replayed on
+a re-exported tree to re-apply the reorganisation; undo appends each operation's
+inverse (a move's reverse move, a delete's restore). Replay-onto-re-export is a
+**migration-era** workflow: it exists to carry a reorganisation across fresh
+exports from the previous wiki software, and ceases to be useful for a tree once
+its migration is complete and the tree is live. Distinct from the **revision
+history** (git content history); the two coexist (RFC-0032).
 _Avoid_: move log (it records deletes too), revision history (that is the git
 history), audit trail.
 
@@ -231,17 +234,53 @@ the Sentry protocol). Selected by the `client_error_log` config key (RFC-0023).
 _Avoid_: telemetry, access log (a different file, HTTP-request lifecycle).
 
 **Link index**:
-The server's in-memory resolved `.md`->`.md` link graph of the **document tree**
-(each **page**'s outbound `.md` link targets and the inverted `tree path ->
-referring pages` map), consulted by **move** and delete to find referrers and
-rewrite sets without scanning every page. Kept correct by a per-operation
-freshness check -- a `(path, mtime, size)` fingerprint of every `.md`; an
-operation re-stats the tree and rebuilds the index if it changed out-of-band --
-so it never serves a stale answer (preserving the **navigation tree**'s
-always-correct contract, ADR-059). Built lazily on first use and re-synced in
-lockstep after each in-server mutation (RFC-0029, ADR-066/067).
-_Avoid_: cache (it never serves a stale answer), search index (titles/full text;
-a separate future system), sitemap.
+The server's resolved `.md`->`.md` link graph of the **document tree** (each
+**page**'s outbound `.md` link targets and the inverted `tree path -> referring
+pages` map), consulted by **move** and delete to find referrers and rewrite
+sets without scanning every page. Persisted, loaded at startup, maintained in
+lockstep with in-server mutations, and rebuilt on an explicit **index refresh**
+after out-of-band edits -- it accepts a bounded staleness window for ad-hoc
+on-disk changes between refreshes (RFC-0029 as revised, ADR-067 amended;
+the original per-operation freshness walk was reverted on measured cost).
+_Avoid_: cache (staleness is bounded and explicit, not incidental), search
+index (a separate system: full-text and semantic retrieval), sitemap.
+
+**Index refresh**:
+The explicit `POST /index/refresh` action that rebuilds the server's derived
+indexes from the **document tree** after out-of-band changes (a re-export
+during migration, ad hoc on-disk edits). The freshness boundary for
+index-backed features: between refreshes, in-server mutations keep indexes
+current incrementally. Whole-tree out-of-band change is **migration-era**
+(see **Operation log**); for a live tree, refresh is an occasional
+repair tool, not a routine step.
+_Avoid_: reindex (ambiguous with per-page re-indexing), rebuild (an
+implementation detail of refresh).
+
+**Search index**:
+The persisted hybrid retrieval index over the **document tree**'s published
+**pages**: each page's **chunks**, searchable semantically and by full text,
+fused into one ranking (RFC-0034). Reflects published state only -- a **draft**
+never enters it, the same contract the **link index** holds. Kept fresh by
+re-indexing on **publish**, **move**, delete, restore, and rollback, and
+reconciled at startup and **index refresh**. Distinct from the **link index**
+(a different index over the same tree).
+_Avoid_: cache, vector database (a storage mechanism, not this concept),
+index (unqualified -- there are several).
+
+**Chunk**:
+The **search index**'s retrieval unit: one heading section of a **page**
+(long sections split), carrying the page's **title** and ancestor heading
+path as context, and addressed by page path plus heading anchor so a search
+result deep-links to its section.
+_Avoid_: passage, segment, snippet (the excerpt shown in a result, not the
+indexed unit).
+
+**Re-index queue**:
+The coalescing set of **pages** awaiting re-indexing into the **search
+index**, drained asynchronously in the background. A page enqueued repeatedly
+is processed once; while the queue is non-empty, search results disclose
+indexing progress rather than serving an incomplete answer silently.
+_Avoid_: job queue, task queue, backlog.
 
 ## Flagged ambiguities
 

@@ -14,6 +14,7 @@ module Concordance.WordPiece (
     encode,
 ) where
 
+import qualified Concordance.Utf8 as Utf8
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
 import qualified Data.Map.Strict as Map
@@ -34,30 +35,10 @@ line, the token id being the zero-based line position.
 -}
 mkVocab :: BS.ByteString -> Vocab
 mkVocab bytes =
-    Vocab (Map.fromList (zip (map (decodeUtf8 . BS.unpack) (BS.split '\n' bytes)) [0 ..]))
-
-{- | Decodes UTF-8 held as one 'Char' per byte (the @Char8@ view) into real
-characters, so multi-byte vocabulary pieces compare equal to decoded input
-text. Permissive: malformed sequences pass through byte-wise.
--}
-decodeUtf8 :: String -> String
-decodeUtf8 [] = []
-decodeUtf8 (b0 : rest0)
-    | c0 < 0x80 = b0 : decodeUtf8 rest0
-    | c0 >= 0xC0 && c0 < 0xE0 = multi 1 (c0 - 0xC0)
-    | c0 >= 0xE0 && c0 < 0xF0 = multi 2 (c0 - 0xE0)
-    | c0 >= 0xF0 && c0 < 0xF8 = multi 3 (c0 - 0xF0)
-    | otherwise = b0 : decodeUtf8 rest0
-  where
-    c0 = Char.ord b0
-    multi n lead =
-        let conts = take n rest0
-         in if length conts == n && all isCont conts
-                then
-                    Char.chr (foldl (\acc c -> acc * 64 + (Char.ord c - 0x80)) lead conts)
-                        : decodeUtf8 (drop n rest0)
-                else b0 : decodeUtf8 rest0
-    isCont c = Char.ord c >= 0x80 && Char.ord c < 0xC0
+    Vocab
+        ( Map.fromList
+            (zip (map (Utf8.decodeUtf8 . BS.unpack) (BS.split '\n' bytes)) [0 ..])
+        )
 
 -- | Looks up a piece's token id.
 pieceId :: Vocab -> String -> Maybe Int

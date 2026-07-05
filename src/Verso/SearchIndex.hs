@@ -69,6 +69,7 @@ data SearchRuntime = SearchRuntime
     , srQueue :: MVar.MVar SearchQueue.Queue
     , srWake :: MVar.MVar ()
     , srQueryCache :: IORef.IORef [(String, [Double])]
+    , srWritesSinceOptimise :: IORef.IORef Int
     }
 
 -- | The queue entry that triggers a reconcile sweep (never a tree path).
@@ -113,6 +114,7 @@ startSearch cfg = do
                             queue <- MVar.newMVar SearchQueue.emptyQueue
                             wake <- MVar.newMVar ()
                             cache <- IORef.newIORef []
+                            writes <- IORef.newIORef 0
                             let runtime =
                                     SearchRuntime
                                         { srConfig = cfg
@@ -122,6 +124,7 @@ startSearch cfg = do
                                         , srQueue = queue
                                         , srWake = wake
                                         , srQueryCache = cache
+                                        , srWritesSinceOptimise = writes
                                         }
                             Monad.unless modelOk (wipeIndex runtime)
                             _ <- Concurrent.forkIO (workerLoop runtime)
@@ -187,9 +190,34 @@ workerLoop runtime = do
             Just item -> do
                 processItem runtime item
                 MVar.modifyMVar_ (srQueue runtime) (pure . SearchQueue.finish)
+                optimiseIfDue runtime
                 Concurrent.yield
                 drain
     swap (a, b) = (b, a)
+
+{- | Optimises the store when the policy says so (RFC-0034/ADR-075 follow-up;
+'SearchQueue.optimiseDue'): as soon as the queue drains in normal operation,
+and in batches during a bulk backlog. The delete-then-add upserts fragment
+the Lance dataset, and optimisation also folds fresh rows into the vector
+and FTS indexes.
+-}
+optimiseIfDue :: SearchRuntime -> IO ()
+optimiseIfDue runtime = do
+    writes <- IORef.readIORef (srWritesSinceOptimise runtime)
+    depth <- searchDepth runtime
+    Monad.when (SearchQueue.optimiseDue writes (depth == 0)) $ do
+        result <- Store.optimizeStore (srStore runtime)
+        IORef.writeIORef (srWritesSinceOptimise runtime) 0
+        case result of
+            Left e -> searchLog (srConfig runtime) ("search: optimise failed: " ++ e)
+            Right () ->
+                searchLog
+                    (srConfig runtime)
+                    ("search: optimised store after " ++ show writes ++ " write(s)")
+
+-- | Counts one store write towards the optimisation policy.
+countWrite :: SearchRuntime -> IO ()
+countWrite runtime = IORef.modifyIORef' (srWritesSinceOptimise runtime) (+ 1)
 
 -- | One work item: a page re-index, or the reconcile sweep.
 processItem :: SearchRuntime -> String -> IO ()
@@ -209,6 +237,7 @@ indexPage runtime path = do
     case stat of
         Nothing -> do
             result <- Store.deletePage (srStore runtime) path
+            countWrite runtime
             report cfg path (fmap (const "deleted") result)
         Just fileStat -> do
             bytes <- BS.readFile fsPath
@@ -226,6 +255,7 @@ indexPage runtime path = do
                             (statFingerprint fileStat)
                             (Fingerprint.contentFingerprint bytes)
                             storeChunks
+                    countWrite runtime
                     report cfg path (fmap (const (show (length chunks) ++ " chunks")) result)
   where
     report cfg page (Left e) = searchLog cfg ("search: index " ++ page ++ " failed: " ++ e)
@@ -275,7 +305,7 @@ reconcile runtime = do
             changed <- Monad.filterM (needsReindex runtime storedMap) files
             let treePaths = map fst files
                 orphans = [p | p <- Map.keys storedMap, p `notElem` treePaths]
-            mapM_ (Store.deletePage (srStore runtime)) orphans
+            mapM_ (\orphan -> Store.deletePage (srStore runtime) orphan >> countWrite runtime) orphans
             mapM_ (enqueuePage runtime . fst) changed
             searchLog
                 cfg

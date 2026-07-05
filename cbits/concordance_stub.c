@@ -62,6 +62,11 @@ long cn_store_delete(const char *page_id, char *err, long errlen) {
     return -1;
 }
 
+long cn_store_optimize(char *err, long errlen) {
+    say_unavailable(err, errlen);
+    return -1;
+}
+
 long cn_store_search(const double *query_vec, long dims,
                      const char *query_text, long k,
                      char *out, long outlen, char *err, long errlen) {

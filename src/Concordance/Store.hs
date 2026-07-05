@@ -18,6 +18,7 @@ module Concordance.Store (
     closeStore,
     upsertPage,
     deletePage,
+    optimizeStore,
     searchStore,
     listPages,
 ) where
@@ -47,6 +48,8 @@ foreign import ccall "concordance_shim.h cn_store_upsert"
         IO Int
 foreign import ccall "concordance_shim.h cn_store_delete"
     c_storeDelete :: CStr.CString -> CStr.CString -> Int -> IO Int
+foreign import ccall "concordance_shim.h cn_store_optimize"
+    c_storeOptimize :: CStr.CString -> Int -> IO Int
 foreign import ccall "concordance_shim.h cn_store_search"
     c_storeSearch ::
         Ptr.Ptr Double ->
@@ -149,6 +152,17 @@ deletePage _store pageId =
         Alloc.allocaBytes errBufSize $ \errC -> do
             rc <- c_storeDelete pageC errC errBufSize
             shimResult rc errC (const ())
+
+{- | Optimises the dataset: compacts the fragments the delete-then-add
+upserts leave behind, prunes old versions, and folds fresh rows into the
+vector and FTS indexes. When to call it is the worker's policy
+('Verso.SearchQueue.optimiseDue').
+-}
+optimizeStore :: Store -> IO (Either String ())
+optimizeStore _store =
+    Alloc.allocaBytes errBufSize $ \errC -> do
+        rc <- c_storeOptimize errC errBufSize
+        shimResult rc errC (const ())
 
 -- | Hybrid search: query vector plus query text, top k fused hits.
 searchStore :: Store -> [Double] -> String -> Int -> IO (Either String [Hit])

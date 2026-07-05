@@ -41,6 +41,11 @@ long cn_store_upsert(const char *page_id, const char *stat_fp,
 
 long cn_store_delete(const char *page_id, char *err, long errlen);
 
+/* Compacts fragments, prunes old versions, and folds fresh rows into the
+ * vector and FTS indexes. Cheap; called by the worker per the
+ * optimisation policy (drain or batch). */
+long cn_store_optimize(char *err, long errlen);
+
 /* Hybrid search (vector + BM25, engine RRF). Writes up to k records of
  * page_id, anchor, seq, score, text into out. Returns the hit count. */
 long cn_store_search(const double *query_vec, long dims,

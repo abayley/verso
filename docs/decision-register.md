@@ -2217,6 +2217,13 @@ is not durable: a crash costs a catch-up, never correctness. While the
 queue is non-empty, search results carry an indexing-in-progress note
 rather than being silently incomplete.
 
+The worker also owns **store optimisation**: LanceDB fragments under the
+delete-then-add upserts, and optimisation folds fresh rows into the vector
+and FTS indexes. Policy (`optimiseDue`): optimise as soon as the queue
+drains in normal operation (so every save or move sweep is followed by one
+cheap optimise), and every 256 writes while a bulk backlog (first indexing,
+migration re-export) is still draining.
+
 Consequences: an author's publish is searchable within seconds; a
 migration-era re-export costs one tree read and re-embeds only changed
 pages. Search never blocks a mutation or a refresh response.

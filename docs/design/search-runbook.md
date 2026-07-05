@@ -33,6 +33,15 @@ hashes only stat-changed pages, and re-embeds only real changes. Worker
 failures are logged (`search: index <page> failed: ...`) and retried by the
 next reconcile.
 
+## Store Optimisation
+
+The worker optimises the Lance dataset automatically (`optimiseDue`): after
+the queue drains in normal operation, and every 256 writes during a bulk
+backlog. Optimisation compacts upsert fragments, prunes old dataset
+versions, and folds fresh rows into the vector and FTS indexes; the log
+line is `search: optimised store after N write(s)`. No operator action is
+needed.
+
 ## Cost Model
 
 Measured on macOS arm64 (spike notes): ~30 ms per 384-token chunk embed and

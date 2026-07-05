@@ -287,6 +287,18 @@ long cn_store_delete(const char *page_id, char *err, long errlen) {
     return 0;
 }
 
+long cn_store_optimize(char *err, long errlen) {
+    if (!store_table) { fail(err, errlen, "store not open", NULL); return -1; }
+    char *emsg = NULL;
+    if (lancedb_table_optimize(store_table, LANCEDB_OPTIMIZE_ALL, &emsg)
+        != LANCEDB_SUCCESS) {
+        fail(err, errlen, "optimize", emsg);
+        if (emsg) lancedb_free_string(emsg);
+        return -2;
+    }
+    return 0;
+}
+
 /* Appends one field (and separator) to the out buffer, escaping nothing:
  * the separators are non-printing and cannot occur in page text that came
  * through the chunker (control characters are not valid Markdown). */

@@ -11,6 +11,7 @@ module Verso.SearchQueue (
     startNext,
     finish,
     queueDepth,
+    optimiseDue,
 ) where
 
 -- | The queue state: ordered pending pages, the in-flight page, dirtiness.
@@ -57,3 +58,20 @@ finish q =
 queueDepth :: Queue -> Int
 queueDepth q =
     length (queuePending q) + maybe 0 (const 1) (queueInFlight q)
+
+{- | Whether the store should be optimised now, given the writes since the
+last optimisation and whether the queue has just drained. LanceDB fragments
+under the delete-then-add upserts, and optimisation also folds fresh rows
+into the vector and FTS indexes. Normal operation (a save, a move's sweep)
+optimises as soon as the queue drains; a bulk backlog (first indexing, a
+migration re-export) optimises in batches along the way.
+-}
+optimiseDue :: Int -> Bool -> Bool
+optimiseDue writesSince queueEmpty
+    | writesSince <= 0 = False
+    | queueEmpty = True
+    | otherwise = writesSince >= optimiseBatch
+
+-- | Writes tolerated between optimisations while the queue stays busy.
+optimiseBatch :: Int
+optimiseBatch = 256

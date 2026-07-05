@@ -140,6 +140,13 @@ spec =
                     Right hits2 <- Store.searchStore store qv "battery" 8
                     length [h | h <- hits2, Store.hitPage h == "guides/a.md"] `shouldBe` 1
 
+                    -- optimisation compacts the upsert fragments; search still answers
+                    Right () <- Store.optimizeStore store
+                    Right hitsOpt <- Store.searchStore store qv "failover" 4
+                    case hitsOpt of
+                        (top : _) -> Store.hitPage top `shouldBe` "guides/a.md"
+                        [] -> fail "no hits after optimise"
+
                     -- delete removes the page entirely
                     Right () <- Store.deletePage store "guides/a.md"
                     Right hits3 <- Store.searchStore store qv "failover" 8

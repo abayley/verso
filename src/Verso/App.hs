@@ -29,6 +29,7 @@ module Verso.App (
 
 import qualified Concordance.Embedding as Embedding
 import qualified Concordance.Store as Store
+import qualified Concordance.Utf8 as Utf8
 import qualified Control.Concurrent.MVar as MVar
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
@@ -2216,13 +2217,23 @@ in form submission through @ElementInternals@, and htmx autosaves; the textarea
 is disabled so it does not double-submit. @maybeError@ re-renders a validation
 message after a failed ordinary post.
 -}
+
+{- | The browser-tab title for a document page: the page's frontmatter
+@name@, falling back to the humanised filename for an untitled page.
+-}
+documentPageTitle :: String -> BS.ByteString -> String
+documentPageTitle docId content =
+    Maybe.fromMaybe
+        (humaniseSegment (lastSegment docId))
+        (frontmatterTitle (Utf8.decodeUtf8 (BS.unpack content)))
+
 editorPage :: String -> Maybe String -> String -> BS.ByteString -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Maybe String -> Html.Html ()
 editorPage docId mode themeDefault content treeMode editable hasDraft attachments breadcrumbs treeSpine maybeError =
     Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
             Html.rawTrusted editorThemeBootstrapScript
-            Html.title [] "MicroHttp Markdown Editor"
+            Html.title [] (Html.text (documentPageTitle docId content))
             Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/webawesome.css\">"
             Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
             Html.rawTrusted "<script src=\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js\"></script>"

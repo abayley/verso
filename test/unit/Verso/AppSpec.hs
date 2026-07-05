@@ -185,6 +185,18 @@ spec =
                 bodyText response `shouldInclude` "\"name\":\"Alpha\",\"path\":\"alpha\",\"kind\":\"section\""
                 bodyText response `shouldInclude` "\"name\":\"Home Page\",\"path\":\"home.md\",\"kind\":\"page\""
 
+            it "given a titled page, when read, then the html title is the frontmatter name" $ do
+                treeRoot <- setupTreeFixture
+                response <- runTreeApp treeRoot (request Http.GET ["documents", "home.md"])
+                bodyText response `shouldInclude` "<title>Home Page</title>"
+
+            it "given an untitled page, when read, then the html title humanises the filename" $ do
+                treeRoot <- setupTreeFixture
+                writeFile (treeRoot ++ "/plain-notes.md") "no frontmatter here\n"
+                response <- runTreeApp treeRoot (request Http.GET ["documents", "plain-notes.md"])
+                Directory.removeFile (treeRoot ++ "/plain-notes.md")
+                bodyText response `shouldInclude` "<title>Plain Notes</title>"
+
             it "given a page read against the tree, when rendered, then the editor embeds the navigation spine" $ do
                 treeRoot <- setupTreeFixture
                 response <- runTreeApp treeRoot (request Http.GET ["documents", "alpha", "page.md"])

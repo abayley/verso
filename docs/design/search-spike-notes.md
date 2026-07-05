@@ -46,9 +46,37 @@ Quantisation drift (int8 vs fp32 reference, worst-case cosine over probes):
 bge-small 0.9955, MiniLM 0.9817 -- comfortably within retrieval tolerance,
 and another point to bge-small.
 
-The corpus-query A/B of bge-small vs MiniLM (retrieval quality on real
-queries) has not been run yet; benchmark literature and the drift numbers
-both favour bge-small.
+### Corpus A/B: bge-small vs MiniLM
+
+`spike/search/reference/corpus-ab.mjs` sampled 306 pages (1 in 13) of the
+real document tree into 1423 chunks (heading-split, title context line, as
+per the RFC chunking decision), embedded them with both models (quantised),
+and retrieved top-5 for eight realistic queries; the side-by-side report is
+`spike/search/reference/corpus-ab-report.md` (not committed; regenerate
+with the script). Judgement: **bge-small confirmed as default.** Its
+neighbours stay on-topic (e.g. the ESL-battery query lands in spares/ESL
+process pages) where MiniLM drifts entirely off-topic (ESG strategy, ESXi
+BIOS), and its score distribution separates better. Caveat: with a 1-in-13
+sample, the truly best page is often absent, so this is a relative
+comparison, not a recall measurement.
+
+### MicroHs FFI Spike Results
+
+`spike/search/mhs/` builds a minimal production-shaped shim
+(`cn_shim.c/h`: no-op, ONNX embed, LanceDB vector search; int64/double at
+the boundary) and calls it from a MicroHs program (`FfiSpike.hs`) compiled
+with `mhs -optl` linking. Findings:
+
+- MicroHs FFI needs the declaring header named in the import string
+  (`foreign import ccall "cn_shim.h cn_embed" ...`) and `-optc -I` for its
+  include path; extra objects and libraries pass through `-optl`.
+- Raw FFI call overhead: **~270 ns per call** -- negligible.
+- Embed from inside the interpreter (bge-small int8, 4 threads): 2.8 ms at
+  32 tokens, 28.7 ms at 384 tokens -- within noise of the C-side numbers
+  (2.3 / 29.4 ms), so marshalling cost is irrelevant and the C-side cost
+  model transfers directly.
+- LanceDB vector search (k=2 over the spike dataset): 0.6 ms per call with
+  correct results.
 
 ## lancedb-c Store Spike Results
 
@@ -112,7 +140,12 @@ anywhere. PASS for the vector path:
   ~380-line patch to lancedb-c until it is upstreamed (finding 1). Native
   hybrid also means `Concordance.Fuse` (Haskell RRF) demotes from default
   to fallback.
-- MicroHs-to-shim call path: not yet spiked (remaining Phase 0 item),
-  though the codebase's existing static-ccall FFI usage covers the
-  mechanism; the open question is call-latency overhead from inside the
-  interpreter.
+- MicroHs-to-shim call path: **go** -- ~270 ns raw call overhead, embed and
+  search latencies indistinguishable from C, linking via `-optc`/`-optl`
+  proven.
+- Model choice: **bge-small-en-v1.5 confirmed** by the corpus A/B.
+
+Phase 0 gate: **go on all components.** The lancedb-c FTS/hybrid patch is
+prepared as an upstream PR (`spike/search/lancedb-c-pr.md`); until merged,
+the artefact build applies `spike/search/lancedb-c-fts-query.patch` to the
+pinned clone.

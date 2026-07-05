@@ -378,3 +378,137 @@ index a84fde4..448f3c7 100644
  /// Convert query result to Arrow RecordBatch array
  ///
  /// # Safety
+diff --git a/tests/test_query.cpp b/tests/test_query.cpp
+index 8072e88..edd910e 100644
+--- a/tests/test_query.cpp
++++ b/tests/test_query.cpp
+@@ -366,3 +366,129 @@ TEST_CASE_METHOD(LanceDBSessionFixture, "LanceDB Query - repeated queries popula
+   
+   lancedb_table_free(table);
+ }
++
++// Counts result rows after conversion to Arrow, requiring `required_col`
++// to be present in the result schema (pass nullptr to skip the check).
++static size_t count_result_rows(LanceDBQueryResult* query_result, const char* required_col) {
++  FFI_ArrowArray** result_arrays = nullptr;
++  FFI_ArrowSchema* result_schema = nullptr;
++  size_t count = 0;
++  char* error_message = nullptr;
++  const auto result = lancedb_query_result_to_arrow(
++      query_result, &result_arrays, &result_schema, &count, &error_message);
++  REQUIRE(result == LANCEDB_SUCCESS);
++  REQUIRE(error_message == nullptr);
++
++  if (required_col != nullptr) {
++    auto* schema = reinterpret_cast<ArrowSchema*>(result_schema);
++    bool found = false;
++    for (int64_t i = 0; i < schema->n_children; i++) {
++      if (std::string(schema->children[i]->name) == required_col) {
++        found = true;
++      }
++    }
++    REQUIRE(found);
++  }
++
++  size_t sum_rows = 0;
++  for (size_t i = 0; i < count; i++) {
++    sum_rows += reinterpret_cast<ArrowArray*>(result_arrays[i])->length;
++  }
++  lancedb_free_arrow_arrays(result_arrays, count);
++  lancedb_free_arrow_schema(result_schema);
++  return sum_rows;
++}
++
++TEST_CASE_METHOD(LanceDBFixture, "LanceDB Query - Full text search", "[query]") {
++  const std::string table_name = "fts_query_test";
++
++  constexpr size_t total_rows = 100;
++  LanceDBTable* table = create_table_with_data(table_name, total_rows, 0);
++  REQUIRE(table != nullptr);
++
++  // FTS index on the text column; default config
++  const char* fts_columns[] = {"key"};
++  char* error_message = nullptr;
++  LanceDBError result =
++      lancedb_table_create_fts_index(table, fts_columns, 1, nullptr, &error_message);
++  REQUIRE(result == LANCEDB_SUCCESS);
++  REQUIRE(error_message == nullptr);
++
++  SECTION("FTS match returns the matching row with a score") {
++    // "key_5" tokenizes to ["key", "5"]; the token "5" appears only there
++    LanceDBQuery* query = lancedb_query_new(table);
++    REQUIRE(query != nullptr);
++
++    error_message = nullptr;
++    result = lancedb_query_full_text_search(query, "5", fts_columns, 1, &error_message);
++    REQUIRE(result == LANCEDB_SUCCESS);
++    REQUIRE(error_message == nullptr);
++
++    LanceDBQueryResult* query_result = lancedb_query_execute(query);
++    REQUIRE(query_result != nullptr);
++    REQUIRE(count_result_rows(query_result, "_score") == 1);
++  }
++
++  SECTION("FTS with NULL columns searches all indexed columns") {
++    LanceDBQuery* query = lancedb_query_new(table);
++    REQUIRE(query != nullptr);
++
++    error_message = nullptr;
++    result = lancedb_query_full_text_search(query, "5", nullptr, 0, &error_message);
++    REQUIRE(result == LANCEDB_SUCCESS);
++    REQUIRE(error_message == nullptr);
++
++    LanceDBQueryResult* query_result = lancedb_query_execute(query);
++    REQUIRE(query_result != nullptr);
++    REQUIRE(count_result_rows(query_result, "_score") == 1);
++  }
++
++  SECTION("NULL text is an invalid argument") {
++    LanceDBQuery* query = lancedb_query_new(table);
++    REQUIRE(query != nullptr);
++
++    error_message = nullptr;
++    result = lancedb_query_full_text_search(query, nullptr, fts_columns, 1, &error_message);
++    REQUIRE(result == LANCEDB_INVALID_ARGUMENT);
++    lancedb_free_string(error_message);
++    lancedb_query_free(query);
++  }
++
++  SECTION("Hybrid query combines vector and FTS results") {
++    // Vector identical to key_5's data; text matches key_7 only
++    std::vector<float> query_vector;
++    for (size_t j = 0; j < TEST_SCHEMA_DIMENSIONS; j++) {
++      query_vector.push_back(static_cast<float>(5 * 10 + j));
++    }
++    LanceDBVectorQuery* vector_query =
++        lancedb_vector_query_new(table, query_vector.data(), query_vector.size());
++    REQUIRE(vector_query != nullptr);
++
++    error_message = nullptr;
++    result = lancedb_vector_query_full_text_search(
++        vector_query, "7", fts_columns, 1, &error_message);
++    REQUIRE(result == LANCEDB_SUCCESS);
++    REQUIRE(error_message == nullptr);
++
++    error_message = nullptr;
++    result = lancedb_vector_query_limit(vector_query, 10, &error_message);
++    REQUIRE(result == LANCEDB_SUCCESS);
++
++    LanceDBQueryResult* query_result = lancedb_vector_query_execute_hybrid(vector_query);
++    REQUIRE(query_result != nullptr);
++    // Both arms contribute: at least the vector-nearest and the FTS match
++    REQUIRE(count_result_rows(query_result, "_relevance_score") >= 2);
++  }
++
++  SECTION("Hybrid execute without an FTS component fails") {
++    std::vector<float> query_vector(TEST_SCHEMA_DIMENSIONS, 0.0f);
++    LanceDBVectorQuery* vector_query =
++        lancedb_vector_query_new(table, query_vector.data(), query_vector.size());
++    REQUIRE(vector_query != nullptr);
++
++    LanceDBQueryResult* query_result = lancedb_vector_query_execute_hybrid(vector_query);
++    REQUIRE(query_result == nullptr);
++  }
++
++  lancedb_table_free(table);
++}

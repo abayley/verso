@@ -442,9 +442,13 @@ Compile-and-call evidence in `spike/search/`, with measurements recorded in
       **FTS freshness (new rows searchable immediately, no optimize)** are
       all demonstrated. Findings and measurements in
       [search-spike-notes.md](../design/search-spike-notes.md).
-- [ ] Spike: minimal shim + MicroHs program calling it end-to-end
+- [x] Spike: minimal shim + MicroHs program calling it end-to-end
       (open, upsert, search, close) to prove the FFI shape and measure
       call latencies from inside the interpreter.
+      RESULT: go. ~270 ns raw call overhead; embed and vector-search
+      latencies from inside the interpreter match the C-side numbers
+      (28.7 vs 29.4 ms per 384-token embed; 0.6 ms per search). Import
+      convention and `-optc`/`-optl` linking recorded in the spike notes.
 - [x] Spike: ONNX Runtime C API shim embedding a fixed token sequence;
       compare output vector against a transformers.js reference (cosine
       > 0.999); measure embed latency for 32/128/384-token inputs.
@@ -454,14 +458,21 @@ Compile-and-call evidence in `spike/search/`, with measurements recorded in
       shim defaults to the quantised variant and exposes the thread count.
       Measurements in
       [search-spike-notes.md](../design/search-spike-notes.md).
-- [ ] Spike: A/B sanity check `bge-small-en-v1.5` against
+- [x] Spike: A/B sanity check `bge-small-en-v1.5` against
       `all-MiniLM-L6-v2` on a handful of real corpus queries (fall back to
-      MiniLM if bge-small does not win). Drift and benchmark evidence so
-      far favours bge-small.
-- [ ] Decision gate: record go/no-go per component in this RFC. If
+      MiniLM if bge-small does not win).
+      RESULT: bge-small confirmed as default -- on-topic neighbours where
+      MiniLM drifts off-topic, better score separation, smaller
+      quantisation drift (0.9955 vs 0.9817).
+- [x] Decision gate: record go/no-go per component in this RFC. If
       `lancedb-c` fails (build, API gaps, instability), fall back to the
       SQLite FTS5 + flat vectors alternative and revise this RFC before
       continuing.
+      RESULT: **go on all components** (2026-07-05). The one gap found --
+      no FTS query API in upstream lancedb-c -- is closed by our patch,
+      prepared as an upstream PR (`spike/search/lancedb-c-pr.md`); the
+      artefact build applies the patch until it merges. Full evidence in
+      [search-spike-notes.md](../design/search-spike-notes.md).
 
 ### Phase 1: WordPiece Tokeniser (pure Haskell)
 

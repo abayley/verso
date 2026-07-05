@@ -17,3 +17,6 @@ spike/search/reference/node_modules/
 spike/search/reference/reference-vectors.json
 spike/search/onnx/embed_spike
 spike/search/store/store_spike
+spike/search/mhs/ffi_spike
+spike/search/mhs/*.o
+spike/search/reference/corpus-ab-report.md

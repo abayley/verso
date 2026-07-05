@@ -507,21 +507,31 @@ fixtures:
 
 ### Phase 2: Chunker (pure)
 
-- [ ] given a page with no headings, when chunked, then one preamble chunk
+- [x] given a page with no headings, when chunked, then one preamble chunk
       with empty anchor and seq 0, prefixed by the title context line and
       with frontmatter stripped
-- [ ] given a page with heading sections, when chunked, then one chunk per
+- [x] given a page with heading sections, when chunked, then one chunk per
       section carrying its anchor and order, each prefixed by title plus
       ancestor heading path (not its own heading)
-- [ ] given a section containing code and Mermaid fences, when chunked,
-      then fence content is preserved in the chunk text
-- [ ] given a section exceeding the token cap, when chunked, then it
-      splits at paragraph boundaries and seq stays contiguous
-- [ ] given the same content, when content-fingerprinted twice, then
-      fingerprints match; when content changes, then they differ; a
-      stat-only change (touch) leaves the content fingerprint unchanged
-- [ ] Implementation: `Verso.SearchChunks` reusing the tree/heading
-      machinery from RFC-0026/0029.
+- [x] given a section containing code and Mermaid fences, when chunked,
+      then fence content is preserved in the chunk text (headings and
+      blank lines inside fences never split; a continuation piece's
+      context line includes the section's own heading, since the heading
+      line is absent from its text)
+- [x] given a section exceeding the cap, when chunked, then it splits at
+      paragraph boundaries and seq stays contiguous (the cap is in
+      characters -- a cheap proxy for the token cap, since the embed path
+      truncates at the true token cap anyway)
+- [x] given the same content, when content-fingerprinted twice, then
+      fingerprints match; when content changes, then they differ
+      (`Concordance.Fingerprint`: pure FNV-1a 64 pinned to published test
+      vectors, the reference the C shim must agree with; the stat tier
+      lives with the reconcile logic in a later phase)
+- [x] Implementation: `Verso.SearchChunks` (self-contained heading/fence
+      scanning; the title is a parameter, computed by the caller with the
+      existing frontmatter machinery). NOTE: the read view exposes no URL
+      anchors (the contents panel scrolls by heading order), so `anchor`
+      stores the heading text and Phase 7 decides the deep-link mechanism.
 
 ### Phase 3: Embedding Seam
 

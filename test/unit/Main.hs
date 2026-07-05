@@ -1,5 +1,6 @@
 module Main (main) where
 
+import qualified Concordance.FingerprintSpec as FingerprintSpec
 import qualified Concordance.WordPieceSpec as WordPieceSpec
 import qualified MicroHttp.ConfigSpec as ConfigSpec
 import qualified MicroHttp.FileSystemSpec as FileSystemSpec
@@ -31,11 +32,13 @@ import qualified Verso.LinkFingerprintSpec as LinkFingerprintSpec
 import qualified Verso.LinkIndexSpec as LinkIndexSpec
 import qualified Verso.LinkIndexStoreSpec as LinkIndexStoreSpec
 import qualified Verso.OperationLogSpec as OperationLogSpec
+import qualified Verso.SearchChunksSpec as SearchChunksSpec
 import qualified Verso.TrashSpec as TrashSpec
 import qualified Verso.TreeMoveSpec as TreeMoveSpec
 
 main :: IO ()
 main = hspec $ do
+    FingerprintSpec.spec
     WordPieceSpec.spec
     FacadeSpec.spec
     AttachmentSpec.spec
@@ -49,6 +52,7 @@ main = hspec $ do
     HtmlSpec.spec
     LinkFingerprintSpec.spec
     LinkIndexSpec.spec
+    SearchChunksSpec.spec
     LinkIndexStoreSpec.spec
     HttpSpec.spec
     ParserSpec.spec

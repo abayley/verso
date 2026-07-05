@@ -835,15 +835,17 @@ treeEdit versioning editorThemeDefault root path request =
                 if versioningOn versioning
                     then Iteratee.liftIO (Draft.readDraft (draftStagingRoot versioning) path)
                     else pure Nothing
-            content <- case mDraft of
-                Just drafted -> pure drafted
+            (content, isNew) <- case mDraft of
+                Just drafted -> pure (drafted, False)
                 Nothing -> do
                     exists <- Iteratee.liftIO (Directory.doesFileExist fsPath)
-                    if exists then Iteratee.liftIO (BS.readFile fsPath) else pure (BS.pack seededMarkdown)
+                    if exists
+                        then (,False) <$> Iteratee.liftIO (BS.readFile fsPath)
+                        else pure (BS.pack seededMarkdown, True)
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
             breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
             spine <- Iteratee.liftIO (treeSpineFor root path)
-            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True True (Maybe.isJust mDraft) attachments breadcrumbs spine Nothing))
+            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content isNew True True (Maybe.isJust mDraft) attachments breadcrumbs spine Nothing))
 
 {- | Renders the read-only view for a tree document (the default @GET@, RFC-0020):
 the editor shell with editing disabled. A missing page is a @404@ -- reading never
@@ -867,7 +869,7 @@ treeRead versioning editorThemeDefault root path request =
                         if versioningOn versioning
                             then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
                             else pure False
-                    pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True False hasDraft attachments breadcrumbs spine Nothing))
+                    pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content False True False hasDraft attachments breadcrumbs spine Nothing))
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
 treeServeFile :: FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
@@ -1579,7 +1581,18 @@ untracked page) renders an empty-state page.
 treeHistory :: String -> FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
 treeHistory editorThemeDefault root path = do
     revs <- Iteratee.liftIO (Git.logForPath root path)
-    pure (documentResponse (historyPage editorThemeDefault path revs))
+    title <- Iteratee.liftIO (treePageTitle root path)
+    pure (documentResponse (historyPage editorThemeDefault title path revs))
+
+-- | A tree page's display title read from disk (fallback: humanised filename).
+treePageTitle :: FilePath -> String -> IO String
+treePageTitle root path =
+    case Static.resolveStaticPath root (pathSegments path) of
+        Nothing -> pure (humaniseSegment (lastSegment path))
+        Just fsPath -> do
+            exists <- Directory.doesFileExist fsPath
+            content <- if exists then BS.readFile fsPath else pure BS.empty
+            pure (documentPageTitle False path content)
 
 {- | The diff view (RFC-0032): @GET /documents/\<path\>?diff&from=\<rev\>&to=\<rev\>@
 renders a side-by-side diff of the page between the two revisions. With the
@@ -1611,7 +1624,7 @@ treeReadAt editorThemeDefault root path request = do
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
             breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
             spine <- Iteratee.liftIO (treeSpineFor root path)
-            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content True False False attachments breadcrumbs spine Nothing))
+            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content False True False False attachments breadcrumbs spine Nothing))
 
 {- | The rollback action (RFC-0032): @POST /documents/\<path\>?rollback@ with a
 @rev@ field restores the page's content at that revision, writes it through the
@@ -1731,9 +1744,9 @@ excerptOf text =
         flat = map (\c -> if c == '\n' then ' ' else c) body
      in take 240 flat
 
-historyPage :: String -> String -> [Git.Revision] -> Html.Html ()
-historyPage themeDefault path revs =
-    versionPageShell themeDefault ("Revision history: " ++ path) $ do
+historyPage :: String -> String -> String -> [Git.Revision] -> Html.Html ()
+historyPage themeDefault title path revs =
+    versionPageShell themeDefault ("History - " ++ title) $ do
         versionControls themeDefault
         Html.el "h1" [] (Html.text "Revision history")
         Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href ("/documents/" ++ path)] (Html.text ("Back to " ++ path)))
@@ -1979,7 +1992,7 @@ editDocument :: String -> DocumentStore -> Router.Handler
 editDocument editorThemeDefault store captures request = do
     let docId = documentId captures
     content <- Iteratee.liftIO (loadDocument store docId)
-    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault (BS.pack content) False True False [] [] "" Nothing))
+    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault (BS.pack content) False False True False [] [] "" Nothing))
 
 -- | The flat-mode handler that serves a document's raw Markdown.
 showDocument :: DocumentStore -> Router.Handler
@@ -2002,7 +2015,7 @@ saveDocument editorThemeDefault store captures request = do
         Just err
             | isHtmxRequest request -> pure (htmlResponseChunks (validationStatusFragment err))
             | otherwise ->
-                pure (documentResponse (editorPage docId Nothing editorThemeDefault (BS.pack markdown) False True False [] [] "" (Just err)))
+                pure (documentResponse (editorPage docId Nothing editorThemeDefault (BS.pack markdown) False False True False [] [] "" (Just err)))
         Nothing -> do
             Iteratee.liftIO (saveDocumentContent store docId markdown)
             if isHtmxRequest request
@@ -2221,19 +2234,21 @@ message after a failed ordinary post.
 {- | The browser-tab title for a document page: the page's frontmatter
 @name@, falling back to the humanised filename for an untitled page.
 -}
-documentPageTitle :: String -> BS.ByteString -> String
-documentPageTitle docId content =
-    Maybe.fromMaybe
-        (humaniseSegment (lastSegment docId))
-        (frontmatterTitle (Utf8.decodeUtf8 (BS.unpack content)))
+documentPageTitle :: Bool -> String -> BS.ByteString -> String
+documentPageTitle isNew docId content
+    | isNew = "New page"
+    | otherwise =
+        Maybe.fromMaybe
+            (humaniseSegment (lastSegment docId))
+            (frontmatterTitle (Utf8.decodeUtf8 (BS.unpack content)))
 
-editorPage :: String -> Maybe String -> String -> BS.ByteString -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Maybe String -> Html.Html ()
-editorPage docId mode themeDefault content treeMode editable hasDraft attachments breadcrumbs treeSpine maybeError =
+editorPage :: String -> Maybe String -> String -> BS.ByteString -> Bool -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Maybe String -> Html.Html ()
+editorPage docId mode themeDefault content isNew treeMode editable hasDraft attachments breadcrumbs treeSpine maybeError =
     Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
             Html.rawTrusted editorThemeBootstrapScript
-            Html.title [] (Html.text (documentPageTitle docId content))
+            Html.title [] (Html.text (documentPageTitle isNew docId content))
             Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/webawesome.css\">"
             Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
             Html.rawTrusted "<script src=\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js\"></script>"

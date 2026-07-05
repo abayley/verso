@@ -1,5 +1,6 @@
 module Main (main) where
 
+import qualified Concordance.WordPieceFixtureSpec as WordPieceFixtureSpec
 import qualified MicroHttp.ConfigSpec as ConfigSpec
 import qualified MicroHttp.Http.ResponseFileSpec as ResponseFileSpec
 import qualified MicroHttp.Network.SocketSpec as SocketSpec
@@ -17,6 +18,7 @@ main :: IO ()
 main = do
     IO.hSetBuffering IO.stdout IO.LineBuffering
     hspec $ do
+        WordPieceFixtureSpec.spec
         ConfigSpec.spec
         ResponseFileSpec.spec
         SocketSpec.spec

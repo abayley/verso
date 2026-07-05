@@ -1,5 +1,6 @@
 module Main (main) where
 
+import qualified Concordance.WordPieceSpec as WordPieceSpec
 import qualified MicroHttp.ConfigSpec as ConfigSpec
 import qualified MicroHttp.FileSystemSpec as FileSystemSpec
 import qualified MicroHttp.HtmlSpec as HtmlSpec
@@ -35,6 +36,7 @@ import qualified Verso.TreeMoveSpec as TreeMoveSpec
 
 main :: IO ()
 main = hspec $ do
+    WordPieceSpec.spec
     FacadeSpec.spec
     AttachmentSpec.spec
     ClientErrorSpec.spec

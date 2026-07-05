@@ -479,23 +479,31 @@ Compile-and-call evidence in `spike/search/`, with measurements recorded in
 Test cases, simplest to most complex, all against generated reference
 fixtures:
 
-- [ ] given an empty string, when tokenised, then ids are `[CLS] [SEP]`
+- [x] given an empty string, when tokenised, then ids are `[CLS] [SEP]`
       with matching attention mask
-- [ ] given a single in-vocab lowercase word, when tokenised, then the
+- [x] given a single in-vocab lowercase word, when tokenised, then the
       expected single token id appears between the specials
-- [ ] given mixed case and accented input, when normalised, then output
+- [x] given mixed case and accented input, when normalised, then output
       matches the reference (lowercase, accents stripped)
-- [ ] given punctuation adjacent to words, when tokenised, then
+- [x] given punctuation adjacent to words, when tokenised, then
       punctuation splits into its own tokens
-- [ ] given an out-of-vocab word, when tokenised, then greedy
+- [x] given an out-of-vocab word, when tokenised, then greedy
       longest-match produces `##` continuation pieces matching the
       reference
-- [ ] given a word with no matching pieces, when tokenised, then `[UNK]`
-- [ ] given input longer than the profile's token cap, when tokenised,
+- [x] given a word with no matching pieces, when tokenised, then `[UNK]`
+      (plus: mid-word match failure yields one `[UNK]` for the whole word,
+      and words over 100 characters are `[UNK]` without matching)
+- [x] given input longer than the profile's token cap, when tokenised,
       then truncation to the cap preserves `[SEP]`
-- [ ] Implementation: `Concordance.WordPiece` (vocab load is the only
-      IO, injected as a `ByteString`); fixture generator script under
-      `scripts/`.
+- [x] given a vocabulary entry stored as multi-byte UTF-8, when the
+      decoded character is encoded, then it matches (vocab lines are
+      UTF-8-decoded on load)
+- [x] Implementation: `Concordance.WordPiece` (vocab load is the only IO,
+      injected as a `ByteString`); fixture generator
+      `spike/search/reference/wordpiece-fixtures.mjs` (needs the spike's
+      transformers.js install, so it lives beside it); integration spec
+      replays 11 committed reference probes (real vocab, genuine HF
+      tokeniser output) and all reproduce exactly.
 
 ### Phase 2: Chunker (pure)
 

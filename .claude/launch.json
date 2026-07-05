@@ -4,14 +4,34 @@
         {
             "name": "verso",
             "runtimeExecutable": "make",
-            "runtimeArgs": ["run-verso"],
+            "runtimeArgs": [
+                "run-verso"
+            ],
             "port": 8080
         },
         {
             "name": "mockups",
             "runtimeExecutable": "python3",
-            "runtimeArgs": ["-m", "http.server", "8123", "--bind", "127.0.0.1", "--directory", "docs/mockups"],
+            "runtimeArgs": [
+                "-m",
+                "http.server",
+                "8123",
+                "--bind",
+                "127.0.0.1",
+                "--directory",
+                "docs/mockups"
+            ],
             "port": 8123
+        },
+        {
+            "name": "verso-search-demo",
+            "runtimeExecutable": "env",
+            "runtimeArgs": [
+                "MICROHTTP_CONFIG=build/search-demo.conf",
+                "make",
+                "run-verso"
+            ],
+            "port": 8080
         }
     ]
 }

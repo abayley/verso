@@ -1,5 +1,6 @@
 module Verso.AppSpec (spec) where
 
+import qualified Concordance.Store as Store
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as List
@@ -184,6 +185,18 @@ spec =
                 Http.statusCode (Http.responseStatus response) `shouldBe` 200
                 bodyText response `shouldInclude` "\"name\":\"Alpha\",\"path\":\"alpha\",\"kind\":\"section\""
                 bodyText response `shouldInclude` "\"name\":\"Home Page\",\"path\":\"home.md\",\"kind\":\"page\""
+
+            it "given search hits, when rendered as json, then path, title, anchor, and excerpt carry" $ do
+                let hit =
+                        Store.Hit
+                            { Store.hitPage = "guides/a.md"
+                            , Store.hitAnchor = "Failover"
+                            , Store.hitSeq = 1
+                            , Store.hitScore = 0.5
+                            , Store.hitText = "Guide > Setup\nConfigure the \"failover\" timeouts."
+                            }
+                App.searchResultsJson 2 [hit]
+                    `shouldBe` "{\"enabled\":true,\"pending\":2,\"results\":[{\"path\":\"guides/a.md\",\"title\":\"Guide\",\"anchor\":\"Failover\",\"excerpt\":\"Configure the \\\"failover\\\" timeouts.\"}]}"
 
             it "given a titled page, when read, then the html title is the frontmatter name" $ do
                 treeRoot <- setupTreeFixture

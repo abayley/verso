@@ -41,6 +41,7 @@ import {
 } from "./nav-tree.js";
 import { rawHtmlExtension } from "./raw-html-extension.js";
 import { SaveStateController, type SaveStateView } from "./save-state-controller.js";
+import { SearchPanel } from "./search-panel.js";
 import { SlashMenuElement, type SlashSelectEventDetail } from "./slash-menu-element.js";
 import {
     type TableAlignEventDetail,
@@ -491,6 +492,13 @@ export class MarkdownEditorElement extends HTMLElement {
         // panel shows whenever the document has headings (any mode); the attachments panel is tree-mode only.
         this.sidebar = document.createElement("div");
         this.sidebar.className = "markdown-editor__sidebar";
+        // The interactive search box (RFC-0034) sits at the top of the sidebar, under the
+        // top bar's theme and appearance controls; it hides itself when search is disabled.
+        if (this.isTreeMode()) {
+            const searchPanel = new SearchPanel();
+            this.sidebar.append(searchPanel.element());
+            void searchPanel.connect();
+        }
         this.tocPanel = new TableOfContentsPanel((index: number): void => this.scrollToHeading(index));
         this.sidebar.append(this.tocPanel.element());
         if (this.isTreeMode()) {

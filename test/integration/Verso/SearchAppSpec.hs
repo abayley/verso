@@ -159,6 +159,13 @@ spec =
                     okResp <- runRoute runtime (request Http.GET ["search"] [("q", "failover")]) ""
                     status okResp `shouldBe` 200
                     ("failover.md" `List.isInfixOf` bodyText okResp) `shouldBe` True
+
+                    -- and the json flavour carries titles and excerpts for the search box
+                    jsonResp <- runRoute runtime (request Http.GET ["search"] [("q", "failover"), ("json", "")]) ""
+                    status jsonResp `shouldBe` 200
+                    ("\"enabled\":true" `List.isInfixOf` bodyText jsonResp) `shouldBe` True
+                    ("\"path\":\"failover.md\"" `List.isInfixOf` bodyText jsonResp) `shouldBe` True
+                    ("\"title\":" `List.isInfixOf` bodyText jsonResp) `shouldBe` True
                     Monad.void (Process.runProcess "rm" ["-rf", "build/search-app-spec"] Nothing Nothing)
 
 -- | Asserts the first element matches (with a helpful failure).

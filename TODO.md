@@ -26,9 +26,8 @@ backend:
 
 frontend:
 
-- search box in the editor shell (above Contents; browser-first placement) feeding /search -
-  RFC-0034 deferred its in-shell UI
-
+- clicking on a node in the navtree loads the page but then the navtree scroll jumps back to top
+- copy button on code fences
 - implement new themes
 - test pasting in tables from word or excel
 - fix UI for trash - maybe separate page?

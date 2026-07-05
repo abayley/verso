@@ -18,6 +18,7 @@ module Verso.App (
     documentRoutes,
     fileStore,
     frontmatterTitle,
+    searchResultsJson,
     linkedFolderPaths,
     orderTreeNodes,
     routes,
@@ -1687,9 +1688,12 @@ queue is non-empty. With search disabled it says so rather than 404ing.
 treeSearchHandler :: String -> Maybe SearchIndex.SearchRuntime -> Router.Handler
 treeSearchHandler themeDefault search _captures request = do
     let query = capture "q" (Http.requestQuery request)
+        wantsJson = hasQueryFlag "json" request
     case search of
         Nothing ->
-            pure (documentResponse (searchPage themeDefault query Nothing))
+            if wantsJson
+                then pure (jsonResponse "{\"enabled\":false}")
+                else pure (documentResponse (searchPage themeDefault query Nothing))
         Just runtime -> do
             outcome <-
                 if null query
@@ -1699,12 +1703,51 @@ treeSearchHandler themeDefault search _captures request = do
             case outcome of
                 Left err ->
                     pure (statusResponse 500 "Internal Server Error" ("search failed: " ++ err ++ "\n"))
-                Right hits ->
-                    pure (documentResponse (searchPage themeDefault query (Just (hits, depth))))
+                Right hits
+                    | wantsJson -> pure (jsonResponse (searchResultsJson depth hits))
+                    | otherwise ->
+                        pure (documentResponse (searchPage themeDefault query (Just (hits, depth))))
 
 -- | The most results a search answers with (one per page).
 searchResultLimit :: Int
 searchResultLimit = 20
+
+{- | Search results as JSON for the editor's interactive search box: the
+enabled marker, the re-index queue depth, and per hit the page path, its
+display title and section heading (from the chunk's context line), and a
+one-line excerpt.
+-}
+searchResultsJson :: Int -> [Store.Hit] -> String
+searchResultsJson pending hits =
+    "{\"enabled\":true,\"pending\":"
+        ++ show pending
+        ++ ",\"results\":["
+        ++ List.intercalate "," (map one hits)
+        ++ "]}"
+  where
+    one hit =
+        "{\"path\":"
+            ++ jsonString (Store.hitPage hit)
+            ++ ",\"title\":"
+            ++ jsonString (titleOfHit hit)
+            ++ ",\"anchor\":"
+            ++ jsonString (Store.hitAnchor hit)
+            ++ ",\"excerpt\":"
+            ++ jsonString (excerptOf (Store.hitText hit))
+            ++ "}"
+
+-- | A hit's page title: the context line's first @ > @-separated segment.
+titleOfHit :: Store.Hit -> String
+titleOfHit hit = firstSegment (takeWhile (/= '\n') (Store.hitText hit))
+  where
+    firstSegment s =
+        case breakOn " > " s of
+            (before, _) -> before
+    breakOn sep s
+        | take (length sep) s == sep = ("", drop (length sep) s)
+        | otherwise = case s of
+            [] -> ("", "")
+            (c : rest) -> let (b, a) = breakOn sep rest in (c : b, a)
 
 {- | The search page: the query form and, when search ran, its results.
 'Nothing' means search is not enabled on this server.
@@ -1739,12 +1782,19 @@ searchResult hit =
                 Html.el "span" [Html.class_ "verso-search-anchor"] (Html.text (" > " ++ Store.hitAnchor hit))
         Html.p [Html.class_ "verso-search-excerpt"] (Html.text (excerptOf (Store.hitText hit)))
 
--- | A result's one-line excerpt: the chunk text past its context line.
+{- | A result's one-line excerpt: the chunk text past its context line and
+its own heading line, flattened.
+-}
 excerptOf :: String -> String
 excerptOf text =
-    let body = drop 1 (dropWhile (/= '\n') text)
-        flat = map (\c -> if c == '\n' then ' ' else c) body
+    let bodyLines = drop 1 (lines text)
+        prose = dropWhile (\l -> null (trimSpace l) || isHeadingLine l) bodyLines
+        flat = unwords prose
      in take 240 flat
+  where
+    isHeadingLine l = case span (== '#') l of
+        (hashes, ' ' : _) -> not (null hashes) && length hashes <= 6
+        _ -> False
 
 historyPage :: String -> String -> String -> [Git.Revision] -> Html.Html ()
 historyPage themeDefault title path revs =

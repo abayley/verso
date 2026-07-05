@@ -26,6 +26,9 @@ backend:
 
 frontend:
 
+- search box in the editor shell (above Contents; browser-first placement) feeding /search -
+  RFC-0034 deferred its in-shell UI
+
 - implement new themes
 - test pasting in tables from word or excel
 - fix UI for trash - maybe separate page?

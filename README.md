@@ -36,7 +36,9 @@ The project deliberately avoids:
 ```text
 micro-http/
   src/MicroHttp/     The web framework (HTTP, sockets, server, router, ...).
+  src/Concordance/   The hybrid search engine (tokeniser, embedding, store).
   src/Verso/         The Verso wiki application (built on MicroHttp).
+  cbits/             The Concordance C shim and its no-dependency stub.
   test/unit/         Unit specs with no filesystem or socket effects.
   test/integration/  Integration specs that use filesystem or socket effects.
   bench/             Throughput and rendering benchmarks.
@@ -44,9 +46,10 @@ micro-http/
   docs/              Design documents, RFCs, and the decision register.
 ```
 
-The framework lives under the `MicroHttp` namespace and the wiki application
-under `Verso`; `Verso.*` depends on `MicroHttp.*`, never the reverse
-(RFC-0030).
+The framework lives under the `MicroHttp` namespace, the wiki application
+under `Verso`, and the search engine under `Concordance`; `Verso.*` depends
+on `MicroHttp.*` and `Concordance.*`, never the reverse (RFC-0030,
+RFC-0034).
 
 The public facade is `MicroHttp`, which re-exports `MicroHttp.Html`,
 `MicroHttp.Http`, `MicroHttp.Iteratee`, `MicroHttp.Middleware`,
@@ -69,6 +72,11 @@ Verso is a filesystem-backed Markdown wiki assembled in `src/Verso/App.hs`:
   deletes (`POST /index/refresh` rebuilds it).
 - Git-backed versioning provides drafts, publish, revision history, diff, and
   rollback.
+- Hybrid search (semantic embeddings plus BM25 full text, fused with
+  reciprocal rank fusion) over published pages at `/search`, kept fresh by a
+  background re-index queue. Search is optional: it needs the Concordance
+  engine (`Concordance.*`, LanceDB and ONNX Runtime behind a small C shim)
+  built via `make search-shim`, and is off by default (`search_enabled`).
 
 ## Verso Frontend Architecture
 
@@ -150,6 +158,13 @@ in-memory, such as `IORef`-backed writer capture.
 
 Throughput and rendering benchmarks (`make bench-*`) are described in
 [MicroHttp Benchmarks](docs/benchmarks.md).
+
+The optional search engine builds via `make search-lancedb` (patched
+lancedb-c dylib; needs Rust), `make search-model` (checksum-pinned model
+download), and `make search-shim` (the C shim; needs ONNX Runtime via
+Homebrew). Without them a no-dependency stub is linked and search reports
+itself unavailable; `make check` never needs the search toolchain
+(RFC-0034).
 
 ## Verso Run Commands
 

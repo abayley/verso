@@ -2140,3 +2140,83 @@ diagram) is recorded in CONTEXT.md.
   renderer to remove; rendering stays browser-owned and no-JavaScript reading is
   raw Markdown. The save-time validation is retained as a trust-and-integrity
   guard, not a renderer.
+
+### ADR-072: Concordance Search Engine Behind a Project C Shim
+
+Status: Accepted (RFC-0034).
+
+Context: RFC-0034 adds hybrid (semantic plus BM25 full-text) search over the
+document tree. The engine must be reusable beyond Verso, scale past the
+current corpus, and respect MicroHs's FFI limits: only static `ccall` imports
+of flat functions over scalars and pointers -- no function-pointer tables and
+no Arrow C ABI structures.
+
+Decision: The engine is a separate library namespace, `Concordance.*`
+(`Verso.*` may depend on `MicroHttp.*` and `Concordance.*`; `Concordance.*`
+depends on neither). Storage and retrieval use LanceDB through the official
+`lancedb-c` bindings -- carrying a small local patch that adds the missing
+full-text and hybrid query entry points until it is upstreamed -- wrapped in
+a project-owned C shim (`cbits/concordance_shim.c`) that uses nanoarrow
+internally so no Arrow structure crosses the FFI boundary. A no-dependency
+stub (`cbits/concordance_stub.c`) implements the same header and is linked
+whenever `make search-shim` has not run, so every build target works without
+the optional toolchain (Rust, ONNX Runtime, model files) and search reports
+itself unavailable at runtime.
+
+Consequences: `make check` needs no search toolchain; search is off by
+default (`search_enabled`). The shim's ownership rules follow lancedb-c's
+observed semantics (execute and to-arrow consume their inputs), and an empty
+query result returns a NULL Arrow schema that the shim must not touch.
+In-process native code means a shim bug can crash the whole server -- the
+shim is deliberately small, and the out-of-process worker remains the
+documented fallback.
+
+### ADR-073: In-Process ONNX Embedding With a Configured Model Profile
+
+Status: Accepted (RFC-0034).
+
+Context: Indexing and queries must embed text identically, on CPU, inside a
+cooperatively scheduled runtime where every C call blocks all green threads.
+
+Decision: Embeddings run in-process through the ONNX Runtime C API (a shim
+function; ORT's function-pointer-table API cannot be called directly from
+MicroHs). The tokeniser is pure Haskell (`Concordance.WordPiece`, BERT
+WordPiece, validated against HuggingFace reference fixtures). The model is a
+configured profile -- path, pooling, dimensions, token cap, threads, query
+prefix -- not a constant; the default is `bge-small-en-v1.5` quantised (int8,
+4 intra-op threads: ~30 ms per 384-token chunk, 2-3 ms per query embed,
+measured). The store records the model id; a mismatch on open invalidates
+the index and forces a full rebuild, because vectors from different models
+are incommensurable.
+
+Consequences: model files are fetched (`make search-model`, checksum-pinned),
+never committed. Switching models is a config change plus an automatic
+rebuild. Every embed blocks the runtime briefly, so bulk work must yield
+between calls (ADR-074).
+
+### ADR-074: Search Freshness by Coalescing Queue Plus Reconcile Sweep
+
+Status: Accepted (RFC-0034; extends the ADR-067 freshness story).
+
+Context: The search index must track published state (never drafts) without
+freezing the server: embedding a page costs tens of milliseconds per chunk
+and a whole tree takes minutes.
+
+Decision: Mutation handlers enqueue work through the same maintenance seam
+as the link index: publish/create/direct-save enqueue the page; move,
+delete, and restore enqueue a reconcile sweep, which catches every page the
+mutation rewrote (referrers, parent listings, relocated subtrees) without
+handlers enumerating them. A worker green thread drains the coalescing
+queue (pending set; re-enqueueing an in-flight page marks it dirty),
+yielding between chunk embeds so a backlog costs stutter, never a freeze.
+Freshness is re-established by the sweep -- stat fingerprints first, content
+hashes (FNV-1a 64) only for stat-changed pages, re-embedding only real
+changes, deleting orphans -- at startup, on `POST /index/refresh` (one
+action over all derived indexes), and after structural mutations. The queue
+is not durable: a crash costs a catch-up, never correctness. While the
+queue is non-empty, search results carry an indexing-in-progress note
+rather than being silently incomplete.
+
+Consequences: an author's publish is searchable within seconds; a
+migration-era re-export costs one tree read and re-embeds only changed
+pages. Search never blocks a mutation or a refresh response.

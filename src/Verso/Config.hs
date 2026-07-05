@@ -38,6 +38,16 @@ data VersoConfig = VersoConfig
     , identityHeader :: String
     , identityDefault :: String
     , identityEmailDomain :: String
+    , searchEnabled :: Bool
+    , searchModel :: String
+    , searchVocab :: String
+    , searchIndexDir :: String
+    , searchModelId :: String
+    , searchPooling :: String
+    , searchMaxTokens :: Int
+    , searchDims :: Int
+    , searchThreads :: Int
+    , searchQueryPrefix :: String
     }
     deriving (Eq, Show)
 
@@ -64,6 +74,16 @@ appEnvKeys =
     , "identity_header"
     , "identity_default"
     , "identity_email_domain"
+    , "search_enabled"
+    , "search_model"
+    , "search_vocab"
+    , "search_index"
+    , "search_model_id"
+    , "search_pooling"
+    , "search_max_tokens"
+    , "search_dims"
+    , "search_threads"
+    , "search_query_prefix"
     ]
 
 -- | The default log-rotation threshold in bytes (10 MiB) and retained-file count (RFC-0024).
@@ -84,6 +104,10 @@ fromConfig cfg = do
     keep <- Config.configInt "log_keep" defaultLogKeep cfg
     versioning <- Config.configBool "versioning_enabled" True cfg
     indexEnabled <- Config.configBool "link_index_enabled" True cfg
+    searchOn <- Config.configBool "search_enabled" False cfg
+    searchTokens <- Config.configInt "search_max_tokens" 384 cfg
+    searchDim <- Config.configInt "search_dims" 384 cfg
+    searchThr <- Config.configInt "search_threads" 4 cfg
     pure
         VersoConfig
             { documentTreeRoot = Config.configString "document_tree_root" "" cfg
@@ -104,6 +128,16 @@ fromConfig cfg = do
             , identityHeader = Config.configString "identity_header" "X-Remote-User" cfg
             , identityDefault = Config.configString "identity_default" "anonymous" cfg
             , identityEmailDomain = Config.configString "identity_email_domain" "verso.local" cfg
+            , searchEnabled = searchOn
+            , searchModel = Config.configString "search_model" "" cfg
+            , searchVocab = Config.configString "search_vocab" "" cfg
+            , searchIndexDir = Config.configString "search_index" "data/search_index" cfg
+            , searchModelId = Config.configString "search_model_id" "bge-small-en-v1.5-q8" cfg
+            , searchPooling = Config.configString "search_pooling" "cls" cfg
+            , searchMaxTokens = searchTokens
+            , searchDims = searchDim
+            , searchThreads = searchThr
+            , searchQueryPrefix = Config.configString "search_query_prefix" "" cfg
             }
 
 {- | Loads the configuration file, layering the framework's @MICROHTTP_@ overlay

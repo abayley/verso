@@ -27,6 +27,8 @@ module Verso.App (
     treeRoutes,
 ) where
 
+import qualified Concordance.Embedding as Embedding
+import qualified Concordance.Store as Store
 import qualified Control.Concurrent.MVar as MVar
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
@@ -55,6 +57,7 @@ import qualified Verso.Git as Git
 import qualified Verso.Identity as Identity
 import qualified Verso.LinkIndexStore as LinkIndexStore
 import qualified Verso.OperationLog as OperationLog
+import qualified Verso.SearchIndex as SearchIndex
 import qualified Verso.TreeMove as TreeMove
 
 -- | A document store: how the flat (single-root) mode loads and saves a document by id.
@@ -113,13 +116,18 @@ appFromConfig settings vc = do
                 Log.consoleLog (case outcome of Git.Initialised -> "git repository initialised (import commit)"; Git.AlreadyPresent -> "git repository present")
     -- Serialize structural tree mutations across the server's connection threads (see 'WriteLock').
     writeLock <- MVar.newMVar ()
+    -- Concordance search (RFC-0034): optional; absent shim/model degrades to disabled.
+    search <-
+        if VConfig.searchEnabled vc && not (null (VConfig.documentTreeRoot vc))
+            then SearchIndex.startSearch (searchConfigFrom vc)
+            else pure Nothing
     pure
         ( Middleware.logRequests
             accessLogger
             ( Middleware.withErrorResponses
                 ( Router.serveRoutes
                     (Server.parseLimits settings)
-                    (configuredRoutes (Just writeLock) maybeIndexStore vc clientErrorSink)
+                    (configuredRoutes (Just writeLock) maybeIndexStore search vc clientErrorSink)
                 )
             )
         )
@@ -128,8 +136,8 @@ appFromConfig settings vc = do
 selects the filesystem-tree mode (a MkDocs-style tree served and edited in place,
 with per-page peer @assets/@); otherwise the flat single-document store is used.
 -}
-configuredRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> VConfig.VersoConfig -> (String -> IO ()) -> [Router.Route]
-configuredRoutes writeLock indexStore vc clientErrorSink =
+configuredRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> VConfig.VersoConfig -> (String -> IO ()) -> [Router.Route]
+configuredRoutes writeLock indexStore search vc clientErrorSink =
     clientErrorRoute clientErrorSink
         : case VConfig.documentTreeRoot vc of
             "" ->
@@ -137,9 +145,34 @@ configuredRoutes writeLock indexStore vc clientErrorSink =
                     ++ Attachment.attachmentRoutes (Attachment.fileAttachmentStore (VConfig.attachmentRoot vc))
                     ++ mounts
             treeRoot ->
-                treeRoutes writeLock indexStore (versioningFromConfig vc) (VConfig.editorTheme vc) treeRoot (VConfig.operationLog vc) (VConfig.trashRoot vc) (VConfig.linkIndex vc) ++ mounts
+                treeRoutes writeLock indexStore search (versioningFromConfig vc) (VConfig.editorTheme vc) treeRoot (VConfig.operationLog vc) (VConfig.trashRoot vc) (VConfig.linkIndex vc) ++ mounts
   where
     mounts = [Static.static prefix root | (prefix, root) <- VConfig.staticMounts vc]
+
+{- | The search runtime's configuration (RFC-0034): engine paths and the
+model profile from config, the page-title logic injected from here (the
+frontmatter machinery is the application's).
+-}
+searchConfigFrom :: VConfig.VersoConfig -> SearchIndex.SearchConfig
+searchConfigFrom vc =
+    SearchIndex.SearchConfig
+        { SearchIndex.searchRoot = VConfig.documentTreeRoot vc
+        , SearchIndex.searchIndexDir = VConfig.searchIndexDir vc
+        , SearchIndex.searchModelId = VConfig.searchModelId vc
+        , SearchIndex.searchProfile =
+            Embedding.Profile
+                { Embedding.profileModelPath = VConfig.searchModel vc
+                , Embedding.profilePooling = if VConfig.searchPooling vc == "mean" then 0 else 1
+                , Embedding.profileDims = VConfig.searchDims vc
+                , Embedding.profileMaxTokens = VConfig.searchMaxTokens vc
+                , Embedding.profileThreads = VConfig.searchThreads vc
+                , Embedding.profileQueryPrefix = VConfig.searchQueryPrefix vc
+                }
+        , SearchIndex.searchVocabPath = VConfig.searchVocab vc
+        , SearchIndex.searchTitleOf = \path content ->
+            Maybe.fromMaybe (humaniseSegment (lastSegment path)) (frontmatterTitle content)
+        , SearchIndex.searchLog = Log.consoleLog
+        }
 
 -- | The tree handlers' versioning context, read from configuration (RFC-0032).
 versioningFromConfig :: VConfig.VersoConfig -> Versioning
@@ -292,10 +325,11 @@ and every other tree file (images, attachments, raw Markdown) is served
 statically and path-safely (reusing 'Static.resolveStaticPath'). The document id
 is the tree-relative path including the @.md@ extension.
 -}
-treeRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Versioning -> String -> FilePath -> FilePath -> FilePath -> FilePath -> [Router.Route]
-treeRoutes writeLock indexStore versioning editorThemeDefault root logPath trashRoot indexPath =
+treeRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> Versioning -> String -> FilePath -> FilePath -> FilePath -> FilePath -> [Router.Route]
+treeRoutes writeLock indexStore search versioning editorThemeDefault root logPath trashRoot indexPath =
     [ Router.get "/" (redirectTo "/documents/")
     , Router.get "/index.html" (redirectTo "/documents/")
+    , Router.get "/search" (treeSearchHandler editorThemeDefault search)
     , Static.static "/static/editor" "static/editor"
     , Router.get "/tree/*path" (treeChildrenHandler root)
     , Router.post "/tree/*path" (treePostDispatch versioning writeLock findRelevant maint root logPath trashRoot)
@@ -313,8 +347,13 @@ treeRoutes writeLock indexStore versioning editorThemeDefault root logPath trash
     -- after a re-export. Without a store (tests, replay) the scan is used and maintenance
     -- is a no-op (RFC-0029).
     findRelevant = maybe TreeMove.scanRelevant TreeMove.indexRelevant indexStore
-    maint = maybe noIndexMaintenance (storeMaintenance root) indexStore
-    refresh = maybe (pure (Right ())) (LinkIndexStore.refreshLinkIndex root indexPath) indexStore
+    maint = combineMaintenance (maybe noIndexMaintenance (storeMaintenance root) indexStore) (searchMaintenance search)
+    -- Index refresh (one action over all derived indexes, RFC-0034): rebuild the
+    -- link index, then queue the search reconcile sweep (embedding stays async).
+    refresh = do
+        result <- maybe (pure (Right ())) (LinkIndexStore.refreshLinkIndex root indexPath) indexStore
+        maybe (pure ()) SearchIndex.enqueueReconcile search
+        pure result
 
 {- | Serializes the structural tree mutations (move/delete/create/undo/restore/refresh) so
 concurrent requests cannot interleave their read-modify-write of the operation log and the link
@@ -342,6 +381,33 @@ data IndexMaintenance = IndexMaintenance
     , onRestore :: String -> IO ()
     , onSave :: String -> IO ()
     }
+
+{- | The search re-index hooks (RFC-0034 decision 12): content mutations
+enqueue the page; structural mutations queue a reconcile sweep, which also
+catches the pages the mutation rewrote (referrers, parent listings --
+decision 14's populations). No-ops when search is off.
+-}
+searchMaintenance :: Maybe SearchIndex.SearchRuntime -> IndexMaintenance
+searchMaintenance Nothing = noIndexMaintenance
+searchMaintenance (Just runtime) =
+    IndexMaintenance
+        { onMove = \_ _ -> SearchIndex.enqueueReconcile runtime
+        , onDelete = \_ -> SearchIndex.enqueueReconcile runtime
+        , onCreate = SearchIndex.enqueuePage runtime
+        , onRestore = \_ -> SearchIndex.enqueueReconcile runtime
+        , onSave = SearchIndex.enqueuePage runtime
+        }
+
+-- | Runs two maintenance hook sets (link index, then search) per mutation.
+combineMaintenance :: IndexMaintenance -> IndexMaintenance -> IndexMaintenance
+combineMaintenance a b =
+    IndexMaintenance
+        { onMove = \from to -> onMove a from to >> onMove b from to
+        , onDelete = \path -> onDelete a path >> onDelete b path
+        , onCreate = \path -> onCreate a path >> onCreate b path
+        , onRestore = \path -> onRestore a path >> onRestore b path
+        , onSave = \path -> onSave a path >> onSave b path
+        }
 
 -- | The no-op index-maintenance hooks, used without a store (tests, scan mode).
 noIndexMaintenance :: IndexMaintenance
@@ -728,14 +794,14 @@ appWithDocumentTree :: String -> FilePath -> Server.Application
 appWithDocumentTree editorThemeDefault root =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
-        (treeRoutes Nothing Nothing noVersioning editorThemeDefault root "data/operation_log" "data/trash" "data/link_index")
+        (treeRoutes Nothing Nothing Nothing noVersioning editorThemeDefault root "data/operation_log" "data/trash" "data/link_index")
 
 -- | A tree-mode app with draft/publish versioning on and drafts staged under @draftRoot@ (RFC-0032; tests).
 appWithDocumentTreeVersioned :: String -> FilePath -> FilePath -> Server.Application
 appWithDocumentTreeVersioned editorThemeDefault root draftRoot =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
-        (treeRoutes Nothing Nothing (Versioning True draftRoot defaultIdentityConfig) editorThemeDefault root "data/operation_log" "data/trash" "data/link_index")
+        (treeRoutes Nothing Nothing Nothing (Versioning True draftRoot defaultIdentityConfig) editorThemeDefault root "data/operation_log" "data/trash" "data/link_index")
 
 {- | A GET under the tree: the editor page for @?edit@ on a Markdown file,
 otherwise the file served statically (raw Markdown, images, attachments).
@@ -1596,6 +1662,74 @@ scrollable table of revisions (each timestamp links to that revision in the
 read-only view, with a per-row Restore), and a diff pane below that appears
 automatically, side-by-side, once two revisions are selected.
 -}
+
+{- | Answers @GET /search?q=...@ (RFC-0034): the search page with its form
+and, for a non-empty query, the fused hybrid results -- one per page, best
+chunk excerpted -- plus the indexing-in-progress note whenever the re-index
+queue is non-empty. With search disabled it says so rather than 404ing.
+-}
+treeSearchHandler :: String -> Maybe SearchIndex.SearchRuntime -> Router.Handler
+treeSearchHandler themeDefault search _captures request = do
+    let query = capture "q" (Http.requestQuery request)
+    case search of
+        Nothing ->
+            pure (documentResponse (searchPage themeDefault query Nothing))
+        Just runtime -> do
+            outcome <-
+                if null query
+                    then pure (Right [])
+                    else Iteratee.liftIO (SearchIndex.searchQuery runtime query searchResultLimit)
+            depth <- Iteratee.liftIO (SearchIndex.searchDepth runtime)
+            case outcome of
+                Left err ->
+                    pure (statusResponse 500 "Internal Server Error" ("search failed: " ++ err ++ "\n"))
+                Right hits ->
+                    pure (documentResponse (searchPage themeDefault query (Just (hits, depth))))
+
+-- | The most results a search answers with (one per page).
+searchResultLimit :: Int
+searchResultLimit = 20
+
+{- | The search page: the query form and, when search ran, its results.
+'Nothing' means search is not enabled on this server.
+-}
+searchPage :: String -> String -> Maybe ([Store.Hit], Int) -> Html.Html ()
+searchPage themeDefault query outcome =
+    versionPageShell themeDefault "Search" $ do
+        versionControls themeDefault
+        Html.el "h1" [] (Html.text "Search")
+        Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href "/documents/"] (Html.text "Back to the wiki"))
+        Html.el "form" [Html.attr "method" "get", Html.attr "action" "/search", Html.class_ "verso-search-form"] $ do
+            Html.input [Html.attr "type" "search", Html.attr "name" "q", Html.attr "value" query, Html.attr "placeholder" "Search the wiki", Html.attr "autofocus" ""]
+            Html.el "button" [Html.attr "type" "submit"] (Html.text "Search")
+        case outcome of
+            Nothing ->
+                Html.p [] (Html.text "Search is not enabled on this server (see search_enabled and make search-shim).")
+            Just (hits, depth) -> do
+                Monad.when (depth > 0) $
+                    Html.p [Html.class_ "verso-search-pending"] (Html.text ("Indexing in progress: " ++ show depth ++ " page(s) pending; results may be incomplete."))
+                Monad.unless (null query) $
+                    if null hits
+                        then Html.p [] (Html.text "No results.")
+                        else Html.el "ol" [Html.class_ "verso-search-results"] (mapM_ searchResult hits)
+
+-- | One search result: the page (and section) linked, with a text excerpt.
+searchResult :: Store.Hit -> Html.Html ()
+searchResult hit =
+    Html.el "li" [] $ do
+        Html.p [Html.class_ "verso-search-hit"] $ do
+            Html.a [Html.href ("/documents/" ++ Store.hitPage hit)] (Html.text (Store.hitPage hit))
+            Monad.unless (null (Store.hitAnchor hit)) $
+                Html.el "span" [Html.class_ "verso-search-anchor"] (Html.text (" > " ++ Store.hitAnchor hit))
+        Html.p [Html.class_ "verso-search-excerpt"] (Html.text (excerptOf (Store.hitText hit)))
+
+-- | A result's one-line excerpt: the chunk text past its context line.
+excerptOf :: String -> String
+excerptOf text =
+    let body = drop 1 (dropWhile (/= '\n') text)
+        flat = map (\c -> if c == '\n' then ' ' else c) body
+     in take 240 flat
+
 historyPage :: String -> String -> [Git.Revision] -> Html.Html ()
 historyPage themeDefault path revs =
     versionPageShell themeDefault ("Revision history: " ++ path) $ do

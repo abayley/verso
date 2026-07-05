@@ -14,6 +14,7 @@ import qualified System.IO as IO
 import Test.Hspec
 import qualified Verso.AppSpec as AppSpec
 import qualified Verso.GitSpec as GitSpec
+import qualified Verso.SearchAppSpec as SearchAppSpec
 
 main :: IO ()
 main = do
@@ -31,3 +32,4 @@ main = do
         StreamSpec.spec
         GitSpec.spec
         AppSpec.spec
+        SearchAppSpec.spec

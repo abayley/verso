@@ -312,6 +312,14 @@ static long emit_records(LanceDBQueryResult *res, int want_text, char *out,
         if (emsg) lancedb_free_string(emsg);
         return -1;
     }
+    /* An empty result comes back with no batches -- and a NULL schema,
+     * which must not be touched (phase 6 crash: NULL + n_children). */
+    if (count == 0 || schema == NULL) {
+        if (outlen > 0) out[0] = '\0';
+        if (arrays) lancedb_free_arrow_arrays(arrays, count);
+        if (schema) lancedb_free_arrow_schema(schema);
+        return 0;
+    }
     struct ArrowSchema *s = (struct ArrowSchema *) schema;
     int col_page = -1, col_anchor = -1, col_seq = -1, col_text = -1;
     int col_score = -1, col_stat = -1, col_content = -1;
@@ -326,6 +334,13 @@ static long emit_records(LanceDBQueryResult *res, int want_text, char *out,
             col_score = c;
         if (strcmp(n, "stat_fp") == 0) col_stat = c;
         if (strcmp(n, "content_fp") == 0) col_content = c;
+    }
+    if (col_page < 0 || (want_text && (col_anchor < 0 || col_seq < 0 || col_text < 0))
+        || (!want_text && (col_stat < 0 || col_content < 0))) {
+        lancedb_free_arrow_arrays(arrays, count);
+        lancedb_free_arrow_schema(schema);
+        fail(err, errlen, "result schema missing expected columns", NULL);
+        return -4;
     }
     long nrec = 0;
     long pos = 0;

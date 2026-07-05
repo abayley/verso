@@ -1,0 +1,380 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 3c0ade4..aee8ecb 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -4386,6 +4386,7 @@ dependencies = [
+  "datafusion-physical-expr",
+  "futures",
+  "lance",
++ "lance-index",
+  "lance-io",
+  "lance-namespace",
+  "lancedb",
+@@ -7046,10 +7047,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "640c8cdd92b6b12f5bcb1803ca3bbf5ab96e5e6b6b96b9ab77dabe9e880b3190"
+ dependencies = [
+  "cc",
+- "cfg-if 1.0.3",
++ "cfg-if 1.0.4",
+  "libc",
+  "psm",
+- "windows-sys 0.61.1",
++ "windows-sys 0.60.2",
+ ]
+ 
+ [[package]]
+diff --git a/Cargo.toml b/Cargo.toml
+index db01029..f408fc1 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -20,6 +20,7 @@ tokio = { version = "1.23", features = ["rt-multi-thread"] }
+ libc = "0.2"
+ lancedb = { version = "0.30.0", features = ["remote"] }
+ lance = "=7.0.0"
++lance-index = "=7.0.0"
+ lance-io = "=7.0.0"
+ lance-namespace = "=7.0.0"
+ arrow-array = "58.0"
+diff --git a/include/lancedb.h b/include/lancedb.h
+index d141672..a4795fc 100644
+--- a/include/lancedb.h
++++ b/include/lancedb.h
+@@ -1020,6 +1020,60 @@ LanceDBError lancedb_query_df_filter(
+     char** error_message
+ );
+ 
++/**
++ * Set a full-text (BM25) match query on a plain query
++ *
++ * Requires an FTS index on the searched column(s). Executing the query then
++ * returns rows ranked by BM25 relevance in a `_score` column.
++ *
++ * @param query - pointer to LanceDBQuery
++ * @param text - null-terminated match text
++ * @param columns - array of column names to search, or NULL for all FTS-indexed columns
++ * @param num_columns - number of entries in columns (0 with NULL columns)
++ * @param error_message - optional pointer to receive detailed error message (NULL to ignore)
++ * @return Error code indicating success or failure
++ */
++LanceDBError lancedb_query_full_text_search(
++    LanceDBQuery* query,
++    const char* text,
++    const char* const* columns,
++    size_t num_columns,
++    char** error_message
++);
++
++/**
++ * Set a full-text (BM25) match query on a vector query, making it hybrid
++ *
++ * Execute with lancedb_vector_query_execute_hybrid() to combine vector and
++ * BM25 results with the default reranker (reciprocal rank fusion).
++ *
++ * @param query - pointer to LanceDBVectorQuery
++ * @param text - null-terminated match text
++ * @param columns - array of column names to search, or NULL for all FTS-indexed columns
++ * @param num_columns - number of entries in columns (0 with NULL columns)
++ * @param error_message - optional pointer to receive detailed error message (NULL to ignore)
++ * @return Error code indicating success or failure
++ */
++LanceDBError lancedb_vector_query_full_text_search(
++    LanceDBVectorQuery* query,
++    const char* text,
++    const char* const* columns,
++    size_t num_columns,
++    char** error_message
++);
++
++/**
++ * Execute a hybrid (vector + full-text) query and return streaming result
++ *
++ * The query must have a full-text component set via
++ * lancedb_vector_query_full_text_search(). Result rows carry a
++ * `_relevance_score` column from the reranker.
++ *
++ * @param query - pointer to LanceDBVectorQuery (consumed; do not use or free after calling)
++ * @return Pointer to LanceDBQueryResult on success, NULL on failure
++ */
++LanceDBQueryResult* lancedb_vector_query_execute_hybrid(LanceDBVectorQuery* query);
++
+ /**
+  * Set limit for vector query
+  *
+diff --git a/src/query.rs b/src/query.rs
+index a84fde4..448f3c7 100644
+--- a/src/query.rs
++++ b/src/query.rs
+@@ -16,7 +16,10 @@ use arrow_data::ArrayData;
+ use futures::TryStreamExt;
+ 
+ use datafusion_expr::Expr;
+-use lancedb::query::{ExecutableQuery, HasQuery, QueryBase, QueryFilter, Select};
++use lance_index::scalar::FullTextSearchQuery;
++use lancedb::query::{
++    ExecutableQuery, HasQuery, QueryBase, QueryExecutionOptions, QueryFilter, Select,
++};
+ use lancedb::{DistanceType, Table};
+ 
+ use crate::connection::{get_runtime, LanceDBTable};
+@@ -33,6 +36,7 @@ pub struct LanceDBQuery {
+     select: Option<Select>,
+     filter: Option<String>,
+     df_filter: Option<Expr>,
++    full_text_search: Option<FullTextSearchQuery>,
+ }
+ 
+ /// Opaque handle to a LanceDB VectorQuery
+@@ -50,6 +54,7 @@ pub struct LanceDBVectorQuery {
+     nprobes: Option<usize>,
+     refine_factor: Option<u32>,
+     ef: Option<usize>,
++    full_text_search: Option<FullTextSearchQuery>,
+ }
+ 
+ /// Query result handle for streaming results
+@@ -81,6 +86,7 @@ pub unsafe extern "C" fn lancedb_query_new(table: *const LanceDBTable) -> *mut L
+         select: None,
+         filter: None,
+         df_filter: None,
++        full_text_search: None,
+     });
+ 
+     Box::into_raw(query)
+@@ -123,6 +129,7 @@ pub unsafe extern "C" fn lancedb_vector_query_new(
+         nprobes: None,
+         refine_factor: None,
+         ef: None,
++        full_text_search: None,
+     });
+ 
+     Box::into_raw(vector_query)
+@@ -515,6 +522,121 @@ pub unsafe extern "C" fn lancedb_vector_query_ef(
+     LanceDBError::Success
+ }
+ 
++/// Build a FullTextSearchQuery from C strings, or record an error.
++///
++/// # Safety
++/// - `text` must be a valid null-terminated C string
++/// - `columns` may be null (search all indexed columns) or point to
++///   `num_columns` valid C strings
++unsafe fn build_fts_query(
++    text: *const c_char,
++    columns: *const *const c_char,
++    num_columns: usize,
++    error_message: *mut *mut c_char,
++) -> Option<FullTextSearchQuery> {
++    if text.is_null() {
++        set_invalid_argument_message(error_message);
++        return None;
++    }
++    let text_str = match CStr::from_ptr(text).to_str() {
++        Ok(s) => s.to_string(),
++        Err(_) => {
++            set_invalid_argument_message(error_message);
++            return None;
++        }
++    };
++    let mut fts = FullTextSearchQuery::new(text_str);
++    if !columns.is_null() && num_columns > 0 {
++        let mut cols = Vec::with_capacity(num_columns);
++        for i in 0..num_columns {
++            let col_ptr = *columns.add(i);
++            if col_ptr.is_null() {
++                set_invalid_argument_message(error_message);
++                return None;
++            }
++            match CStr::from_ptr(col_ptr).to_str() {
++                Ok(s) => cols.push(s.to_string()),
++                Err(_) => {
++                    set_invalid_argument_message(error_message);
++                    return None;
++                }
++            }
++        }
++        fts = match fts.with_columns(&cols) {
++            Ok(f) => f,
++            Err(_) => {
++                set_unknown_error_message(error_message);
++                return None;
++            }
++        };
++    }
++    Some(fts)
++}
++
++/// Set a full-text (BM25) match query on a plain query
++///
++/// Requires an FTS index on the searched column(s). Executing the query then
++/// returns rows ranked by BM25 relevance in a `_score` column.
++///
++/// # Safety
++/// - `query` must be a valid pointer returned from `lancedb_query_new`
++/// - `text` must be a valid null-terminated C string
++/// - `columns` may be NULL (search all FTS-indexed columns) or point to
++///   `num_columns` valid null-terminated C strings
++/// - `error_message` can be NULL to ignore detailed error messages
++#[no_mangle]
++pub unsafe extern "C" fn lancedb_query_full_text_search(
++    query: *mut LanceDBQuery,
++    text: *const c_char,
++    columns: *const *const c_char,
++    num_columns: usize,
++    error_message: *mut *mut c_char,
++) -> LanceDBError {
++    if query.is_null() {
++        set_invalid_argument_message(error_message);
++        return LanceDBError::InvalidArgument;
++    }
++    match build_fts_query(text, columns, num_columns, error_message) {
++        Some(fts) => {
++            (*query).full_text_search = Some(fts);
++            LanceDBError::Success
++        }
++        None => LanceDBError::InvalidArgument,
++    }
++}
++
++/// Set a full-text (BM25) match query on a vector query, making it hybrid
++///
++/// After setting this, execute with `lancedb_vector_query_execute_hybrid`
++/// to combine vector and BM25 results with the default RRF reranker.
++///
++/// # Safety
++/// - `query` must be a valid pointer returned from `lancedb_vector_query_new`
++/// - `text` must be a valid null-terminated C string
++/// - `columns` may be NULL (search all FTS-indexed columns) or point to
++///   `num_columns` valid null-terminated C strings
++/// - `error_message` can be NULL to ignore detailed error messages
++#[no_mangle]
++pub unsafe extern "C" fn lancedb_vector_query_full_text_search(
++    query: *mut LanceDBVectorQuery,
++    text: *const c_char,
++    columns: *const *const c_char,
++    num_columns: usize,
++    error_message: *mut *mut c_char,
++) -> LanceDBError {
++    if query.is_null() {
++        set_invalid_argument_message(error_message);
++        return LanceDBError::InvalidArgument;
++    }
++    match build_fts_query(text, columns, num_columns, error_message) {
++        Some(fts) => {
++            (*query).full_text_search = Some(fts);
++            LanceDBError::Success
++        }
++        None => LanceDBError::InvalidArgument,
++    }
++}
++
+ /// Execute query and return streaming result
+ ///
+ /// # Safety
+@@ -548,6 +670,9 @@ pub unsafe extern "C" fn lancedb_query_execute(
+         } else if let Some(ref filter) = query_box.filter {
+             rust_query = rust_query.only_if(filter);
+         }
++        if let Some(fts) = query_box.full_text_search {
++            rust_query = rust_query.full_text_search(fts);
++        }
+ 
+         rust_query.execute().await
+     }) {
+@@ -616,6 +741,9 @@ pub unsafe extern "C" fn lancedb_vector_query_execute(
+         if let Some(ef) = query_box.ef {
+             rust_query = rust_query.ef(ef);
+         }
++        if let Some(fts) = query_box.full_text_search {
++            rust_query = rust_query.full_text_search(fts);
++        }
+ 
+         rust_query.execute().await
+     }) {
+@@ -629,6 +757,87 @@ pub unsafe extern "C" fn lancedb_vector_query_execute(
+     }
+ }
+ 
++/// Execute a hybrid (vector + full-text) query and return streaming result
++///
++/// The query must have a full-text component set via
++/// `lancedb_vector_query_full_text_search`. The vector and BM25 result sets
++/// are combined with LanceDB's default reranker (reciprocal rank fusion);
++/// rows carry a `_relevance_score` column.
++///
++/// # Safety
++/// - `query` must be a valid pointer returned from `lancedb_vector_query_new`
++/// - This function consumes the query pointer; do not use it after calling
++#[no_mangle]
++pub unsafe extern "C" fn lancedb_vector_query_execute_hybrid(
++    query: *mut LanceDBVectorQuery,
++) -> *mut LanceDBQueryResult {
++    if query.is_null() {
++        return ptr::null_mut();
++    }
++
++    let query_box = Box::from_raw(query);
++    if query_box.full_text_search.is_none() {
++        return ptr::null_mut();
++    }
++    let runtime = get_runtime();
++
++    match runtime.block_on(async {
++        let mut rust_query = match query_box
++            .table
++            .query()
++            .nearest_to(query_box.query_vector.clone())
++        {
++            Ok(q) => q,
++            Err(e) => return Err(e),
++        };
++
++        if let Some(ref column) = query_box.column {
++            rust_query = rust_query.column(column);
++        }
++        if let Some(limit) = query_box.limit {
++            rust_query = rust_query.limit(limit);
++        }
++        if let Some(offset) = query_box.offset {
++            rust_query = rust_query.offset(offset);
++        }
++        if let Some(ref select) = query_box.select {
++            rust_query = rust_query.select(select.clone());
++        }
++        if let Some(df_filter) = query_box.df_filter {
++            rust_query.mut_query().filter = Some(QueryFilter::Datafusion(df_filter));
++        } else if let Some(ref filter) = query_box.filter {
++            rust_query = rust_query.only_if(filter);
++        }
++        if let Some(distance_type) = query_box.distance_type {
++            rust_query = rust_query.distance_type(distance_type);
++        }
++        if let Some(nprobes) = query_box.nprobes {
++            rust_query = rust_query.nprobes(nprobes);
++        }
++        if let Some(refine_factor) = query_box.refine_factor {
++            rust_query = rust_query.refine_factor(refine_factor);
++        }
++        if let Some(ef) = query_box.ef {
++            rust_query = rust_query.ef(ef);
++        }
++        if let Some(fts) = query_box.full_text_search {
++            rust_query = rust_query.full_text_search(fts);
++        }
++
++        rust_query
++            .execute_hybrid(QueryExecutionOptions::default())
++            .await
++    }) {
++        Ok(stream) => {
++            let result = Box::new(LanceDBQueryResult {
++                inner: Box::new(stream),
++            });
++            Box::into_raw(result)
++        }
++        Err(_) => ptr::null_mut(),
++    }
++}
++
+ /// Convert query result to Arrow RecordBatch array
+ ///
+ /// # Safety

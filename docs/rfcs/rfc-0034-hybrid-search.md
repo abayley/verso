@@ -189,11 +189,14 @@ libonnxruntime.dylib/.so    +    liblancedb_c.dylib/.so
    action over all derived indexes; its response reports what it did (link
    index rebuilt; N pages enqueued for re-indexing). Embedding always
    stays asynchronous in the worker -- refresh never blocks on it.
-6. **Hybrid ranking with reciprocal rank fusion.** If the spike shows
-   `lancedb-c` exposes native hybrid queries, use them. Otherwise run the
-   vector query and the FTS query separately and fuse in
-   `Concordance.Fuse` (pure, trivially testable). RRF avoids
-   calibrating incompatible score scales.
+6. **Hybrid ranking with reciprocal rank fusion, native.** The Phase 0
+   spike proved native hybrid queries (vector + BM25, engine-side RRF by
+   default) through our lancedb-c patch, so the shim exposes one hybrid
+   search call and `Concordance.Fuse` (pure Haskell RRF) demotes to a
+   fallback seam rather than the default path. RRF avoids calibrating
+   incompatible score scales either way. The patch
+   (`spike/search/lancedb-c-fts-query.patch`) is applied to the pinned
+   lancedb-c clone by the artefact build until upstreamed.
 7. **Chunking by heading section with a token cap.** A chunk is a heading
    section (the RFC-0026/0029 machinery already understands page structure);
    sections longer than the chunk cap (~384 tokens under the default
@@ -426,19 +429,35 @@ Engine modules receive these as parameters; only Verso reads config.
 Compile-and-call evidence in `spike/search/`, with measurements recorded in
 `docs/design/search-spike-notes.md`. No production code.
 
-- [ ] Spike: build `lancedb-c` as a dylib; from a C harness create a
+- [x] Spike: build `lancedb-c` as a dylib; from a C harness create a
       dataset, upsert rows with a vector column, run a vector query and an
       FTS query; record whether FTS sees new rows without an explicit
       optimize step, and whether a native hybrid/RRF query is exposed.
+      RESULT: fully proven via nanoarrow (create, merge-insert upsert,
+      ranked vector query, delete, persistence). Upstream lancedb-c had no
+      FTS query API (index creation only); we patched it -- three C
+      functions over the engine's existing `full_text_search` /
+      `execute_hybrid` (`spike/search/lancedb-c-fts-query.patch`, PR-able)
+      -- after which BM25 FTS, **native hybrid with default RRF**, and
+      **FTS freshness (new rows searchable immediately, no optimize)** are
+      all demonstrated. Findings and measurements in
+      [search-spike-notes.md](../design/search-spike-notes.md).
 - [ ] Spike: minimal shim + MicroHs program calling it end-to-end
       (open, upsert, search, close) to prove the FFI shape and measure
       call latencies from inside the interpreter.
-- [ ] Spike: ONNX Runtime C API shim embedding a fixed token sequence;
+- [x] Spike: ONNX Runtime C API shim embedding a fixed token sequence;
       compare output vector against a transformers.js reference (cosine
-      > 0.999); measure embed latency for 32/128/384-token inputs; A/B
-      sanity check `bge-small-en-v1.5` against `all-MiniLM-L6-v2` on a
-      handful of real corpus queries (fall back to MiniLM if bge-small
-      does not win).
+      > 0.999); measure embed latency for 32/128/384-token inputs.
+      RESULT: cosine 1.000000 on all probes, both models. Latency requires
+      the quantised model + 4 intra-op threads to hit the budget: ~30 ms
+      per 384-token chunk (bge-small int8), 2-3 ms per query embed. The
+      shim defaults to the quantised variant and exposes the thread count.
+      Measurements in
+      [search-spike-notes.md](../design/search-spike-notes.md).
+- [ ] Spike: A/B sanity check `bge-small-en-v1.5` against
+      `all-MiniLM-L6-v2` on a handful of real corpus queries (fall back to
+      MiniLM if bge-small does not win). Drift and benchmark evidence so
+      far favours bge-small.
 - [ ] Decision gate: record go/no-go per component in this RFC. If
       `lancedb-c` fails (build, API gaps, instability), fall back to the
       SQLite FTS5 + flat vectors alternative and revise this RFC before
@@ -580,11 +599,6 @@ fixtures:
 
 ## Open Questions
 
-- Does `lancedb-c` expose native hybrid queries with RRF, or do we fuse in
-  Haskell? (Phase 0 answers; Haskell fusion is the assumed default.)
-- Does LanceDB FTS require periodic optimize/reindex calls for new rows to
-  become searchable through the C API, and if so, who schedules them (the
-  queue worker is the natural owner)? (Phase 0 answers.)
 - FTS analyser configuration: stemming and stop-word behaviour for the
   wiki's mixed prose/code content -- defaults first, revisit with real
   queries.

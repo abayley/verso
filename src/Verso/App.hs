@@ -1606,7 +1606,9 @@ treeDiff editorThemeDefault root path request = do
     diff <- Iteratee.liftIO (Git.diffBetween root fromRev toRev path)
     if hasQueryFlag "pane" request
         then pure (htmlResponseChunks (diffBody fromRev toRev diff))
-        else pure (documentResponse (diffPage editorThemeDefault path fromRev toRev diff))
+        else do
+            title <- Iteratee.liftIO (treePageTitle root path)
+            pure (documentResponse (diffPage editorThemeDefault title path fromRev toRev diff))
 
 {- | View a page as it was at a revision (RFC-0032): @GET /documents/\<path\>?at=\<rev\>@
 renders the read-only editor over the page's content at that revision. Assets
@@ -1746,7 +1748,7 @@ excerptOf text =
 
 historyPage :: String -> String -> String -> [Git.Revision] -> Html.Html ()
 historyPage themeDefault title path revs =
-    versionPageShell themeDefault ("History - " ++ title) $ do
+    versionPageShell themeDefault ("History: " ++ title) $ do
         versionControls themeDefault
         Html.el "h1" [] (Html.text "Revision history")
         Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href ("/documents/" ++ path)] (Html.text ("Back to " ++ path)))
@@ -1856,9 +1858,9 @@ historyScript =
         ++ "update();})();</script>"
 
 -- | Renders the standalone diff page (a back link plus the diff body), for a direct @?diff@ link.
-diffPage :: String -> String -> String -> String -> String -> Html.Html ()
-diffPage themeDefault path fromRev toRev diff =
-    versionPageShell themeDefault ("Diff: " ++ path) $ do
+diffPage :: String -> String -> String -> String -> String -> String -> Html.Html ()
+diffPage themeDefault title path fromRev toRev diff =
+    versionPageShell themeDefault ("Diff: " ++ title) $ do
         Html.el "h1" [] (Html.text "Diff")
         Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href ("/documents/" ++ path ++ "?history")] (Html.text "Back to history"))
         diffBody fromRev toRev diff

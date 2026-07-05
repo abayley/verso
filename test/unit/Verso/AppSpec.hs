@@ -203,11 +203,20 @@ spec =
                 response <- runTreeApp treeRoot req
                 bodyText response `shouldInclude` "<title>New page</title>"
 
-            it "given a page's history view, when rendered, then the html title is History - name" $ do
+            it "given a page's history view, when rendered, then the html title is History: name" $ do
                 treeRoot <- setupTreeFixture
                 let req = (request Http.GET ["documents", "home.md"]){Http.requestQuery = [("history", "")]}
                 response <- runTreeApp treeRoot req
-                bodyText response `shouldInclude` "<title>History - Home Page</title>"
+                bodyText response `shouldInclude` "<title>History: Home Page</title>"
+
+            it "given a page's standalone diff view, when rendered, then the html title is Diff: name" $ do
+                treeRoot <- setupTreeFixture
+                let req =
+                        (request Http.GET ["documents", "home.md"])
+                            { Http.requestQuery = [("diff", ""), ("from", "a"), ("to", "b")]
+                            }
+                response <- runTreeApp treeRoot req
+                bodyText response `shouldInclude` "<title>Diff: Home Page</title>"
 
             it "given a page read against the tree, when rendered, then the editor embeds the navigation spine" $ do
                 treeRoot <- setupTreeFixture

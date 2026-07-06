@@ -4,16 +4,18 @@ backend:
 
 - make 404 page offer to create document at this location/URL
 - add tags and tag navigation
-- embedding-based search
 - auth system
   <https://sinceyouarrived.world/taken>
   <https://givemeyourdata.org/>
   <https://mysysinfo.com/>
 
+- automatic tag classification - create set of canonical tags
+- generate image descriptions
+- src/MicroHttp/FileSystem.hs: why not make functions return Either? (`Left rc` for failure)
+- openknowledge file format: <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md>
 - load testing - simulate actual users fetching and saving pages
 - would like to notify user when page they are viewing or editing has been modified by someone else; how?
   needs to handle when other users update too - what is the notification mechanism? websockets?
-- src/MicroHttp/FileSystem.hs: why not make functions return Either? (`Left rc` for failure)
 - high-level design doc, with example usage
 - hot reload
 - raise fault report against haskell time lib
@@ -26,8 +28,6 @@ backend:
 
 frontend:
 
-- clicking on a node in the navtree loads the page but then the navtree scroll jumps back to top
-- copy button on code fences
 - implement new themes
 - test pasting in tables from word or excel
 - fix UI for trash - maybe separate page?

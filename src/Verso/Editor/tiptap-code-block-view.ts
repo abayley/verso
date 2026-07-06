@@ -34,6 +34,8 @@ export class CodeBlockView {
     private readonly toolbar: HTMLDivElement;
     private readonly picker: HTMLElement;
     private readonly label: HTMLElement;
+    private readonly copyButton: HTMLButtonElement;
+    private copyTimer: ReturnType<typeof setTimeout> | null = null;
     private readonly diagram: HTMLDivElement;
     private node: ProseMirrorNode;
     private readonly editor: Editor;
@@ -63,7 +65,13 @@ export class CodeBlockView {
         this.label = document.createElement("span");
         this.label.className = "markdown-editor__code-language";
         this.picker = this.createPicker();
-        this.toolbar.append(this.picker, this.label);
+        this.copyButton = document.createElement("button");
+        this.copyButton.type = "button";
+        this.copyButton.className = "markdown-editor__code-copy";
+        this.copyButton.title = "Copy code";
+        this.copyButton.append(CodeBlockView.copyIcon("copy", "Copy code"));
+        this.copyButton.addEventListener("click", (): void => void this.copyCode());
+        this.toolbar.append(this.picker, this.label, this.copyButton);
 
         this.contentDOM = document.createElement("code");
         this.diagram = document.createElement("div");
@@ -174,6 +182,38 @@ export class CodeBlockView {
             this.renderedDiagramSource = null;
             this.renderDiagram();
         }
+    }
+
+    /** A Font Awesome icon (via `wa-icon`) for the copy button. */
+    private static copyIcon(name: string, label: string): HTMLElement {
+        const icon = document.createElement("wa-icon");
+        icon.setAttribute("name", name);
+        icon.setAttribute("variant", "regular");
+        icon.setAttribute("label", label);
+
+        return icon;
+    }
+
+    /** Copies the block's source to the clipboard, flashing a check icon as confirmation. */
+    private async copyCode(): Promise<void> {
+        try {
+            await navigator.clipboard.writeText(this.node.textContent);
+        } catch {
+            return; // clipboard unavailable (permissions / insecure context): leave the button as-is
+        }
+
+        this.copyButton.replaceChildren(CodeBlockView.copyIcon("check", "Copied"));
+        this.copyButton.dataset["copied"] = "true";
+
+        if (this.copyTimer !== null) {
+            clearTimeout(this.copyTimer);
+        }
+
+        this.copyTimer = setTimeout((): void => {
+            this.copyButton.replaceChildren(CodeBlockView.copyIcon("copy", "Copy code"));
+            delete this.copyButton.dataset["copied"];
+            this.copyTimer = null;
+        }, 1500);
     }
 
     /** Moves the caret into the source so a Mermaid diagram can be edited. */
@@ -311,6 +351,10 @@ export class CodeBlockView {
 
         if (this.renderTimer !== null) {
             clearTimeout(this.renderTimer);
+        }
+
+        if (this.copyTimer !== null) {
+            clearTimeout(this.copyTimer);
         }
     }
 }

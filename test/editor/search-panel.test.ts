@@ -54,7 +54,34 @@ describe("SearchPanel", (): void => {
         const row = panel.element().querySelector(".markdown-editor__search-row") as HTMLElement;
         expect(row.querySelector(".markdown-editor__search-title")?.textContent).toBe("Failover Guide");
         expect(row.querySelector(".markdown-editor__search-anchor")?.textContent).toContain("Timeouts");
+        expect(row.querySelector(".markdown-editor__search-crumb")?.textContent).toBe("guides");
         expect(row.querySelector(".markdown-editor__search-excerpt")?.textContent).toContain("failover timeouts");
+    });
+
+    it("renders rows as page links, leaving modified clicks (new tab) to the browser", async (): Promise<void> => {
+        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(enabledResponse([aResult])));
+        const navigations: string[] = [];
+        const panel = new SearchPanel((path: string): void => {
+            navigations.push(path);
+        });
+        const input = panel.element().querySelector("input") as HTMLInputElement;
+        input.value = "failover";
+        input.dispatchEvent(new Event("input"));
+        await vi.advanceTimersByTimeAsync(300);
+
+        const row = panel.element().querySelector(".markdown-editor__search-row") as HTMLAnchorElement;
+        expect(row.tagName).toBe("A");
+        expect(row.href).toContain("/documents/guides/failover.md");
+
+        const cmdClick = new MouseEvent("click", { metaKey: true, cancelable: true });
+        row.dispatchEvent(cmdClick);
+        expect(cmdClick.defaultPrevented).toBe(false);
+        expect(navigations).toEqual([]);
+
+        const plainClick = new MouseEvent("click", { cancelable: true });
+        row.dispatchEvent(plainClick);
+        expect(plainClick.defaultPrevented).toBe(true);
+        expect(navigations).toEqual(["guides/failover.md"]);
     });
 
     it("navigates to the clicked result's page", async (): Promise<void> => {

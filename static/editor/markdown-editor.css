@@ -116,10 +116,17 @@ markdown-editor {
   padding-right: 0.35rem;
 }
 
+/* The header pins to the top of the nav panel while the tree scrolls under it,
+   so the collapse/undo/trash/create controls are always reachable. */
 .markdown-editor__nav-header {
   align-items: center;
+  background: var(--markdown-editor-background);
   display: flex;
   gap: 0.35rem;
+  padding-bottom: 0.25rem;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .markdown-editor__nav-header .markdown-editor__metadata-heading {
@@ -407,12 +414,16 @@ markdown-editor {
   display: flex;
   /* The controls sit on the first line; the document name drops onto its own line below, so a long page
      name never wraps a control onto a second line. The bar spans the full width so the Edit/View toggle and
-     the breadcrumb sit at the left edge while the presentation controls sit at the right. */
+     the breadcrumb sit at the left edge while the presentation controls sit at the right. Kept slim: a
+     small top inset and just a sliver below, since the breadcrumb+search row follows immediately. */
   flex-direction: column;
   font: 13px system-ui, sans-serif;
   gap: 0.4rem;
   letter-spacing: 0.04em;
-  padding: 1rem 0.25rem;
+  padding: 0.5rem 0.25rem 0.2rem;
+  /* border-box, so the inline padding insets the controls to the same edges as
+     the breadcrumb+search row below (content-box + width:100% would overflow). */
+  box-sizing: border-box;
   width: 100%;
 }
 
@@ -431,6 +442,17 @@ markdown-editor {
   display: flex;
   flex-wrap: wrap;
   gap: 1.25rem;
+}
+
+/* Fixed width (sized for the longest theme name, "Workbench") so the selected
+   theme's label length cannot shift the controls to the dropdown's left. */
+.markdown-editor__theme-trigger {
+  width: 6.5rem;
+}
+
+.markdown-editor__theme-trigger::part(base) {
+  justify-content: space-between;
+  width: 100%;
 }
 
 /* Web Awesome dropdown panels (the style / badge / callout / theme menus) default to
@@ -461,9 +483,10 @@ body.markdown-editor-page wa-dropdown {
   flex-wrap: wrap;
   font: 13px system-ui, sans-serif;
   letter-spacing: 0.04em;
-  /* Always left-aligned at the page edge (not centred to the medium column). */
-  margin: -0.6rem 0 0;
-  padding: 0 0.25rem 0.5rem;
+  /* Always left-aligned at the page edge (not centred to the medium column);
+     the row wrapper owns the vertical spacing. */
+  margin: 0;
+  padding: 0;
   row-gap: 0.1rem;
   width: 100%;
 }
@@ -1040,6 +1063,24 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   color: var(--markdown-editor-muted);
   font: 12px system-ui, sans-serif;
   letter-spacing: 0.03em;
+}
+
+/* The copy button (a Font Awesome copy icon) at the top right of every code fence. */
+.markdown-editor__code-copy {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: var(--markdown-editor-muted);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  margin-left: 0.6rem;
+  padding: 0.2rem 0.3rem;
+}
+
+.markdown-editor__code-copy:hover {
+  color: var(--markdown-editor-text, inherit);
 }
 
 /* The rendered Mermaid diagram (RFC-0033) shown in place of a mermaid fence's source. Centred, with the
@@ -1885,11 +1926,6 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   width: 100%;
 }
 
-/* The colour-scheme icons tighten up so their row fits the narrow rail. */
-:root[data-editor-theme="workbench"] .markdown-editor__theme-option {
-  --wa-form-control-padding-inline: 0.25rem;
-}
-
 /* Stack Publish above Cancel: side by side the pair overflows the narrow rail and
    nudges the breadcrumb/command bar across. Stacked, each fits the rail. The
    min-height reserves the two-button (Publish + Cancel) height so switching to the
@@ -1907,18 +1943,23 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
    reuse these classes but are not the IDE frame -- keep the default top-right layout. */
 :root[data-editor-theme="workbench"] markdown-editor .markdown-editor__appearance {
   position: absolute;
-  top: 0.15rem;
-  right: 0.5rem;
-  gap: 0.75rem;
+  /* Insets chosen so the controls sit where the other themes put them. The right
+     inset is ~1rem more than theirs on paper: the other themes' page scrollbar
+     (when shown) pushes their bar left, and Workbench -- whose pane scrolls
+     internally -- has no such push. The shared gap is inherited: a tighter gap
+     compressed the unit, pulling the theme selector rightwards. */
+  top: 0.5rem;
+  right: 2.7rem;
   z-index: 6;
 }
 
-/* The radio groups size to their content rather than stretching to the rail (a
-   Web Awesome radio-group otherwise reserves a wide form-control label box,
-   which would overflow the narrow rail). */
+/* The rail's radio groups size to their content rather than stretching to the
+   rail (a Web Awesome radio-group otherwise reserves a wide form-control label
+   box, which would overflow the narrow rail). Not the theme (light/dark) group:
+   it lives in the top-right overlay, where narrowing it would compress the
+   appearance controls relative to the other themes. */
 :root[data-editor-theme="workbench"] .markdown-editor__mode-group,
-:root[data-editor-theme="workbench"] .markdown-editor__width-group,
-:root[data-editor-theme="workbench"] .markdown-editor__theme-group {
+:root[data-editor-theme="workbench"] .markdown-editor__width-group {
   width: max-content;
 }
 
@@ -1950,18 +1991,6 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   padding: 1rem 0.5rem;
 }
 
-/* Tighten the theme dropdown's trigger so its caret stays inside the rail rather
-   than spilling into the centre column. */
-:root[data-editor-theme="workbench"] markdown-editor .markdown-editor__theme-dropdown wa-button::part(base) {
-  font-size: 12px;
-  gap: 0.15rem;
-  padding-inline: 0.2rem;
-}
-
-:root[data-editor-theme="workbench"] markdown-editor .markdown-editor__theme-dropdown wa-button::part(caret) {
-  margin-inline-start: 0.2rem;
-}
-
 /* Each control group stacks vertically, with the groups spaced apart (the radio
    groups themselves are switched to vertical orientation in the element). */
 :root[data-editor-theme="workbench"] markdown-editor .markdown-editor__toolbar-controls {
@@ -1975,13 +2004,13 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 /* The breadcrumb trail is a full-width strip across the tab row, below the toolbar -- there is room to
    spread out, so it is not constrained to a file-tab lozenge. */
 :root[data-editor-theme="workbench"] .markdown-editor__document-name {
-  border-bottom: 1px solid var(--markdown-editor-divider);
   color: var(--markdown-editor-muted);
   font: 12px ui-monospace, "SFMono-Regular", Menlo, monospace;
-  grid-area: tab;
   letter-spacing: normal;
   margin: 0;
-  padding: 0.45rem 0.85rem;
+  /* Block padding sized so command bar + tab strip together match the other
+     themes' top-bar height. */
+  padding: 0.65rem 0.85rem;
 }
 
 
@@ -1996,14 +2025,26 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   border-radius: 0;
   border-width: 0 0 1px;
   box-sizing: border-box;
+  /* One line, always: an IDE toolbar overflows sideways rather than wrapping.
+     Wrapping changed the frame height with window width, which dropped the tab
+     strip (and everything under it) down even in the read view, where the bar
+     is invisible but keeps its space. */
+  flex-wrap: nowrap;
+  overflow-x: auto;
   justify-content: flex-start;
   max-width: none;
-  padding-block: 0.1rem;
-  /* Reserve the right slice of the row for the appearance controls overlaid there, so
-     the command buttons/Save wrap before that zone rather than running under it (they
-     only wrap at narrow widths; wide windows have ample room and stay single-line). */
-  padding-inline-end: 12.5rem;
+  padding-block: 0.3rem;
+  /* Reserve the right slice of the row for the appearance controls overlaid there,
+     so the command buttons/Save stop short of that zone rather than running under it. */
+  padding-inline-end: 14rem;
   width: 100%;
+}
+
+/* The bar's groups must not shrink: a squeezed group spills its buttons onto a
+   second line, which is exactly the height change the nowrap bar is there to
+   prevent. Overflow scrolls sideways instead. */
+:root[data-editor-theme="workbench"] .markdown-editor__toolbar--commands > * {
+  flex-shrink: 0;
 }
 
 /* The content pane is a full-width scroll container (so its scrollbar is at the
@@ -2019,6 +2060,13 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 
 :root[data-editor-theme="workbench"] .markdown-editor__main {
   flex: 0 1 auto;
+}
+
+/* A right gutter for the metadata sidebar, matching the other themes' 1.5rem
+   page gutter, so its own scrollbar (the ToC) does not sit flush against the
+   pane's right edge. */
+:root[data-editor-theme="workbench"] .markdown-editor__sidebar {
+  margin-right: 1.5rem;
 }
 
 :root[data-editor-theme="workbench"] markdown-editor[data-body-width="narrow"] .markdown-editor__main {
@@ -2096,11 +2144,12 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
    toolbar and slash menu replace it); autosave keeps content saved without the
    explicit Save control. */
 /* Studio's separating rule sits below the whole top bar (controls + breadcrumb), so
-   the breadcrumb reads as part of the top bar, above the rule -- not below it. */
+   the breadcrumb reads as part of the top bar, above the rule -- not below it. No
+   extra padding above the rule: the bar stays the same height as the other themes
+   (the shared row already carries a small bottom inset). */
 :root[data-editor-theme="studio"] .markdown-editor__topbar {
   border-bottom: 1px solid var(--markdown-editor-divider);
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.6rem;
+  margin-bottom: 0.5rem;
 }
 
 .markdown-editor--studio-surfaces .markdown-editor__toolbar--commands {
@@ -2225,9 +2274,31 @@ markdown-editor[data-readonly] .markdown-image__resize-handle {
 
 /* --- Interactive search (RFC-0034) --------------------------------- */
 
+/* The top bar's second row: breadcrumb on the left, search box on the right.
+   The 0.25rem inline inset matches the controls row above, so the two rows'
+   left and right edges line up; centring puts the breadcrumb on the search
+   box's midline rather than above it. */
+.markdown-editor__topbar-row {
+    align-items: center;
+    display: flex;
+    gap: 1rem;
+    justify-content: space-between;
+    padding: 0 0.25rem 0.4rem;
+}
+
+.markdown-editor__topbar-row .markdown-editor__document-name {
+    flex: 1;
+    min-width: 0;
+}
+
+/* The search box sits at the right of the breadcrumb row; the dropdown is
+   anchored to it and overlays the page content below the bar. The z-index keeps
+   the box and its dropdown above the click-catcher backdrop in every theme
+   (Workbench flattens the top bar, so the bar's own z-index cannot be relied on). */
 .markdown-editor__search {
     position: relative;
-    margin-bottom: 0.75rem;
+    width: min(20rem, 60vw);
+    z-index: 7;
 }
 
 .markdown-editor__search-input {
@@ -2238,28 +2309,105 @@ markdown-editor[data-readonly] .markdown-image__resize-handle {
     padding: 0.35rem 0.6rem;
     border: 1px solid var(--wa-color-neutral-border-normal, #c9c4b8);
     border-radius: 6px;
-    background: var(--wa-color-surface-default, transparent);
+    /* The editor theme's background, not Web Awesome's surface palette (which
+       does not track the visual theme's colours). */
+    background: var(--markdown-editor-background, transparent);
     color: inherit;
 }
 
+/* Results overlay the content beneath rather than displacing it: absolutely
+   positioned under the input, wider than the box, above the blur backdrop. */
 .markdown-editor__search-results {
-    margin-top: 4px;
-    max-height: 50vh;
+    position: absolute;
+    top: calc(100% + 4px);
+    /* Right-anchored: the box sits towards the right of the controls row, so
+       growing leftwards keeps the dropdown on-screen. */
+    right: 0;
+    box-sizing: border-box;
+    width: min(52rem, 92vw);
+    /* Low enough that a full result set overflows and scrolls -- the always-
+       visible scrollbar below is the "there is more" signal. */
+    max-height: min(70vh, 42rem);
     overflow-y: auto;
-    background: var(--wa-color-surface-raised, transparent);
+    background: var(--markdown-editor-background, #fff);
     border: 1px solid var(--wa-color-neutral-border-normal, #c9c4b8);
     border-radius: 8px;
     padding: 0.35rem;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+    z-index: 7;
+}
+
+/* A transparent click-catcher: while the dropdown is open a click anywhere on
+   the softened page closes the dropdown rather than acting on the page. */
+.markdown-editor__search-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    background: transparent;
+}
+
+/* The soft-focus effect: while the dropdown is open the workspace (nav tree,
+   page content, sidebar) blurs and fades so the results stand out. Keyed on
+   the editor element so it works identically across visual themes. */
+markdown-editor[data-search-open] .markdown-editor__workspace {
+    filter: blur(3px);
+    opacity: 0.55;
+}
+
+/* Workbench: the breadcrumb+search row is the file-tab strip (grid-area tab).
+   The strip carries the tab's bottom rule; the breadcrumb inside drops its own,
+   and the strip drops the default row's insets (the tab's own padding spaces it). */
+:root[data-editor-theme="workbench"] .markdown-editor__topbar-row {
+    align-items: center;
+    border-bottom: 1px solid var(--markdown-editor-divider);
+    grid-area: tab;
+    padding: 0;
+}
+
+/* In the tab strip's flow (centred by the strip), so the box hugs the command
+   bar above and can never cross the strip's bottom rule; the right margin lines
+   it up with the appearance controls' right edge, and the small negative top
+   margin puts it on the other themes' search midline (the strip sits a few
+   pixels lower than their second row). */
+:root[data-editor-theme="workbench"] .markdown-editor__search {
+    margin-top: -0.2rem;
+    margin-right: 2.7rem;
+    width: min(20rem, 30vw);
+}
+
+/* Styling ::-webkit-scrollbar opts out of macOS overlay scrollbars, so the thumb
+   stays visible in Chromium and Safari whenever the results overflow. Do NOT add
+   the standard scrollbar-width/scrollbar-color properties here: setting either
+   makes Chrome 121+ ignore all ::-webkit-scrollbar styling, reverting to the
+   auto-hiding overlay. Firefox has no way to force a visible scrollbar; the
+   @supports block gives it a thin one on its own terms. */
+.markdown-editor__search-results::-webkit-scrollbar {
+    width: 10px;
+}
+
+.markdown-editor__search-results::-webkit-scrollbar-thumb {
+    background: var(--wa-color-neutral-fill-loud, rgba(127, 127, 127, 0.45));
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 5px;
+}
+
+@supports not selector(::-webkit-scrollbar) {
+    .markdown-editor__search-results {
+        scrollbar-width: thin;
+    }
 }
 
 .markdown-editor__search-row {
     display: block;
+    box-sizing: border-box;
     width: 100%;
     text-align: left;
     border: 0;
     background: transparent;
     color: inherit;
     font: inherit;
+    text-decoration: none;
     padding: 0.45rem 0.5rem;
     border-radius: 6px;
     cursor: pointer;
@@ -2279,6 +2427,13 @@ markdown-editor[data-readonly] .markdown-image__resize-handle {
 .markdown-editor__search-anchor {
     font-size: 0.8rem;
     opacity: 0.7;
+}
+
+/* The page's folder path, distinguishing same-titled pages. */
+.markdown-editor__search-crumb {
+    font-size: 0.72rem;
+    margin-left: 0.6rem;
+    opacity: 0.55;
 }
 
 .markdown-editor__search-excerpt {

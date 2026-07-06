@@ -1,4 +1,4 @@
-// The interactive search box at the top of the right-hand sidebar (RFC-0034).
+// The interactive search box in the editor's top bar (RFC-0034).
 // As the user types, it queries the server's hybrid search (`/search?json`)
 // with a short debounce and in-flight cancellation, and renders the top
 // results as title-plus-excerpt rows; clicking (or Enter on) a row navigates
@@ -26,9 +26,6 @@ const DEBOUNCE_MS = 250;
 /** The fewest characters worth querying. */
 const MIN_QUERY_LENGTH = 2;
 
-/** The most rows shown in the dropdown (the full page shows the rest). */
-const MAX_ROWS = 8;
-
 /**
  * The search panel: a search input whose dropdown of results refines as the
  * user types. Keyboard: arrows move the selection, Enter opens it, Escape
@@ -38,6 +35,7 @@ export class SearchPanel {
     private readonly panel: HTMLElement;
     private readonly input: HTMLInputElement;
     private readonly dropdown: HTMLElement;
+    private readonly backdrop: HTMLElement;
     private debounceTimer: number | undefined;
     private inFlight: AbortController | null = null;
     private results: SearchResult[] = [];
@@ -58,6 +56,17 @@ export class SearchPanel {
         this.dropdown.className = "markdown-editor__search-results";
         this.dropdown.hidden = true;
 
+        // A transparent click-catcher behind the open dropdown: a click on the
+        // softened page lands here (outside the panel), so the document click
+        // handler closes the dropdown instead of the click acting on the page.
+        // The visual softening itself is CSS keyed on the editor element's
+        // data-search-open attribute (set while the dropdown is open), which
+        // blurs the workspace in every theme regardless of stacking order.
+        this.backdrop = document.createElement("div");
+        this.backdrop.className = "markdown-editor__search-backdrop";
+        this.backdrop.hidden = true;
+        document.body.append(this.backdrop);
+
         this.input.addEventListener("input", (): void => this.onInput());
         this.input.addEventListener("keydown", (event: KeyboardEvent): void => this.onKey(event));
         this.panel.append(this.input, this.dropdown);
@@ -76,7 +85,7 @@ export class SearchPanel {
         });
     }
 
-    /** The panel element, for placement at the top of the editor sidebar. */
+    /** The panel element, for placement in the editor's top bar. */
     public element(): HTMLElement {
         return this.panel;
     }
@@ -111,8 +120,10 @@ export class SearchPanel {
             const response = await fetch(`/search?json&q=${encodeURIComponent(query)}`, {
                 signal: this.inFlight.signal,
             });
+            // Every result the server sends (it caps at one-per-page anyway);
+            // the dropdown scrolls rather than truncating.
             const body = (await response.json()) as SearchResponse;
-            this.results = (body.results ?? []).slice(0, MAX_ROWS);
+            this.results = body.results ?? [];
             this.selected = -1;
             this.render(query, body.pending ?? 0);
         } catch (error) {
@@ -125,6 +136,8 @@ export class SearchPanel {
     private render(query: string, pending: number): void {
         this.dropdown.replaceChildren();
         this.dropdown.hidden = false;
+        this.backdrop.hidden = false;
+        this.panel.closest("markdown-editor")?.setAttribute("data-search-open", "");
 
         if (pending > 0) {
             const note = document.createElement("p");
@@ -140,9 +153,11 @@ export class SearchPanel {
             return;
         }
         this.results.forEach((result: SearchResult, index: number): void => {
-            const row = document.createElement("button");
-            row.type = "button";
+            // A real link, so the browser's native modified-click behaviours work
+            // (Cmd/Ctrl-click opens a new tab, middle-click, copy link address).
+            const row = document.createElement("a");
             row.className = "markdown-editor__search-row";
+            row.href = SearchPanel.pageHref(result.path);
             row.dataset["index"] = String(index);
 
             const title = document.createElement("span");
@@ -157,12 +172,29 @@ export class SearchPanel {
                 row.append(anchor);
             }
 
+            // The page's folder path, so same-titled pages can be told apart.
+            const folders = result.path.split("/").slice(0, -1);
+            if (folders.length > 0) {
+                const crumb = document.createElement("span");
+                crumb.className = "markdown-editor__search-crumb";
+                crumb.textContent = folders.join(" / ");
+                row.append(crumb);
+            }
+
             const excerpt = document.createElement("span");
             excerpt.className = "markdown-editor__search-excerpt";
             excerpt.textContent = result.excerpt;
             row.append(excerpt);
 
-            row.addEventListener("click", (): void => this.navigate(result.path));
+            row.addEventListener("click", (event: MouseEvent): void => {
+                // A modified click is the browser's business (new tab/window);
+                // a plain click navigates through the panel's callback.
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+                    return;
+                }
+                event.preventDefault();
+                this.navigate(result.path);
+            });
             this.dropdown.append(row);
         });
 
@@ -205,12 +237,19 @@ export class SearchPanel {
 
     private close(): void {
         this.dropdown.hidden = true;
+        this.backdrop.hidden = true;
+        this.panel.closest("markdown-editor")?.removeAttribute("data-search-open");
         this.dropdown.replaceChildren();
         this.results = [];
         this.selected = -1;
     }
 
     private static defaultNavigate(path: string): void {
-        window.location.href = `/documents/${path}`;
+        window.location.href = SearchPanel.pageHref(path);
+    }
+
+    /** The page's URL, with each tree-path segment encoded. */
+    private static pageHref(path: string): string {
+        return `/documents/${path.split("/").map(encodeURIComponent).join("/")}`;
     }
 }

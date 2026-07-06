@@ -298,9 +298,13 @@ export class NavTreePanel {
         this.panel.append(header, this.rootDrop, this.trashPanel, this.list);
         this.applyCollapsed();
         this.render();
+        // Reveal the open page's row immediately (the rAF inside runs before first paint, so the panel
+        // never flashes at the top), then correct after hydrate only if late-loading rows above pushed
+        // it back out of view -- an unconditional second reveal would be a visible jump on every load.
+        this.revealActive(true);
         // The spine only seeds the open page's ancestors; any other persisted-expanded folder has no cached
         // children yet, so fetch those and re-render -- otherwise it would show expanded (arrow down) but empty.
-        void this.hydrate();
+        void this.hydrate().then((): void => this.revealActive(false));
     }
 
     /** Fetches children for persisted-expanded folders not covered by the spine, then re-renders. */
@@ -333,6 +337,38 @@ export class NavTreePanel {
 
     private render(): void {
         this.list.replaceChildren(...this.renderChildren(""));
+    }
+
+    /**
+     * Scrolls the open page's row into view. Each page load recreates the tree, so without this the
+     * panel always starts scrolled to the top and the page just navigated to is often out of sight.
+     * Only used while the tree initialises -- later re-renders (expand/collapse, moves) must not yank
+     * the scroll position. With `always` false the row is left alone when it is already visible, so
+     * the post-hydrate correction only moves the panel when late-loading rows pushed it out of view.
+     */
+    private revealActive(always: boolean): void {
+        if (this.activePath === "") {
+            return;
+        }
+        // After layout: the panel is not attached (or sized) when the constructor renders, and hydrate
+        // may have replaced the rows since the call -- so both the lookup and the geometry read run in
+        // the callback. rAF fires before the next paint: the initial reveal is never seen as a jump.
+        requestAnimationFrame((): void => {
+            const row = this.list.querySelector<HTMLElement>('.markdown-editor__nav-row[data-active="true"]');
+            if (!row) {
+                return;
+            }
+            const rowTop = row.offsetTop;
+            const rowBottom = rowTop + row.offsetHeight;
+            const viewTop = this.panel.scrollTop;
+            const viewBottom = viewTop + this.panel.clientHeight;
+            if (!always && rowTop >= viewTop && rowBottom <= viewBottom) {
+                return;
+            }
+            // Centred (not edge-aligned) so the late layout shifts of a loading page -- fonts and Web
+            // Awesome component upgrades resizing rows -- cannot push it straight back out of view.
+            this.panel.scrollTop = Math.max(0, rowTop - (this.panel.clientHeight - row.offsetHeight) / 2);
+        });
     }
 
     private renderChildren(parentPath: string): HTMLElement[] {

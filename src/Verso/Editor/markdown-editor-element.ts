@@ -492,13 +492,6 @@ export class MarkdownEditorElement extends HTMLElement {
         // panel shows whenever the document has headings (any mode); the attachments panel is tree-mode only.
         this.sidebar = document.createElement("div");
         this.sidebar.className = "markdown-editor__sidebar";
-        // The interactive search box (RFC-0034) sits at the top of the sidebar, under the
-        // top bar's theme and appearance controls; it hides itself when search is disabled.
-        if (this.isTreeMode()) {
-            const searchPanel = new SearchPanel();
-            this.sidebar.append(searchPanel.element());
-            void searchPanel.connect();
-        }
         this.tocPanel = new TableOfContentsPanel((index: number): void => this.scrollToHeading(index));
         this.sidebar.append(this.tocPanel.element());
         if (this.isTreeMode()) {
@@ -528,7 +521,19 @@ export class MarkdownEditorElement extends HTMLElement {
         // two grid items with `display: contents`.
         this.topBar = document.createElement("div");
         this.topBar.className = "markdown-editor__topbar";
-        this.topBar.append(this.toolbar, this.documentName);
+        // The top bar's second row: the breadcrumb on the left and the search box (RFC-0034) on the
+        // right. The search results drop down over the page content (the panel blurs the page behind
+        // them); the box hides itself when search is disabled, and only tree mode has an index to
+        // search. Workbench places this row as its file-tab strip (grid-area tab).
+        const topBarRow = document.createElement("div");
+        topBarRow.className = "markdown-editor__topbar-row";
+        topBarRow.append(this.documentName);
+        if (this.isTreeMode()) {
+            const searchPanel = new SearchPanel();
+            topBarRow.append(searchPanel.element());
+            void searchPanel.connect();
+        }
+        this.topBar.append(this.toolbar, topBarRow);
 
         this.append(
             this.topBar,

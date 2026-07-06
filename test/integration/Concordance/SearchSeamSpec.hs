@@ -87,6 +87,35 @@ spec =
                                     (cosine vec reference > 0.98) `shouldBe` True
                             Embedding.closeEmbedder
 
+        it "lists every page when the listing outgrows one result buffer" $ do
+            available <- Store.searchAvailable
+            if not available
+                then skip "search shim not built"
+                else do
+                    let dir = "build/search-pages-spec-store"
+                    _ <- Process.runProcess "rm" ["-rf", dir] Nothing Nothing
+                    Right store <- Store.openStore dir 4
+                    -- Long page ids and many chunk rows per page push the
+                    -- packed listing well past the 1 MiB result buffer.
+                    let pageId i = "pages/" ++ replicate 500 'x' ++ "-" ++ show (i :: Int)
+                        chunk = Store.StoreChunk "" "t" [1, 0, 0, 0]
+                        nPages = 30
+                    Monad.forM_ [1 .. nPages] $ \i -> do
+                        Right () <-
+                            Store.upsertPage
+                                store
+                                (pageId i)
+                                ("stat-" ++ show i)
+                                ("content-" ++ show i)
+                                (replicate 100 chunk)
+                        pure ()
+                    listed <- Store.listPages store
+                    case listed of
+                        Left e -> fail ("listPages: " ++ e)
+                        Right pages -> length pages `shouldBe` nPages
+                    Store.closeStore
+                    Monad.void (Process.runProcess "rm" ["-rf", dir] Nothing Nothing)
+
         it "round-trips upsert, hybrid search, re-upsert, and delete" $ do
             setup <- searchSetup
             case setup of

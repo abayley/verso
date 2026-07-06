@@ -24,7 +24,7 @@ module Concordance.Store (
 ) where
 
 import qualified Concordance.Utf8 as Utf8
-import qualified Data.List as List
+import qualified Data.Map.Strict as Map
 import qualified Foreign.C.String as CStr
 import qualified Foreign.Marshal.Alloc as Alloc
 import qualified Foreign.Ptr as Ptr
@@ -100,6 +100,19 @@ errBufSize = 512
 -- | The result buffer for search hits and page listings.
 resultBufSize :: Int
 resultBufSize = 1024 * 1024
+
+{- | The shim's CN_BUFFER_FULL: the out buffer was too small for the full
+result, and the call may be retried with a larger one.
+-}
+bufferFullRc :: Int
+bufferFullRc = -9
+
+{- | The ceiling for 'listPages' buffer growth. The listing carries one
+record per chunk row, so it scales with the corpus; at roughly 100 bytes
+per row this admits several hundred thousand rows.
+-}
+maxPagesBufSize :: Int
+maxPagesBufSize = 64 * 1024 * 1024
 
 -- | Whether the real shim is linked (False means the stub: search off).
 searchAvailable :: IO Bool
@@ -188,15 +201,24 @@ searchStore store queryVec queryText k =
                         then Left <$> CStr.peekCAString errC
                         else Right . parseHits <$> peekUtf8 outC
 
--- | Lists indexed pages with their fingerprints (deduplicated).
+{- | Lists indexed pages with their fingerprints (deduplicated). The
+listing has one record per chunk row, so its size scales with the corpus;
+when a buffer overflows the call retries with double the size, up to
+'maxPagesBufSize'.
+-}
 listPages :: Store -> IO (Either String [PageFingerprints])
-listPages _store =
-    Alloc.allocaBytes resultBufSize $ \outC ->
-        Alloc.allocaBytes errBufSize $ \errC -> do
-            rc <- c_storePages outC resultBufSize errC errBufSize
-            if rc < 0
-                then Left <$> CStr.peekCAString errC
-                else Right . List.nub . parsePages <$> peekUtf8 outC
+listPages _store = go resultBufSize
+  where
+    go bufSize =
+        Alloc.allocaBytes bufSize $ \outC ->
+            Alloc.allocaBytes errBufSize $ \errC -> do
+                rc <- c_storePages outC bufSize errC errBufSize
+                if rc == bufferFullRc && bufSize * 2 <= maxPagesBufSize
+                    then go (bufSize * 2)
+                    else
+                        if rc < 0
+                            then Left <$> CStr.peekCAString errC
+                            else Right . dedupePages . parsePages <$> peekUtf8 outC
 
 -- | Runs a UTF-8 encoded string through 'CStr.withCAString'.
 withUtf8 :: String -> (CStr.CString -> IO a) -> IO a
@@ -243,6 +265,18 @@ parseHits buf =
 parsePages :: String -> [PageFingerprints]
 parsePages buf =
     [PageFingerprints page statFp contentFp | [page, statFp, contentFp] <- records buf]
+
+{- | Keeps each page's first record. The listing repeats a page once per
+chunk row, so this must not be quadratic ('Data.List.nub' was): the real
+corpus lists tens of thousands of rows.
+-}
+dedupePages :: [PageFingerprints] -> [PageFingerprints]
+dedupePages = go Map.empty
+  where
+    go _ [] = []
+    go seen (p : rest)
+        | Map.member (pageFpPage p) seen = go seen rest
+        | otherwise = p : go (Map.insert (pageFpPage p) () seen) rest
 
 -- | Splits on a separator character.
 splitOn :: Char -> String -> [String]

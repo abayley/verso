@@ -405,7 +405,7 @@ full:
     lancedb_free_arrow_arrays(arrays, count);
     lancedb_free_arrow_schema(schema);
     fail(err, errlen, "result buffer full", NULL);
-    return -3;
+    return CN_BUFFER_FULL;
 }
 
 long cn_store_search(const double *query_vec, long dims,

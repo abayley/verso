@@ -16,6 +16,11 @@
 #ifndef CONCORDANCE_SHIM_H
 #define CONCORDANCE_SHIM_H
 
+/* Returned by cn_store_search and cn_store_pages when the out buffer is
+ * too small for the full result; the caller may retry with a larger
+ * buffer. Concordance.Store mirrors this value. */
+#define CN_BUFFER_FULL (-9)
+
 /* 1 when the real shim is linked, 0 for the stub. */
 long cn_available(void);
 

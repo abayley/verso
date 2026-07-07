@@ -25,7 +25,13 @@ command -v ab >/dev/null 2>&1 || { echo "ab (ApacheBench) not found on PATH" >&2
 command -v mhs >/dev/null 2>&1 || { echo "mhs not found on PATH" >&2; exit 1; }
 
 mkdir -p "$BUILD"
-mhs -a"$DB" -i"$ROOT/src" "$ROOT/src/Verso/Main.hs" -o "$BUILD/verso"
+# Link the cbits the server needs: the filesystem syscall wrappers and the
+# concordance stub (search stays off in a bench; no index worker interference).
+# Built to verso-bench so the user's real build/verso is not clobbered.
+cc -O2 -Wall -c "$ROOT/cbits/microhttp_fs.c" -o "$BUILD/microhttp_fs.o" -I"$ROOT/cbits"
+cc -O2 -Wall -c "$ROOT/cbits/concordance_stub.c" -o "$BUILD/concordance_stub_bench.o" -I"$ROOT/cbits"
+mhs -a"$DB" -optc -I"$ROOT/cbits" -optl "$BUILD/microhttp_fs.o" -optl "$BUILD/concordance_stub_bench.o" \
+    -i"$ROOT/src" "$ROOT/src/Verso/Main.hs" -o "$BUILD/verso-bench"
 
 # A private config so the user's micro-http.conf and port 8080 are untouched.
 CONF="$(mktemp)"
@@ -44,7 +50,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Start the server from ROOT (its static/document roots are relative).
-( cd "$ROOT" && MICROHTTP_CONFIG="$CONF" "$BUILD/verso" ) &
+( cd "$ROOT" && MICROHTTP_CONFIG="$CONF" "$BUILD/verso-bench" ) &
 SERVER_PID=$!
 
 # Wait for the port to accept requests. mhs buffers stdout, so poll the socket,

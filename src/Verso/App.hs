@@ -782,8 +782,13 @@ parentOfRel path = List.intercalate "/" (initOrEmpty (pathSegments path))
 slugForPath :: String -> String -> String
 slugForPath kind path =
     let name = lastOrEmpty (pathSegments path)
-     in if kind == "page" && ".md" `List.isSuffixOf` name then take (length name - length ".md") name else name
+     in if kind == "page" && mdSuffix `List.isSuffixOf` name then take (length name - length mdSuffix) name else name
   where
+    -- the signatures pin the OverloadedStrings literals, which GHC otherwise
+    -- reports as ambiguous (mhs defaults them)
+    mdSuffix :: String
+    mdSuffix = ".md"
+    lastOrEmpty :: [String] -> String
     lastOrEmpty [] = ""
     lastOrEmpty xs = last xs
 

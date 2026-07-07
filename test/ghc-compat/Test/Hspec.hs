@@ -73,6 +73,10 @@ expect label condition =
         then return ()
         else Exception.throwIO (ExpectationFailure label)
 
+-- The same fixity as the real hspec: without it these default to infixl 9 and
+-- bind tighter than (++), flipping the parse of `x `shouldBe` a ++ b`.
+infix 1 `shouldBe`, `shouldReturn`
+
 shouldBe :: (Show a, Eq a) => a -> a -> Expectation
 actual `shouldBe` expected =
     expect ("expected: " ++ show expected ++ "\n but got: " ++ show actual) (actual == expected)

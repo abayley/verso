@@ -14,6 +14,7 @@ module MicroHttp.Stream (
 
 import qualified Data.ByteString as BS
 import qualified MicroHttp.Http.Parse as Parse
+import MicroHttp.Iteratee (strictEnumerator)
 import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Network.Socket as Socket
 import qualified System.IO.Base as Base
@@ -32,9 +33,9 @@ data StreamError
     | StreamTimeout
     deriving (Eq, Show)
 
--- | Re-export of the strict in-memory enumerator from the iteratee core.
-strictEnumerator :: BS.ByteString -> Iteratee.Enumerator e a
-strictEnumerator = Iteratee.strictEnumerator
+-- strictEnumerator is re-exported from the iteratee core directly (not via a
+-- local alias): a wrapper binding is a distinct name, and re-exporting both
+-- from the MicroHttp facade is then a conflicting-export error under GHC.
 
 {- | Feeds @recv@ chunks from a socket until orderly close or transport
 failure, with each read's idle wait bounded by @idleMicros@ (non-positive

@@ -151,7 +151,7 @@ buildFromTree root = do
     readAndStat (rel, fs) = do
         body <- readPageBody fs
         st <- FileSystem.fileStat fs
-        pure (rel, body, st)
+        pure (rel, body, either (const Nothing) Just st)
 
 -- | Builds the graph from page bodies (the parse), via repeated 'updatePage' over the empty index.
 buildFromBodies :: [(String, BS.ByteString)] -> LinkIndex.LinkIndex

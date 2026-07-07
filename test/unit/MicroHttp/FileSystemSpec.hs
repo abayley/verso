@@ -3,6 +3,7 @@ module MicroHttp.FileSystemSpec (spec) where
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified MicroHttp.FileSystem as FileSystem
+import qualified MicroHttp.Process as Process
 import qualified System.Directory as Directory
 import Test.Hspec
 
@@ -14,6 +15,9 @@ ioDir = "build/file-ops-spec"
 freshDir :: IO ()
 freshDir = do
     exists <- Directory.doesDirectoryExist ioDir
+    -- restore permissions first: the EACCES test locks a subdirectory, and a crash
+    -- between its chmods would otherwise leave the scratch tree unlistable
+    Monad.when exists (Monad.void (Process.runProcess "chmod" ["-R", "u+rwx", ioDir] Nothing Nothing))
     Monad.when exists removeContents
     Directory.createDirectoryIfMissing True ioDir
   where
@@ -43,50 +47,51 @@ spec =
                 let from = ioDir ++ "/a.md"
                     to = ioDir ++ "/b.md"
                 writeText from "hello"
-                ok <- FileSystem.renamePath from to
-                ok `shouldBe` True
+                outcome <- FileSystem.renamePath from to
+                outcome `shouldBe` Right ()
                 fromExists <- Directory.doesFileExist from
                 toContent <- BS.readFile to
                 fromExists `shouldBe` False
                 BS.unpack toContent `shouldBe` "hello"
 
-            it "reports failure when the source does not exist" $ do
+            it "reports ENOENT when the source does not exist" $ do
                 freshDir
-                ok <- FileSystem.renamePath (ioDir ++ "/missing.md") (ioDir ++ "/x.md")
-                ok `shouldBe` False
+                outcome <- FileSystem.renamePath (ioDir ++ "/missing.md") (ioDir ++ "/x.md")
+                outcome `shouldBe` Left (FileSystem.Errno 2)
 
         describe "removeFilePath" $ do
             it "removes an existing file and reports success" $ do
                 freshDir
                 let f = ioDir ++ "/gone.md"
                 writeText f "x"
-                ok <- FileSystem.removeFilePath f
-                ok `shouldBe` True
+                outcome <- FileSystem.removeFilePath f
+                outcome `shouldBe` Right ()
                 exists <- Directory.doesFileExist f
                 exists `shouldBe` False
 
-            it "reports failure when the file is absent" $ do
+            it "reports ENOENT when the file is absent" $ do
                 freshDir
-                ok <- FileSystem.removeFilePath (ioDir ++ "/absent.md")
-                ok `shouldBe` False
+                outcome <- FileSystem.removeFilePath (ioDir ++ "/absent.md")
+                outcome `shouldBe` Left (FileSystem.Errno 2)
 
         describe "removeEmptyDir" $ do
             it "removes an empty directory and reports success" $ do
                 freshDir
                 let d = ioDir ++ "/sub"
                 Directory.createDirectoryIfMissing True d
-                ok <- FileSystem.removeEmptyDir d
-                ok `shouldBe` True
+                outcome <- FileSystem.removeEmptyDir d
+                outcome `shouldBe` Right ()
                 exists <- Directory.doesDirectoryExist d
                 exists `shouldBe` False
 
-            it "reports failure for a non-empty directory" $ do
+            it "reports ENOTEMPTY for a non-empty directory" $ do
                 freshDir
                 let d = ioDir ++ "/full"
                 Directory.createDirectoryIfMissing True d
                 writeText (d ++ "/k.md") "x"
-                ok <- FileSystem.removeEmptyDir d
-                ok `shouldBe` False
+                outcome <- FileSystem.removeEmptyDir d
+                -- 66 is macOS ENOTEMPTY; the module is macOS-specific (ADR-067)
+                outcome `shouldBe` Left (FileSystem.Errno 66)
 
         describe "fileStat" $ do
             it "reports a file's byte size" $ do
@@ -94,7 +99,7 @@ spec =
                 let f = ioDir ++ "/sized.md"
                 writeText f "hello"
                 st <- FileSystem.fileStat f
-                fmap FileSystem.fsSize st `shouldBe` Just 5
+                fmap FileSystem.fsSize st `shouldBe` Right 5
 
             it "moves the modification time on an equal-length edit (sub-second)" $ do
                 freshDir
@@ -107,6 +112,23 @@ spec =
                 fmap FileSystem.fsSize before `shouldBe` fmap FileSystem.fsSize after
                 (before == after) `shouldBe` False
 
-            it "reports Nothing for a missing path" $ do
+            it "reports ENOENT for a missing path" $ do
                 freshDir
-                FileSystem.fileStat (ioDir ++ "/absent.md") `shouldReturn` Nothing
+                FileSystem.fileStat (ioDir ++ "/absent.md") `shouldReturn` Left (FileSystem.Errno 2)
+
+            it "reports EACCES (not ENOENT) for a path inside an unsearchable directory" $ do
+                freshDir
+                let d = ioDir ++ "/locked"
+                    f = d ++ "/secret.md"
+                Directory.createDirectoryIfMissing True d
+                writeText f "x"
+                _ <- Process.runProcess "chmod" ["000", d] Nothing Nothing
+                outcome <- FileSystem.fileStat f
+                _ <- Process.runProcess "chmod" ["755", d] Nothing Nothing
+                outcome `shouldBe` Left (FileSystem.Errno 13)
+
+        describe "isDoesNotExist" $ do
+            it "is True only for ENOENT" $ do
+                FileSystem.isDoesNotExist (FileSystem.Errno 2) `shouldBe` True
+                FileSystem.isDoesNotExist (FileSystem.Errno 13) `shouldBe` False
+                FileSystem.isDoesNotExist (FileSystem.Errno 66) `shouldBe` False

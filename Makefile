@@ -34,16 +34,31 @@ SEARCH_LINK = $(foreach o,$(SEARCH_OBJS),-optl $(o)) \
     -optl -L$(ORT_PREFIX)/lib -optl -lonnxruntime \
     -optl -Wl,-rpath,$(abspath $(SEARCH_LIB_DIR)) \
     -optl -Wl,-rpath,$(ORT_PREFIX)/lib
+# The same libraries in GHC's flag spelling, for the coverage builds.
+SEARCH_GHC_LINK = $(SEARCH_OBJS) \
+    -L$(SEARCH_LIB_DIR) -llancedb \
+    -L$(ORT_PREFIX)/lib -lonnxruntime \
+    -optl-Wl,-rpath,$(abspath $(SEARCH_LIB_DIR)) \
+    -optl-Wl,-rpath,$(ORT_PREFIX)/lib
 SEARCH_DEP =
 else
 SEARCH_OBJS = $(SEARCH_BUILD)/concordance_stub.o
 SEARCH_LINK = -optl $(SEARCH_BUILD)/concordance_stub.o
+SEARCH_GHC_LINK = $(SEARCH_OBJS)
 SEARCH_DEP = $(SEARCH_BUILD)/concordance_stub.o
 endif
-MHS_SEARCH = -optc -I$(CBITS) $(SEARCH_LINK)
+# The filesystem syscall wrappers (MicroHttp.FileSystem) are unconditional: every
+# build links them, so they ride along in the cbits flags and dependencies.
+FS_OBJ = $(BUILD)/microhttp_fs.o
+MHS_SEARCH = -optc -I$(CBITS) $(SEARCH_LINK) -optl $(FS_OBJ)
+SEARCH_DEP += $(FS_OBJ)
 
 $(SEARCH_BUILD)/concordance_stub.o: $(CBITS)/concordance_stub.c $(CBITS)/concordance_shim.h
 	mkdir -p $(SEARCH_BUILD)
+	cc -O2 -Wall -c $< -o $@ -I$(CBITS)
+
+$(FS_OBJ): $(CBITS)/microhttp_fs.c $(CBITS)/microhttp_fs.h
+	mkdir -p $(BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(CBITS)
 
 .PHONY: docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11 all-spikes search-lancedb search-nanoarrow search-model search-shim check clean
@@ -156,7 +171,7 @@ test: test-unit test-integration
 coverage-unit: $(SEARCH_DEP)
 	rm -rf $(BUILD)/coverage/unit
 	mkdir -p $(BUILD)/coverage/unit/mix $(BUILD)/coverage/unit/objects $(BUILD)/coverage/unit/report
-	$(GHC) -fhpc -hpcdir $(BUILD)/coverage/unit/mix $(SEARCH_OBJS) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -outputdir $(BUILD)/coverage/unit/objects -o $(BUILD)/coverage/unit/unit-test
+	$(GHC) -threaded -fhpc -hpcdir $(BUILD)/coverage/unit/mix $(SEARCH_GHC_LINK) $(FS_OBJ) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -outputdir $(BUILD)/coverage/unit/objects -o $(BUILD)/coverage/unit/unit-test
 	HPCTIXFILE=$(BUILD)/coverage/unit/unit-test.tix $(BUILD)/coverage/unit/unit-test
 	$(HPC) report $(BUILD)/coverage/unit/unit-test.tix --hpcdir $(BUILD)/coverage/unit/mix --per-module
 	$(HPC) markup $(BUILD)/coverage/unit/unit-test.tix --hpcdir $(BUILD)/coverage/unit/mix --destdir $(BUILD)/coverage/unit/report
@@ -164,7 +179,7 @@ coverage-unit: $(SEARCH_DEP)
 coverage-integration: $(SEARCH_DEP)
 	rm -rf $(BUILD)/coverage/integration
 	mkdir -p $(BUILD)/coverage/integration/mix $(BUILD)/coverage/integration/objects $(BUILD)/coverage/integration/report
-	$(GHC) -fhpc -hpcdir $(BUILD)/coverage/integration/mix $(SEARCH_OBJS) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -outputdir $(BUILD)/coverage/integration/objects -o $(BUILD)/coverage/integration/integration-test
+	$(GHC) -threaded -fhpc -hpcdir $(BUILD)/coverage/integration/mix $(SEARCH_GHC_LINK) $(FS_OBJ) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -outputdir $(BUILD)/coverage/integration/objects -o $(BUILD)/coverage/integration/integration-test
 	HPCTIXFILE=$(BUILD)/coverage/integration/integration-test.tix $(BUILD)/coverage/integration/integration-test
 	$(HPC) report $(BUILD)/coverage/integration/integration-test.tix --hpcdir $(BUILD)/coverage/integration/mix --per-module
 	$(HPC) markup $(BUILD)/coverage/integration/integration-test.tix --hpcdir $(BUILD)/coverage/integration/mix --destdir $(BUILD)/coverage/integration/report

@@ -62,5 +62,5 @@ fingerprintTree root = do
     entries <- mapM stat1 files
     pure (Map.fromList (Maybe.catMaybes entries))
   where
-    stat1 (rel, fs) = fmap (fmap (withPath rel)) (FileSystem.fileStat fs)
+    stat1 (rel, fs) = fmap (either (const Nothing) (Just . withPath rel)) (FileSystem.fileStat fs)
     withPath rel st = (rel, st)

@@ -1,14 +1,16 @@
 {- | The server's filesystem primitives for in-server move and delete (RFC-0027) and
-the link index (RFC-0029): @rename(2)@, @unlink(2)@, @rmdir(2)@, and @stat(2)@ bound
-directly via the C library, because MicroHs's @System.Directory@ has no atomic file
-rename/remove and no modification time (the same libc escape hatch 'MicroHttp.Log'
-uses for rotation, now consolidated here).
+the link index (RFC-0029): @rename(2)@, @unlink(2)@, @rmdir(2)@, and @stat(2)@ via
+the @cbits/microhttp_fs.c@ wrappers, because MicroHs's @System.Directory@ has no
+atomic file rename/remove and no modification time (the same libc escape hatch
+'MicroHttp.Log' uses for rotation, now consolidated here).
 
-Unlike 'MicroHttp.Log', the mutation wrappers __check the return code__: each returns
-'True' only when the syscall reported success (@0@), so a failed move or remove
-surfaces to the caller rather than silently leaving the tree inconsistent (the
-RFC-0027 reliability contract, ADR-061). 'fileStat' likewise returns 'Nothing' on a
-non-zero return.
+Unlike 'MicroHttp.Log', these wrappers __report the failure__: each returns
+@Right@ only when the syscall succeeded, and @Left errno@ otherwise, so a failed
+move or remove surfaces to the caller with its reason -- ENOENT vs EACCES vs
+ENOTEMPTY -- rather than silently leaving the tree inconsistent (the RFC-0027
+reliability contract, ADR-061). The C wrappers fold the return code and @errno@
+into one value, so no other green thread's C call can clobber @errno@ between
+the syscall and its errno read.
 
 The path arguments are already-resolved filesystem paths; callers validate
 tree-relative inputs with 'MicroHttp.Static.safeComponent' (via
@@ -20,6 +22,8 @@ platform-dependent). They are isolated behind named constants so the cross-platf
 portability RFC can parameterise them; ADR-067.
 -}
 module MicroHttp.FileSystem (
+    Errno (..),
+    isDoesNotExist,
     renamePath,
     removeFilePath,
     removeEmptyDir,
@@ -32,19 +36,30 @@ import qualified Foreign.Marshal.Alloc as Alloc
 import qualified Foreign.Ptr as Ptr
 import qualified Foreign.Storable as Storable
 
--- rename(2)/unlink(2)/rmdir(2) directly: MicroHs has no atomic renameFile/removeFile
--- in System.Directory, and exposes no removeDirectory either, so the filesystem
--- mutations drive libc. The return code (0 success, -1 error) is reported, unlike
--- MicroHttp.Log's best-effort rotation which discards it (ADR-061).
-foreign import ccall "stdio.h rename" c_rename :: CStr.CString -> CStr.CString -> IO Int
-foreign import ccall "unistd.h unlink" c_unlink :: CStr.CString -> IO Int
-foreign import ccall "unistd.h rmdir" c_rmdir :: CStr.CString -> IO Int
+-- The microhttp_fs.c wrappers: 0 on success, the syscall's errno on failure.
+foreign import ccall "microhttp_fs.h mhfs_rename"
+    c_rename :: CStr.CString -> CStr.CString -> IO Int
+foreign import ccall "microhttp_fs.h mhfs_unlink" c_unlink :: CStr.CString -> IO Int
+foreign import ccall "microhttp_fs.h mhfs_rmdir" c_rmdir :: CStr.CString -> IO Int
+foreign import ccall "microhttp_fs.h mhfs_stat"
+    c_stat :: CStr.CString -> Ptr.Ptr () -> IO Int
 
--- stat(2) directly: MicroHs's System.Directory has no getModificationTime, and
--- fileSizeBytes cheats with lseek. On arm64/x86_64 macOS (64-bit inode) the plain
--- `stat` symbol is the modern struct; the fields the link index reads are at fixed
--- byte offsets (see the constants below). macOS-specific (ADR-067, RFC-0029).
-foreign import ccall "sys/stat.h stat" c_stat :: CStr.CString -> Ptr.Ptr () -> IO Int
+-- | A failed syscall's @errno@ (e.g. @2@ = ENOENT, @13@ = EACCES, macOS @66@ = ENOTEMPTY).
+newtype Errno = Errno Int
+    deriving (Eq, Show)
+
+{- | Whether the errno is ENOENT: the path does not exist. The distinction
+callers care about most -- a vanished file is usually expected (a delete or a
+race), where any other errno (EACCES, EIO, ...) is a real fault worth logging.
+POSIX fixes ENOENT at @2@ on every platform.
+-}
+isDoesNotExist :: Errno -> Bool
+isDoesNotExist (Errno e) = e == 2
+
+-- | Interprets a wrapper's return value: @0@ is success, anything else the errno.
+outcome :: Int -> Either Errno ()
+outcome 0 = Right ()
+outcome e = Left (Errno e)
 
 -- | A file's modification time (sub-second) and size: the link index's freshness fingerprint (RFC-0029).
 data FileStat = FileStat
@@ -74,35 +89,35 @@ mtimeNsecOffset = 56
 sizeOffset :: Int
 sizeOffset = 96
 
--- | Renames a file or directory, returning 'True' on success (@rename(2)@ == 0).
-renamePath :: FilePath -> FilePath -> IO Bool
+-- | Renames a file or directory (@rename(2)@); 'Left' carries the errno.
+renamePath :: FilePath -> FilePath -> IO (Either Errno ())
 renamePath from to =
     CStr.withCString from $ \f ->
         CStr.withCString to $ \t ->
-            fmap (== 0) (c_rename f t)
+            fmap outcome (c_rename f t)
 
--- | Removes a file, returning 'True' on success (@unlink(2)@ == 0).
-removeFilePath :: FilePath -> IO Bool
-removeFilePath path = CStr.withCString path (fmap (== 0) . c_unlink)
+-- | Removes a file (@unlink(2)@); 'Left' carries the errno.
+removeFilePath :: FilePath -> IO (Either Errno ())
+removeFilePath path = CStr.withCString path (fmap outcome . c_unlink)
 
--- | Removes an empty directory, returning 'True' on success (@rmdir(2)@ == 0).
-removeEmptyDir :: FilePath -> IO Bool
-removeEmptyDir path = CStr.withCString path (fmap (== 0) . c_rmdir)
+-- | Removes an empty directory (@rmdir(2)@); 'Left' carries the errno.
+removeEmptyDir :: FilePath -> IO (Either Errno ())
+removeEmptyDir path = CStr.withCString path (fmap outcome . c_rmdir)
 
-{- | The file's modification time and size via @stat(2)@, or 'Nothing' when the call
-fails (the path is absent or unreadable). The @mtime@ is sub-second (macOS
-@st_mtimespec@), so an equal-length content edit -- swapping one link target for
-another of the same length -- still moves it (RFC-0029, ADR-067).
+{- | The file's modification time and size via @stat(2)@, or the errno when the call
+fails ('Errno' @2@, ENOENT, when the path is absent). The @mtime@ is sub-second
+(macOS @st_mtimespec@), so an equal-length content edit -- swapping one link target
+for another of the same length -- still moves it (RFC-0029, ADR-067).
 -}
-fileStat :: FilePath -> IO (Maybe FileStat)
+fileStat :: FilePath -> IO (Either Errno FileStat)
 fileStat path =
     CStr.withCString path $ \cpath ->
         Alloc.allocaBytes statBufBytes $ \buf -> do
             rc <- c_stat cpath buf
-            if rc /= 0
-                then pure Nothing
-                else do
+            case outcome rc of
+                Left e -> pure (Left e)
+                Right () -> do
                     sec <- Storable.peekByteOff buf mtimeSecOffset :: IO Int
                     nsec <- Storable.peekByteOff buf mtimeNsecOffset :: IO Int
                     size <- Storable.peekByteOff buf sizeOffset :: IO Int
-                    pure (Just (FileStat sec nsec size))
+                    pure (Right (FileStat sec nsec size))

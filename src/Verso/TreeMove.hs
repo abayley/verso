@@ -158,10 +158,10 @@ moveSection findRelevant root rawSrcRel rawDestParentRel rawSlug confirm
         if not confirm
             then pure (Right (MovePlan srcRel newPrefix changed False))
             else do
-                ok <- FileSystem.renamePath srcFs newFs
-                if not ok
-                    then pure (Left "rename failed")
-                    else do
+                outcome <- FileSystem.renamePath srcFs newFs
+                case outcome of
+                    Left e -> pure (Left ("rename failed (" ++ show e ++ ")"))
+                    Right () -> do
                         Monad.forM_ rewrites $ \(oldPath, newText) ->
                             writeRel root (Maybe.fromMaybe oldPath (DocumentLinks.relocatePath srcRel newPrefix oldPath)) newText
                         relocateListing root srcRel srcParentRel destParentRel newPrefix
@@ -268,10 +268,10 @@ movePage findRelevant root rawSrcRel rawDestParentRel rawSlug confirm
                         -- whose failure has no clean recovery, so on failure nothing
                         -- destructive has happened yet (the assets/meta still co-move
                         -- from their unchanged source locations afterwards).
-                        ok <- FileSystem.renamePath srcFs newFs
-                        if not ok
-                            then pure (Left "rename failed")
-                            else do
+                        outcome <- FileSystem.renamePath srcFs newFs
+                        case outcome of
+                            Left e -> pure (Left ("rename failed (" ++ show e ++ ")"))
+                            Right () -> do
                                 Monad.forM_ assets (relocateOrCopyAsset root srcDir destParentRel)
                                 relocateMeta root srcRel newPath
                                 Monad.forM_ rewrites (uncurry (writeRel root))
@@ -510,8 +510,13 @@ moveIntoTrash root entryDir stored originRel isDir =
     case Static.resolveStaticPath root (DocumentLinks.pathSegmentsOf originRel) of
         Nothing -> pure Nothing
         Just srcFs -> do
-            ok <- FileSystem.renamePath srcFs (entryDir ++ "/" ++ stored)
-            pure (if ok then Just (Trash.TrashItem stored isDir originRel) else Nothing)
+            outcome <- FileSystem.renamePath srcFs (entryDir ++ "/" ++ stored)
+            pure
+                ( either
+                    (const Nothing)
+                    (const (Just (Trash.TrashItem stored isDir originRel)))
+                    outcome
+                )
 
 -- | As 'moveIntoTrash' for a directory that may be absent (a page with no sidecar meta dir).
 moveDirIntoTrash :: FilePath -> FilePath -> String -> String -> IO (Maybe Trash.TrashItem)

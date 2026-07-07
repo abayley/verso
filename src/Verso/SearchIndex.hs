@@ -226,7 +226,10 @@ processItem runtime item
     | otherwise = indexPage runtime item
 
 {- | Re-indexes one page: read, chunk, embed (yielding between chunks),
-upsert; a page gone from the tree is deleted from the store instead.
+upsert; a page gone from the tree (ENOENT) is deleted from the store instead.
+Any other stat failure -- EACCES, EIO -- means the page may well still exist,
+so its store entry is left alone and the failure is logged; deleting on a
+transient fault would silently drop the page from search until its next edit.
 Failures log and move on -- the next reconcile retries them.
 -}
 indexPage :: SearchRuntime -> String -> IO ()
@@ -235,11 +238,13 @@ indexPage runtime path = do
         fsPath = searchRoot cfg ++ "/" ++ path
     stat <- FileSystem.fileStat fsPath
     case stat of
-        Nothing -> do
-            result <- Store.deletePage (srStore runtime) path
-            countWrite runtime
-            report cfg path (fmap (const "deleted") result)
-        Just fileStat -> do
+        Left e
+            | FileSystem.isDoesNotExist e -> do
+                result <- Store.deletePage (srStore runtime) path
+                countWrite runtime
+                report cfg path (fmap (const "deleted") result)
+            | otherwise -> report cfg path (Left ("stat failed (" ++ show e ++ ")"))
+        Right fileStat -> do
             bytes <- BS.readFile fsPath
             let content = Utf8.decodeUtf8 (BS.unpack bytes)
                 title = searchTitleOf cfg path content
@@ -327,8 +332,16 @@ needsReindex runtime storedMap (treePath, fsPath) =
         Just entry -> do
             stat <- FileSystem.fileStat fsPath
             case stat of
-                Nothing -> pure False
-                Just fileStat
+                -- a page vanishing mid-sweep (ENOENT) is a normal race; any
+                -- other errno is a real fault, logged so a persistent EACCES
+                -- is not invisible. Either way there is nothing to re-index.
+                Left e -> do
+                    Monad.unless (FileSystem.isDoesNotExist e) $
+                        searchLog
+                            (srConfig runtime)
+                            ("search: reconcile stat " ++ treePath ++ " failed (" ++ show e ++ ")")
+                    pure False
+                Right fileStat
                     | statFingerprint fileStat == Store.pageFpStat entry -> pure False
                     | otherwise -> do
                         bytes <- BS.readFile fsPath

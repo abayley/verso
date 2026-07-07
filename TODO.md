@@ -10,9 +10,9 @@ backend:
   <https://mysysinfo.com/>
 
 - automatic tag classification - create set of canonical tags
-- generate image descriptions
-- src/MicroHttp/FileSystem.hs: why not make functions return Either? (`Left rc` for failure)
+- generate image descriptions - gemma4?
 - openknowledge file format: <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md>
+  what would it take to be compliant?
 - load testing - simulate actual users fetching and saving pages
 - would like to notify user when page they are viewing or editing has been modified by someone else; how?
   needs to handle when other users update too - what is the notification mechanism? websockets?

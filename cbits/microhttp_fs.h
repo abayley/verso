@@ -15,4 +15,12 @@ long mhfs_rmdir(const char *path);
  * platform's struct stat size and field offsets; ADR-067). */
 long mhfs_stat(const char *path, void *buf);
 
+/* Adds O_NONBLOCK to a descriptor's flags (for MicroHttp.Network.Socket).
+ * fcntl(2) is variadic, and a variadic callee must not be called through a
+ * fixed-arity foreign import: on arm64 macOS variadic arguments travel on
+ * the stack, so GHC's ccall stub put O_NONBLOCK where fcntl never looked
+ * and the socket silently stayed blocking (MicroHs generates real C with
+ * the prototype in scope, hiding the bug). This wrapper is the fix. */
+long mhfs_set_nonblock(long fd);
+
 #endif

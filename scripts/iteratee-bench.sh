@@ -17,7 +17,8 @@ CONSUMERS=2
 mkdir -p "$BUILD"
 
 # Receiver: MicroHs, the subject under test.
-mhs -a"$DB" -i"$ROOT/src" -i"$ROOT/bench" "$ROOT/bench/IterateeReceiver.hs" -o "$BUILD/iteratee-receiver"
+cc -O2 -Wall -c "$ROOT/cbits/microhttp_fs.c" -o "$BUILD/microhttp_fs.o" -I"$ROOT/cbits"
+mhs -a"$DB" -optc -I"$ROOT/cbits" -optl "$BUILD/microhttp_fs.o" -i"$ROOT/src" -i"$ROOT/bench" "$ROOT/bench/IterateeReceiver.hs" -o "$BUILD/iteratee-receiver"
 
 # Sender: GHC + network, blocking sends.
 (cd "$ROOT/bench/sender" && cabal build >/dev/null 2>&1)

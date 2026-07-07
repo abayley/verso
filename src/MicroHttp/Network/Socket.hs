@@ -41,7 +41,12 @@ import qualified System.Timeout as Timeout
 
 foreign import ccall "socket" c_socket :: Int -> Int -> Int -> IO Int
 foreign import ccall "setsockopt" c_setsockopt :: Int -> Int -> Int -> Ptr.Ptr Int -> Int -> IO Int
-foreign import ccall "fcntl" c_fcntl :: Int -> Int -> Int -> IO Int
+
+-- fcntl(2) is variadic and must not be imported at a fixed arity: on arm64
+-- macOS the variadic argument travels on the stack, so a three-Int ccall put
+-- O_NONBLOCK where fcntl never looked and the socket silently stayed blocking
+-- under GHC (the coverage builds). The cbits wrapper makes the call from real C.
+foreign import ccall "microhttp_fs.h mhfs_set_nonblock" c_setNonBlock :: Int -> IO Int
 foreign import ccall "bind" c_bind :: Int -> Ptr.Ptr () -> Int -> IO Int
 foreign import ccall "connect" c_connect :: Int -> Ptr.Ptr () -> Int -> IO Int
 foreign import ccall "listen" c_listen :: Int -> Int -> IO Int
@@ -63,8 +68,6 @@ foreign import capi "sys/socket.h value AF_INET" afInet :: Int
 foreign import capi "sys/socket.h value SOCK_STREAM" sockStream :: Int
 foreign import capi "sys/socket.h value SOL_SOCKET" solSocket :: Int
 foreign import capi "sys/socket.h value SO_REUSEADDR" soReuseAddr :: Int
-foreign import capi "fcntl.h value F_SETFL" fSetFl :: Int
-foreign import capi "fcntl.h value O_NONBLOCK" oNonBlock :: Int
 foreign import capi "fcntl.h value O_RDONLY" oRdOnly :: Int
 foreign import capi "unistd.h value SEEK_END" seekEnd :: Int
 
@@ -441,9 +444,19 @@ setReuseAddr fd =
         Storable.poke opt (1 :: Int)
         Monad.void <$> checked "setsockopt" (c_setsockopt fd solSocket soReuseAddr opt (Storable.sizeOf (1 :: Int)))
 
--- | Sets a socket to non-blocking mode via @fcntl@, returning any error.
+{- | Sets a socket to non-blocking mode (adding @O_NONBLOCK@ to its flags),
+returning any error. The whole layer depends on this: reads and writes probe
+first and wait on would-block, so a socket left blocking parks its thread in
+the kernel instead of in the scheduler, and the idle timeouts never arm.
+-}
 setNonBlocking :: Int -> IO (Either SocketError ())
-setNonBlocking fd = Monad.void <$> checked "fcntl" (c_fcntl fd fSetFl oNonBlock)
+setNonBlocking fd = do
+    rc <- c_setNonBlock fd
+    pure
+        ( if rc == 0
+            then Right ()
+            else Left (SocketError "fcntl" (Error.Errno (fromIntegral rc)))
+        )
 
 -- | Whether an errno means the operation would block on a non-blocking socket.
 isWouldBlock :: Error.Errno -> Bool

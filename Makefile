@@ -186,9 +186,9 @@ coverage-integration: $(SEARCH_DEP)
 
 coverage: coverage-unit coverage-integration
 
-bench-socket:
+bench-socket: $(FS_OBJ)
 	mkdir -p $(BUILD)
-	$(MHS) $(MHSFLAGS) -i$(SRC) -i$(BENCH) $(BENCH)/SocketBench.hs -o $(BUILD)/socket-bench
+	$(MHS) $(MHSFLAGS) -optc -I$(CBITS) -optl $(FS_OBJ) -i$(SRC) -i$(BENCH) $(BENCH)/SocketBench.hs -o $(BUILD)/socket-bench
 	$(BUILD)/socket-bench
 
 bench-socket-saturated:

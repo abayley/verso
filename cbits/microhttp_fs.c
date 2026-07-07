@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -19,4 +20,12 @@ long mhfs_rmdir(const char *path) {
 
 long mhfs_stat(const char *path, void *buf) {
     return stat(path, (struct stat *) buf) == 0 ? 0 : (long) errno;
+}
+
+long mhfs_set_nonblock(long fd) {
+    int flags = fcntl((int) fd, F_GETFL, 0);
+    if (flags < 0) {
+        return (long) errno;
+    }
+    return fcntl((int) fd, F_SETFL, flags | O_NONBLOCK) == 0 ? 0 : (long) errno;
 }

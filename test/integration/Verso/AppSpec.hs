@@ -435,12 +435,15 @@ spec = do
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
                     (BS.pack (postRequest "/documents/sec/page.md?publish" "markdown=%23+Version+two"))
-            liveAfterV2 <- readFile (root ++ "/sec/page.md")
+            -- strict reads: GHC's lazy readFile holds the handle open until the
+            -- content is consumed, and the rollback below writes the same file
+            -- ("resource busy" under the coverage build; mhs reads strictly)
+            liveAfterV2 <- BS.unpack <$> BS.readFile (root ++ "/sec/page.md")
             _ <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
                     (BS.pack (postRequest "/documents/sec/page.md?rollback" ("rev=" ++ v1Hash)))
-            liveAfterRollback <- readFile (root ++ "/sec/page.md")
+            liveAfterRollback <- BS.unpack <$> BS.readFile (root ++ "/sec/page.md")
             rollbackSubject <- lastCommitSubject root
             liveAfterV2 `shouldBe` "# Version two"
             liveAfterRollback `shouldBe` "# Version one"

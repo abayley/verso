@@ -62,7 +62,7 @@ import { ToolbarTooltipController } from "./toolbar-tooltip-controller.js";
 type EditorMode = "visual" | "source" | "split";
 type EditorTheme = "light" | "dark" | "match-system";
 type BodyWidth = "narrow" | "medium" | "full";
-type VisualTheme = "paper" | "aurora" | "blueprint" | "workbench" | "studio";
+type VisualTheme = "paper" | "aurora" | "blueprint" | "shadcn" | "workbench" | "studio";
 type ActivePane = "source" | "visual";
 type ToolbarButtonElement = HTMLElement;
 
@@ -88,6 +88,7 @@ const visualThemes: { value: VisualTheme; label: string }[] = [
     { value: "aurora", label: "Aurora" },
     { value: "blueprint", label: "Blueprint" },
     { value: "paper", label: "Paper" },
+    { value: "shadcn", label: "Shadcn" },
     { value: "studio", label: "Studio" },
     { value: "workbench", label: "Workbench" },
 ];

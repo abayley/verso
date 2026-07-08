@@ -1862,7 +1862,7 @@ versionControls themeDefault =
             "wa-radio"
             [Html.class_ "markdown-editor__theme-option", Html.attr "appearance" "button", Html.attr "aria-label" label, Html.attr "value" value]
             (Html.el "wa-icon" [Html.class_ "markdown-editor__button-icon", Html.attr "name" icon, Html.attr "variant" "solid", Html.attr "label" label] (Html.text ""))
-    visualThemeOptions = [("aurora", "Aurora"), ("blueprint", "Blueprint"), ("paper", "Paper"), ("studio", "Studio"), ("workbench", "Workbench")]
+    visualThemeOptions = [("aurora", "Aurora"), ("blueprint", "Blueprint"), ("paper", "Paper"), ("shadcn", "Shadcn"), ("studio", "Studio"), ("workbench", "Workbench")]
     schemeOptions = [("light", "Light", "sun"), ("dark", "Dark", "moon"), ("match-system", "Match system", "display")]
     themeLabelFor t = Maybe.fromMaybe "Paper" (lookup t visualThemeOptions)
 
@@ -1889,7 +1889,7 @@ fewer than two selected the pane is hidden and the hint is shown.
 historyScript :: String
 historyScript =
     "<script>(function(){var r=document.documentElement;"
-        ++ "var labels={paper:'Paper',aurora:'Aurora',blueprint:'Blueprint',workbench:'Workbench',studio:'Studio'};"
+        ++ "var labels={paper:'Paper',aurora:'Aurora',blueprint:'Blueprint',shadcn:'Shadcn',workbench:'Workbench',studio:'Studio'};"
         ++ "var dd=document.getElementById('verso-theme-dropdown');var trig=document.getElementById('verso-theme-trigger');"
         ++ "var ct=localStorage.getItem('editor-theme')||r.getAttribute('data-editor-theme');"
         ++ "if(trig&&ct&&labels[ct]){trig.textContent=labels[ct];}"
@@ -2239,7 +2239,7 @@ the pre-paint bootstrap validate against this set, so an unknown configured or
 stored value falls back to Paper.
 -}
 knownEditorThemes :: [String]
-knownEditorThemes = ["paper", "aurora", "blueprint", "workbench", "studio"]
+knownEditorThemes = ["paper", "aurora", "blueprint", "shadcn", "workbench", "studio"]
 
 -- | Validates a configured default theme name, falling back to @paper@.
 safeEditorTheme :: String -> String

@@ -42,6 +42,9 @@ spec =
         it "given the studio editor theme default, when routing the editor, then it is emitted on the page" $ do
             response <- runThemedApp "studio" (request Http.GET ["documents", "home", "edit"])
             bodyText response `shouldInclude` "data-editor-theme=\"studio\""
+        it "given the shadcn editor theme default, when routing the editor, then it is emitted on the page" $ do
+            response <- runThemedApp "shadcn" (request Http.GET ["documents", "home", "edit"])
+            bodyText response `shouldInclude` "data-editor-theme=\"shadcn\""
         it "given an unknown configured editor theme default, when routing the editor, then it falls back to paper" $ do
             response <- runThemedApp "bogus-theme" (request Http.GET ["documents", "home", "edit"])
             bodyText response `shouldInclude` "data-editor-theme=\"paper\""

@@ -811,6 +811,7 @@ a.markdown-editor__crumb:hover {
   display: none;
 }
 
+:root[data-editor-theme="shadcn"] .markdown-editor__title,
 :root[data-editor-theme="studio"] .markdown-editor__title,
 :root[data-editor-theme="workbench"] .markdown-editor__title {
   font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -2172,6 +2173,77 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   float: left;
   height: 0;
   pointer-events: none;
+}
+
+/* --- Shadcn: the shadcn/ui "base-nova" neutral palette, transcribed from the
+   generated starter's index.css (https://ui.shadcn.com, Tailwind neutral scale
+   in oklch). Light is white surfaces separated by hairline borders with a
+   near-black primary; dark is the inverted neutral scale with translucent
+   borders. Colour comments name the shadcn token each value came from. --- */
+:root[data-editor-theme="shadcn"] {
+  --markdown-editor-accent: oklch(0.205 0 0); /* --primary */
+  --markdown-editor-background: oklch(1 0 0); /* --background */
+  --markdown-editor-code-background: oklch(0.97 0 0); /* --muted */
+  --markdown-editor-code-border: oklch(0.922 0 0); /* --border */
+  --markdown-editor-divider: oklch(0.922 0 0); /* --border */
+  --markdown-editor-error-accent: oklch(0.577 0.245 27.325); /* --destructive */
+  --markdown-editor-error-text: oklch(0.505 0.213 27.518); /* red-700 */
+  --markdown-editor-muted: oklch(0.556 0 0); /* --muted-foreground */
+  --markdown-editor-pill-background: oklch(1 0 0); /* --popover */
+  --markdown-editor-pill-border: oklch(0.922 0 0); /* --border */
+  --markdown-editor-quote-border: oklch(0.87 0 0); /* neutral-300 */
+  --markdown-editor-save-clean: oklch(0.627 0.194 149.214); /* green-600 */
+  --markdown-editor-save-dirty: oklch(0.666 0.179 58.318); /* amber-600 */
+  --markdown-editor-save-retry: oklch(0.577 0.245 27.325); /* --destructive */
+  --markdown-editor-text: oklch(0.145 0 0); /* --foreground */
+  --markdown-editor-info: oklch(0.546 0.245 262.881); /* blue-600 */
+  --markdown-editor-success: oklch(0.627 0.194 149.214); /* green-600 */
+  --markdown-editor-warning: oklch(0.666 0.179 58.318); /* amber-600 */
+  --markdown-editor-danger: oklch(0.577 0.245 27.325); /* --destructive */
+  --markdown-editor-emphasis: oklch(0.541 0.281 293.009); /* violet-600 */
+}
+
+:root[data-editor-theme="shadcn"].wa-dark {
+  --markdown-editor-accent: oklch(0.922 0 0); /* --primary */
+  --markdown-editor-background: oklch(0.145 0 0); /* --background */
+  --markdown-editor-code-background: oklch(0.269 0 0); /* --muted */
+  --markdown-editor-code-border: oklch(1 0 0 / 10%); /* --border */
+  --markdown-editor-divider: oklch(1 0 0 / 10%); /* --border */
+  --markdown-editor-error-accent: oklch(0.704 0.191 22.216); /* --destructive */
+  --markdown-editor-error-text: oklch(0.808 0.114 19.571); /* red-300 */
+  --markdown-editor-muted: oklch(0.708 0 0); /* --muted-foreground */
+  --markdown-editor-pill-background: oklch(0.205 0 0); /* --popover */
+  --markdown-editor-pill-border: oklch(1 0 0 / 10%); /* --border */
+  --markdown-editor-quote-border: oklch(1 0 0 / 15%); /* --input */
+  --markdown-editor-save-clean: oklch(0.723 0.219 149.579); /* green-500 */
+  --markdown-editor-save-dirty: oklch(0.769 0.188 70.08); /* amber-500 */
+  --markdown-editor-save-retry: oklch(0.704 0.191 22.216); /* --destructive */
+  --markdown-editor-text: oklch(0.985 0 0); /* --foreground */
+  --markdown-editor-info: oklch(0.707 0.165 254.624); /* blue-400 */
+  --markdown-editor-success: oklch(0.723 0.219 149.579); /* green-500 */
+  --markdown-editor-warning: oklch(0.769 0.188 70.08); /* amber-500 */
+  --markdown-editor-danger: oklch(0.704 0.191 22.216); /* --destructive */
+  --markdown-editor-emphasis: oklch(0.702 0.183 293.541); /* violet-400 */
+}
+
+/* Chrome: the document body as a shadcn card -- same colour as the page in
+   light (the hairline border does the separating, as shadcn cards do), one
+   step lighter than the page in dark, with the starter's --radius (0.625rem)
+   and Tailwind's shadow-sm. */
+:root[data-editor-theme="shadcn"] .markdown-editor__body {
+  background: var(--markdown-editor-pill-background);
+  border: 1px solid var(--markdown-editor-pill-border);
+  border-radius: 0.625rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 5%);
+  margin-block: 0.75rem;
+  padding: 1.5rem 2rem;
+}
+
+/* Shadcn drops the shared serif for the sans stack (the starter ships Geist;
+   the system grotesques are the closest without bundling a font). */
+:root[data-editor-theme="shadcn"] .markdown-editor__surface,
+:root[data-editor-theme="shadcn"] .markdown-editor__preview {
+  font: 16px/1.7 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 /* The selection bubble toolbar floats over a non-empty visual selection. It is

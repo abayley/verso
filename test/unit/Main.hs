@@ -22,6 +22,7 @@ import qualified MicroHttpSpec as FacadeSpec
 import Test.Hspec
 import qualified Verso.AppSpec as AppSpec
 import qualified Verso.AttachmentSpec as AttachmentSpec
+import qualified Verso.ChromeSpec as ChromeSpec
 import qualified Verso.ClientErrorSpec as ClientErrorSpec
 import qualified Verso.ConfigSpec as VersoConfigSpec
 import qualified Verso.DocumentLinksSpec as DocumentLinksSpec
@@ -75,4 +76,5 @@ main = hspec $ do
     IdentitySpec.spec
     OperationLogSpec.spec
     AppSpec.spec
+    ChromeSpec.spec
     VersoConfigSpec.spec

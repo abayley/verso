@@ -8,5 +8,11 @@
         "test/editor/**/*.test.ts"
     ],
     "project": ["src/Verso/Editor/**/*.ts", "test/editor/**/*.ts", "scripts/*.cjs", "scripts/*.mjs"],
-    "ignoreDependencies": ["rehype-stringify", "remark-rehype", "remark-stringify"]
+    "ignoreDependencies": [
+        "@fontsource-variable/geist",
+        "basecoat-css",
+        "rehype-stringify",
+        "remark-rehype",
+        "remark-stringify"
+    ]
 }

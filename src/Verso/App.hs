@@ -1673,8 +1673,7 @@ versionPageShell themeDefault pageTitle bodyContent =
             Html.meta [Html.attr "charset" "utf-8"]
             Html.rawTrusted editorThemeBootstrapScript
             Html.title [] (Html.text pageTitle)
-            Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/webawesome.css\">"
-            Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
+            chromeHeadAssets
             Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\"></script>"
         Html.body [Html.class_ "markdown-editor-page verso-version-page"] $
             Html.main [] bodyContent
@@ -2299,6 +2298,31 @@ documentPageTitle isNew docId content
             (humaniseSegment (lastSegment docId))
             (frontmatterTitle (Utf8.decodeUtf8 (BS.unpack content)))
 
+{- | The stylesheet and script tags shared by every full page: the vendored
+Geist font and Basecoat chrome bundle (RFC-0035), the Web Awesome styles
+(until Phase 5 removes them), and the app stylesheet. Order matters: Basecoat
+loads before the app stylesheet so un-layered app rules win the cascade.
+-}
+chromeHeadAssets :: Html.Html ()
+chromeHeadAssets = do
+    Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/geist.css\">"
+    Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/basecoat.css\">"
+    Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/webawesome.css\">"
+    Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
+    Html.rawTrusted "<script src=\"/static/editor/basecoat.js\" defer></script>"
+    Html.rawTrusted chromeInitScript
+
+{- | Re-scans for uninitialised Basecoat components after every DOM-producing
+event the runtime cannot observe itself: initial load and htmx swaps (the
+spike's integration contract; Lit elements call initAll from their own
+updated() hooks). initAll is idempotent, so over-calling is harmless.
+-}
+chromeInitScript :: String
+chromeInitScript =
+    "<script>(function(){function i(){window.basecoat&&window.basecoat.initAll();}"
+        ++ "document.addEventListener('DOMContentLoaded',i);"
+        ++ "document.addEventListener('htmx:afterSwap',i);})()</script>"
+
 editorPage :: String -> Maybe String -> String -> BS.ByteString -> Bool -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Maybe String -> Html.Html ()
 editorPage docId mode themeDefault content isNew treeMode editable hasDraft attachments breadcrumbs treeSpine maybeError =
     Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
@@ -2306,8 +2330,7 @@ editorPage docId mode themeDefault content isNew treeMode editable hasDraft atta
             Html.meta [Html.attr "charset" "utf-8"]
             Html.rawTrusted editorThemeBootstrapScript
             Html.title [] (Html.text (documentPageTitle isNew docId content))
-            Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/webawesome.css\">"
-            Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
+            chromeHeadAssets
             Html.rawTrusted "<script src=\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js\"></script>"
             Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\"></script>"
         Html.body [Html.class_ "markdown-editor-page"] $

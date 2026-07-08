@@ -4,6 +4,17 @@ const outfile = "static/editor/markdown-editor.js";
 const mermaidOutfile = "static/editor/mermaid.js";
 const webAwesomeCssEntry = "node_modules/@awesome.me/webawesome/dist/styles/themes/default.css";
 const webAwesomeCssOutfile = "static/editor/webawesome.css";
+// Basecoat chrome (RFC-0035): the precompiled nova bundle and its component
+// runtime are vendored as-is (no Tailwind build), plus the Geist Variable
+// font Basecoat declares but does not ship.
+const basecoatCssEntry = "node_modules/basecoat-css/dist/basecoat-nova.cdn.min.css";
+const basecoatCssOutfile = "static/editor/basecoat.css";
+const basecoatJsEntry = "node_modules/basecoat-css/dist/js/all.min.js";
+const basecoatJsOutfile = "static/editor/basecoat.js";
+const geistCssEntry = "node_modules/@fontsource-variable/geist/index.css";
+const geistCssOutfile = "static/editor/geist.css";
+const geistFilesDir = "node_modules/@fontsource-variable/geist/files";
+const geistFilesOutDir = "static/editor/files";
 
 // Build for production: Bun resolves the "development" export condition (Lit's dev build, which
 // emits "Lit is in dev mode" console warnings) unless NODE_ENV is "production". Set it before the
@@ -15,9 +26,21 @@ await Bun.write(outfile, normalisedBundle);
 await Bun.write(mermaidOutfile, await buildBundle("src/Verso/Editor/mermaid-entry.ts"));
 await Bun.write(webAwesomeCssOutfile, await bundledCss(webAwesomeCssEntry));
 
+await Bun.write(basecoatCssOutfile, Bun.file(basecoatCssEntry));
+await Bun.write(basecoatJsOutfile, Bun.file(basecoatJsEntry));
+await Bun.write(geistCssOutfile, Bun.file(geistCssEntry));
+
+const geistCss = await Bun.file(geistCssEntry).text();
+
+for (const match of geistCss.matchAll(/\.\/files\/([^)'" ]+\.woff2)/g)) {
+    const name = match[1];
+    await Bun.write(`${geistFilesOutDir}/${name}`, Bun.file(`${geistFilesDir}/${name}`));
+}
+
 console.log(`Bundled editor to ${outfile}`);
 console.log(`Bundled Mermaid runtime to ${mermaidOutfile}`);
 console.log(`Bundled Web Awesome styles to ${webAwesomeCssOutfile}`);
+console.log(`Vendored Basecoat to ${basecoatCssOutfile} + ${basecoatJsOutfile}, Geist to ${geistCssOutfile}`);
 
 /** Builds one IIFE browser bundle from an entrypoint and returns its source, exiting on failure. */
 async function buildBundle(entrypoint) {

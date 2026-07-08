@@ -1,3 +1,86 @@
+/* Basecoat chrome guard-rails (RFC-0035). Popover open/close transitions can
+   freeze at currentTime 0 on Lit-rendered nodes, leaving an open menu
+   invisible (spike finding, docs/design/basecoat-lit-spike.md); state changes
+   apply instantly instead. Re-enabling is polish, gated on reproducing the
+   freeze in a desktop browser. */
+[data-popover] {
+  transition: none !important;
+}
+
+/* Lucide icons referenced from the external sprite (static/editor/icons.svg).
+   The symbols carry no presentation attributes; stroke/fill are inherited SVG
+   properties, so setting them on the host <svg> styles the referenced content
+   the way lucide-react does. */
+.chrome-icon {
+  fill: none;
+  height: 1rem;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  width: 1rem;
+}
+
+/* Document content typography. Basecoat's preflight zeroes every margin and
+   drops list markers and heading scale globally, so the document surfaces
+   set their typography deliberately (they previously leaned on UA defaults).
+   Values match the UA scale the content rendered with before RFC-0035. */
+.markdown-editor__preview h1,
+.markdown-editor__surface h1 {
+  font-size: 2em;
+  font-weight: 700;
+  margin: 0.67em 0;
+}
+
+.markdown-editor__preview h2,
+.markdown-editor__surface h2 {
+  font-size: 1.5em;
+  font-weight: 700;
+  margin: 0.83em 0;
+}
+
+.markdown-editor__preview h3,
+.markdown-editor__surface h3 {
+  font-size: 1.17em;
+  font-weight: 700;
+  margin: 1em 0;
+}
+
+.markdown-editor__preview h4,
+.markdown-editor__surface h4 {
+  font-weight: 700;
+  margin: 1.33em 0;
+}
+
+.markdown-editor__preview p,
+.markdown-editor__surface p {
+  margin: 1em 0;
+}
+
+.markdown-editor__preview ul,
+.markdown-editor__surface ul {
+  list-style: disc;
+  margin: 1em 0;
+  padding-left: 2em;
+}
+
+.markdown-editor__preview ol,
+.markdown-editor__surface ol {
+  list-style: decimal;
+  margin: 1em 0;
+  padding-left: 2em;
+}
+
+.markdown-editor__preview blockquote,
+.markdown-editor__surface blockquote {
+  margin: 1em 0;
+}
+
+.markdown-editor__preview pre,
+.markdown-editor__surface pre {
+  margin: 1em 0;
+}
+
 :root {
   --markdown-editor-accent: #b0532f;
   --markdown-editor-background: #f4f0e6;
@@ -934,6 +1017,7 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
 
 .markdown-editor__metadata-heading {
   font-size: 0.75rem;
+  font-weight: 600;
   letter-spacing: 0.08em;
   margin: 0 0 0.75rem;
   text-transform: uppercase;

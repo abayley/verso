@@ -61,7 +61,7 @@ $(FS_OBJ): $(CBITS)/microhttp_fs.c $(CBITS)/microhttp_fs.h
 	mkdir -p $(BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(CBITS)
 
-.PHONY: docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11 all-spikes search-lancedb search-nanoarrow search-model search-shim check clean
+.PHONY: chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11 all-spikes search-lancedb search-nanoarrow search-model search-shim check clean
 
 spike1:
 	mkdir -p $(BUILD)
@@ -259,7 +259,16 @@ search-shim: search-nanoarrow
 	    -I$(VENDOR_SEARCH)/lancedb-c/include
 	@echo "search shim built; mhs targets now link the real shim"
 
-check: docs format-check lint test editor-check
+# RFC-0035 presentation-isolation gates: the Basecoat variant vocabulary lives
+# only in the chrome helper pair; App.hs constructs no markup (views live in
+# Verso.View/Verso.Chrome); no Web Awesome remains anywhere in src/.
+chrome-gates:
+	@if grep -rn 'data-variant' src --include='*.hs' --include='*.ts' | grep -v 'src/Verso/Chrome.hs:\|src/Verso/Editor/chrome.ts:'; then echo "chrome-gates FAILED: data-variant outside the chrome modules"; exit 1; fi
+	@if grep -nE 'Html\.(el|custom|div|button_?|input|attr|class_|form_|span|nav|section|header) ' src/Verso/App.hs; then echo "chrome-gates FAILED: markup construction in App.hs"; exit 1; fi
+	@if grep -rn 'wa-' src --include='*.hs' --include='*.ts'; then echo "chrome-gates FAILED: Web Awesome reference in src/"; exit 1; fi
+	@echo "chrome-gates OK"
+
+check: docs format-check lint test editor-check chrome-gates
 
 clean:
 	rm -rf $(BUILD)

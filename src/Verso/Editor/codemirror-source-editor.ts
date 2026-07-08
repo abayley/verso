@@ -7,7 +7,7 @@ import { headingLineNumbers } from "./table-of-contents.js";
 import type { VisualBlockStyle } from "./tiptap-visual-editor.js";
 
 // Syntax highlighting driven by the editor's palette CSS variables, so the Markdown source reads correctly
-// in both light and dark mode (the variables flip under :root.wa-dark). It overrides CodeMirror's default
+// in both light and dark mode (the variables flip under :root.dark). It overrides CodeMirror's default
 // light-oriented highlight style -- which was unreadable on the dark background -- via Prec.highest.
 const paletteHighlightStyle = HighlightStyle.define([
     { tag: tags.heading, color: "var(--markdown-editor-accent)", fontWeight: "600" },

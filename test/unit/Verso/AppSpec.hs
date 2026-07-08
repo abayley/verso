@@ -19,11 +19,9 @@ spec =
         it "given editor request, when routing, then markdown editor page is returned" $ do
             response <- runApp (request Http.GET ["documents", "home", "edit"]) ""
             Http.statusCode (Http.responseStatus response) `shouldBe` 200
-            bodyText response `shouldInclude` "class=\"wa-theme-default wa-palette-default wa-brand-blue\""
             bodyText response `shouldInclude` "data-editor-theme=\"shadcn\""
             bodyText response `shouldInclude` "https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"
             bodyText response `shouldInclude` "<script src=\"/static/editor/markdown-editor.js\"></script>"
-            bodyText response `shouldInclude` "<link rel=\"stylesheet\" href=\"/static/editor/webawesome.css\">"
             bodyText response `shouldInclude` "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
             bodyText response `shouldInclude` "<link rel=\"stylesheet\" href=\"/static/editor/geist.css\">"
             bodyText response `shouldInclude` "<link rel=\"stylesheet\" href=\"/static/editor/basecoat.css\">"

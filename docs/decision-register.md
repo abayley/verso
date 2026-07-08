@@ -290,7 +290,8 @@ Decision: Use Tiptap/ProseMirror for the visual editing surface inside
 remark/mdast as the reference parser and validation fixture while Tiptap
 Markdown support settles. Use CodeMirror for the future raw Markdown editor.
 Use Web Awesome, the successor home for Shoelace, for future web-component UI
-controls. Consider Lit for the editor shell once toolbar state, mode switching,
+controls. (This Web Awesome clause is superseded by ADR-076: Basecoat chrome
+replaced Web Awesome under RFC-0035.) Consider Lit for the editor shell once toolbar state, mode switching,
 and nested controls make manual DOM management hard to follow.
 
 Consequences: The next implementation slice should replace the visual
@@ -2270,3 +2271,65 @@ a section boundary can rank lower than ideal -- revisit with overlap or
 semantic splitting only on real query evidence, and expect a full re-embed
 when the strategy changes. The implementation is the pure
 `Verso.SearchChunks`, unit-tested per rule above.
+
+### ADR-076: Basecoat Chrome Replaces Web Awesome
+
+Status: Accepted (RFC-0035). Supersedes the Web Awesome clause of the
+Tiptap editing-engine decision (the "Use Web Awesome, the successor home
+for Shoelace, for future web-component UI controls" clause); the Tiptap
+decision itself stands.
+
+Context: The chrome needed the shadcn/ui look, validated against two
+mockups (a React reference and a Basecoat replica measured to metric
+parity). Web Awesome's shadow DOM capped restyling fidelity, and its
+component vocabulary could not be reached by theme CSS. Basecoat
+(basecoat-css, MIT) recreates shadcn styling as plain HTML classes plus
+a small vanilla-JS runtime, is theme-compatible with shadcn, tracks
+shadcn's visual evolution via npm releases, and documents htmx
+re-initialisation (initAll) as a first-class integration.
+
+Decision: Vendor Basecoat's precompiled nova bundle, its runtime, and
+the Geist Variable font (no Tailwind build). Generate all interactive
+chrome markup through an intent-based helper pair -- Verso.Chrome for
+server templates, Editor/chrome.ts for Lit and imperative DOM -- which
+alone owns the Basecoat variant vocabulary and the dropdown/tab ARIA
+wiring. Views render from Verso.View; App.hs keeps routing and handlers
+only. Popover open/close transitions are disabled ([data-popover]
+transition: none): the composition spike found transitions on
+Lit-rendered popovers can freeze at currentTime 0, leaving open menus
+invisible (docs/design/basecoat-lit-spike.md). Three grep gates in
+make check (chrome-gates) enforce the containment.
+
+Consequences: Web Awesome is removed (dependency, bundle imports,
+vendored CSS, wa- classes); tooltips are CSS-only (data-tooltip,
+text-only, explicit data-side/data-align near viewport edges or the
+tooltip pseudo-element widens the page); dialogs are native `dialog`
+elements with Basecoat styling; icons come from a vendored Lucide
+sprite referenced by `use` and styled via inherited stroke properties.
+Upstream shadcn styling changes arrive by bumping basecoat-css.
+
+### ADR-077: Two Visual Themes -- Shadcn Default, Studio as Interaction Model
+
+Status: Accepted (RFC-0035, grill decision 2026-07-08).
+
+Context: Six themes predated the Basecoat migration (Paper, Aurora,
+Blueprint, Workbench, Studio, and the new Shadcn). Each surviving theme
+must be re-expressed over Basecoat's anatomy, and the shadcn look was
+chosen as the design language; only themes actually used earn that
+migration work.
+
+Decision: Keep two: `shadcn` is the default -- its oklch tokens are the
+:root defaults, dark keyed on Basecoat's `.dark` class -- and `studio`
+is purely an interaction-model switch (bubble toolbar + slash menu
+instead of the persistent command bar) with the same look. Paper,
+Aurora, Blueprint, and Workbench retire, including Workbench's
+open-in-split preset. Retired or unknown stored/configured theme names
+fall back to `shadcn`.
+
+Consequences: The theme dropdown lists two entries; the mockups under
+docs/mockups/ remain the source for future themes, which return as
+shadcn token overrides plus an un-layered override sheet (Basecoat's
+CSS is entirely inside @layer, so plain theme sheets win the cascade)
+plus structural CSS -- see RFC-0035's theme section. Aurora's frosted
+look and Workbench's IDE frame can be resurrected from git history if
+missed.

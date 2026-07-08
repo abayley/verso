@@ -3,7 +3,7 @@
  * CSS-only tooltips (RFC-0035): registering a control now just stamps its
  * data-tooltip attribute; hover/focus behaviour, delays, and placement are
  * the stylesheet's. The class keeps its old surface (register/hide/element)
- * so hosts did not have to change when the wa-tooltip implementation left.
+ * so hosts did not have to change when the Web Awesome implementation left.
  */
 export class ToolbarTooltipController {
     private readonly placeholder: HTMLElement;

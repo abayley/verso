@@ -7,20 +7,27 @@ through the RFC's phases; the editor page itself moves as its chrome
 migrates.
 -}
 module Verso.View (
+    Crumb (..),
     chromeHeadAssets,
     diffBody,
     diffPage,
+    editorPage,
     editorThemeBootstrapScript,
     excerptOf,
     historyPage,
+    indexPage,
+    jsonString,
     knownEditorThemes,
     safeEditorTheme,
+    saveStatusFragment,
     searchPage,
+    validationStatusFragment,
     versionPageShell,
 ) where
 
 import qualified Concordance.Store as Store
 import qualified Control.Monad as Monad
+import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified MicroHttp.Html as Html
@@ -71,19 +78,18 @@ editorThemeBootstrapScript =
         -- standalone history/diff views -- paints consistently. (Earlier this only matched 'system', so the
         -- stored 'match-system' fell through to light.)
         ++ "var d=s==='dark'||(s!=='light'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);"
-        ++ "r.classList.toggle('wa-dark',d);r.classList.toggle('wa-light',!d);r.classList.toggle('dark',d);"
+        ++ "r.classList.toggle('dark',d);"
         ++ "}catch(e){}})();</script>"
 
 {- | The stylesheet and script tags shared by every full page: the vendored
-Geist font and Basecoat chrome bundle (RFC-0035), the Web Awesome styles
-(until Phase 5 removes them), and the app stylesheet. Order matters: Basecoat
-loads before the app stylesheet so un-layered app rules win the cascade.
+Geist font, the Basecoat chrome bundle (RFC-0035), and the app stylesheet.
+Order matters: Basecoat loads before the app stylesheet so un-layered app
+rules win the cascade.
 -}
 chromeHeadAssets :: Html.Html ()
 chromeHeadAssets = do
     Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/geist.css\">"
     Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/basecoat.css\">"
-    Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/webawesome.css\">"
     Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"
     Html.rawTrusted "<script src=\"/static/editor/basecoat.js\" defer></script>"
     Html.rawTrusted chromeInitScript
@@ -100,16 +106,15 @@ chromeInitScript =
         ++ "document.addEventListener('htmx:afterSwap',i);})()</script>"
 
 {- | The full-page shell shared by the history, diff, and search views. It
-reuses the editor page's theming (the @wa-@ palette classes, the
-@data-editor-theme@ default, the theme-bootstrap script, and the shared head
-assets) so these pages match the editor\/reader look, and loads the editor
-bundle so the components used by the theme controls register and render
-exactly as in the editor (RFC-0032). The @\<markdown-editor\>@ element the
-bundle also defines is simply unused on these pages.
+reuses the editor page's theming (the @data-editor-theme@ default, the
+theme-bootstrap script, and the shared head assets) so these pages match the
+editor\/reader look, and loads the editor bundle so its chrome behaviours are
+available. The @\<markdown-editor\>@ element the bundle also defines is
+simply unused on these pages.
 -}
 versionPageShell :: String -> String -> Html.Html () -> Html.Html ()
 versionPageShell themeDefault pageTitle bodyContent =
-    Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
+    Html.html [Html.lang "en", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
             Html.rawTrusted editorThemeBootstrapScript
@@ -262,7 +267,7 @@ historyScript =
         ++ "it.addEventListener('click',function(){var v=it.getAttribute('data-value');"
         ++ "if(v&&labels[v]){localStorage.setItem('editor-theme',v);r.setAttribute('data-editor-theme',v);if(trig){trig.textContent=labels[v];}}});});"
         ++ "var sg=document.getElementById('verso-scheme-group');"
-        ++ "function applyScheme(s){var d=s==='dark'||(s!=='light'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);r.classList.toggle('wa-dark',d);r.classList.toggle('wa-light',!d);r.classList.toggle('dark',d);}"
+        ++ "function applyScheme(s){var d=s==='dark'||(s!=='light'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);r.classList.toggle('dark',d);}"
         ++ "function reflectScheme(v){if(!sg){return;}[].forEach.call(sg.querySelectorAll('[data-scheme]'),function(b){b.setAttribute('aria-checked',b.getAttribute('data-scheme')===v?'true':'false');});}"
         ++ "if(sg){var cs=localStorage.getItem('editor-color-scheme')||'match-system';reflectScheme(cs);"
         ++ "[].forEach.call(sg.querySelectorAll('[data-scheme]'),function(b){b.addEventListener('click',function(){"
@@ -335,3 +340,113 @@ sideBySideHtml rows =
     row (SideChange ml mr) = Html.el "tr" [] (cell "verso-diff-del" ml >> cell "verso-diff-add" mr)
     cell _ Nothing = Html.el "td" [Html.class_ "verso-diff-empty"] (Html.text "")
     cell cls (Just s) = Html.el "td" [Html.class_ cls] (Html.text s)
+
+{- | The page's attachments as a compact JSON array of @{"name","localPath"}@
+objects, embedded on the editor element for the metadata panel (RFC-0019). Strings
+are JSON-escaped; the surrounding HTML attribute is escaped by the renderer.
+-}
+attachmentsJson :: [(String, String)] -> String
+attachmentsJson entries = "[" ++ List.intercalate "," (map attachmentObject entries) ++ "]"
+  where
+    attachmentObject (name, localPath) =
+        "{\"name\":" ++ jsonString name ++ ",\"localPath\":" ++ jsonString localPath ++ "}"
+
+-- | A JSON string literal: the value wrapped in quotes with the structural characters escaped.
+jsonString :: String -> String
+jsonString s = "\"" ++ concatMap escape s ++ "\""
+  where
+    escape '"' = "\\\""
+    escape '\\' = "\\\\"
+    escape '\n' = "\\n"
+    escape '\r' = "\\r"
+    escape '\t' = "\\t"
+    escape c = [c]
+
+-- | A breadcrumb in the path navigation: a visible label and an optional link (Nothing for the current page).
+data Crumb = Crumb String (Maybe String)
+
+-- | The breadcrumb trail as a JSON array of @{"label","href"}@ (href omitted for the current page).
+breadcrumbsJson :: [Crumb] -> String
+breadcrumbsJson crumbs = "[" ++ List.intercalate "," (map crumbObject crumbs) ++ "]"
+  where
+    crumbObject (Crumb label href) =
+        "{\"label\":" ++ jsonString label ++ maybe "" (\h -> ",\"href\":" ++ jsonString h) href ++ "}"
+
+indexPage :: Html.Html ()
+indexPage =
+    Html.html [Html.lang "en"] $ do
+        Html.head [] $ do
+            Html.meta [Html.attr "charset" "utf-8"]
+            Html.title [] "MicroHttp Test App"
+        Html.body [] $ do
+            Html.main [] $ do
+                Html.h1 [] "MicroHttp"
+                Html.p [] "The MicroHs HTTP server is running."
+                Html.custom "status-card" [Html.attr "data-state" "ok"] "Served by src/Verso/Main.hs"
+
+editorPage :: String -> Maybe String -> String -> String -> BS.ByteString -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Maybe String -> Html.Html ()
+editorPage docId mode themeDefault pageTitle content treeMode editable hasDraft attachments breadcrumbs treeSpine maybeError =
+    Html.html [Html.lang "en", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
+        Html.head [] $ do
+            Html.meta [Html.attr "charset" "utf-8"]
+            Html.rawTrusted editorThemeBootstrapScript
+            Html.title [] (Html.text pageTitle)
+            chromeHeadAssets
+            Html.rawTrusted "<script src=\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js\"></script>"
+            Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\"></script>"
+        Html.body [Html.class_ "markdown-editor-page"] $
+            Html.main [] $
+                -- The read view (RFC-0020) has no write path: the element is rendered without the
+                -- surrounding autosave form, and marked read-only so the editors and chrome disable editing.
+                if editable
+                    then Html.form_
+                        [ Html.attr "action" ("/documents/" ++ docId)
+                        , Html.attr "method" "post"
+                        , Html.hxPost ("/documents/" ++ docId)
+                        , Html.hxSwap "none"
+                        , Html.attr "hx-trigger" "submit, editor:changed delay:2s from:markdown-editor"
+                        ]
+                        $ do
+                            maybe (return ()) validationStatusFragment maybeError
+                            editorElement docId mode treeMode editable hasDraft attachments breadcrumbs treeSpine content
+                            Html.custom "noscript" [] $
+                                Html.button_ [Html.attr "type" "submit"] (Html.text "Save")
+                    else editorElement docId mode treeMode editable hasDraft attachments breadcrumbs treeSpine content
+
+{- | The @\<markdown-editor\>@ custom element with its server-set attributes and the
+no-script @\<textarea\>@ fallback holding the document. @data-readonly@ is set in the
+read view (RFC-0020); the element disables editing and hides the editing chrome.
+-}
+editorElement :: String -> Maybe String -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> BS.ByteString -> Html.Html ()
+editorElement docId mode treeMode editable hasDraft attachments breadcrumbs treeSpine content =
+    Html.custom
+        "markdown-editor"
+        ( [Html.attr "name" "markdown", Html.attr "data-document" docId]
+            ++ maybe [] (\m -> [Html.attr "mode" m]) mode
+            ++ [Html.attr "data-document-mode" "tree" | treeMode]
+            ++ [Html.attr "data-attachments" (attachmentsJson attachments) | treeMode, not (null attachments)]
+            ++ [Html.attr "data-breadcrumbs" (breadcrumbsJson breadcrumbs) | not (null breadcrumbs)]
+            ++ [Html.attr "data-tree-spine" treeSpine | treeMode, not (null treeSpine)]
+            ++ [Html.attr "data-readonly" "" | not editable]
+            -- RFC-0032: marks a page that has an unpublished draft, so the read view can flag it.
+            ++ [Html.attr "data-has-draft" "" | hasDraft]
+        )
+        ( Html.custom
+            "textarea"
+            [Html.attr "name" "markdown", Html.attr "aria-label" "Markdown source", Html.class_ "markdown-editor__fallback"]
+            (Html.bytesText content)
+        )
+
+-- | The htmx save-confirmation status fragment.
+saveStatusFragment :: String -> Html.Html ()
+saveStatusFragment markdown =
+    Html.p [Html.attr "id" "save-status"] $ do
+        Html.text "Saved Markdown document: "
+        Html.text markdown
+
+-- | The htmx validation-error status fragment.
+validationStatusFragment :: String -> Html.Html ()
+validationStatusFragment err =
+    Html.p [Html.attr "id" "save-status"] $ do
+        Html.text "Unsupported Markdown: "
+        Html.text err

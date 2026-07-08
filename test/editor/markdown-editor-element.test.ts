@@ -1281,7 +1281,7 @@ describe("MarkdownEditorElement visual themes", (): void => {
         installLocalStorageStub();
         const root = document.documentElement;
         root.removeAttribute("data-editor-theme");
-        root.classList.remove("wa-light", "wa-dark");
+        root.classList.remove("dark");
     };
 
     beforeEach(resetThemeState);
@@ -1326,7 +1326,7 @@ describe("MarkdownEditorElement visual themes", (): void => {
         document.body.append(editor);
         await waitForInitialisation();
 
-        expect(document.documentElement.classList.contains("wa-dark")).toBe(true);
+        expect(document.documentElement.classList.contains("dark")).toBe(true);
         expect(document.documentElement.getAttribute("data-editor-theme")).toBe("studio");
     });
 
@@ -1348,7 +1348,7 @@ describe("MarkdownEditorElement studio surfaces", (): void => {
         installLocalStorageStub();
         const root = document.documentElement;
         root.removeAttribute("data-editor-theme");
-        root.classList.remove("wa-light", "wa-dark");
+        root.classList.remove("dark");
     };
 
     beforeEach(resetThemeState);

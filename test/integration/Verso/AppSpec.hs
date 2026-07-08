@@ -369,7 +369,6 @@ spec = do
             fmap (bodyContains (BS.pack "anonymous")) history `shouldBe` Right True
             -- the restyled page carries the editor theme head, a per-revision checkbox, and the diff hint
             fmap (bodyContains (BS.pack "data-editor-theme")) history `shouldBe` Right True
-            fmap (bodyContains (BS.pack "webawesome.css")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "verso-pick")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "verso-diff-hint")) history `shouldBe` Right True
             -- the theme bootstrap resolves dark/light/system (not always light)

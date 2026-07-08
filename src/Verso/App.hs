@@ -587,7 +587,7 @@ treeDeleteHandler versioning author writeLock findRelevant maint root logPath tr
                     , OperationLog.opTs = ts
                     , OperationLog.opTrash = Just tid
                     }
-            pure (jsonResponse ("{\"deleted\":" ++ jsonString p ++ ",\"trashId\":" ++ jsonString tid ++ "}"))
+            pure (jsonResponse ("{\"deleted\":" ++ View.jsonString p ++ ",\"trashId\":" ++ View.jsonString tid ++ "}"))
 
 {- | The restore endpoint (RFC-0028): @POST /trash/*id@ moves a trashed entry back to
 its origin (re-adding the listing), appends a @restore@ record, and returns the
@@ -618,7 +618,7 @@ treeRestoreHandler versioning writeLock maint root logPath trashRoot captures re
                     , OperationLog.opTs = ts
                     , OperationLog.opTrash = Just trashId
                     }
-            pure (jsonResponse ("{\"restored\":" ++ jsonString path ++ "}"))
+            pure (jsonResponse ("{\"restored\":" ++ View.jsonString path ++ "}"))
 
 -- | @"page"@ or @"section"@ for the operation log.
 kindLabel :: Bool -> String
@@ -643,7 +643,7 @@ referrersJson referrers =
         ++ List.intercalate "," (map one referrers)
         ++ "]}"
   where
-    one (page, link) = "{\"page\":" ++ jsonString page ++ ",\"link\":" ++ jsonString link ++ "}"
+    one (page, link) = "{\"page\":" ++ View.jsonString page ++ ",\"link\":" ++ View.jsonString link ++ "}"
 
 -- | The operations-list endpoint (RFC-0028): @GET /operations@ returns the log as JSON, for the undo picker.
 treeOperationsHandler :: FilePath -> Router.Handler
@@ -716,7 +716,7 @@ applyInverse findRelevant maint root logPath trashRoot op = case OperationLog.op
                 | TreeMove.planApplied plan -> do
                     onMove maint to from
                     appendInverse (OperationLog.opKind op) OperationLog.OpMove (Just to) (Just from) Nothing
-                    pure (Right ("{\"undo\":\"move\",\"from\":" ++ jsonString to ++ ",\"to\":" ++ jsonString from ++ "}"))
+                    pure (Right ("{\"undo\":\"move\",\"from\":" ++ View.jsonString to ++ ",\"to\":" ++ View.jsonString from ++ "}"))
                 | otherwise -> pure (Left "inverse move was not applied")
 
     undoDelete = case OperationLog.opTrash op of
@@ -728,7 +728,7 @@ applyInverse findRelevant maint root logPath trashRoot op = case OperationLog.op
                 Right (path, kind) -> do
                     onRestore maint path
                     appendInverse kind OperationLog.OpRestore Nothing (Just path) (Just tid)
-                    pure (Right ("{\"undo\":\"delete\",\"restored\":" ++ jsonString path ++ "}"))
+                    pure (Right ("{\"undo\":\"delete\",\"restored\":" ++ View.jsonString path ++ "}"))
 
     undoRestore = do
         seqNo <- logSeq logPath
@@ -740,7 +740,7 @@ applyInverse findRelevant maint root logPath trashRoot op = case OperationLog.op
                 ts <- Log.localTimestamp
                 onDelete maint to
                 appendOp logPath (OperationLog.Operation OperationLog.OpDelete (kindOf to) (Just path) Nothing seqNo ts (Just tid))
-                pure (Right ("{\"undo\":\"restore\",\"deleted\":" ++ jsonString path ++ ",\"trashId\":" ++ jsonString tid ++ "}"))
+                pure (Right ("{\"undo\":\"restore\",\"deleted\":" ++ View.jsonString path ++ ",\"trashId\":" ++ View.jsonString tid ++ "}"))
 
     -- Appends an inverse record with a fresh seq and timestamp.
     appendInverse kind typ opFrom' opTo' trash = do
@@ -852,7 +852,7 @@ treeEdit versioning editorThemeDefault root path request =
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
             breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
             spine <- Iteratee.liftIO (treeSpineFor root path)
-            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content isNew True True (Maybe.isJust mDraft) attachments breadcrumbs spine Nothing))
+            pure (documentResponse (View.editorPage path (editorMode request) editorThemeDefault (documentPageTitle isNew path content) content True True (Maybe.isJust mDraft) attachments breadcrumbs spine Nothing))
 
 {- | Renders the read-only view for a tree document (the default @GET@, RFC-0020):
 the editor shell with editing disabled. A missing page is a @404@ -- reading never
@@ -876,7 +876,7 @@ treeRead versioning editorThemeDefault root path request =
                         if versioningOn versioning
                             then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
                             else pure False
-                    pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content False True False hasDraft attachments breadcrumbs spine Nothing))
+                    pure (documentResponse (View.editorPage path (editorMode request) editorThemeDefault (documentPageTitle False path content) content True False hasDraft attachments breadcrumbs spine Nothing))
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
 treeServeFile :: FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
@@ -1007,30 +1007,6 @@ splitExtension name =
         (revExt, '.' : revBase) -> (reverse revBase, '.' : reverse revExt)
         (_, _) -> (name, "")
 
-{- | The page's attachments as a compact JSON array of @{"name","localPath"}@
-objects, embedded on the editor element for the metadata panel (RFC-0019). Strings
-are JSON-escaped; the surrounding HTML attribute is escaped by the renderer.
--}
-attachmentsJson :: [(String, String)] -> String
-attachmentsJson entries = "[" ++ List.intercalate "," (map attachmentObject entries) ++ "]"
-  where
-    attachmentObject (name, localPath) =
-        "{\"name\":" ++ jsonString name ++ ",\"localPath\":" ++ jsonString localPath ++ "}"
-
--- | A JSON string literal: the value wrapped in quotes with the structural characters escaped.
-jsonString :: String -> String
-jsonString s = "\"" ++ concatMap escape s ++ "\""
-  where
-    escape '"' = "\\\""
-    escape '\\' = "\\\\"
-    escape '\n' = "\\n"
-    escape '\r' = "\\r"
-    escape '\t' = "\\t"
-    escape c = [c]
-
--- | A breadcrumb in the path navigation: a visible label and an optional link (Nothing for the current page).
-data Crumb = Crumb String (Maybe String)
-
 {- | The folder rel-paths whose @index.md@ pages link in a document's breadcrumb trail, root-first and
 excluding the current page (the trail's final, unlinked crumb). A folder index page contributes its folder as
 the current crumb, so it is not also linked: @"a/b/page.md"@ links @["", "a", "a/b"]@; @"a/index.md"@ links
@@ -1059,14 +1035,14 @@ folderHref fp = "/documents/" ++ fp ++ "/index.md"
 current page's own title as the final unlinked crumb. A folder's label falls back to a humanised segment
 (and the root to @Cello@) when its @index.md@ is missing or has no @name@.
 -}
-breadcrumbsFor :: FilePath -> String -> String -> IO [Crumb]
+breadcrumbsFor :: FilePath -> String -> String -> IO [View.Crumb]
 breadcrumbsFor root path content = do
     links <- mapM folderCrumb (linkedFolderPaths path)
-    pure (links ++ [Crumb currentLabel Nothing])
+    pure (links ++ [View.Crumb currentLabel Nothing])
   where
     folderCrumb fp = do
         name <- readIndexTitle root fp
-        pure (Crumb (Maybe.fromMaybe (folderFallback fp) name) (Just (folderHref fp)))
+        pure (View.Crumb (Maybe.fromMaybe (folderFallback fp) name) (Just (folderHref fp)))
     folderFallback "" = "Cello"
     folderFallback fp = humaniseSegment (lastSegment fp)
     currentLabel = Maybe.fromMaybe (humaniseSegment (lastSegment path)) (frontmatterTitle content)
@@ -1142,13 +1118,6 @@ trimSpace = f . f where f = reverse . dropWhile Char.isSpace
 stripCarriageReturn :: String -> String
 stripCarriageReturn s = if not (null s) && last s == '\r' then init s else s
 
--- | The breadcrumb trail as a JSON array of @{"label","href"}@ (href omitted for the current page).
-breadcrumbsJson :: [Crumb] -> String
-breadcrumbsJson crumbs = "[" ++ List.intercalate "," (map crumbObject crumbs) ++ "]"
-  where
-    crumbObject (Crumb label href) =
-        "{\"label\":" ++ jsonString label ++ maybe "" (\h -> ",\"href\":" ++ jsonString h) href ++ "}"
-
 -- | A navigation-tree node kind: a section (a folder) or a page (a Markdown file).
 data NodeKind = Section | Page
     deriving (Eq, Show)
@@ -1201,11 +1170,11 @@ treeChildrenJson nodes = "[" ++ List.intercalate "," (map nodeObject nodes) ++ "
   where
     nodeObject n =
         "{\"name\":"
-            ++ jsonString (nodeName n)
+            ++ View.jsonString (nodeName n)
             ++ ",\"path\":"
-            ++ jsonString (nodePath n)
+            ++ View.jsonString (nodePath n)
             ++ ",\"kind\":"
-            ++ jsonString (kindString (nodeKind n))
+            ++ View.jsonString (kindString (nodeKind n))
             ++ ",\"hasChildren\":"
             ++ (if nodeHasChildren n then "true" else "false")
             ++ "}"
@@ -1293,7 +1262,7 @@ treeSpineFor root path = do
         fps -> fps
     folderEntry fp = do
         nodes <- childrenOf root fp
-        pure ("{\"path\":" ++ jsonString fp ++ ",\"children\":" ++ treeChildrenJson nodes ++ "}")
+        pure ("{\"path\":" ++ View.jsonString fp ++ ",\"children\":" ++ treeChildrenJson nodes ++ "}")
 
 {- | Creates a new page or section under a parent section (RFC-0026), writing
 seeded frontmatter eagerly, and returns either an error message ('Left', a @400@)
@@ -1381,13 +1350,13 @@ yamlScalar s
 createdJson :: String -> String -> String -> String -> String
 createdJson name path kind editPath =
     "{\"name\":"
-        ++ jsonString name
+        ++ View.jsonString name
         ++ ",\"path\":"
-        ++ jsonString path
+        ++ View.jsonString path
         ++ ",\"kind\":"
-        ++ jsonString kind
+        ++ View.jsonString kind
         ++ ",\"editPath\":"
-        ++ jsonString editPath
+        ++ View.jsonString editPath
         ++ "}"
 
 -- | A @200@ JSON response with the given body.
@@ -1515,7 +1484,7 @@ a no-JavaScript form post.
 saveResponse :: Http.RequestHead -> String -> String -> Iteratee.Iter Stream.StreamError Http.Response
 saveResponse request path markdown =
     if isHtmxRequest request
-        then pure (htmlResponseChunks (saveStatusFragment markdown))
+        then pure (htmlResponseChunks (View.saveStatusFragment markdown))
         else pure (seeOtherResponse ("/documents/" ++ path ++ "?edit"))
 
 {- | Publishes the editor's content (RFC-0032): writes it to the live page through
@@ -1633,7 +1602,7 @@ treeReadAt editorThemeDefault root path request = do
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
             breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
             spine <- Iteratee.liftIO (treeSpineFor root path)
-            pure (documentResponse (editorPage path (editorMode request) editorThemeDefault content False True False False attachments breadcrumbs spine Nothing))
+            pure (documentResponse (View.editorPage path (editorMode request) editorThemeDefault (documentPageTitle False path content) content True False False attachments breadcrumbs spine Nothing))
 
 {- | The rollback action (RFC-0032): @POST /documents/\<path\>?rollback@ with a
 @rev@ field restores the page's content at that revision, writes it through the
@@ -1706,13 +1675,13 @@ searchResultsJson pending hits =
   where
     one hit =
         "{\"path\":"
-            ++ jsonString (Store.hitPage hit)
+            ++ View.jsonString (Store.hitPage hit)
             ++ ",\"title\":"
-            ++ jsonString (titleOfHit hit)
+            ++ View.jsonString (titleOfHit hit)
             ++ ",\"anchor\":"
-            ++ jsonString (Store.hitAnchor hit)
+            ++ View.jsonString (Store.hitAnchor hit)
             ++ ",\"excerpt\":"
-            ++ jsonString (View.excerptOf (Store.hitText hit))
+            ++ View.jsonString (View.excerptOf (Store.hitText hit))
             ++ "}"
 
 -- | A hit's page title: the context line's first @ > @-separated segment.
@@ -1802,14 +1771,14 @@ treeNotFound =
 -- | The flat-mode landing page handler.
 index :: Router.Handler
 index _ _ =
-    pure (documentResponse indexPage)
+    pure (documentResponse View.indexPage)
 
 -- | The flat-mode editor page handler for a document id.
 editDocument :: String -> DocumentStore -> Router.Handler
 editDocument editorThemeDefault store captures request = do
     let docId = documentId captures
     content <- Iteratee.liftIO (loadDocument store docId)
-    pure (documentResponse (editorPage docId (editorMode request) editorThemeDefault (BS.pack content) False False True False [] [] "" Nothing))
+    pure (documentResponse (View.editorPage docId (editorMode request) editorThemeDefault (documentPageTitle False docId (BS.pack content)) (BS.pack content) False True False [] [] "" Nothing))
 
 -- | The flat-mode handler that serves a document's raw Markdown.
 showDocument :: DocumentStore -> Router.Handler
@@ -1830,13 +1799,13 @@ saveDocument editorThemeDefault store captures request = do
         docId = documentId captures
     case validateMarkdown markdown of
         Just err
-            | isHtmxRequest request -> pure (htmlResponseChunks (validationStatusFragment err))
+            | isHtmxRequest request -> pure (htmlResponseChunks (View.validationStatusFragment err))
             | otherwise ->
-                pure (documentResponse (editorPage docId Nothing editorThemeDefault (BS.pack markdown) False False True False [] [] "" (Just err)))
+                pure (documentResponse (View.editorPage docId Nothing editorThemeDefault (documentPageTitle False docId (BS.pack markdown)) (BS.pack markdown) False True False [] [] "" (Just err)))
         Nothing -> do
             Iteratee.liftIO (saveDocumentContent store docId markdown)
             if isHtmxRequest request
-                then pure (htmlResponseChunks (saveStatusFragment markdown))
+                then pure (htmlResponseChunks (View.saveStatusFragment markdown))
                 else pure (seeOtherResponse ("/documents/" ++ docId ++ "/edit"))
 
 -- | The handler's own body bound; the server pipeline also caps the body.
@@ -1981,28 +1950,6 @@ splitOn separator text =
         (before, _ : after) -> before : splitOn separator after
         (before, []) -> [before]
 
--- | The flat-mode landing page markup.
-indexPage :: Html.Html ()
-indexPage =
-    Html.html [Html.lang "en"] $ do
-        Html.head [] $ do
-            Html.meta [Html.attr "charset" "utf-8"]
-            Html.title [] "MicroHttp Test App"
-        Html.body [] $ do
-            Html.main [] $ do
-                Html.h1 [] "MicroHttp"
-                Html.p [] "The MicroHs HTTP server is running."
-                Html.custom "status-card" [Html.attr "data-state" "ok"] "Served by src/Verso/Main.hs"
-
-{- | The Markdown editor page (RFC-0001). It is a complete, server-rendered form
-that works without JavaScript: a @\<textarea name="markdown"\>@ holding the
-current document inside the @\<markdown-editor\>@ element, and a no-script submit
-button. When scripting is available the element adopts the textarea, participates
-in form submission through @ElementInternals@, and htmx autosaves; the textarea
-is disabled so it does not double-submit. @maybeError@ re-renders a validation
-message after a failed ordinary post.
--}
-
 {- | The browser-tab title for a document page: the page's frontmatter
 @name@, falling back to the humanised filename for an untitled page.
 -}
@@ -2014,77 +1961,10 @@ documentPageTitle isNew docId content
             (humaniseSegment (lastSegment docId))
             (frontmatterTitle (Utf8.decodeUtf8 (BS.unpack content)))
 
-editorPage :: String -> Maybe String -> String -> BS.ByteString -> Bool -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Maybe String -> Html.Html ()
-editorPage docId mode themeDefault content isNew treeMode editable hasDraft attachments breadcrumbs treeSpine maybeError =
-    Html.html [Html.lang "en", Html.class_ "wa-theme-default wa-palette-default wa-brand-blue", Html.attr "data-editor-theme" (View.safeEditorTheme themeDefault)] $ do
-        Html.head [] $ do
-            Html.meta [Html.attr "charset" "utf-8"]
-            Html.rawTrusted View.editorThemeBootstrapScript
-            Html.title [] (Html.text (documentPageTitle isNew docId content))
-            View.chromeHeadAssets
-            Html.rawTrusted "<script src=\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js\"></script>"
-            Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\"></script>"
-        Html.body [Html.class_ "markdown-editor-page"] $
-            Html.main [] $
-                -- The read view (RFC-0020) has no write path: the element is rendered without the
-                -- surrounding autosave form, and marked read-only so the editors and chrome disable editing.
-                if editable
-                    then Html.form_
-                        [ Html.attr "action" ("/documents/" ++ docId)
-                        , Html.attr "method" "post"
-                        , Html.hxPost ("/documents/" ++ docId)
-                        , Html.hxSwap "none"
-                        , Html.attr "hx-trigger" "submit, editor:changed delay:2s from:markdown-editor"
-                        ]
-                        $ do
-                            maybe (return ()) validationStatusFragment maybeError
-                            editorElement docId mode treeMode editable hasDraft attachments breadcrumbs treeSpine content
-                            Html.custom "noscript" [] $
-                                Html.button_ [Html.attr "type" "submit"] (Html.text "Save")
-                    else editorElement docId mode treeMode editable hasDraft attachments breadcrumbs treeSpine content
-
-{- | The @\<markdown-editor\>@ custom element with its server-set attributes and the
-no-script @\<textarea\>@ fallback holding the document. @data-readonly@ is set in the
-read view (RFC-0020); the element disables editing and hides the editing chrome.
--}
-editorElement :: String -> Maybe String -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> BS.ByteString -> Html.Html ()
-editorElement docId mode treeMode editable hasDraft attachments breadcrumbs treeSpine content =
-    Html.custom
-        "markdown-editor"
-        ( [Html.attr "name" "markdown", Html.attr "data-document" docId]
-            ++ maybe [] (\m -> [Html.attr "mode" m]) mode
-            ++ [Html.attr "data-document-mode" "tree" | treeMode]
-            ++ [Html.attr "data-attachments" (attachmentsJson attachments) | treeMode, not (null attachments)]
-            ++ [Html.attr "data-breadcrumbs" (breadcrumbsJson breadcrumbs) | not (null breadcrumbs)]
-            ++ [Html.attr "data-tree-spine" treeSpine | treeMode, not (null treeSpine)]
-            ++ [Html.attr "data-readonly" "" | not editable]
-            -- RFC-0032: marks a page that has an unpublished draft, so the read view can flag it.
-            ++ [Html.attr "data-has-draft" "" | hasDraft]
-        )
-        ( Html.custom
-            "textarea"
-            [Html.attr "name" "markdown", Html.attr "aria-label" "Markdown source", Html.class_ "markdown-editor__fallback"]
-            (Html.bytesText content)
-        )
-
 -- | The seed Markdown for a new or missing document.
 seededMarkdown :: String
 seededMarkdown =
     "# Hello from MicroHttp\n\nEdit this Markdown document."
-
--- | The htmx save-confirmation status fragment.
-saveStatusFragment :: String -> Html.Html ()
-saveStatusFragment markdown =
-    Html.p [Html.attr "id" "save-status"] $ do
-        Html.text "Saved Markdown document: "
-        Html.text markdown
-
--- | The htmx validation-error status fragment.
-validationStatusFragment :: String -> Html.Html ()
-validationStatusFragment err =
-    Html.p [Html.attr "id" "save-status"] $ do
-        Html.text "Unsupported Markdown: "
-        Html.text err
 
 -- The save-time guard defends the trust boundary only: raw HTML stays rejected
 -- (the server never trusts client Markdown to be safe). Block-structure validation

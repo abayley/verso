@@ -2,8 +2,6 @@ const outfile = "static/editor/markdown-editor.js";
 // The Mermaid diagram runtime is built as its own bundle, loaded on demand (RFC-0033, ADR-071): it is large,
 // so pages without a `mermaid` fence never pay for it.
 const mermaidOutfile = "static/editor/mermaid.js";
-const webAwesomeCssEntry = "node_modules/@awesome.me/webawesome/dist/styles/themes/default.css";
-const webAwesomeCssOutfile = "static/editor/webawesome.css";
 // Basecoat chrome (RFC-0035): the precompiled nova bundle and its component
 // runtime are vendored as-is (no Tailwind build), plus the Geist Variable
 // font Basecoat declares but does not ship.
@@ -24,8 +22,6 @@ process.env.NODE_ENV = "production";
 const normalisedBundle = (await buildBundle("src/Verso/Editor/index.ts")).replaceAll("`  \n`", '"  \\n"');
 await Bun.write(outfile, normalisedBundle);
 await Bun.write(mermaidOutfile, await buildBundle("src/Verso/Editor/mermaid-entry.ts"));
-await Bun.write(webAwesomeCssOutfile, await bundledCss(webAwesomeCssEntry));
-
 await Bun.write(basecoatCssOutfile, Bun.file(basecoatCssEntry));
 await Bun.write(basecoatJsOutfile, Bun.file(basecoatJsEntry));
 await Bun.write(geistCssOutfile, Bun.file(geistCssEntry));
@@ -39,7 +35,6 @@ for (const match of geistCss.matchAll(/\.\/files\/([^)'" ]+\.woff2)/g)) {
 
 console.log(`Bundled editor to ${outfile}`);
 console.log(`Bundled Mermaid runtime to ${mermaidOutfile}`);
-console.log(`Bundled Web Awesome styles to ${webAwesomeCssOutfile}`);
 console.log(`Vendored Basecoat to ${basecoatCssOutfile} + ${basecoatJsOutfile}, Geist to ${geistCssOutfile}`);
 
 /** Builds one IIFE browser bundle from an entrypoint and returns its source, exiting on failure. */
@@ -68,59 +63,4 @@ async function buildBundle(entrypoint) {
     }
 
     return output.text();
-}
-
-/** Bundles a CSS file by recursively inlining relative @import URLs. */
-async function bundledCss(path, seen = new Set()) {
-    if (seen.has(path)) {
-        return "";
-    }
-
-    seen.add(path);
-
-    const css = await Bun.file(path).text();
-    const directory = path.slice(0, path.lastIndexOf("/"));
-
-    const importPattern = /@import\s+url\(['"]?([^'")]+)['"]?\);/g;
-    let bundled = "";
-    let offset = 0;
-
-    for (const match of css.matchAll(importPattern)) {
-        const importPath = match[1];
-        const matchIndex = match.index ?? 0;
-        bundled += css.slice(offset, matchIndex);
-        offset = matchIndex + match[0].length;
-
-        if (importPath.startsWith("http://") || importPath.startsWith("https://")) {
-            bundled += `@import url('${importPath}');`;
-            continue;
-        }
-
-        const normalisedPath = normalisePath(`${directory}/${importPath}`);
-        const importedCss = await bundledCss(normalisedPath, seen);
-
-        bundled += `\n/* ${normalisedPath} */\n${importedCss}`;
-    }
-
-    return bundled + css.slice(offset);
-}
-
-/** Normalises simple relative path segments in package CSS imports. */
-function normalisePath(path) {
-    const segments = [];
-
-    for (const segment of path.split("/")) {
-        if (segment === "." || segment === "") {
-            continue;
-        }
-
-        if (segment === "..") {
-            segments.pop();
-            continue;
-        }
-
-        segments.push(segment);
-    }
-
-    return segments.join("/");
 }

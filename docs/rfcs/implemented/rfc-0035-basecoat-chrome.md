@@ -1,7 +1,7 @@
 ---
 id: RFC-0035
 name: Basecoat Chrome (shadcn Styling without React)
-status: Draft
+status: Implemented
 owners:
     - alistair
 created: 2026-07-08
@@ -15,8 +15,8 @@ superseded_by: null
 | Stage     | Timestamp  |
 |-----------|------------|
 | Authored  | 2026-07-08 |
-| Started   |            |
-| Completed |            |
+| Started   | 2026-07-08 |
+| Completed | 2026-07-08 |
 
 ## Summary
 
@@ -195,53 +195,53 @@ Behaviour tests change only where the interaction contract genuinely changes
 
 #### Phase 1: Foundation
 
-- [ ] Vendor Basecoat CSS/JS + Geist via build-editor.mjs; serve from
+- [x] Vendor Basecoat CSS/JS + Geist via build-editor.mjs; serve from
       `static/editor/`; page shell loads them.
-- [ ] Global `initAll()` hooks (DOMContentLoaded, htmx:afterSwap) and the
+- [x] Global `initAll()` hooks (DOMContentLoaded, htmx:afterSwap) and the
       popover transition override.
-- [ ] `Verso.Chrome` + `chrome.ts` helpers for button, dropdown, tooltip,
+- [x] `Verso.Chrome` + `chrome.ts` helpers for button, dropdown, tooltip,
       tabs; unit tests for the ARIA wiring (the silent-skip failure mode).
-- [ ] Lucide sprite pipeline for the icon set in use.
+- [x] Lucide sprite pipeline for the icon set in use.
 
 #### Phase 2: CSS-only chrome
 
-- [ ] Buttons, inputs, badges, cards across server templates (Edit/Publish/
+- [x] Buttons, inputs, badges, cards across server templates (Edit/Publish/
       Cancel, search box, history page controls, dialogs' static parts).
-- [ ] Breadcrumb and top-bar layout to the validated geometry, keeping the
+- [x] Breadcrumb and top-bar layout to the validated geometry, keeping the
       Visual/Markdown/Split and Narrow/Medium/Full tab groups centred over
       the content column (per the mockups; explicit user requirement).
-- [ ] Server templates move into `Verso.View` as each surface migrates
+- [x] Server templates move into `Verso.View` as each surface migrates
       (extraction runs through Phases 2-4, complete by end of Phase 4).
 
 #### Phase 3: interactive chrome
 
-- [ ] Theme dropdown + scheme toggle group (the spike's exact shape).
-- [ ] Editor toolbar in the Lit templates via `chrome.ts` (34px toggles,
+- [x] Theme dropdown + scheme toggle group (the spike's exact shape).
+- [x] Editor toolbar in the Lit templates via `chrome.ts` (34px toggles,
       dropdown menus); toolbar behaviour tests updated to the new markup.
-- [ ] Tooltips replace `wa-tooltip` usage.
+- [x] Tooltips replace `wa-tooltip` usage.
 
 #### Phase 4: navigation surfaces and theme consolidation
 
-- [ ] Nav tree adopts the sidebar conventions (left chevrons, 28px sub-rows,
+- [x] Nav tree adopts the sidebar conventions (left chevrons, 28px sub-rows,
       indent guide at the chevron line) inside the existing Lit element.
-- [ ] ToC/attachments/history pane typography per the mockup.
-- [ ] Theme consolidation: default becomes `shadcn`; Studio reduced to the
+- [x] ToC/attachments/history pane typography per the mockup.
+- [x] Theme consolidation: default becomes `shadcn`; Studio reduced to the
       interaction-model switch; Paper/Aurora/Blueprint/Workbench CSS,
       registration entries, and Workbench's split-default removed;
       `.wa-dark` -> `.dark`; retirements recorded in the decision register.
 
 #### Phase 5: removal
 
-- [ ] Web Awesome markup gone; dependency and `webawesome.css` removed from
+- [x] Web Awesome markup gone; dependency and `webawesome.css` removed from
       package.json, build, and the page shell.
-- [ ] Hand-written chrome CSS pruned from markdown-editor.css.
-- [ ] All three `chrome-gates` checks active in `make check`
+- [x] Hand-written chrome CSS pruned from markdown-editor.css.
+- [x] All three `chrome-gates` checks active in `make check`
       (variant-vocabulary containment, no markup construction in App.hs,
       no `wa-` in src/).
-- [ ] Docs: decision-register ADR for the adoption, superseding the Web
-      Awesome clause of the Tiptap editing-engine ADR (the clause at
-      docs/decision-register.md:292; the Tiptap decision itself stands);
-      retirement ADR for the themes; module-index update.
+- [x] Docs: ADR-076 (Basecoat adoption, superseding the Tiptap ADR's Web
+      Awesome clause; the Tiptap decision itself stands) and ADR-077 (theme
+      retirements). The module index covers MicroHttp framework modules
+      only, so no entry was needed for the Verso view/chrome split.
 
 ## Alternatives Considered
 

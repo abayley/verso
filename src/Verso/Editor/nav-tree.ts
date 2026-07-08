@@ -786,7 +786,7 @@ export class NavTreePanel {
     }
 
     /**
-     * Builds the undo dropdown: a `wa-dropdown` whose trigger is the header's undo button and whose
+     * Builds the undo dropdown: a Basecoat menu whose trigger is the header's undo button and whose
      * items are the logged moves (most recent first), loaded each time it opens. Choosing an item
      * applies that move's inverse. A floating menu, rather than an inline panel, so it does not push
      * the tree down and reads as a normal dropdown.

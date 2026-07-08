@@ -2334,13 +2334,11 @@ export class MarkdownEditorElement extends HTMLElement {
         }
     }
 
-    /** Applies the editor theme selection to Web Awesome's document-level colour scheme classes. */
+    /** Applies the editor theme selection to the document-level colour scheme class. */
     private applyDocumentTheme(): void {
         const root = document.documentElement;
         const theme = this.resolvedEditorTheme();
 
-        root.classList.toggle("wa-light", theme === "light");
-        root.classList.toggle("wa-dark", theme === "dark");
         root.classList.toggle("dark", theme === "dark");
     }
 

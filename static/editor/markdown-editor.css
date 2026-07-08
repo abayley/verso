@@ -133,51 +133,51 @@
 }
 
 :root {
-  --markdown-editor-accent: #b0532f;
-  --markdown-editor-background: #f4f0e6;
-  --markdown-editor-code-background: #ece6d6;
-  --markdown-editor-code-border: #dcd5c2;
-  --markdown-editor-divider: #e4decd;
-  --markdown-editor-error-accent: #a32d2d;
-  --markdown-editor-error-text: #a32d2d;
-  --markdown-editor-muted: #8c8571;
-  --markdown-editor-pill-background: #fffefa;
-  --markdown-editor-pill-border: #dcd5c2;
-  --markdown-editor-quote-border: #c9c0a8;
-  --markdown-editor-save-clean: #1d9e75;
-  --markdown-editor-save-dirty: #ba7517;
-  --markdown-editor-save-retry: #a32d2d;
-  --markdown-editor-text: #2c2a22;
-  /* Semantic content accents, shared by content extensions; a theme may override these once. */
-  --markdown-editor-info: #5a7892;
-  --markdown-editor-success: #1d9e75;
-  --markdown-editor-warning: #ba7517;
-  --markdown-editor-danger: #a32d2d;
-  --markdown-editor-emphasis: #7b66a6;
+  --markdown-editor-accent: oklch(0.205 0 0); /* --primary */
+  --markdown-editor-background: oklch(1 0 0); /* --background */
+  --markdown-editor-code-background: oklch(0.97 0 0); /* --muted */
+  --markdown-editor-code-border: oklch(0.922 0 0); /* --border */
+  --markdown-editor-divider: oklch(0.922 0 0); /* --border */
+  --markdown-editor-error-accent: oklch(0.577 0.245 27.325); /* --destructive */
+  --markdown-editor-error-text: oklch(0.505 0.213 27.518); /* red-700 */
+  --markdown-editor-muted: oklch(0.556 0 0); /* --muted-foreground */
+  --markdown-editor-pill-background: oklch(1 0 0); /* --popover */
+  --markdown-editor-pill-border: oklch(0.922 0 0); /* --border */
+  --markdown-editor-quote-border: oklch(0.87 0 0); /* neutral-300 */
+  --markdown-editor-save-clean: oklch(0.627 0.194 149.214); /* green-600 */
+  --markdown-editor-save-dirty: oklch(0.666 0.179 58.318); /* amber-600 */
+  --markdown-editor-save-retry: oklch(0.577 0.245 27.325); /* --destructive */
+  --markdown-editor-text: oklch(0.145 0 0); /* --foreground */
+  /* Semantic content accents, shared by content extensions. */
+  --markdown-editor-info: oklch(0.546 0.245 262.881); /* blue-600 */
+  --markdown-editor-success: oklch(0.627 0.194 149.214); /* green-600 */
+  --markdown-editor-warning: oklch(0.666 0.179 58.318); /* amber-600 */
+  --markdown-editor-danger: oklch(0.577 0.245 27.325); /* --destructive */
+  --markdown-editor-emphasis: oklch(0.541 0.281 293.009); /* violet-600 */
 }
 
-:root.wa-dark {
-  --markdown-editor-accent: #d88a66;
-  --markdown-editor-background: #211e16;
-  --markdown-editor-code-background: #2b2719;
-  --markdown-editor-code-border: #3c3624;
-  --markdown-editor-divider: #3c3624;
-  --markdown-editor-error-accent: #e24b4a;
-  --markdown-editor-error-text: #f09595;
-  --markdown-editor-muted: #9a917b;
-  --markdown-editor-pill-background: #2b2719;
-  --markdown-editor-pill-border: #3c3624;
-  --markdown-editor-quote-border: #57503a;
-  --markdown-editor-save-clean: #5dcaa5;
-  --markdown-editor-save-dirty: #ef9f27;
-  --markdown-editor-save-retry: #f09595;
-  --markdown-editor-text: #e8e3d2;
-  /* Semantic content accents, shared by content extensions; a theme may override these once. */
-  --markdown-editor-info: #84a4c0;
-  --markdown-editor-success: #5dcaa5;
-  --markdown-editor-warning: #ef9f27;
-  --markdown-editor-danger: #f09595;
-  --markdown-editor-emphasis: #ac98d6;
+:root.dark {
+  --markdown-editor-accent: oklch(0.922 0 0); /* --primary */
+  --markdown-editor-background: oklch(0.145 0 0); /* --background */
+  --markdown-editor-code-background: oklch(0.269 0 0); /* --muted */
+  --markdown-editor-code-border: oklch(1 0 0 / 10%); /* --border */
+  --markdown-editor-divider: oklch(1 0 0 / 10%); /* --border */
+  --markdown-editor-error-accent: oklch(0.704 0.191 22.216); /* --destructive */
+  --markdown-editor-error-text: oklch(0.808 0.114 19.571); /* red-300 */
+  --markdown-editor-muted: oklch(0.708 0 0); /* --muted-foreground */
+  --markdown-editor-pill-background: oklch(0.205 0 0); /* --popover */
+  --markdown-editor-pill-border: oklch(1 0 0 / 10%); /* --border */
+  --markdown-editor-quote-border: oklch(1 0 0 / 15%); /* --input */
+  --markdown-editor-save-clean: oklch(0.723 0.219 149.579); /* green-500 */
+  --markdown-editor-save-dirty: oklch(0.769 0.188 70.08); /* amber-500 */
+  --markdown-editor-save-retry: oklch(0.704 0.191 22.216); /* --destructive */
+  --markdown-editor-text: oklch(0.985 0 0); /* --foreground */
+  /* Semantic content accents, shared by content extensions. */
+  --markdown-editor-info: oklch(0.707 0.165 254.624); /* blue-400 */
+  --markdown-editor-success: oklch(0.723 0.219 149.579); /* green-500 */
+  --markdown-editor-warning: oklch(0.769 0.188 70.08); /* amber-500 */
+  --markdown-editor-danger: oklch(0.704 0.191 22.216); /* --destructive */
+  --markdown-editor-emphasis: oklch(0.702 0.183 293.541); /* violet-400 */
 }
 
 body.markdown-editor-page {
@@ -272,6 +272,12 @@ markdown-editor {
 .markdown-editor__nav-disclosure,
 .markdown-editor__nav-collapse-all,
 .markdown-editor__nav-create,
+/* Header action icons at the shadcn sidebar's icon-xs scale. */
+.markdown-editor__nav-header .chrome-icon {
+  height: 0.75rem;
+  width: 0.75rem;
+}
+
 .markdown-editor__nav-op,
 .markdown-editor__nav-action {
   background: transparent;
@@ -307,14 +313,17 @@ markdown-editor {
 }
 
 .markdown-editor__nav-list .markdown-editor__nav-list {
-  padding-left: 0.6rem;
+  border-left: 1px solid var(--markdown-editor-divider);
+  margin-left: 0.8rem;
+  padding-left: 0.5rem;
 }
 
 .markdown-editor__nav-row {
   align-items: center;
-  border-radius: 0.25rem;
+  border-radius: 0.375rem;
   display: flex;
   gap: 0.1rem;
+  min-height: 1.75rem;
   padding: 0.1rem 0.2rem;
 }
 
@@ -384,20 +393,17 @@ markdown-editor {
 
 .markdown-editor__nav-disclosure,
 .markdown-editor__nav-spacer {
-  flex: 0 0 1.65rem;
-  text-align: center;
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 1.25rem;
+  justify-content: center;
 }
 
-.markdown-editor__nav-disclosure {
-  font-size: 1.5rem;
+.markdown-editor__nav-disclosure .chrome-icon {
   transition: transform 0.15s ease;
 }
 
-.markdown-editor__nav-collapse-all {
-  font-size: 1.25rem;
-}
-
-.markdown-editor__nav-item[data-expanded="true"] > .markdown-editor__nav-row .markdown-editor__nav-disclosure {
+.markdown-editor__nav-item[data-expanded="true"] > .markdown-editor__nav-row .markdown-editor__nav-disclosure .chrome-icon {
   transform: rotate(90deg);
 }
 
@@ -948,13 +954,13 @@ a.markdown-editor__crumb:hover {
   min-width: 0;
 }
 
-/* The page title (the frontmatter `name`), shown above the pane. It matches the content font per theme and
+/* The page title (the frontmatter `name`), shown above the pane. It matches the content font and
    reads as a large title; the input is borderless so it looks like text, not a form control. */
 .markdown-editor__title {
   border: 0;
   box-sizing: border-box;
   color: var(--markdown-editor-text);
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   font-size: 1.9rem;
   font-weight: 700;
   line-height: 1.25;
@@ -976,10 +982,15 @@ a.markdown-editor__crumb:hover {
   display: none;
 }
 
-:root[data-editor-theme="shadcn"] .markdown-editor__title,
-:root[data-editor-theme="studio"] .markdown-editor__title,
-:root[data-editor-theme="workbench"] .markdown-editor__title {
-  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+/* The document body as a card: page-coloured surface separated by a hairline
+   border with the shadcn radius and shadow-sm (RFC-0035). */
+.markdown-editor__body {
+  background: var(--markdown-editor-pill-background);
+  border: 1px solid var(--markdown-editor-pill-border);
+  border-radius: 0.625rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 5%);
+  margin-block: 0.75rem;
+  padding: 1.5rem 2rem;
 }
 
 /* The editing column (and its peer metadata panel) is centred and width-capped by the chosen preset; the
@@ -1161,7 +1172,7 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
 
 .markdown-editor__surface,
 .markdown-editor__preview {
-  font: 17px/1.8 Georgia, "Times New Roman", serif;
+  font: 16px/1.7 "Geist Variable", ui-sans-serif, system-ui, sans-serif;
 }
 
 .markdown-editor__source {
@@ -1286,7 +1297,7 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
 
 /* Syntax highlighting (RFC-0033): lowlight emits highlight.js `hljs-*` token classes inside the code block;
    map them to the editor palette so code reads correctly in every theme and flips with light/dark (the
-   palette variables flip under :root.wa-dark), rather than shipping a fixed highlight.js theme. */
+   palette variables flip under :root.dark), rather than shipping a fixed highlight.js theme. */
 .markdown-editor__surface :is(.hljs-comment, .hljs-quote) {
   color: var(--markdown-editor-muted);
   font-style: italic;
@@ -1843,469 +1854,12 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 }
 
 /* ===================================================================
-   Visual themes (RFC-0015). Each theme overrides the --markdown-editor-*
-   tokens for both light and dark, keyed on data-editor-theme, plus an
-   optional structural layer for effects tokens cannot express. An absent
-   or unknown attribute is the default "Paper" look defined at the top.
+   Visual themes (RFC-0035). The default look is the shadcn tokens set at
+   the top of this file; "studio" is an interaction-model switch (bubble
+   toolbar + slash menu instead of the persistent command bar) with the
+   same look. Future themes are token re-skins plus an optional
+   structural layer, keyed on data-editor-theme.
    =================================================================== */
-
-/* --- Aurora: a neutral frosted-glass theme, light and dark. --- */
-:root[data-editor-theme="aurora"] {
-  --markdown-editor-accent: #5b6b8c;
-  --markdown-editor-background: #e8eaf0;
-  --markdown-editor-code-background: rgba(255, 255, 255, 0.6);
-  --markdown-editor-code-border: rgba(90, 100, 120, 0.18);
-  --markdown-editor-divider: rgba(90, 100, 120, 0.18);
-  --markdown-editor-error-accent: #b05050;
-  --markdown-editor-error-text: #9a3b3b;
-  --markdown-editor-muted: #6b7180;
-  --markdown-editor-pill-background: rgba(255, 255, 255, 0.55);
-  --markdown-editor-pill-border: rgba(255, 255, 255, 0.75);
-  --markdown-editor-quote-border: rgba(90, 100, 120, 0.32);
-  --markdown-editor-save-clean: #2f9e78;
-  --markdown-editor-save-dirty: #b07d2a;
-  --markdown-editor-save-retry: #a84545;
-  --markdown-editor-text: #2a2d38;
-  /* Monochrome frosted highlights: neutral white glows, no hue. */
-  --aurora-wash-1: rgba(255, 255, 255, 0.45);
-  --aurora-wash-2: rgba(255, 255, 255, 0.34);
-  --aurora-wash-3: rgba(140, 146, 158, 0.20);
-}
-
-:root[data-editor-theme="aurora"].wa-dark {
-  --markdown-editor-accent: #9db4d8;
-  --markdown-editor-background: #1b1d24;
-  --markdown-editor-code-background: rgba(255, 255, 255, 0.06);
-  --markdown-editor-code-border: rgba(255, 255, 255, 0.12);
-  --markdown-editor-divider: rgba(255, 255, 255, 0.12);
-  --markdown-editor-error-accent: #e08a8a;
-  --markdown-editor-error-text: #f0b0b0;
-  --markdown-editor-muted: rgba(233, 236, 242, 0.62);
-  --markdown-editor-pill-background: rgba(30, 33, 42, 0.55);
-  --markdown-editor-pill-border: rgba(255, 255, 255, 0.16);
-  --markdown-editor-quote-border: rgba(255, 255, 255, 0.24);
-  --markdown-editor-save-clean: #7fd1b0;
-  --markdown-editor-save-dirty: #e8c07d;
-  --markdown-editor-save-retry: #f0a5a5;
-  --markdown-editor-text: #eceef4;
-  /* Monochrome frosted highlights: subtle neutral light glows, no hue. */
-  --aurora-wash-1: rgba(255, 255, 255, 0.09);
-  --aurora-wash-2: rgba(255, 255, 255, 0.06);
-  --aurora-wash-3: rgba(255, 255, 255, 0.05);
-}
-
-:root[data-editor-theme="aurora"] body.markdown-editor-page {
-  background:
-    radial-gradient(58% 55% at 14% 8%, var(--aurora-wash-1), transparent 60%),
-    radial-gradient(54% 58% at 88% 14%, var(--aurora-wash-2), transparent 60%),
-    radial-gradient(68% 64% at 80% 96%, var(--aurora-wash-3), transparent 62%),
-    var(--markdown-editor-background);
-  background-attachment: fixed;
-}
-
-:root[data-editor-theme="aurora"] .markdown-editor__body {
-  background: var(--markdown-editor-pill-background);
-  -webkit-backdrop-filter: blur(22px) saturate(125%);
-  backdrop-filter: blur(22px) saturate(125%);
-  border: 1px solid var(--markdown-editor-pill-border);
-  border-radius: 18px;
-  box-shadow: 0 24px 60px rgba(12, 16, 34, 0.22);
-  margin-block: 0.75rem;
-  padding: 1.75rem 2.25rem;
-}
-
-:root[data-editor-theme="aurora"] .markdown-editor__toolbar--commands {
-  -webkit-backdrop-filter: blur(18px) saturate(125%);
-  backdrop-filter: blur(18px) saturate(125%);
-  box-shadow: 0 10px 30px rgba(12, 16, 34, 0.18);
-}
-
-/* --- Blueprint: a technical drawing, light (white print) and dark (cyanotype). --- */
-:root[data-editor-theme="blueprint"] {
-  --markdown-editor-accent: #2b5c8a;
-  --markdown-editor-background: #eef3f8;
-  --markdown-editor-code-background: rgba(43, 92, 138, 0.06);
-  --markdown-editor-code-border: rgba(43, 92, 138, 0.22);
-  --markdown-editor-divider: rgba(43, 92, 138, 0.20);
-  --markdown-editor-error-accent: #a84545;
-  --markdown-editor-error-text: #8f3a3a;
-  --markdown-editor-muted: #5a7a96;
-  --markdown-editor-pill-background: rgba(255, 255, 255, 0.82);
-  --markdown-editor-pill-border: rgba(43, 92, 138, 0.30);
-  --markdown-editor-quote-border: rgba(43, 92, 138, 0.35);
-  --markdown-editor-save-clean: #1f8a63;
-  --markdown-editor-save-dirty: #b07d2a;
-  --markdown-editor-save-retry: #a84545;
-  --markdown-editor-text: #1c3a52;
-  --blueprint-grid: rgba(43, 92, 138, 0.12);
-}
-
-:root[data-editor-theme="blueprint"].wa-dark {
-  --markdown-editor-accent: #9fd0ff;
-  --markdown-editor-background: #0e2f4d;
-  --markdown-editor-code-background: rgba(159, 208, 255, 0.08);
-  --markdown-editor-code-border: rgba(159, 208, 255, 0.22);
-  --markdown-editor-divider: rgba(159, 208, 255, 0.20);
-  --markdown-editor-error-accent: #ff9a9a;
-  --markdown-editor-error-text: #ffb3b3;
-  --markdown-editor-muted: #84acd4;
-  --markdown-editor-pill-background: rgba(10, 36, 60, 0.72);
-  --markdown-editor-pill-border: rgba(159, 208, 255, 0.35);
-  --markdown-editor-quote-border: rgba(159, 208, 255, 0.40);
-  --markdown-editor-save-clean: #6fe3b0;
-  --markdown-editor-save-dirty: #ffcf6b;
-  --markdown-editor-save-retry: #ff9a9a;
-  --markdown-editor-text: #e7f1ff;
-  --blueprint-grid: rgba(159, 208, 255, 0.14);
-}
-
-:root[data-editor-theme="blueprint"] body.markdown-editor-page {
-  background:
-    linear-gradient(var(--blueprint-grid) 1px, transparent 1px) 0 0 / 26px 26px,
-    linear-gradient(90deg, var(--blueprint-grid) 1px, transparent 1px) 0 0 / 26px 26px,
-    var(--markdown-editor-background);
-  background-attachment: fixed;
-}
-
-:root[data-editor-theme="blueprint"] .markdown-editor__body {
-  background: var(--markdown-editor-pill-background);
-  border: 1px solid var(--markdown-editor-pill-border);
-  border-radius: 4px;
-  margin-block: 0.75rem;
-  padding: 1.5rem 2rem;
-}
-
-/* --- Workbench: an IDE look, dark (primary, a Tokyo Night palette) and light,
-   with monospace chrome, a file-tab document name carrying the modified-state
-   dot, and a full-width accent status bar carrying caret position and word
-   count. Opens in Split by default (a layout preset, not a lock); the source
-   pane's line numbers come from CodeMirror's basicSetup, and the source syntax
-   colours follow the palette tokens below (the highlight style reads them). --- */
-:root[data-editor-theme="workbench"] {
-  --markdown-editor-accent: #2b6cb0;
-  --markdown-editor-background: #f4f5f7;
-  --markdown-editor-code-background: #eceef1;
-  --markdown-editor-code-border: #dfe2e7;
-  --markdown-editor-divider: #dfe2e7;
-  --markdown-editor-error-accent: #b03a48;
-  --markdown-editor-error-text: #8f2f3b;
-  --markdown-editor-muted: #6a7280;
-  --markdown-editor-pill-background: #ffffff;
-  --markdown-editor-pill-border: #dfe2e7;
-  --markdown-editor-quote-border: #c9cfd8;
-  --markdown-editor-save-clean: #2f8132;
-  --markdown-editor-save-dirty: #9a6b1f;
-  --markdown-editor-save-retry: #b03a48;
-  --markdown-editor-text: #24292f;
-  --markdown-editor-info: #0b7285;
-  --markdown-editor-emphasis: #6f42c1;
-}
-
-:root[data-editor-theme="workbench"].wa-dark {
-  --markdown-editor-accent: #7aa2f7;
-  --markdown-editor-background: #1a1b26;
-  --markdown-editor-code-background: #1f2335;
-  --markdown-editor-code-border: #2a2e42;
-  --markdown-editor-divider: #2a2e42;
-  --markdown-editor-error-accent: #f7768e;
-  --markdown-editor-error-text: #ff9aa8;
-  --markdown-editor-muted: #565f89;
-  --markdown-editor-pill-background: #1f2335;
-  --markdown-editor-pill-border: #2a2e42;
-  --markdown-editor-quote-border: #3b4261;
-  --markdown-editor-save-clean: #9ece6a;
-  --markdown-editor-save-dirty: #e0af68;
-  --markdown-editor-save-retry: #f7768e;
-  --markdown-editor-text: #c0caf5;
-  --markdown-editor-info: #7dcfff;
-  --markdown-editor-emphasis: #bb9af7;
-}
-
-/* Chrome: an IDE frame flush to the viewport edges. The host becomes a grid --
-   a presentation rail down the left, a file tab and the formatting toolbar
-   stacked across the top, the editor panes filling the centre, and a full-width
-   accent status bar along the bottom. The grid is exactly viewport-tall and only
-   the centre scrolls, so the rail, toolbar, and status bar stay put. */
-/* The IDE frame is flush to the viewport, so drop the page's content gutters
-   (the editor page's main wraps only the editor form). */
-:root[data-editor-theme="workbench"] body.markdown-editor-page > main {
-  padding: 0;
-}
-
-:root[data-editor-theme="workbench"] markdown-editor {
-  /* No column gap: the breadcrumb and command bar butt against the rail's right
-     border so they line up with it (a gap here reads as a misalignment). */
-  column-gap: 0;
-  display: grid;
-  grid-template-areas:
-    "rail format"
-    "rail tab"
-    "rail main"
-    "status status";
-  grid-template-columns: 7rem 1fr;
-  grid-template-rows: auto auto 1fr auto;
-  /* A fixed-viewport IDE frame: the toolbar (format), breadcrumb (tab), rail, and
-     status bar stay put, and only the content pane (main, below) scrolls. Positioned
-     so the top-right appearance controls anchor to the frame. */
-  height: 100vh;
-  position: relative;
-}
-
-/* The navigation tree pins to the top of the Workbench content pane and scrolls
-   independently (its own scrollbar), so it stays put while the editing column
-   scrolls -- like the other themes. The workspace (grid-area main) has a definite
-   height, so max-height: 100% bounds the nav to it. */
-:root[data-editor-theme="workbench"] .markdown-editor__nav {
-  align-self: start;
-  max-height: 100%;
-  overflow: hidden auto;
-  position: sticky;
-  top: 0;
-}
-
-/* The client-error banner occupies the status row, overlaying the status bar, so
-   messages show in the status bar itself (that is what it is for). The notice
-   area occupies the status row, overlaying the status bar; while empty it has no
-   height, so the status bar shows through. Each message fills the row full width
-   so it reads as the status bar turning into a message line. */
-:root[data-editor-theme="workbench"] .markdown-editor__notices {
-  align-items: stretch;
-  align-self: stretch;
-  gap: 0;
-  grid-area: status;
-  z-index: 5;
-}
-
-/* :not([hidden]) is essential: this rule is more specific than the base
-   `[hidden] { display: none }`, so an unqualified `display: flex` here would keep
-   the banner/save-error visible (with its static message) even when hidden --
-   making it appear on every page and resist dismissal. */
-:root[data-editor-theme="workbench"] .markdown-editor__error-banner:not([hidden]),
-:root[data-editor-theme="workbench"] .markdown-editor__save-error:not([hidden]) {
-  align-items: center;
-  border-radius: 0;
-  border-width: 0 0 0 3px;
-  box-sizing: border-box;
-  display: flex;
-  font-size: 12.5px;
-  margin: 0;
-  padding: 0.55rem 0.85rem;
-  width: 100%;
-}
-
-/* Stack Publish above Cancel: side by side the pair overflows the narrow rail and
-   nudges the breadcrumb/command bar across. Stacked, each fits the rail. The
-   min-height reserves the two-button (Publish + Cancel) height so switching to the
-   read view -- a single "Edit" button -- does not shift the rest of the rail up. */
-:root[data-editor-theme="workbench"] markdown-editor .markdown-editor__view-toggle-group {
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 0.35rem;
-  min-height: 4rem;
-}
-
-/* Lift the theme + appearance controls out of the left rail and overlay them on the
-   top-right of the IDE frame's command bar (matching the other themes' top-right
-   placement). Scoped to the editor element so the standalone version pages -- which
-   reuse these classes but are not the IDE frame -- keep the default top-right layout. */
-:root[data-editor-theme="workbench"] markdown-editor .markdown-editor__appearance {
-  position: absolute;
-  /* Insets chosen so the controls sit where the other themes put them. The right
-     inset is ~1rem more than theirs on paper: the other themes' page scrollbar
-     (when shown) pushes their bar left, and Workbench -- whose pane scrolls
-     internally -- has no such push. The shared gap is inherited: a tighter gap
-     compressed the unit, pulling the theme selector rightwards. */
-  top: 0.5rem;
-  right: 2.7rem;
-  z-index: 6;
-}
-
-/* The rail's radio groups size to their content rather than stretching to the
-   rail (a Web Awesome radio-group otherwise reserves a wide form-control label
-   box, which would overflow the narrow rail). Not the theme (light/dark) group:
-   it lives in the top-right overlay, where narrowing it would compress the
-   appearance controls relative to the other themes. */
-:root[data-editor-theme="workbench"] .markdown-editor__mode-group,
-:root[data-editor-theme="workbench"] .markdown-editor__width-group {
-  width: max-content;
-}
-
-/* In the read view the formatting toolbar is hidden, but it keeps its space
-   (invisible, not removed) so the panes sit at the same height as in edit mode --
-   toggling edit/view does not shift the content. */
-:root[data-editor-theme="workbench"] markdown-editor[data-readonly] .markdown-editor__footer {
-  display: flex !important;
-  visibility: hidden;
-}
-
-/* Flatten the top-bar wrapper so its two children (the controls rail and the
-   breadcrumb tab) participate directly in the IDE grid, as before. */
-:root[data-editor-theme="workbench"] .markdown-editor__topbar {
-  display: contents;
-}
-
-/* The presentation controls become the left rail, stacked vertically. box-sizing
-   keeps the rail (with its padding and right border) inside its grid track rather
-   than spilling its padding into the centre column. */
-:root[data-editor-theme="workbench"] markdown-editor .markdown-editor__toolbar--top {
-  border-right: 1px solid var(--markdown-editor-divider);
-  box-sizing: border-box;
-  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-  grid-area: rail;
-  margin: 0;
-  max-width: none;
-  min-width: 0;
-  padding: 1rem 0.5rem;
-}
-
-/* Each control group stacks vertically, with the groups spaced apart (the radio
-   groups themselves are switched to vertical orientation in the element). */
-:root[data-editor-theme="workbench"] markdown-editor .markdown-editor__toolbar-controls {
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 1.5rem;
-  justify-content: flex-start;
-}
-
-/* The document name is the file tab below the toolbar, attached to the pane. */
-/* The breadcrumb trail is a full-width strip across the tab row, below the toolbar -- there is room to
-   spread out, so it is not constrained to a file-tab lozenge. */
-:root[data-editor-theme="workbench"] .markdown-editor__document-name {
-  color: var(--markdown-editor-muted);
-  font: 12px ui-monospace, "SFMono-Regular", Menlo, monospace;
-  letter-spacing: normal;
-  margin: 0;
-  /* Block padding sized so command bar + tab strip together match the other
-     themes' top-bar height. */
-  padding: 0.65rem 0.85rem;
-}
-
-
-/* The formatting command bar becomes a flat top toolbar on the row below the tab. */
-:root[data-editor-theme="workbench"] .markdown-editor__footer {
-  bottom: auto;
-  grid-area: format;
-  position: static;
-}
-
-:root[data-editor-theme="workbench"] .markdown-editor__toolbar--commands {
-  border-radius: 0;
-  border-width: 0 0 1px;
-  box-sizing: border-box;
-  /* One line, always: an IDE toolbar overflows sideways rather than wrapping.
-     Wrapping changed the frame height with window width, which dropped the tab
-     strip (and everything under it) down even in the read view, where the bar
-     is invisible but keeps its space. */
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  justify-content: flex-start;
-  max-width: none;
-  padding-block: 0.3rem;
-  /* Reserve the right slice of the row for the appearance controls overlaid there,
-     so the command buttons/Save stop short of that zone rather than running under it. */
-  padding-inline-end: 14rem;
-  width: 100%;
-}
-
-/* The bar's groups must not shrink: a squeezed group spills its buttons onto a
-   second line, which is exactly the height change the nowrap bar is there to
-   prevent. Overflow scrolls sideways instead. */
-:root[data-editor-theme="workbench"] .markdown-editor__toolbar--commands > * {
-  flex-shrink: 0;
-}
-
-/* The content pane is a full-width scroll container (so its scrollbar is at the
-   window's right edge, not mid-page), with the nav + editing column + metadata
-   panel centred inside it; the editing column carries the width measure. */
-:root[data-editor-theme="workbench"] .markdown-editor__workspace {
-  grid-area: main;
-  justify-content: center;
-  max-width: none;
-  min-height: 0;
-  overflow: auto;
-}
-
-:root[data-editor-theme="workbench"] .markdown-editor__main {
-  flex: 0 1 auto;
-}
-
-/* A right gutter for the metadata sidebar, matching the other themes' 1.5rem
-   page gutter, so its own scrollbar (the ToC) does not sit flush against the
-   pane's right edge. */
-:root[data-editor-theme="workbench"] .markdown-editor__sidebar {
-  margin-right: 1.5rem;
-}
-
-:root[data-editor-theme="workbench"] markdown-editor[data-body-width="narrow"] .markdown-editor__main {
-  width: 41rem;
-}
-
-:root[data-editor-theme="workbench"] markdown-editor[data-body-width="medium"] .markdown-editor__main {
-  width: 59rem;
-}
-
-:root[data-editor-theme="workbench"] markdown-editor[data-body-width="full"] .markdown-editor__main {
-  flex: 1;
-}
-
-:root[data-editor-theme="workbench"] .markdown-editor__word-count {
-  background: var(--markdown-editor-accent);
-  color: var(--markdown-editor-background);
-  display: flex;
-  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
-  font-size: 12.5px;
-  grid-area: status;
-  justify-content: flex-end;
-  margin: 0;
-  padding: 0.55rem 0.85rem;
-}
-
-/* The rendered content drops the shared serif for a sans-serif stack, so the
-   preview reads as an IDE preview pane rather than a manuscript. */
-:root[data-editor-theme="workbench"] .markdown-editor__surface,
-:root[data-editor-theme="workbench"] .markdown-editor__preview {
-  font: 16px/1.7 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-}
-
-/* Studio (RFC-0016): a calm Notion-style paper look that replaces the persistent
-   command bar with a selection bubble toolbar and a slash command menu. The
-   surfaces are activated by the editor element only under this theme; the chrome
-   below hides the bar and softens the page. */
-:root[data-editor-theme="studio"] {
-  --markdown-editor-accent: #2e66d0;
-  --markdown-editor-background: #eceae4;
-  --markdown-editor-code-background: #f4f4f0;
-  --markdown-editor-code-border: #e3e2de;
-  --markdown-editor-divider: #efefea;
-  --markdown-editor-error-accent: #b03a48;
-  --markdown-editor-error-text: #8f2f3b;
-  --markdown-editor-muted: #91908c;
-  --markdown-editor-pill-background: #ffffff;
-  --markdown-editor-pill-border: #e3e2de;
-  --markdown-editor-quote-border: #e3e2de;
-  --markdown-editor-save-clean: #2f8132;
-  --markdown-editor-save-dirty: #9a6b1f;
-  --markdown-editor-save-retry: #b03a48;
-  --markdown-editor-text: #37352f;
-}
-
-:root[data-editor-theme="studio"].wa-dark {
-  --markdown-editor-accent: #6ea8fe;
-  --markdown-editor-background: #191919;
-  --markdown-editor-code-background: #2a2a28;
-  --markdown-editor-code-border: #373735;
-  --markdown-editor-divider: #2f2f2d;
-  --markdown-editor-error-accent: #e5707e;
-  --markdown-editor-error-text: #f0a0a8;
-  --markdown-editor-muted: #8a8a86;
-  --markdown-editor-pill-background: #262625;
-  --markdown-editor-pill-border: #373735;
-  --markdown-editor-quote-border: #3a3a37;
-  --markdown-editor-save-clean: #57ab5a;
-  --markdown-editor-save-dirty: #daaa3f;
-  --markdown-editor-save-retry: #e5707e;
-  --markdown-editor-text: #d4d4d2;
-}
 
 /* Chrome: a breadcrumb-style top strip; no persistent command bar (the bubble
    toolbar and slash menu replace it); autosave keeps content saved without the
@@ -2323,13 +1877,6 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   display: none;
 }
 
-/* Studio drops the shared serif for a sans-serif stack, matching its Notion
-   lineage; the other themes keep the Georgia surface set globally above. */
-:root[data-editor-theme="studio"] .markdown-editor__surface,
-:root[data-editor-theme="studio"] .markdown-editor__preview {
-  font: 16px/1.7 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-}
-
 /* The slash-command hint. The Placeholder extension sets data-placeholder on the
    focused empty paragraph for every theme; it is only rendered under Studio,
    where the slash menu replaces the persistent toolbar. */
@@ -2339,77 +1886,6 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   float: left;
   height: 0;
   pointer-events: none;
-}
-
-/* --- Shadcn: the shadcn/ui "base-nova" neutral palette, transcribed from the
-   generated starter's index.css (https://ui.shadcn.com, Tailwind neutral scale
-   in oklch). Light is white surfaces separated by hairline borders with a
-   near-black primary; dark is the inverted neutral scale with translucent
-   borders. Colour comments name the shadcn token each value came from. --- */
-:root[data-editor-theme="shadcn"] {
-  --markdown-editor-accent: oklch(0.205 0 0); /* --primary */
-  --markdown-editor-background: oklch(1 0 0); /* --background */
-  --markdown-editor-code-background: oklch(0.97 0 0); /* --muted */
-  --markdown-editor-code-border: oklch(0.922 0 0); /* --border */
-  --markdown-editor-divider: oklch(0.922 0 0); /* --border */
-  --markdown-editor-error-accent: oklch(0.577 0.245 27.325); /* --destructive */
-  --markdown-editor-error-text: oklch(0.505 0.213 27.518); /* red-700 */
-  --markdown-editor-muted: oklch(0.556 0 0); /* --muted-foreground */
-  --markdown-editor-pill-background: oklch(1 0 0); /* --popover */
-  --markdown-editor-pill-border: oklch(0.922 0 0); /* --border */
-  --markdown-editor-quote-border: oklch(0.87 0 0); /* neutral-300 */
-  --markdown-editor-save-clean: oklch(0.627 0.194 149.214); /* green-600 */
-  --markdown-editor-save-dirty: oklch(0.666 0.179 58.318); /* amber-600 */
-  --markdown-editor-save-retry: oklch(0.577 0.245 27.325); /* --destructive */
-  --markdown-editor-text: oklch(0.145 0 0); /* --foreground */
-  --markdown-editor-info: oklch(0.546 0.245 262.881); /* blue-600 */
-  --markdown-editor-success: oklch(0.627 0.194 149.214); /* green-600 */
-  --markdown-editor-warning: oklch(0.666 0.179 58.318); /* amber-600 */
-  --markdown-editor-danger: oklch(0.577 0.245 27.325); /* --destructive */
-  --markdown-editor-emphasis: oklch(0.541 0.281 293.009); /* violet-600 */
-}
-
-:root[data-editor-theme="shadcn"].wa-dark {
-  --markdown-editor-accent: oklch(0.922 0 0); /* --primary */
-  --markdown-editor-background: oklch(0.145 0 0); /* --background */
-  --markdown-editor-code-background: oklch(0.269 0 0); /* --muted */
-  --markdown-editor-code-border: oklch(1 0 0 / 10%); /* --border */
-  --markdown-editor-divider: oklch(1 0 0 / 10%); /* --border */
-  --markdown-editor-error-accent: oklch(0.704 0.191 22.216); /* --destructive */
-  --markdown-editor-error-text: oklch(0.808 0.114 19.571); /* red-300 */
-  --markdown-editor-muted: oklch(0.708 0 0); /* --muted-foreground */
-  --markdown-editor-pill-background: oklch(0.205 0 0); /* --popover */
-  --markdown-editor-pill-border: oklch(1 0 0 / 10%); /* --border */
-  --markdown-editor-quote-border: oklch(1 0 0 / 15%); /* --input */
-  --markdown-editor-save-clean: oklch(0.723 0.219 149.579); /* green-500 */
-  --markdown-editor-save-dirty: oklch(0.769 0.188 70.08); /* amber-500 */
-  --markdown-editor-save-retry: oklch(0.704 0.191 22.216); /* --destructive */
-  --markdown-editor-text: oklch(0.985 0 0); /* --foreground */
-  --markdown-editor-info: oklch(0.707 0.165 254.624); /* blue-400 */
-  --markdown-editor-success: oklch(0.723 0.219 149.579); /* green-500 */
-  --markdown-editor-warning: oklch(0.769 0.188 70.08); /* amber-500 */
-  --markdown-editor-danger: oklch(0.704 0.191 22.216); /* --destructive */
-  --markdown-editor-emphasis: oklch(0.702 0.183 293.541); /* violet-400 */
-}
-
-/* Chrome: the document body as a shadcn card -- same colour as the page in
-   light (the hairline border does the separating, as shadcn cards do), one
-   step lighter than the page in dark, with the starter's --radius (0.625rem)
-   and Tailwind's shadow-sm. */
-:root[data-editor-theme="shadcn"] .markdown-editor__body {
-  background: var(--markdown-editor-pill-background);
-  border: 1px solid var(--markdown-editor-pill-border);
-  border-radius: 0.625rem;
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 5%);
-  margin-block: 0.75rem;
-  padding: 1.5rem 2rem;
-}
-
-/* Shadcn drops the shared serif for the sans stack (the starter ships Geist;
-   the system grotesques are the closest without bundling a font). */
-:root[data-editor-theme="shadcn"] .markdown-editor__surface,
-:root[data-editor-theme="shadcn"] .markdown-editor__preview {
-  font: 16px/1.7 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
 /* The selection bubble toolbar floats over a non-empty visual selection. It is
@@ -2590,27 +2066,6 @@ markdown-editor[data-readonly] .markdown-image__resize-handle {
 markdown-editor[data-search-open] .markdown-editor__workspace {
     filter: blur(3px);
     opacity: 0.55;
-}
-
-/* Workbench: the breadcrumb+search row is the file-tab strip (grid-area tab).
-   The strip carries the tab's bottom rule; the breadcrumb inside drops its own,
-   and the strip drops the default row's insets (the tab's own padding spaces it). */
-:root[data-editor-theme="workbench"] .markdown-editor__topbar-row {
-    align-items: center;
-    border-bottom: 1px solid var(--markdown-editor-divider);
-    grid-area: tab;
-    padding: 0;
-}
-
-/* In the tab strip's flow (centred by the strip), so the box hugs the command
-   bar above and can never cross the strip's bottom rule; the right margin lines
-   it up with the appearance controls' right edge, and the small negative top
-   margin puts it on the other themes' search midline (the strip sits a few
-   pixels lower than their second row). */
-:root[data-editor-theme="workbench"] .markdown-editor__search {
-    margin-top: -0.2rem;
-    margin-right: 2.7rem;
-    width: min(20rem, 30vw);
 }
 
 /* Styling ::-webkit-scrollbar opts out of macOS overlay scrollbars, so the thumb

@@ -20,7 +20,7 @@ spec =
             response <- runApp (request Http.GET ["documents", "home", "edit"]) ""
             Http.statusCode (Http.responseStatus response) `shouldBe` 200
             bodyText response `shouldInclude` "class=\"wa-theme-default wa-palette-default wa-brand-blue\""
-            bodyText response `shouldInclude` "data-editor-theme=\"paper\""
+            bodyText response `shouldInclude` "data-editor-theme=\"shadcn\""
             bodyText response `shouldInclude` "https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js"
             bodyText response `shouldInclude` "<script src=\"/static/editor/markdown-editor.js\"></script>"
             bodyText response `shouldInclude` "<link rel=\"stylesheet\" href=\"/static/editor/webawesome.css\">"
@@ -41,18 +41,15 @@ spec =
             bodyText response `shouldNotInclude` "src=\"/documents/home\""
             bodyText response `shouldNotInclude` "id=\"markdown-field\""
             bodyText response `shouldNotInclude` "id=\"save-status\""
-        it "given a configured editor theme default, when routing the editor, then it is emitted on the page" $ do
-            response <- runThemedApp "aurora" (request Http.GET ["documents", "home", "edit"])
-            bodyText response `shouldInclude` "data-editor-theme=\"aurora\""
         it "given the studio editor theme default, when routing the editor, then it is emitted on the page" $ do
             response <- runThemedApp "studio" (request Http.GET ["documents", "home", "edit"])
             bodyText response `shouldInclude` "data-editor-theme=\"studio\""
         it "given the shadcn editor theme default, when routing the editor, then it is emitted on the page" $ do
             response <- runThemedApp "shadcn" (request Http.GET ["documents", "home", "edit"])
             bodyText response `shouldInclude` "data-editor-theme=\"shadcn\""
-        it "given an unknown configured editor theme default, when routing the editor, then it falls back to paper" $ do
-            response <- runThemedApp "bogus-theme" (request Http.GET ["documents", "home", "edit"])
-            bodyText response `shouldInclude` "data-editor-theme=\"paper\""
+        it "given a retired or unknown editor theme default, when routing the editor, then it falls back to shadcn" $ do
+            response <- runThemedApp "paper" (request Http.GET ["documents", "home", "edit"])
+            bodyText response `shouldInclude` "data-editor-theme=\"shadcn\""
         it "given source mode editor request, when routing, then source mode is selected" $ do
             response <- runApp ((request Http.GET ["documents", "home", "edit"]){Http.requestQuery = [("mode", "source")]}) ""
             Http.statusCode (Http.responseStatus response) `shouldBe` 200

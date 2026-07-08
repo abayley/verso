@@ -71,7 +71,7 @@ import { ToolbarTooltipController } from "./toolbar-tooltip-controller.js";
 type EditorMode = "visual" | "source" | "split";
 type EditorTheme = "light" | "dark" | "match-system";
 type BodyWidth = "narrow" | "medium" | "full";
-type VisualTheme = "paper" | "aurora" | "blueprint" | "shadcn" | "workbench" | "studio";
+type VisualTheme = "shadcn" | "studio";
 type ActivePane = "source" | "visual";
 
 const visualThemeStorageKey = "editor-theme";
@@ -91,14 +91,12 @@ function isBodyWidth(value: string | null): value is BodyWidth {
     return value !== null && bodyWidths.some((width) => width.value === value);
 }
 
-/** The selectable visual themes, in lexicographic dropdown order (the default is Paper, set explicitly). */
+/** The selectable visual themes (RFC-0035): the default shadcn look, and Studio,
+ * which keeps the same look but swaps the persistent command bar for the bubble
+ * toolbar and slash menu. */
 const visualThemes: { value: VisualTheme; label: string }[] = [
-    { value: "aurora", label: "Aurora" },
-    { value: "blueprint", label: "Blueprint" },
-    { value: "paper", label: "Paper" },
     { value: "shadcn", label: "Shadcn" },
     { value: "studio", label: "Studio" },
-    { value: "workbench", label: "Workbench" },
 ];
 
 /** Narrows an arbitrary string to a known visual theme. */
@@ -122,19 +120,9 @@ function themeLabel(theme: VisualTheme): string {
     return visualThemes.find((entry) => entry.value === theme)?.label ?? theme;
 }
 
-/** A theme's default view mode (a preset applied when no mode is requested), or null. */
-function themeDefaultMode(theme: VisualTheme): EditorMode | null {
-    return theme === "workbench" ? "split" : null;
-}
-
 /** Whether a theme replaces the persistent command bar with the bubble toolbar and slash menu. */
 function themeUsesStudioSurfaces(theme: VisualTheme): boolean {
     return theme === "studio";
-}
-
-/** Whether a theme arranges the presentation controls as a vertical left rail (the Workbench IDE frame). */
-function themeUsesWorkbenchRail(theme: VisualTheme): boolean {
-    return theme === "workbench";
 }
 
 /** Reads a stored preference, tolerating an unavailable or throwing localStorage. */
@@ -219,7 +207,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private theme: EditorTheme = "match-system";
     private themeGroup: ChromeSegmentElement | null = null;
     private themeDropdown: ChromeDropdownElement | null = null;
-    private visualTheme: VisualTheme = "paper";
+    private visualTheme: VisualTheme = "shadcn";
     private tooltipController: ToolbarTooltipController | null = null;
     /** A faster (200 ms) tooltip just for the navigation tree's truncated labels (RFC-0026). */
     private navTooltipController: ToolbarTooltipController | null = null;
@@ -1150,28 +1138,21 @@ export class MarkdownEditorElement extends HTMLElement {
         // bar is suppressed only in visual mode; source and split keep it usable.
         const surfacesActive = themeUsesStudioSurfaces(this.visualTheme) && this.mode === "visual";
         this.classList.toggle("markdown-editor--studio-surfaces", surfacesActive);
-        // Workbench stacks the mode and width radio groups vertically for its left rail; the other themes
-        // keep them horizontal in the top toolbar. Orientation is a Web Awesome attribute, so it is toggled
-        // here (on theme change, no rebuild) rather than in CSS.
-        const orientation = themeUsesWorkbenchRail(this.visualTheme) ? "vertical" : "horizontal";
-        this.modeGroup?.setAttribute("orientation", orientation);
-        this.widthGroup?.setAttribute("orientation", orientation);
         this.relocateNotices();
         this.updateBubbleToolbar();
     }
 
     /**
-     * Keeps the single notification area in the right place: the status row under Workbench (so messages show
-     * in the status bar), and the footer above the command bar otherwise. In the read view the footer is
-     * hidden, so notices are lifted to a top-level child there -- the create flow (RFC-0026) runs in both views
-     * and its errors must stay visible.
+     * Keeps the single notification area in the right place: the footer above the command bar while
+     * editing. In the read view the footer is hidden, so notices are lifted to a top-level child there --
+     * the create flow (RFC-0026) runs in both views and its errors must stay visible.
      */
     private relocateNotices(): void {
         if (!this.notices || !this.footer) {
             return;
         }
 
-        if (themeUsesWorkbenchRail(this.visualTheme) || this.isReadonly()) {
+        if (this.isReadonly()) {
             if (this.notices.parentElement !== this) {
                 this.append(this.notices);
             }
@@ -1180,7 +1161,7 @@ export class MarkdownEditorElement extends HTMLElement {
         }
     }
 
-    /** Resolves the initial visual theme: stored preference, then page attribute, else paper. */
+    /** Resolves the initial visual theme: stored preference, then page attribute, else shadcn. */
     private editorVisualTheme(): VisualTheme {
         const stored = readStoredPreference(visualThemeStorageKey);
 
@@ -1190,7 +1171,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
         const fromPage = document.documentElement.getAttribute("data-editor-theme");
 
-        return isVisualTheme(fromPage) ? fromPage : "paper";
+        return isVisualTheme(fromPage) ? fromPage : "shadcn";
     }
 
     /** Reflects the current visual theme into the dropdown trigger and items. */
@@ -1688,7 +1669,7 @@ export class MarkdownEditorElement extends HTMLElement {
             return stored;
         }
 
-        return themeDefaultMode(this.visualTheme) ?? "visual";
+        return "visual";
     }
 
     /** Whether the editor is serving a document from the filesystem tree (set by the server). */

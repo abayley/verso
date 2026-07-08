@@ -21,7 +21,7 @@ spec =
                     Right vc -> do
                         VConfig.documentTreeRoot vc `shouldBe` ""
                         VConfig.documentRoot vc `shouldBe` "data/documents"
-                        VConfig.editorTheme vc `shouldBe` "paper"
+                        VConfig.editorTheme vc `shouldBe` "shadcn"
                         VConfig.trashRoot vc `shouldBe` "data/trash"
                         VConfig.logMaxBytes vc `shouldBe` 10485760
                         VConfig.logKeep vc `shouldBe` 5

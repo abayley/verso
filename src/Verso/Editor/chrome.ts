@@ -371,6 +371,8 @@ export interface ChromeDropdownElement extends HTMLDivElement {
     setTriggerLabel(label: string): void;
     /** Reflects the selected value onto the menu items' checked state. */
     syncChecked(value: string): void;
+    /** Replaces the menu items (dynamic menus); wires clicks to onSelect. */
+    setItems(items: { value: string; label: string; disabled?: boolean }[]): void;
 }
 
 export type DropdownElOptions = {
@@ -381,7 +383,9 @@ export type DropdownElOptions = {
     triggerLabel: string;
     triggerClassName?: string;
     ariaLabel?: string;
-    items: { value: string; label: string }[];
+    /** Suppress the caret icon (compact icon-style triggers). */
+    caret?: boolean;
+    items: { value: string; label: string; disabled?: boolean }[];
     onSelect: (value: string) => void;
 };
 
@@ -407,7 +411,11 @@ export function chromeDropdownEl(options: DropdownElOptions): ChromeDropdownElem
     applyIntent(trigger, options.intent, triggerOptions);
     const triggerLabel = document.createElement("span");
     triggerLabel.textContent = options.triggerLabel;
-    trigger.append(triggerLabel, chromeIconEl("chevron-down"));
+    trigger.append(triggerLabel);
+
+    if (options.caret !== false) {
+        trigger.append(chromeIconEl("chevron-down"));
+    }
     trigger.setAttribute("aria-haspopup", "menu");
     trigger.setAttribute("aria-controls", `${options.id}-menu`);
     trigger.setAttribute("aria-expanded", "false");
@@ -422,16 +430,26 @@ export function chromeDropdownEl(options: DropdownElOptions): ChromeDropdownElem
     menu.id = `${options.id}-menu`;
     menu.setAttribute("aria-labelledby", `${options.id}-trigger`);
 
-    for (const item of options.items) {
-        const entry = document.createElement("button");
-        entry.type = "button";
-        entry.setAttribute("role", "menuitem");
-        entry.dataset["value"] = item.value;
-        entry.textContent = item.label;
-        entry.addEventListener("click", (): void => options.onSelect(item.value));
-        menu.append(entry);
-    }
+    const buildItems = (items: { value: string; label: string; disabled?: boolean }[]): void => {
+        menu.replaceChildren();
 
+        for (const item of items) {
+            const entry = document.createElement("button");
+            entry.type = "button";
+            entry.setAttribute("role", "menuitem");
+            entry.dataset["value"] = item.value;
+            entry.textContent = item.label;
+
+            if (item.disabled === true) {
+                entry.disabled = true;
+            }
+
+            entry.addEventListener("click", (): void => options.onSelect(item.value));
+            menu.append(entry);
+        }
+    };
+
+    buildItems(options.items);
     popover.append(menu);
     root.append(trigger, popover);
 
@@ -443,6 +461,12 @@ export function chromeDropdownEl(options: DropdownElOptions): ChromeDropdownElem
         for (const entry of menu.querySelectorAll('[role="menuitem"]')) {
             entry.setAttribute("aria-checked", entry.getAttribute("data-value") === value ? "true" : "false");
         }
+    };
+
+    root.setItems = (items): void => {
+        buildItems(items);
+        // Basecoat caches the item list at init; refresh() re-scans for keyboard nav.
+        (root as { refresh?: () => void }).refresh?.();
     };
 
     return root;

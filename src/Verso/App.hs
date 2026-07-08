@@ -283,7 +283,7 @@ appWithStore :: DocumentStore -> Server.Application
 appWithStore store =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
-        (routes "paper" store ++ Attachment.attachmentRoutes (Attachment.fileAttachmentStore "data/attachments"))
+        (routes "shadcn" store ++ Attachment.attachmentRoutes (Attachment.fileAttachmentStore "data/attachments"))
 
 -- | The flat single-document routes (index, show, edit, save) over a document store.
 routes :: String -> DocumentStore -> [Router.Route]

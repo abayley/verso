@@ -27,18 +27,20 @@ import qualified MicroHttp.Html as Html
 import qualified Verso.Chrome as Chrome
 import qualified Verso.Git as Git
 
-{- | The visual themes the editor implements (RFC-0015). The page default and
-the pre-paint bootstrap validate against this set, so an unknown configured or
-stored value falls back to Paper.
+{- | The visual themes the editor implements (RFC-0035): the default shadcn
+look, and Studio, which keeps the same look but swaps the persistent command
+bar for the bubble toolbar and slash menu. The page default and the pre-paint
+bootstrap validate against this set, so an unknown configured or stored value
+(including retired theme names) falls back to the default.
 -}
 knownEditorThemes :: [String]
-knownEditorThemes = ["paper", "aurora", "blueprint", "shadcn", "workbench", "studio"]
+knownEditorThemes = ["shadcn", "studio"]
 
--- | Validates a configured default theme name, falling back to @paper@.
+-- | Validates a configured default theme name, falling back to @shadcn@.
 safeEditorTheme :: String -> String
 safeEditorTheme theme
     | theme `elem` knownEditorThemes = theme
-    | otherwise = "paper"
+    | otherwise = "shadcn"
 
 {- | A JavaScript array literal of the given strings, e.g. @['a','b']@. The
 theme names are simple identifiers, so single-quoting without escaping is safe;
@@ -226,8 +228,8 @@ versionControls themeDefault =
             Chrome.IconControl
             ([Html.attr "data-scheme" value, Html.attr "role" "radio", Html.attr "aria-checked" "false", Html.attr "aria-label" label] ++ Chrome.tooltipAttrsAt label "bottom" "end")
             (Chrome.chromeIcon icon)
-    visualThemeOptions = [("aurora", "Aurora"), ("blueprint", "Blueprint"), ("paper", "Paper"), ("shadcn", "Shadcn"), ("studio", "Studio"), ("workbench", "Workbench")]
-    themeLabelFor t = Maybe.fromMaybe "Paper" (lookup t visualThemeOptions)
+    visualThemeOptions = [("shadcn", "Shadcn"), ("studio", "Studio")]
+    themeLabelFor t = Maybe.fromMaybe "Shadcn" (lookup t visualThemeOptions)
 
 -- | One history-table row: a select checkbox, the timestamp linking to that revision's read view, author, subject, and a Restore button.
 revisionRow :: String -> Git.Revision -> Html.Html ()
@@ -252,7 +254,7 @@ selected the pane is hidden and the hint is shown.
 historyScript :: String
 historyScript =
     "<script>(function(){var r=document.documentElement;"
-        ++ "var labels={paper:'Paper',aurora:'Aurora',blueprint:'Blueprint',shadcn:'Shadcn',workbench:'Workbench',studio:'Studio'};"
+        ++ "var labels={shadcn:'Shadcn',studio:'Studio'};"
         ++ "var trig=document.getElementById('verso-theme-trigger');"
         ++ "var ct=localStorage.getItem('editor-theme')||r.getAttribute('data-editor-theme');"
         ++ "if(trig&&ct&&labels[ct]){trig.textContent=labels[ct];}"

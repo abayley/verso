@@ -5,8 +5,8 @@
 // (caching fetched children for the session), navigates on click, and creates new pages/sections.
 
 import { hideBlockingOverlay, showBlockingOverlay } from "./blocking-overlay.js";
+import { type ChromeDropdownElement, chromeDropdownEl, chromeIconEl, initBasecoat } from "./chrome.js";
 import { themedConfirm } from "./confirm-dialog.js";
-import { elementValue, type WaDropdownSelectEvent } from "./editor-toolbar-shared.js";
 
 /** A navigation-tree node as the server serialises it: a section (folder) or page, with its tree-relative path. */
 export interface TreeNodeData {
@@ -199,8 +199,8 @@ export class NavTreePanel {
     private readonly trashPanel: HTMLDivElement;
     /** The logged moves backing the undo dropdown (most recent first), loaded when it opens. */
     private moves: MoveOp[] = [];
-    /** The undo dropdown (a `wa-dropdown` anchored to its header button). */
-    private readonly undoDropdown: HTMLElement;
+    /** The undo dropdown (a Basecoat menu anchored to its header button). */
+    private readonly undoDropdown: ChromeDropdownElement;
     /** The tree path of the node currently being dragged (for drag-and-drop move), or null. */
     private draggingPath: string | null = null;
     /** A drop zone shown during a drag for moving an item out to the top level (always reachable, unlike the list's empty space). */
@@ -227,7 +227,7 @@ export class NavTreePanel {
         toggle.type = "button";
         toggle.className = "markdown-editor__nav-toggle";
         toggle.setAttribute("aria-label", "Collapse navigation");
-        toggle.textContent = "❮"; // a chevron; CSS rotates it when collapsed
+        toggle.append(chromeIconEl("panel-left"));
         toggle.addEventListener("click", (): void => this.toggleCollapsed());
 
         const heading = document.createElement("h2");
@@ -236,14 +236,14 @@ export class NavTreePanel {
 
         const collapseAll = document.createElement("button");
         collapseAll.type = "button";
-        collapseAll.className = "markdown-editor__nav-collapse-all";
+        collapseAll.className = "markdown-editor__nav-collapse-all markdown-editor__nav-op";
         collapseAll.setAttribute("aria-label", "Collapse all");
         collapseAll.title = "Collapse all";
-        collapseAll.textContent = "⊟";
+        collapseAll.append(chromeIconEl("chevrons-down-up"));
         collapseAll.addEventListener("click", (): void => this.collapseAll());
 
         this.undoDropdown = this.createUndoDropdown();
-        const trash = this.createHeaderButton("🗑", "Trash", (): void => void this.toggleTrash());
+        const trash = this.createHeaderButton(chromeIconEl("trash"), "Trash", (): void => void this.toggleTrash());
         header.append(toggle, heading, collapseAll, this.undoDropdown, trash, this.createRootCreateButton());
 
         this.trashPanel = document.createElement("div");
@@ -458,7 +458,7 @@ export class NavTreePanel {
         button.type = "button";
         button.className = "markdown-editor__nav-disclosure";
         button.setAttribute("aria-label", "Expand or collapse");
-        button.textContent = "▸"; // right-pointing triangle; CSS rotates when expanded
+        button.append(chromeIconEl("chevron-right")); // CSS rotates the icon when expanded
         button.addEventListener("click", (event: MouseEvent): void => {
             event.stopPropagation();
             void this.toggleNode(node.path);
@@ -566,13 +566,13 @@ export class NavTreePanel {
     }
 
     /** A small header action button (undo/trash/replay). */
-    private createHeaderButton(glyph: string, ariaLabel: string, onClick: () => void): HTMLButtonElement {
+    private createHeaderButton(content: Node | string, ariaLabel: string, onClick: () => void): HTMLButtonElement {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "markdown-editor__nav-op";
         button.setAttribute("aria-label", ariaLabel);
         button.title = ariaLabel;
-        button.textContent = glyph;
+        button.append(content);
         button.addEventListener("click", (event: MouseEvent): void => {
             event.stopPropagation();
             onClick();
@@ -791,60 +791,42 @@ export class NavTreePanel {
      * applies that move's inverse. A floating menu, rather than an inline panel, so it does not push
      * the tree down and reads as a normal dropdown.
      */
-    private createUndoDropdown(): HTMLElement {
-        const dropdown = document.createElement("wa-dropdown");
-        dropdown.className = "markdown-editor__undo-dropdown";
-        dropdown.setAttribute("placement", "bottom-start");
+    private createUndoDropdown(): ChromeDropdownElement {
+        const dropdown = chromeDropdownEl({
+            id: "nav-undo-menu",
+            className: "markdown-editor__undo-dropdown",
+            intent: "icon",
+            caret: false,
+            triggerLabel: "",
+            triggerClassName: "markdown-editor__nav-op",
+            ariaLabel: "Undo a move",
+            items: [{ value: "", label: "No moves to undo", disabled: true }],
+            onSelect: (value: string): void => {
+                const move = this.moves.find((candidate): boolean => String(candidate.seq) === value);
 
-        // A plain trigger button (not createHeaderButton, whose click handler would stop the event
-        // wa-dropdown needs to toggle); styled as a header op button.
-        const trigger = document.createElement("button");
-        trigger.type = "button";
-        trigger.slot = "trigger";
-        trigger.className = "markdown-editor__nav-op";
-        trigger.setAttribute("aria-label", "Undo a move");
-        trigger.title = "Undo a move";
-        trigger.textContent = "⤺";
-        dropdown.append(trigger);
-
-        dropdown.addEventListener("wa-show", (): void => void this.loadUndoItems());
-        dropdown.addEventListener("wa-select", (event: Event): void => {
-            const item = (event as WaDropdownSelectEvent).detail.item;
-            if (!(item instanceof HTMLElement)) {
-                return;
-            }
-            const move = this.moves.find((candidate): boolean => String(candidate.seq) === elementValue(item));
-            if (move) {
-                void this.undoMove(move);
-            }
+                if (move) {
+                    void this.undoMove(move);
+                }
+            },
         });
+        const trigger = dropdown.querySelector("#nav-undo-menu-trigger");
+        trigger?.append(chromeIconEl("undo"));
+        // Refresh the logged moves each time the menu is about to open.
+        trigger?.addEventListener("click", (): void => void this.loadUndoItems());
+        initBasecoat();
+
         return dropdown;
     }
 
-    /** Loads the logged moves and renders them as dropdown items (keeping the trigger). */
+    /** Loads the logged moves and renders them as menu items (most recent first). */
     private async loadUndoItems(): Promise<void> {
         const moves = await this.options.listMoves();
         this.moves = [...moves].reverse(); // most recent first
-        const trigger = this.undoDropdown.querySelector('[slot="trigger"]');
-        const items =
+        this.undoDropdown.setItems(
             this.moves.length === 0
-                ? [this.createUndoEmptyItem()]
-                : this.moves.map((move): HTMLElement => this.createUndoItem(move));
-        this.undoDropdown.replaceChildren(...(trigger ? [trigger] : []), ...items);
-    }
-
-    private createUndoItem(move: MoveOp): HTMLElement {
-        const item = document.createElement("wa-dropdown-item");
-        item.setAttribute("value", String(move.seq));
-        item.textContent = `${move.from} → ${move.to}`;
-        return item;
-    }
-
-    private createUndoEmptyItem(): HTMLElement {
-        const item = document.createElement("wa-dropdown-item");
-        item.setAttribute("disabled", "");
-        item.textContent = "No moves to undo";
-        return item;
+                ? [{ value: "", label: "No moves to undo", disabled: true }]
+                : this.moves.map((move) => ({ value: String(move.seq), label: `${move.from} → ${move.to}` })),
+        );
     }
 
     /** Applies the inverse of a chosen move (the item at its destination goes back to its source). */

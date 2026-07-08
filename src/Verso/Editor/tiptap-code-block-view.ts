@@ -21,7 +21,7 @@ let codeBlockPickerSeq = 0;
 
 /** Whether the page is currently in the dark colour scheme (drives the Mermaid theme). */
 function isDarkScheme(): boolean {
-    return document.documentElement.classList.contains("wa-dark");
+    return document.documentElement.classList.contains("dark");
 }
 
 /**

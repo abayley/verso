@@ -1,12 +1,5 @@
 import type { VisualInlineStyle, VisualStructureStyle } from "./tiptap-visual-editor.js";
 
-/** The `wa-select` event shape emitted by a Web Awesome dropdown. */
-export interface WaDropdownSelectEvent extends Event {
-    detail: {
-        item: Element;
-    };
-}
-
 /** An inline command button shared by the command bar and the bubble toolbar. */
 export interface InlineCommand {
     style: VisualInlineStyle;
@@ -69,15 +62,4 @@ export function inlineShortcut(command: InlineCommand): string {
 /** Suppresses the default mousedown so a toolbar press does not steal the editor selection. */
 export function preventDefault(event: Event): void {
     event.preventDefault();
-}
-
-/** Reads the string value from an HTML or custom form control host. */
-export function elementValue(element: HTMLElement): string {
-    const value = (element as HTMLElement & { value?: unknown }).value;
-
-    if (typeof value === "string") {
-        return value;
-    }
-
-    return element.getAttribute("value") ?? "";
 }

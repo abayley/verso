@@ -1292,34 +1292,34 @@ describe("MarkdownEditorElement visual themes", (): void => {
         document.body.append(editor);
         await waitForInitialisation();
 
-        selectVisualTheme(editor, "aurora");
+        selectVisualTheme(editor, "studio");
 
-        expect(document.documentElement.getAttribute("data-editor-theme")).toBe("aurora");
-        expect(window.localStorage.getItem("editor-theme")).toBe("aurora");
+        expect(document.documentElement.getAttribute("data-editor-theme")).toBe("studio");
+        expect(window.localStorage.getItem("editor-theme")).toBe("studio");
     });
 
     it("given a stored theme, when the editor initialises, then that theme is applied", async (): Promise<void> => {
-        window.localStorage.setItem("editor-theme", "blueprint");
+        window.localStorage.setItem("editor-theme", "studio");
 
         const editor = document.createElement(elementName);
         document.body.append(editor);
         await waitForInitialisation();
 
-        expect(document.documentElement.getAttribute("data-editor-theme")).toBe("blueprint");
+        expect(document.documentElement.getAttribute("data-editor-theme")).toBe("studio");
     });
 
-    it("given an invalid stored theme, when the editor initialises, then it falls back to paper", async (): Promise<void> => {
+    it("given an invalid stored theme, when the editor initialises, then it falls back to shadcn", async (): Promise<void> => {
         window.localStorage.setItem("editor-theme", "not-a-theme");
 
         const editor = document.createElement(elementName);
         document.body.append(editor);
         await waitForInitialisation();
 
-        expect(document.documentElement.getAttribute("data-editor-theme")).toBe("paper");
+        expect(document.documentElement.getAttribute("data-editor-theme")).toBe("shadcn");
     });
 
     it("given a stored colour scheme, when the editor initialises, then the scheme applies without changing the theme", async (): Promise<void> => {
-        window.localStorage.setItem("editor-theme", "aurora");
+        window.localStorage.setItem("editor-theme", "studio");
         window.localStorage.setItem("editor-color-scheme", "dark");
 
         const editor = document.createElement(elementName);
@@ -1327,44 +1327,7 @@ describe("MarkdownEditorElement visual themes", (): void => {
         await waitForInitialisation();
 
         expect(document.documentElement.classList.contains("wa-dark")).toBe(true);
-        expect(document.documentElement.getAttribute("data-editor-theme")).toBe("aurora");
-    });
-
-    it("given the workbench theme and no requested mode, when initialised, then it opens in split", async (): Promise<void> => {
-        window.localStorage.setItem("editor-theme", "workbench");
-
-        const editor = document.createElement(elementName);
-        editor.textContent = "# Heading";
-        document.body.append(editor);
-        await waitForInitialisation();
-
-        expect(editor.querySelector(".markdown-editor__split")).toBeInstanceOf(HTMLElement);
-    });
-
-    it("given the workbench theme and an explicit mode, when initialised, then the explicit mode wins", async (): Promise<void> => {
-        window.localStorage.setItem("editor-theme", "workbench");
-
-        const editor = document.createElement(elementName);
-        editor.setAttribute("mode", "visual");
-        editor.textContent = "# Heading";
-        document.body.append(editor);
-        await waitForInitialisation();
-
-        expect(editor.querySelector(".markdown-editor__split")).toBeNull();
-        expect(editor.querySelector(".markdown-editor__surface")).toBeInstanceOf(HTMLElement);
-    });
-
-    it("given a stored mode under workbench and no requested mode, when initialised, then the stored mode wins over the split default", async (): Promise<void> => {
-        window.localStorage.setItem("editor-theme", "workbench");
-        window.localStorage.setItem("editor-mode", "visual");
-
-        const editor = document.createElement(elementName);
-        editor.textContent = "# Heading";
-        document.body.append(editor);
-        await waitForInitialisation();
-
-        expect(editor.querySelector(".markdown-editor__split")).toBeNull();
-        expect(editor.querySelector(".markdown-editor__surface")).toBeInstanceOf(HTMLElement);
+        expect(document.documentElement.getAttribute("data-editor-theme")).toBe("studio");
     });
 
     it("given a mode chosen at runtime, when selected, then it persists for the next load", async (): Promise<void> => {

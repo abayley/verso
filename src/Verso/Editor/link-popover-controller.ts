@@ -1,7 +1,6 @@
 import type { CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
 import { LinkActionsElement, LinkEditorElement } from "./link-popover-elements.js";
 import type { VisualLinkSelection } from "./tiptap-visual-editor.js";
-import type { ToolbarTooltipController } from "./toolbar-tooltip-controller.js";
 
 /** The grace period before existing-link hover actions hide. */
 const linkActionsHideDelayMilliseconds = 500;
@@ -13,7 +12,6 @@ const linkActionsHideDelayMilliseconds = 500;
  * removing links. Inputs are explicit constructor dependencies.
  */
 export interface LinkPopoverHost {
-    tooltipController: ToolbarTooltipController | null;
     position(overlay: HTMLElement, anchor: DOMRect): void;
     editorAnchorRect(anchorRect: DOMRect | null): DOMRect;
     usingSource(): boolean;

@@ -5,6 +5,8 @@
 // to that page. The panel probes search availability once on mount and hides
 // itself entirely when the server has search disabled.
 
+import { chromeButtonEl, chromeIconEl } from "./chrome.js";
+
 /** One search result row, as the server's json flavour reports it. */
 interface SearchResult {
     path: string;
@@ -34,6 +36,7 @@ const MIN_QUERY_LENGTH = 2;
 export class SearchPanel {
     private readonly panel: HTMLElement;
     private readonly input: HTMLInputElement;
+    private readonly clearButton: HTMLButtonElement;
     private readonly dropdown: HTMLElement;
     private readonly backdrop: HTMLElement;
     private debounceTimer: number | undefined;
@@ -52,6 +55,22 @@ export class SearchPanel {
         this.input.placeholder = "Search pages…";
         this.input.setAttribute("aria-label", "Search pages");
 
+        // A proper clear button (a ghost icon button, like the appearance controls) instead of the
+        // small native search-cancel affordance: a comfortable hit area, shown only when there is text.
+        this.clearButton = chromeButtonEl("icon", "", {
+            className: "markdown-editor__search-clear",
+            ariaLabel: "Clear search",
+            tooltip: "Clear search",
+        });
+        this.clearButton.append(chromeIconEl("x"));
+        this.clearButton.hidden = true;
+        this.clearButton.addEventListener("click", (): void => {
+            this.input.value = "";
+            this.clearButton.hidden = true;
+            this.close();
+            this.input.focus();
+        });
+
         this.dropdown = document.createElement("div");
         this.dropdown.className = "markdown-editor__search-results";
         this.dropdown.hidden = true;
@@ -69,7 +88,7 @@ export class SearchPanel {
 
         this.input.addEventListener("input", (): void => this.onInput());
         this.input.addEventListener("keydown", (event: KeyboardEvent): void => this.onKey(event));
-        this.panel.append(this.input, this.dropdown);
+        this.panel.append(this.input, this.clearButton, this.dropdown);
 
         document.addEventListener("keydown", (event: KeyboardEvent): void => {
             if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -104,6 +123,7 @@ export class SearchPanel {
     private onInput(): void {
         window.clearTimeout(this.debounceTimer);
         const query = this.input.value.trim();
+        this.clearButton.hidden = this.input.value.length === 0;
         if (query.length < MIN_QUERY_LENGTH) {
             this.close();
             return;

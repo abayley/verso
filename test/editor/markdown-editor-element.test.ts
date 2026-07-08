@@ -1075,17 +1075,17 @@ describe("MarkdownEditorElement", (): void => {
         dispatchHtmxConfigRequest(editor);
         dispatchHtmxRequestEvent(editor, "htmx:beforeRequest");
 
-        expect(saveButton(editor).textContent).toBe("Auto-Saving...");
+        expect(saveButton(editor).textContent).toBe("Saving…");
         expect(saveButton(editor).hasAttribute("disabled")).toBe(true);
 
         dispatchHtmxRequestEvent(editor, "htmx:afterRequest", { successful: true });
 
-        expect(saveButton(editor).textContent).toBe("Auto-Saving...");
+        expect(saveButton(editor).textContent).toBe("Saving…");
         expect(saveButton(editor).hasAttribute("disabled")).toBe(true);
 
         vi.advanceTimersByTime(499);
 
-        expect(saveButton(editor).textContent).toBe("Auto-Saving...");
+        expect(saveButton(editor).textContent).toBe("Saving…");
         expect(saveButton(editor).hasAttribute("disabled")).toBe(true);
 
         vi.advanceTimersByTime(1);

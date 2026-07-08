@@ -118,7 +118,7 @@ export class SaveStateController {
 
     private buttonLabel(): string {
         if (this.state === "saving") {
-            return "Auto-Saving...";
+            return "Saving…";
         }
 
         if (this.state === "retry") {

@@ -56,6 +56,8 @@ export class TableOfContentsPanel {
             button.type = "button";
             button.className = "markdown-editor__toc-link";
             button.textContent = entry.text;
+            // The delegated tooltip shows the full heading on hover (long entries truncate).
+            button.setAttribute("data-tooltip", entry.text);
             button.addEventListener("click", (): void => this.onSelect(index));
 
             item.append(button);

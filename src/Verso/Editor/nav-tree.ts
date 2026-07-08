@@ -238,7 +238,7 @@ export class NavTreePanel {
         collapseAll.type = "button";
         collapseAll.className = "markdown-editor__nav-collapse-all markdown-editor__nav-op";
         collapseAll.setAttribute("aria-label", "Collapse all");
-        collapseAll.title = "Collapse all";
+        collapseAll.setAttribute("data-tooltip", "Collapse all");
         collapseAll.append(chromeIconEl("chevrons-down-up"));
         collapseAll.addEventListener("click", (): void => this.collapseAll());
 
@@ -523,7 +523,8 @@ export class NavTreePanel {
         button.type = "button";
         button.className = "markdown-editor__nav-create";
         button.setAttribute("aria-label", "New page or section here");
-        button.textContent = "+";
+        button.setAttribute("data-tooltip", "New page or section");
+        button.append(chromeIconEl("plus"));
         button.addEventListener("click", (event: MouseEvent): void => {
             event.stopPropagation();
             this.openCreate(parentPath);
@@ -536,7 +537,8 @@ export class NavTreePanel {
         button.type = "button";
         button.className = "markdown-editor__nav-create";
         button.setAttribute("aria-label", "New top-level page or section");
-        button.textContent = "+";
+        button.setAttribute("data-tooltip", "New top-level page or section");
+        button.append(chromeIconEl("plus"));
         button.addEventListener("click", (): void => this.openCreate(""));
         return button;
     }
@@ -571,7 +573,7 @@ export class NavTreePanel {
         button.type = "button";
         button.className = "markdown-editor__nav-op";
         button.setAttribute("aria-label", ariaLabel);
-        button.title = ariaLabel;
+        button.setAttribute("data-tooltip", ariaLabel);
         button.append(content);
         button.addEventListener("click", (event: MouseEvent): void => {
             event.stopPropagation();
@@ -586,7 +588,7 @@ export class NavTreePanel {
         button.type = "button";
         button.className = "markdown-editor__nav-action";
         button.setAttribute("aria-label", `${label} ${node.name}`);
-        button.title = label;
+        button.setAttribute("data-tooltip", label);
         button.textContent = glyph;
         button.addEventListener("click", (event: MouseEvent): void => {
             event.stopPropagation();
@@ -811,6 +813,11 @@ export class NavTreePanel {
         });
         const trigger = dropdown.querySelector("#nav-undo-menu-trigger");
         trigger?.append(chromeIconEl("undo"));
+        trigger?.setAttribute("data-tooltip", "Undo a move");
+        // The nav is a scroll container, so a right-opening popover overflows its
+        // narrow width and is clipped. Open it left-aligned to its right edge
+        // (data-align end) so it stays within the nav (RFC-0035).
+        dropdown.querySelector("#nav-undo-menu-popover")?.setAttribute("data-align", "end");
         // Refresh the logged moves each time the menu is about to open.
         trigger?.addEventListener("click", (): void => void this.loadUndoItems());
         initBasecoat();

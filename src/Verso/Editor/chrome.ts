@@ -105,6 +105,10 @@ export type DropdownOptions = {
     triggerAriaLabel?: string;
     triggerTooltip?: string;
     triggerDisabled?: boolean;
+    /** Which side of the trigger the menu opens (default "bottom"). */
+    side?: "top" | "bottom";
+    /** Menu alignment along the trigger edge (default "start"). */
+    align?: "start" | "center" | "end";
     items: DropdownItem[];
     onSelect: (value: string) => void;
     /** Typically preventDefault on the trigger, keeping the selection. */
@@ -135,7 +139,13 @@ export function chromeDropdown(options: DropdownOptions): TemplateResult {
             aria-expanded="false"
             @mousedown=${options.onTriggerMouseDown}
         >${options.trigger}</button>
-        <div id="${options.id}-popover" data-popover aria-hidden="true">
+        <div
+            id="${options.id}-popover"
+            data-popover
+            aria-hidden="true"
+            data-side=${ifDefined(options.side)}
+            data-align=${ifDefined(options.align)}
+        >
             <div role="menu" id="${options.id}-menu" aria-labelledby="${options.id}-trigger">
                 ${options.items.map(
                     (item) =>
@@ -293,7 +303,9 @@ export function chromeSegmentEl(options: SegmentOptions): ChromeSegmentElement {
     list.setAttribute("aria-orientation", "horizontal");
 
     if (options.joined) {
-        list.className = "chrome-segment-joined";
+        // Text-label entries need auto-width segments; icon-only entries are square.
+        const labelled = options.entries.some((entry) => !entry.iconOnly);
+        list.className = labelled ? "chrome-segment-joined chrome-segment-joined--labels" : "chrome-segment-joined";
     } else {
         container.classList.add("tabs");
         list.dataset["variant"] = "line";
@@ -339,7 +351,16 @@ export function chromeSegmentEl(options: SegmentOptions): ChromeSegmentElement {
         button.tabIndex = -1;
 
         if (options.joined) {
-            applyIntent(button, "icon", { tooltip: entry.label });
+            // Icon-only entries render as square icon buttons with a tooltip; entries
+            // with a visible label render as compact text segments (no tooltip needed,
+            // the label is visible). Both sit in the same joined outline group.
+            applyIntent(button, entry.iconOnly ? "icon" : "quiet", entry.iconOnly ? { tooltip: entry.label } : {});
+            if (entry.iconOnly) {
+                // A joined icon group is a top-bar toolbar at the viewport's top-right: open its
+                // tooltips below and aligned to the right edge so they render into the viewport.
+                button.setAttribute("data-side", "bottom");
+                button.setAttribute("data-align", "end");
+            }
             button.setAttribute("role", "tab");
         }
 

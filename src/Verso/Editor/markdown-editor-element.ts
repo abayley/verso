@@ -15,6 +15,7 @@ import {
     type ChromeSegmentElement,
     chromeButtonEl,
     chromeDropdownEl,
+    chromeIconEl,
     chromeLinkEl,
     chromeSegmentEl,
     initBasecoat,
@@ -66,7 +67,6 @@ import {
     type VisualStructureStyle,
     type VisualTableCommand,
 } from "./tiptap-visual-editor.js";
-import { ToolbarTooltipController } from "./toolbar-tooltip-controller.js";
 
 type EditorMode = "visual" | "source" | "split";
 type EditorTheme = "light" | "dark" | "match-system";
@@ -78,12 +78,14 @@ const visualThemeStorageKey = "editor-theme";
 const colorSchemeStorageKey = "editor-color-scheme";
 const bodyWidthStorageKey = "editor-body-width";
 const modeStorageKey = "editor-mode";
+const sidebarCollapsedStorageKey = "editor-sidebar-collapsed";
 
-/** The selectable editing-column widths, in toolbar order; "narrow" is the default. */
-const bodyWidths: { value: BodyWidth; label: string }[] = [
-    { value: "narrow", label: "Narrow" },
-    { value: "medium", label: "Medium" },
-    { value: "full", label: "Full" },
+/** The selectable editing-column widths, in toolbar order; "narrow" is the default. Icons read as
+    increasing column width (a portrait, a square, a landscape rectangle). */
+const bodyWidths: { value: BodyWidth; label: string; icon: string }[] = [
+    { value: "narrow", label: "Narrow", icon: "rectangle-vertical" },
+    { value: "medium", label: "Medium", icon: "square" },
+    { value: "full", label: "Full", icon: "rectangle-horizontal" },
 ];
 
 /** Narrows an arbitrary string to a known editing-column width. */
@@ -208,9 +210,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private themeGroup: ChromeSegmentElement | null = null;
     private themeDropdown: ChromeDropdownElement | null = null;
     private visualTheme: VisualTheme = "shadcn";
-    private tooltipController: ToolbarTooltipController | null = null;
     /** A faster (200 ms) tooltip just for the navigation tree's truncated labels (RFC-0026). */
-    private navTooltipController: ToolbarTooltipController | null = null;
     private readonly handleSystemThemeChange = (): void => {
         if (this.theme === "match-system") {
             this.applyDocumentTheme();
@@ -348,8 +348,6 @@ export class MarkdownEditorElement extends HTMLElement {
         this.body?.removeEventListener("paste", this.handlePaste, true);
         this.closeSlashMenu();
         this.linkController?.dispose();
-        this.tooltipController?.hide();
-        this.navTooltipController?.hide();
         this.saveController?.dispose();
         this.sourceEditor?.destroy();
         this.sourceEditor = null;
@@ -424,7 +422,6 @@ export class MarkdownEditorElement extends HTMLElement {
         // A resumed draft is itself unpublished work to discard (RFC-0032); a fresh page starts clean.
         this.hasUnpublishedChanges = this.hasAttribute("data-has-draft");
 
-        this.tooltipController = new ToolbarTooltipController();
         this.toolbar = this.createToolbar();
         this.documentName = this.createDocumentName();
         this.commandBar = this.createCommandBar();
@@ -482,6 +479,19 @@ export class MarkdownEditorElement extends HTMLElement {
         // panel shows whenever the document has headings (any mode); the attachments panel is tree-mode only.
         this.sidebar = document.createElement("div");
         this.sidebar.className = "markdown-editor__sidebar";
+        // A collapse toggle mirroring the nav's, so the metadata pane can fold to a thin rail
+        // (the state persists). panel-right reads as "the right-hand panel".
+        const sidebarToggle = document.createElement("button");
+        sidebarToggle.type = "button";
+        sidebarToggle.className = "markdown-editor__sidebar-toggle";
+        sidebarToggle.setAttribute("aria-label", "Collapse metadata panel");
+        sidebarToggle.setAttribute("data-tooltip", "Collapse metadata panel");
+        sidebarToggle.append(chromeIconEl("panel-right"));
+        sidebarToggle.addEventListener("click", (): void => {
+            const collapsed = this.sidebar?.getAttribute("data-collapsed") === "true";
+            this.setSidebarCollapsed(!collapsed);
+        });
+        this.sidebar.append(sidebarToggle);
         this.tocPanel = new TableOfContentsPanel((index: number): void => this.scrollToHeading(index));
         this.sidebar.append(this.tocPanel.element());
         if (this.isTreeMode()) {
@@ -496,13 +506,11 @@ export class MarkdownEditorElement extends HTMLElement {
                 this.enableAttachmentDrop(this.body);
             }
         }
-        // The navigation tree (RFC-0026), tree mode only: the workspace's leading column, so it sits below the
-        // top bar and breadcrumbs and to the left of the editing pane (RFC-0026 position revision).
+        // The navigation tree (RFC-0026, RFC-0035): a full-height column pinned to the viewport's left edge,
+        // a sibling of the content column rather than inside the centred workspace, so it reads as an app
+        // sidebar (the shadcn layout) rather than sitting inside the page gutter.
         if (this.isTreeMode()) {
-            this.navTooltipController = new ToolbarTooltipController();
             this.navTree = this.createNavTree();
-            workspace.insertBefore(this.navTree.element(), main);
-            this.append(this.navTooltipController.element());
         }
         workspace.append(this.sidebar);
 
@@ -525,19 +533,25 @@ export class MarkdownEditorElement extends HTMLElement {
         }
         this.topBar.append(this.toolbar, topBarRow);
 
+        // The content column holds the top bar, the editing workspace, and the bottom bars. It is a flex
+        // column beside the viewport-pinned nav; the host is a flex row of [nav, content]. The floating
+        // affordances (popovers, bubble toolbar, tooltips) stay direct host children so they keep anchoring
+        // to the host's positioning context.
+        const contentColumn = document.createElement("div");
+        contentColumn.className = "markdown-editor__content";
+        contentColumn.append(this.topBar, workspace, this.footer, this.wordCount);
+
         this.append(
-            this.topBar,
+            ...(this.navTree ? [this.navTree.element()] : []),
+            contentColumn,
             this.linkController.editorElement(),
             this.linkController.actionsElement(),
             this.bubbleToolbar,
             this.slashMenu,
             this.tableControls,
-            this.tooltipController.element(),
-            workspace,
-            this.footer,
-            this.wordCount,
         );
         this.applyBodyWidth();
+        this.setSidebarCollapsed(readStoredPreference(sidebarCollapsedStorageKey) === "true");
         initBasecoat();
         this.observeTopBarHeight();
         this.renderMode();
@@ -600,8 +614,9 @@ export class MarkdownEditorElement extends HTMLElement {
                 const suffix = editMode && !target.includes("?") ? "?edit" : "";
                 window.location.href = `/documents/${target}${suffix}`;
             },
-            registerTooltip: (target: HTMLElement, text: string): void =>
-                this.navTooltipController?.register(target, text),
+            registerTooltip: (target: HTMLElement, text: string): void => {
+                target.setAttribute("data-tooltip", text);
+            },
             notify: (message: string, isError: boolean): void => this.showUploadNotice(message, isError),
             deleteNode: async (path: string): Promise<DeleteResult> => {
                 try {
@@ -724,26 +739,35 @@ export class MarkdownEditorElement extends HTMLElement {
         const toolbar = document.createElement("div");
         toolbar.className = "markdown-editor__toolbar markdown-editor__toolbar--top";
 
+        // Three slots (a grid: start, centre, end): the read/edit toggle at the left, the mode and width
+        // controls centred over the content, and the appearance controls at the right.
         const controls = document.createElement("div");
         controls.className = "markdown-editor__toolbar-controls";
+
+        const startSlot = document.createElement("div");
+        startSlot.className = "markdown-editor__toolbar-slot markdown-editor__toolbar-slot--start";
         const readEditLink = this.createReadEditLink();
         if (readEditLink) {
-            controls.append(readEditLink);
+            startSlot.append(readEditLink);
         }
+
+        const centreSlot = document.createElement("div");
+        centreSlot.className = "markdown-editor__toolbar-slot markdown-editor__toolbar-slot--centre";
         this.modeGroup = this.createModeGroup();
-        controls.append(this.modeGroup);
         this.widthGroup = this.createWidthGroup();
-        controls.append(this.widthGroup);
+        centreSlot.append(this.modeGroup, this.widthGroup);
+
         // The visual-theme dropdown and the light/dark appearance group travel together as one unit
-        // ("appearance"). The default themes render it inline at the right of the top bar; Workbench pins
-        // it to the top-right of its IDE frame (out of the left rail) via this wrapper.
+        // ("appearance") at the right of the top bar.
         const appearance = document.createElement("div");
-        appearance.className = "markdown-editor__appearance";
+        appearance.className =
+            "markdown-editor__toolbar-slot markdown-editor__toolbar-slot--end markdown-editor__appearance";
         this.themeDropdown = this.createThemeDropdown();
         appearance.append(this.themeDropdown);
         this.themeGroup = this.createThemeGroup();
         appearance.append(this.themeGroup);
-        controls.append(appearance);
+
+        controls.append(startSlot, centreSlot, appearance);
 
         // The document name is a sibling of the controls (not nested), so the layout can place the two
         // independently: stacked below the controls under the default themes (controls, then the name on its
@@ -1012,6 +1036,7 @@ export class MarkdownEditorElement extends HTMLElement {
         const group = chromeSegmentEl({
             className: "markdown-editor__mode-group",
             ariaLabel: "Editor view mode",
+            joined: true,
             entries: [
                 { value: "visual", label: "Visual" },
                 { value: "source", label: "Markdown" },
@@ -1034,7 +1059,13 @@ export class MarkdownEditorElement extends HTMLElement {
         const group = chromeSegmentEl({
             className: "markdown-editor__width-group",
             ariaLabel: "Editor width",
-            entries: bodyWidths.map((width) => ({ value: width.value, label: width.label })),
+            joined: true,
+            entries: bodyWidths.map((width) => ({
+                value: width.value,
+                label: width.label,
+                icon: width.icon,
+                iconOnly: true,
+            })),
         });
         group.addEventListener("change", (): void => {
             // The width is locked to Full in split (the control is shown but inert there), so ignore changes.
@@ -1069,6 +1100,19 @@ export class MarkdownEditorElement extends HTMLElement {
      */
     private applyBodyWidth(): void {
         this.setAttribute("data-body-width", this.effectiveBodyWidth());
+    }
+
+    /** Folds or unfolds the right-hand metadata pane to a thin rail; the choice persists. */
+    private setSidebarCollapsed(collapsed: boolean): void {
+        if (!this.sidebar) {
+            return;
+        }
+
+        this.sidebar.setAttribute("data-collapsed", collapsed ? "true" : "false");
+        const toggle = this.sidebar.querySelector(".markdown-editor__sidebar-toggle");
+        toggle?.setAttribute("aria-label", collapsed ? "Expand metadata panel" : "Collapse metadata panel");
+        toggle?.setAttribute("data-tooltip", collapsed ? "Expand metadata panel" : "Collapse metadata panel");
+        writeStoredPreference(sidebarCollapsedStorageKey, collapsed ? "true" : "false");
     }
 
     /**
@@ -1241,7 +1285,6 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Creates the link popover controller, wiring its host dependencies (RFC-0002). */
     private createLinkController(): LinkPopoverController {
         return new LinkPopoverController({
-            tooltipController: this.tooltipController,
             position: (overlay: HTMLElement, anchor: DOMRect): void => this.positionOverlay(overlay, anchor),
             editorAnchorRect: (anchorRect: DOMRect | null): DOMRect =>
                 anchorRect ??

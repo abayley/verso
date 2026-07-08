@@ -179,6 +179,7 @@ export class CommandBarElement extends LitElement {
             ${chromeDropdown({
                 id: "command-bar-style",
                 className: "markdown-editor__style-dropdown",
+                side: "top",
                 intent: "quiet",
                 trigger: html`${blockLabel(this.blockStyle)} ${chromeIcon("chevron-down")}`,
                 triggerClassName: "markdown-editor__button markdown-editor__style-trigger",
@@ -219,6 +220,7 @@ export class CommandBarElement extends LitElement {
             ${chromeDropdown({
                 id: "command-bar-badge",
                 className: "markdown-editor__badge-dropdown",
+                side: "top",
                 intent: "quiet",
                 trigger: html`Badge ${chromeIcon("chevron-down")}`,
                 triggerClassName: "markdown-editor__button markdown-editor__badge-trigger",
@@ -238,6 +240,7 @@ export class CommandBarElement extends LitElement {
             ${chromeDropdown({
                 id: "command-bar-callout",
                 className: "markdown-editor__callout-dropdown",
+                side: "top",
                 intent: "icon",
                 trigger: chromeIcon("info"),
                 triggerClassName: "markdown-editor__button markdown-editor__callout-trigger",

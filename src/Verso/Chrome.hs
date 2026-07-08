@@ -39,18 +39,29 @@ data ButtonIntent
 intentAttrs :: ButtonIntent -> [(String, String)]
 intentAttrs intent =
     case intent of
-        PrimaryAction -> [Html.class_ "btn", Html.attr "data-size" "sm"]
-        QuietControl -> [Html.class_ "btn", Html.attr "data-variant" "ghost", Html.attr "data-size" "sm"]
-        OutlineControl -> [Html.class_ "btn", Html.attr "data-variant" "outline", Html.attr "data-size" "sm"]
-        IconControl -> [Html.class_ "btn", Html.attr "data-variant" "ghost", Html.attr "data-size" "icon-sm"]
+        PrimaryAction -> [Html.attr "data-size" "sm"]
+        QuietControl -> [Html.attr "data-variant" "ghost", Html.attr "data-size" "sm"]
+        OutlineControl -> [Html.attr "data-variant" "outline", Html.attr "data-size" "sm"]
+        IconControl -> [Html.attr "data-variant" "ghost", Html.attr "data-size" "icon-sm"]
+
+{- | The full attribute list for a chrome button: one merged class attribute
+(@btn@ plus any classes from the extras, keeping our BEM test-contract
+classes alongside Basecoat's), the intent's variants, and the other extras.
+-}
+buttonAttrs :: ButtonIntent -> [(String, String)] -> [(String, String)]
+buttonAttrs intent extras =
+    Html.class_ (unwords ("btn" : extraClasses)) : intentAttrs intent ++ otherExtras
+  where
+    extraClasses = [value | (name, value) <- extras, name == "class"]
+    otherExtras = [pair | pair@(name, _) <- extras, name /= "class"]
 
 -- | A non-submitting chrome button; extra attributes follow the intent's.
 chromeButton :: ButtonIntent -> [(String, String)] -> Html.Html () -> Html.Html ()
-chromeButton intent extras = Html.button_ (Html.attr "type" "button" : intentAttrs intent ++ extras)
+chromeButton intent extras = Html.button_ (Html.attr "type" "button" : buttonAttrs intent extras)
 
 -- | A form-submitting chrome button (Restore, no-script Save).
 chromeSubmitButton :: ButtonIntent -> [(String, String)] -> Html.Html () -> Html.Html ()
-chromeSubmitButton intent extras = Html.button_ (Html.attr "type" "submit" : intentAttrs intent ++ extras)
+chromeSubmitButton intent extras = Html.button_ (Html.attr "type" "submit" : buttonAttrs intent extras)
 
 {- | An inline icon referencing the external Lucide sprite
 (@static\/editor\/icons.svg@, symbol ids @i-\<name\>@). Stroke styling is

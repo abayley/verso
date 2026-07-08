@@ -30,6 +30,9 @@ spec =
             it "given extra attributes, when rendered, then they are preserved" $ do
                 let out = Html.renderHtml (Chrome.chromeButton Chrome.QuietControl [Html.attr "id" "x"] (Html.text "y"))
                 out `shouldInclude` "id=\"x\""
+            it "given an extra class, when rendered, then classes merge into one attribute" $ do
+                let out = Html.renderHtml (Chrome.chromeButton Chrome.OutlineControl [Html.class_ "verso-rollback-button"] (Html.text "Restore"))
+                out `shouldInclude` "class=\"btn verso-rollback-button\""
         describe "chromeSubmitButton" $
             it "given a primary submit, when rendered, then the type is submit" $ do
                 let out = Html.renderHtml (Chrome.chromeSubmitButton Chrome.PrimaryAction [] (Html.text "Restore"))

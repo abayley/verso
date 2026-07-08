@@ -206,6 +206,13 @@ spec =
                 App.searchResultsJson 2 [hit]
                     `shouldBe` "{\"enabled\":true,\"pending\":2,\"results\":[{\"path\":\"guides/a.md\",\"title\":\"Guide\",\"anchor\":\"Failover\",\"excerpt\":\"Configure the \\\"failover\\\" timeouts.\"}]}"
 
+            it "given the search page, when rendered, then its controls carry basecoat chrome classes" $ do
+                treeRoot <- setupTreeFixture
+                response <- runTreeApp treeRoot (request Http.GET ["search"])
+                Http.statusCode (Http.responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "class=\"input\""
+                bodyText response `shouldInclude` "<button type=\"submit\" class=\"btn\" data-variant=\"outline\" data-size=\"sm\">Search</button>"
+
             it "given a titled page, when read, then the html title is the frontmatter name" $ do
                 treeRoot <- setupTreeFixture
                 response <- runTreeApp treeRoot (request Http.GET ["documents", "home.md"])

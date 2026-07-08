@@ -652,6 +652,37 @@ a.markdown-editor__crumb:hover {
   padding: 0 1.5rem 2rem;
 }
 
+/* Version-page typography, formerly UA defaults (zeroed by the Basecoat
+   preflight, RFC-0035). */
+.verso-version-page main h1 {
+  font-size: 2em;
+  font-weight: 700;
+  margin: 0.67em 0;
+}
+
+.verso-version-page main p {
+  margin: 1em 0;
+}
+
+.verso-version-page main ol {
+  list-style: decimal;
+  margin: 1em 0;
+  padding-left: 2em;
+}
+
+/* The search form: input and button on one row, the input taking the width. */
+.verso-search-form {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  margin: 1em 0;
+  max-width: 40rem;
+}
+
+.verso-search-form .input {
+  flex: 1;
+}
+
 .verso-version-back a {
   color: var(--markdown-editor-muted);
   text-decoration: none;

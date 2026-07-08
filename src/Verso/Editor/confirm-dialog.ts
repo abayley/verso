@@ -1,10 +1,13 @@
-// A themed confirmation dialog (Web Awesome `<wa-dialog>`) used in place of `window.confirm`,
-// so destructive actions (delete, move) match the editor theme rather than the browser chrome.
-// The dialog is created on demand, appended to <body>, opened, and removed once dismissed.
-// Resolves true when the confirm button is chosen, false on cancel / Escape / overlay dismiss.
+// A themed confirmation dialog (native <dialog> with Basecoat's dialog styling, RFC-0035) used in
+// place of `window.confirm`, so destructive actions (delete, move) match the editor theme rather
+// than the browser chrome. The dialog is created on demand, appended to <body>, opened modally,
+// and removed once dismissed. Resolves true when the confirm button is chosen, false on cancel /
+// Escape / backdrop dismiss.
+
+import { chromeButtonEl } from "./chrome.js";
 
 export interface ConfirmOptions {
-    /** The dialog heading (its `label`). */
+    /** The dialog heading. */
     title: string;
     /** The body text explaining what will happen. */
     message: string;
@@ -19,24 +22,33 @@ export interface ConfirmOptions {
 /** Shows a themed confirmation dialog and resolves to the user's choice. */
 export function themedConfirm(options: ConfirmOptions): Promise<boolean> {
     return new Promise<boolean>((resolve): void => {
-        const dialog = document.createElement("wa-dialog");
-        dialog.setAttribute("label", options.title);
-        dialog.className = "markdown-editor__confirm";
+        const dialog = document.createElement("dialog");
+        dialog.className = "dialog markdown-editor__confirm";
 
+        const article = document.createElement("article");
+
+        const header = document.createElement("header");
+        const heading = document.createElement("h2");
+        heading.textContent = options.title;
+        header.append(heading);
+
+        const section = document.createElement("section");
         const message = document.createElement("p");
         message.className = "markdown-editor__confirm-message";
         message.textContent = options.message;
+        section.append(message);
 
-        const cancel = document.createElement("wa-button");
-        cancel.setAttribute("slot", "footer");
-        cancel.setAttribute("appearance", "outlined");
-        cancel.textContent = options.cancelLabel ?? "Cancel";
+        const footer = document.createElement("footer");
+        const cancel = chromeButtonEl("outline", options.cancelLabel ?? "Cancel", {});
+        const confirm = chromeButtonEl(
+            options.danger === true ? "danger" : "primary",
+            options.confirmLabel ?? "Confirm",
+            {},
+        );
+        footer.append(cancel, confirm);
 
-        const confirm = document.createElement("wa-button");
-        confirm.setAttribute("slot", "footer");
-        confirm.setAttribute("appearance", "filled");
-        confirm.setAttribute("variant", options.danger === true ? "danger" : "brand");
-        confirm.textContent = options.confirmLabel ?? "Confirm";
+        article.append(header, section, footer);
+        dialog.append(article);
 
         let settled = false;
         const settle = (result: boolean): void => {
@@ -45,25 +57,23 @@ export function themedConfirm(options: ConfirmOptions): Promise<boolean> {
             }
             settled = true;
             resolve(result);
-            // Drive the close animation; the element is removed on `wa-after-hide`.
-            (dialog as unknown as { open: boolean }).open = false;
+            dialog.close();
         };
 
         cancel.addEventListener("click", (): void => settle(false));
         confirm.addEventListener("click", (): void => settle(true));
-        // Escape, the close button, or an overlay click all dismiss the dialog -> treat as cancel.
-        dialog.addEventListener("wa-hide", (): void => {
+        // Escape (the native cancel path) dismisses the dialog -> treat as cancel.
+        dialog.addEventListener("close", (): void => {
             if (!settled) {
                 settled = true;
                 resolve(false);
             }
-        });
-        dialog.addEventListener("wa-after-hide", (): void => dialog.remove());
 
-        dialog.append(message, cancel, confirm);
+            dialog.remove();
+        });
+
         document.body.append(dialog);
-        (dialog as unknown as { open: boolean }).open = true;
-        // Focus the confirm action once the dialog has shown.
-        dialog.addEventListener("wa-after-show", (): void => confirm.focus(), { once: true });
+        dialog.showModal();
+        confirm.focus();
     });
 }

@@ -1,121 +1,31 @@
-/** Delay before a cold tooltip appears on hover/focus. */
-const showDelayMilliseconds = 500;
-
-/** Grace period before a tooltip hides after the pointer/focus leaves. */
-const hideDelayMilliseconds = 250;
-
-/** Unique-id source for tooltip targets, document-wide across editor instances. */
-let tooltipTargetSequence = 0;
-
 /**
- * The editor's shared toolbar tooltip (RFC-0002), extracted from the custom
- * element as a plain controller. It owns the single tooltip element, the show and
- * hide delays, and warm retargeting between controls: once a tooltip is showing
- * (or about to hide), moving to another control retargets it immediately rather
- * than waiting out the show delay again.
+ * The editor's toolbar tooltips (RFC-0002), reimplemented over Basecoat's
+ * CSS-only tooltips (RFC-0035): registering a control now just stamps its
+ * data-tooltip attribute; hover/focus behaviour, delays, and placement are
+ * the stylesheet's. The class keeps its old surface (register/hide/element)
+ * so hosts did not have to change when the wa-tooltip implementation left.
  */
 export class ToolbarTooltipController {
-    private readonly tooltip: HTMLElement;
-    private readonly showDelay: number;
-    private showTimeout: number | null = null;
-    private hideTimeout: number | null = null;
+    private readonly placeholder: HTMLElement;
 
-    constructor(showDelay: number = showDelayMilliseconds) {
-        this.showDelay = showDelay;
-        this.tooltip = document.createElement("wa-tooltip");
-        this.tooltip.className = "markdown-editor__tooltip";
-        this.tooltip.setAttribute("trigger", "manual");
+    constructor() {
+        this.placeholder = document.createElement("span");
+        this.placeholder.hidden = true;
+        this.placeholder.className = "markdown-editor__tooltip";
     }
 
-    /** The shared tooltip element, appended once by the host. */
+    /** A hidden placeholder, kept so hosts that append the element still can. */
     public element(): HTMLElement {
-        return this.tooltip;
+        return this.placeholder;
     }
 
-    /** Registers a control: assigns an id and tooltip text and wires show/hide. */
+    /** Registers a control: sets its tooltip text (label plus optional shortcut). */
     public register(target: HTMLElement, label: string, shortcut: string | null = null): void {
-        const tooltipId = `markdown-editor-control-${++tooltipTargetSequence}`;
-        const tooltipText = shortcut ? `${label} (${shortcut})` : label;
-
-        target.id = target.id || tooltipId;
-        target.dataset["tooltipText"] = tooltipText;
-        target.addEventListener("pointerover", (): void => this.show(target));
-        target.addEventListener("focusin", (): void => this.show(target));
-        target.addEventListener("pointerout", (): void => this.scheduleHide());
-        target.addEventListener("focusout", (): void => this.scheduleHide());
+        target.setAttribute("data-tooltip", shortcut ? `${label} (${shortcut})` : label);
     }
 
-    /** Hides the tooltip immediately and clears its timers (e.g. on disconnect). */
+    /** Kept for the host's disconnect path; CSS tooltips need no teardown. */
     public hide(): void {
-        this.cancelShow();
-        this.cancelHide();
-        this.tooltip.removeAttribute("open");
-    }
-
-    /** Shows or schedules the tooltip for a target control. */
-    private show(target: HTMLElement): void {
-        const tooltipText = target.dataset["tooltipText"];
-
-        if (!tooltipText) {
-            return;
-        }
-
-        const warm = this.isVisible() || this.hideTimeout !== null;
-
-        this.cancelHide();
-        this.cancelShow();
-
-        if (warm) {
-            this.open(target, tooltipText);
-            return;
-        }
-
-        this.showTimeout = window.setTimeout((): void => {
-            this.showTimeout = null;
-            this.open(target, tooltipText);
-        }, this.showDelay);
-    }
-
-    /** Opens the tooltip on a target control. */
-    private open(target: HTMLElement, tooltipText: string): void {
-        this.tooltip.setAttribute("for", target.id);
-        this.tooltip.textContent = tooltipText;
-        this.tooltip.setAttribute("open", "");
-    }
-
-    /** Hides the tooltip after the grace period. */
-    private scheduleHide(): void {
-        this.cancelShow();
-
-        if (!this.isVisible() || this.hideTimeout !== null) {
-            return;
-        }
-
-        this.hideTimeout = window.setTimeout((): void => {
-            this.hideTimeout = null;
-            this.hide();
-        }, hideDelayMilliseconds);
-    }
-
-    private isVisible(): boolean {
-        return this.tooltip.hasAttribute("open");
-    }
-
-    private cancelShow(): void {
-        if (this.showTimeout === null) {
-            return;
-        }
-
-        window.clearTimeout(this.showTimeout);
-        this.showTimeout = null;
-    }
-
-    private cancelHide(): void {
-        if (this.hideTimeout === null) {
-            return;
-        }
-
-        window.clearTimeout(this.hideTimeout);
-        this.hideTimeout = null;
+        // CSS-only tooltips hide with hover/focus; nothing to tear down.
     }
 }

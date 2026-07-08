@@ -1,6 +1,7 @@
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
+import { type ChromeDropdownElement, chromeDropdownEl, chromeIconEl, initBasecoat } from "./chrome.js";
 import { loadMermaid } from "./mermaid-loader.js";
 
 /** The label shown for a code block with no language set (a plain, unhighlighted block). */
@@ -14,6 +15,9 @@ const RENDER_DEBOUNCE_MS = 250;
 
 /** A process-wide counter giving each Mermaid render a unique element id (Mermaid requires one per render). */
 let mermaidRenderSeq = 0;
+
+/** A process-wide counter giving each code-block language picker a unique dropdown id. */
+let codeBlockPickerSeq = 0;
 
 /** Whether the page is currently in the dark colour scheme (drives the Mermaid theme). */
 function isDarkScheme(): boolean {
@@ -32,7 +36,7 @@ export class CodeBlockView {
     public readonly dom: HTMLPreElement;
     public readonly contentDOM: HTMLElement;
     private readonly toolbar: HTMLDivElement;
-    private readonly picker: HTMLElement;
+    private readonly picker: ChromeDropdownElement;
     private readonly label: HTMLElement;
     private readonly copyButton: HTMLButtonElement;
     private copyTimer: ReturnType<typeof setTimeout> | null = null;
@@ -69,7 +73,8 @@ export class CodeBlockView {
         this.copyButton.type = "button";
         this.copyButton.className = "markdown-editor__code-copy";
         this.copyButton.title = "Copy code";
-        this.copyButton.append(CodeBlockView.copyIcon("copy", "Copy code"));
+        this.copyButton.setAttribute("aria-label", "Copy code");
+        this.copyButton.append(chromeIconEl("copy"));
         this.copyButton.addEventListener("click", (): void => void this.copyCode());
         this.toolbar.append(this.picker, this.label, this.copyButton);
 
@@ -93,38 +98,24 @@ export class CodeBlockView {
         this.render();
     }
 
-    /** Builds the Web Awesome language dropdown; selecting an item sets the node's language attribute. */
-    private createPicker(): HTMLElement {
-        const dropdown = document.createElement("wa-dropdown");
-        dropdown.className = "markdown-editor__code-language-dropdown";
-        dropdown.setAttribute("size", "s");
-
-        const trigger = document.createElement("wa-button");
-        trigger.className = "markdown-editor__button markdown-editor__code-language-trigger";
-        trigger.setAttribute("slot", "trigger");
-        trigger.setAttribute("appearance", "plain");
-        trigger.setAttribute("size", "s");
-        trigger.setAttribute("with-caret", "");
-        trigger.setAttribute("type", "button");
-        dropdown.append(trigger);
-
-        const entries: [string, string][] = [
-            ["", PLAIN_LABEL],
-            [MERMAID_LANGUAGE, "Mermaid"],
-            ...this.languages.map((lang): [string, string] => [lang, lang]),
-        ];
-
-        for (const [value, label] of entries) {
-            const item = document.createElement("wa-dropdown-item");
-            item.setAttribute("value", value);
-            item.textContent = label;
-            dropdown.append(item);
-        }
-
-        dropdown.addEventListener("wa-select", (event: Event): void => {
-            const item = (event as CustomEvent<{ item?: Element }>).detail?.item;
-            this.setLanguage(item?.getAttribute("value") ?? "");
+    /** Builds the Basecoat language dropdown; selecting an item sets the node's language attribute. */
+    private createPicker(): ChromeDropdownElement {
+        codeBlockPickerSeq += 1;
+        const dropdown = chromeDropdownEl({
+            id: `code-language-${codeBlockPickerSeq}`,
+            className: "markdown-editor__code-language-dropdown",
+            intent: "quiet",
+            triggerLabel: PLAIN_LABEL,
+            triggerClassName: "markdown-editor__button markdown-editor__code-language-trigger",
+            ariaLabel: "Code language",
+            items: [
+                { value: "", label: PLAIN_LABEL },
+                { value: MERMAID_LANGUAGE, label: "Mermaid" },
+                ...this.languages.map((lang) => ({ value: lang, label: lang })),
+            ],
+            onSelect: (value: string): void => this.setLanguage(value),
         });
+        initBasecoat();
 
         return dropdown;
     }
@@ -184,16 +175,6 @@ export class CodeBlockView {
         }
     }
 
-    /** A Font Awesome icon (via `wa-icon`) for the copy button. */
-    private static copyIcon(name: string, label: string): HTMLElement {
-        const icon = document.createElement("wa-icon");
-        icon.setAttribute("name", name);
-        icon.setAttribute("variant", "regular");
-        icon.setAttribute("label", label);
-
-        return icon;
-    }
-
     /** Copies the block's source to the clipboard, flashing a check icon as confirmation. */
     private async copyCode(): Promise<void> {
         try {
@@ -202,7 +183,8 @@ export class CodeBlockView {
             return; // clipboard unavailable (permissions / insecure context): leave the button as-is
         }
 
-        this.copyButton.replaceChildren(CodeBlockView.copyIcon("check", "Copied"));
+        this.copyButton.replaceChildren(chromeIconEl("check"));
+        this.copyButton.setAttribute("aria-label", "Copied");
         this.copyButton.dataset["copied"] = "true";
 
         if (this.copyTimer !== null) {
@@ -210,7 +192,8 @@ export class CodeBlockView {
         }
 
         this.copyTimer = setTimeout((): void => {
-            this.copyButton.replaceChildren(CodeBlockView.copyIcon("copy", "Copy code"));
+            this.copyButton.replaceChildren(chromeIconEl("copy"));
+            this.copyButton.setAttribute("aria-label", "Copy code");
             delete this.copyButton.dataset["copied"];
             this.copyTimer = null;
         }, 1500);
@@ -237,15 +220,11 @@ export class CodeBlockView {
         const language = this.language();
         this.contentDOM.className = language ? `language-${language}` : "";
         const triggerLabel = this.isMermaid() ? "Mermaid" : language || PLAIN_LABEL;
-        const trigger = this.picker.querySelector(".markdown-editor__code-language-trigger");
-
-        if (trigger) {
-            trigger.textContent = triggerLabel;
-        }
+        this.picker.setTriggerLabel(triggerLabel);
+        this.picker.syncChecked(language);
 
         this.label.textContent = triggerLabel;
         const editable = this.editor.isEditable;
-        // The Web Awesome dropdown host overrides the `hidden` attribute, so toggle display directly.
         this.picker.style.display = editable ? "" : "none";
         this.label.hidden = editable;
 

@@ -264,8 +264,12 @@ describe("MarkdownEditorElement", (): void => {
         await waitForInitialisation();
 
         const dropdown = editor.querySelector(".markdown-editor__surface pre .markdown-editor__code-language-dropdown");
-        const item = dropdown?.querySelector('wa-dropdown-item[value="python"]');
-        dropdown?.dispatchEvent(new CustomEvent("wa-select", { bubbles: true, detail: { item } }));
+
+        if (!dropdown) {
+            throw new Error("Expected a code language dropdown.");
+        }
+
+        clickMenuItem(dropdown, "python", "code language");
 
         expect(editor.querySelector(".markdown-editor__surface pre code")?.className).toContain("language-python");
         expect(editor.toMarkdown()).toContain(["```python", "x = 1", "```"].join("\n"));
@@ -333,48 +337,17 @@ describe("MarkdownEditorElement", (): void => {
         expect(modeControl(editor).getAttribute("value")).toBe("visual");
     });
 
-    it("given toolbar controls, when scanning across buttons, then the shared tooltip retargets before hiding", async (): Promise<void> => {
+    it("given toolbar controls, when rendered, then each carries its basecoat tooltip text", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = "Plain paragraph";
 
         document.body.append(editor);
         await waitForInitialisation();
-        vi.useFakeTimers();
 
-        const boldButton = toolbarButton(editor, "Bold");
-        const italicButton = toolbarButton(editor, "Italic");
-        const tooltip = toolbarTooltip(editor);
-
-        boldButton.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
-
-        expect(tooltip.hasAttribute("open")).toBe(false);
-
-        vi.advanceTimersByTime(499);
-
-        expect(tooltip.hasAttribute("open")).toBe(false);
-
-        vi.advanceTimersByTime(1);
-
-        expect(tooltip.hasAttribute("open")).toBe(true);
-        expect(tooltip.getAttribute("for")).toBe(boldButton.id);
-        expect(tooltip.textContent).toBe(`Bold (${primaryModifierLabel()}+B)`);
-
-        boldButton.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
-        italicButton.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
-
-        expect(tooltip.hasAttribute("open")).toBe(true);
-        expect(tooltip.getAttribute("for")).toBe(italicButton.id);
-        expect(tooltip.textContent).toBe(`Italic (${primaryModifierLabel()}+I)`);
-
-        italicButton.dispatchEvent(new PointerEvent("pointerout", { bubbles: true }));
-
-        vi.advanceTimersByTime(249);
-
-        expect(tooltip.hasAttribute("open")).toBe(true);
-
-        vi.advanceTimersByTime(1);
-
-        expect(tooltip.hasAttribute("open")).toBe(false);
+        expect(toolbarButton(editor, "Bold").getAttribute("data-tooltip")).toBe(`Bold (${primaryModifierLabel()}+B)`);
+        expect(toolbarButton(editor, "Italic").getAttribute("data-tooltip")).toBe(
+            `Italic (${primaryModifierLabel()}+I)`,
+        );
     });
 
     it("given the command bar callout dropdown picks a kind, when applied, then that callout type is inserted", async (): Promise<void> => {
@@ -1473,7 +1446,7 @@ describe("MarkdownEditorElement studio surfaces", (): void => {
 
         selectText(editor, "Markdown");
         dispatchSelectionChange();
-        bubbleButton(editor, "strong").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        bubbleButton(editor, "Bold").dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
         expect(editor.toMarkdown()).toContain("**Markdown**");
     });
@@ -1510,7 +1483,7 @@ describe("MarkdownEditorElement studio surfaces", (): void => {
         selectText(editor, "A heading");
         dispatchSelectionChange();
 
-        expect(bubbleToolbar(editor).querySelector(".markdown-editor__bubble-style-trigger")?.textContent).toBe(
+        expect(bubbleToolbar(editor).querySelector(".markdown-editor__bubble-style-trigger")?.textContent?.trim()).toBe(
             "Heading 1",
         );
     });
@@ -1546,8 +1519,12 @@ describe("MarkdownEditorElement studio surfaces", (): void => {
         selectText(editor, "Markdown");
         dispatchSelectionChange();
         const dropdown = bubbleToolbar(editor).querySelector(".markdown-editor__bubble-badge");
-        const item = dropdown?.querySelector('wa-dropdown-item[value="yellow"]');
-        dropdown?.dispatchEvent(new CustomEvent("wa-select", { detail: { item } }));
+
+        if (!dropdown) {
+            throw new Error("Expected a bubble badge dropdown.");
+        }
+
+        clickMenuItem(dropdown, "yellow", "bubble badge");
 
         // The badge mark's span renders through a canvas call jsdom does not implement, so assert on the
         // editor state (the mark applied to the selection) rather than the rendered DOM.
@@ -1560,7 +1537,7 @@ describe("MarkdownEditorElement studio surfaces", (): void => {
 
         selectText(editor, "list");
         dispatchSelectionChange();
-        bubbleStructureButton(editor, "bullet-list").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        bubbleStructureButton(editor, "Bullet List").dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
         expect(editor.querySelector(".markdown-editor__surface ul li")).toBeInstanceOf(HTMLElement);
     });
@@ -1730,12 +1707,14 @@ function bubbleToolbar(editor: Element): HTMLElement {
     return bubble;
 }
 
-/** Returns one bubble toolbar button by its inline style. */
-function bubbleButton(editor: Element, style: string): HTMLElement {
-    const button = bubbleToolbar(editor).querySelector(`.markdown-editor__bubble-button[data-inline-style="${style}"]`);
+/** Returns one bubble toolbar button by its visible label. */
+function bubbleButton(editor: Element, label: string): HTMLElement {
+    const button = Array.from(bubbleToolbar(editor).querySelectorAll(".markdown-editor__bubble-button")).find(
+        (candidate: Element): boolean => candidate.getAttribute("aria-label") === label,
+    );
 
     if (!(button instanceof HTMLElement)) {
-        throw new Error(`Expected a bubble button: ${style}`);
+        throw new Error(`Expected a bubble button: ${label}`);
     }
 
     return button;
@@ -1748,17 +1727,9 @@ function badgeMarkActive(editor: Element): boolean {
     return host.visualEditor?.editor?.isActive("badge") ?? false;
 }
 
-/** Returns one bubble-toolbar structure button by its structure style. */
-function bubbleStructureButton(editor: Element, style: string): HTMLElement {
-    const button = bubbleToolbar(editor).querySelector(
-        `.markdown-editor__bubble-button[data-structure-style="${style}"]`,
-    );
-
-    if (!(button instanceof HTMLElement)) {
-        throw new Error(`Expected a bubble structure button: ${style}`);
-    }
-
-    return button;
+/** Returns one bubble-toolbar structure button by its visible label. */
+function bubbleStructureButton(editor: Element, label: string): HTMLElement {
+    return bubbleButton(editor, label);
 }
 
 /** Chooses a block style from the bubble toolbar's block selector. */
@@ -1769,13 +1740,7 @@ function selectBubbleStyle(editor: Element, style: string): void {
         throw new Error("Expected a bubble block-style dropdown.");
     }
 
-    const item = dropdown.querySelector(`wa-dropdown-item[value="${style}"]`);
-
-    if (!item) {
-        throw new Error(`Expected a bubble block-style item: ${style}`);
-    }
-
-    dropdown.dispatchEvent(new CustomEvent("wa-select", { detail: { item } }));
+    clickMenuItem(dropdown, style, "bubble block-style");
 }
 
 /** Returns the slash menu element for assertions. */
@@ -1853,7 +1818,18 @@ function installLocalStorageStub(): void {
     Object.defineProperty(window, "localStorage", { configurable: true, value: stub });
 }
 
-/** Selects a visual theme by dispatching the theme dropdown's selection event. */
+/** Clicks a Basecoat dropdown menu item by value inside a dropdown root. */
+function clickMenuItem(dropdown: Element, value: string, what: string): void {
+    const item = dropdown.querySelector(`[role="menuitem"][data-value="${value}"]`);
+
+    if (!(item instanceof HTMLElement)) {
+        throw new Error(`Expected a ${what} menu item: ${value}`);
+    }
+
+    item.click();
+}
+
+/** Selects a visual theme through the theme dropdown menu. */
 function selectVisualTheme(editor: Element, theme: string): void {
     const dropdown = editor.querySelector(".markdown-editor__theme-dropdown");
 
@@ -1861,13 +1837,7 @@ function selectVisualTheme(editor: Element, theme: string): void {
         throw new Error("Expected a theme dropdown.");
     }
 
-    const item = dropdown.querySelector(`wa-dropdown-item[value="${theme}"]`);
-
-    if (!item) {
-        throw new Error(`Expected a theme dropdown item: ${theme}`);
-    }
-
-    dropdown.dispatchEvent(new CustomEvent("wa-select", { detail: { item } }));
+    clickMenuItem(dropdown, theme, "theme");
 }
 
 /** Waits for the custom element's asynchronous initialisation timer. */
@@ -1893,17 +1863,6 @@ function toolbarButton(editor: Element, label: string): HTMLElement {
     }
 
     return button;
-}
-
-/** Returns the shared toolbar tooltip. */
-function toolbarTooltip(editor: Element): HTMLElement {
-    const tooltip = editor.querySelector(".markdown-editor__tooltip");
-
-    if (!(tooltip instanceof HTMLElement)) {
-        throw new Error("Expected toolbar tooltip.");
-    }
-
-    return tooltip;
 }
 
 /** Returns the platform-specific primary command modifier label. */
@@ -2076,14 +2035,7 @@ function blockStyleDropdown(editor: Element): HTMLElement {
 
 /** Selects a block style from the toolbar style control. */
 function selectBlockStyle(editor: Element, style: string): void {
-    const dropdown = blockStyleDropdown(editor);
-    const item = dropdown.querySelector(`wa-dropdown-item[value="${style}"]`);
-
-    if (!(item instanceof HTMLElement)) {
-        throw new Error(`Expected toolbar style dropdown item: ${style}`);
-    }
-
-    dropdown.dispatchEvent(new CustomEvent("wa-select", { bubbles: true, detail: { item } }));
+    clickMenuItem(blockStyleDropdown(editor), style, "toolbar style");
 }
 
 /** Returns the stable label for a toolbar command button. */

@@ -193,11 +193,11 @@ historyPage themeDefault title path revs =
                 Html.rawTrusted historyScript
 
 {- | The theme and appearance (light\/dark\/match-system) controls on the version
-pages, rendered with the same Web Awesome components, classes, and top-toolbar
-layout as the editor (a @wa-dropdown@ for the visual theme and a @wa-radio-group@
-of icon buttons for the colour scheme). 'historyScript' wires them to the same
-@localStorage@ keys the editor uses, so a choice here carries over to the editor
-and back. @themeDefault@ sets the initial dropdown label.
+pages, rendered with the same Basecoat chrome and classes as the editor (a
+dropdown menu for the visual theme and a joined group of icon buttons for the
+colour scheme). 'historyScript' wires them to the same @localStorage@ keys the
+editor uses, so a choice here carries over to the editor and back.
+@themeDefault@ sets the initial dropdown label.
 -}
 versionControls :: String -> Html.Html ()
 versionControls themeDefault =
@@ -205,39 +205,28 @@ versionControls themeDefault =
         Html.div [Html.class_ "markdown-editor__toolbar-controls"] $
             Html.div [Html.class_ "markdown-editor__appearance"] $ do
                 themeDropdown
-                appearanceGroup
+                schemeGroup
   where
     themeDropdown =
-        Html.el
-            "wa-dropdown"
-            [Html.class_ "markdown-editor__theme-dropdown", Html.attr "aria-label" "Visual theme", Html.attr "size" "s", Html.attr "id" "verso-theme-dropdown"]
-            $ do
-                Html.el
-                    "wa-button"
-                    [ Html.class_ "markdown-editor__button markdown-editor__theme-trigger"
-                    , Html.attr "slot" "trigger"
-                    , Html.attr "with-caret" ""
-                    , Html.attr "appearance" "plain"
-                    , Html.attr "size" "s"
-                    , Html.attr "type" "button"
-                    , Html.attr "id" "verso-theme-trigger"
-                    , Html.attr "aria-label" "Visual theme"
-                    ]
-                    (Html.text (themeLabelFor (safeEditorTheme themeDefault)))
-                mapM_ themeItem visualThemeOptions
-    themeItem (value, label) = Html.el "wa-dropdown-item" [Html.attr "value" value] (Html.text label)
-    appearanceGroup =
-        Html.el
-            "wa-radio-group"
-            [Html.class_ "markdown-editor__theme-group", Html.attr "aria-label" "Editor colour theme", Html.attr "orientation" "horizontal", Html.attr "size" "s", Html.attr "id" "verso-scheme-group"]
-            (mapM_ schemeRadio schemeOptions)
-    schemeRadio (value, label, icon) =
-        Html.el
-            "wa-radio"
-            [Html.class_ "markdown-editor__theme-option", Html.attr "appearance" "button", Html.attr "aria-label" label, Html.attr "value" value]
-            (Html.el "wa-icon" [Html.class_ "markdown-editor__button-icon", Html.attr "name" icon, Html.attr "variant" "solid", Html.attr "label" label] (Html.text ""))
+        Chrome.chromeDropdown
+            "verso-theme-menu"
+            Chrome.QuietControl
+            ( do
+                Html.el "span" [Html.attr "id" "verso-theme-trigger"] (Html.text (themeLabelFor (safeEditorTheme themeDefault)))
+                Chrome.chromeIcon "chevron-down"
+            )
+            visualThemeOptions
+    schemeGroup =
+        Html.div [Html.class_ "chrome-segment-joined", Html.attr "id" "verso-scheme-group", Html.attr "role" "radiogroup", Html.attr "aria-label" "Editor colour theme"] $ do
+            schemeButton "light" "Light" "sun"
+            schemeButton "dark" "Dark" "moon"
+            schemeButton "match-system" "Match system" "monitor"
+    schemeButton value label icon =
+        Chrome.chromeButton
+            Chrome.IconControl
+            ([Html.attr "data-scheme" value, Html.attr "role" "radio", Html.attr "aria-checked" "false", Html.attr "aria-label" label] ++ Chrome.tooltipAttrsAt label "bottom" "end")
+            (Chrome.chromeIcon icon)
     visualThemeOptions = [("aurora", "Aurora"), ("blueprint", "Blueprint"), ("paper", "Paper"), ("shadcn", "Shadcn"), ("studio", "Studio"), ("workbench", "Workbench")]
-    schemeOptions = [("light", "Light", "sun"), ("dark", "Dark", "moon"), ("match-system", "Match system", "display")]
     themeLabelFor t = Maybe.fromMaybe "Paper" (lookup t visualThemeOptions)
 
 -- | One history-table row: a select checkbox, the timestamp linking to that revision's read view, author, subject, and a Restore button.
@@ -253,26 +242,29 @@ revisionRow path rev =
                 Html.input [Html.attr "type" "hidden", Html.attr "name" "rev", Html.attr "value" (Git.revHash rev)]
                 Chrome.chromeSubmitButton Chrome.OutlineControl [Html.class_ "verso-rollback-button"] (Html.text "Restore")
 
-{- | The history page's client script: wires the Web Awesome theme dropdown and
-appearance radio-group to the editor's @localStorage@ keys (matching the editor's
-events: @wa-select@ on the dropdown, @change@ on the radio-group), limits revision
-selection to two, and as soon as two are selected fetches the side-by-side diff
-fragment of the pair (older as @from@, newer as @to@) into the diff pane; with
-fewer than two selected the pane is hidden and the hint is shown.
+{- | The history page's client script: wires the Basecoat theme menu and the
+scheme button group to the editor's @localStorage@ keys (menuitem clicks on
+the dropdown, button clicks on the group), limits revision selection to two,
+and as soon as two are selected fetches the side-by-side diff fragment of the
+pair (older as @from@, newer as @to@) into the diff pane; with fewer than two
+selected the pane is hidden and the hint is shown.
 -}
 historyScript :: String
 historyScript =
     "<script>(function(){var r=document.documentElement;"
         ++ "var labels={paper:'Paper',aurora:'Aurora',blueprint:'Blueprint',shadcn:'Shadcn',workbench:'Workbench',studio:'Studio'};"
-        ++ "var dd=document.getElementById('verso-theme-dropdown');var trig=document.getElementById('verso-theme-trigger');"
+        ++ "var trig=document.getElementById('verso-theme-trigger');"
         ++ "var ct=localStorage.getItem('editor-theme')||r.getAttribute('data-editor-theme');"
         ++ "if(trig&&ct&&labels[ct]){trig.textContent=labels[ct];}"
-        ++ "if(dd){dd.addEventListener('wa-select',function(e){var it=e.detail&&e.detail.item;var v=it&&it.getAttribute('value');"
-        ++ "if(v&&labels[v]){localStorage.setItem('editor-theme',v);r.setAttribute('data-editor-theme',v);if(trig){trig.textContent=labels[v];}}});}"
-        ++ "var rg=document.getElementById('verso-scheme-group');"
+        ++ "[].forEach.call(document.querySelectorAll('#verso-theme-menu [role=menuitem]'),function(it){"
+        ++ "it.addEventListener('click',function(){var v=it.getAttribute('data-value');"
+        ++ "if(v&&labels[v]){localStorage.setItem('editor-theme',v);r.setAttribute('data-editor-theme',v);if(trig){trig.textContent=labels[v];}}});});"
+        ++ "var sg=document.getElementById('verso-scheme-group');"
         ++ "function applyScheme(s){var d=s==='dark'||(s!=='light'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);r.classList.toggle('wa-dark',d);r.classList.toggle('wa-light',!d);r.classList.toggle('dark',d);}"
-        ++ "if(rg){rg.value=localStorage.getItem('editor-color-scheme')||'match-system';"
-        ++ "rg.addEventListener('change',function(){var v=rg.value;localStorage.setItem('editor-color-scheme',v);applyScheme(v);});}"
+        ++ "function reflectScheme(v){if(!sg){return;}[].forEach.call(sg.querySelectorAll('[data-scheme]'),function(b){b.setAttribute('aria-checked',b.getAttribute('data-scheme')===v?'true':'false');});}"
+        ++ "if(sg){var cs=localStorage.getItem('editor-color-scheme')||'match-system';reflectScheme(cs);"
+        ++ "[].forEach.call(sg.querySelectorAll('[data-scheme]'),function(b){b.addEventListener('click',function(){"
+        ++ "var v=b.getAttribute('data-scheme');localStorage.setItem('editor-color-scheme',v);applyScheme(v);reflectScheme(v);});});}"
         ++ "var boxes=[].slice.call(document.querySelectorAll('.verso-pick'));"
         ++ "var pane=document.getElementById('verso-diff-pane');var hint=document.getElementById('verso-diff-hint');"
         ++ "var p=pane?pane.getAttribute('data-path'):'';"

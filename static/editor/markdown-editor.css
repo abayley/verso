@@ -21,6 +21,57 @@
   width: 1rem;
 }
 
+/* The joined icon-button group (colour scheme controls): shared borders,
+   outer corners only, selected state filled -- the shadcn ToggleGroup shape
+   validated in the mockups. Selection is aria-checked (radio semantics) or
+   aria-selected (tab semantics). */
+.chrome-segment-joined {
+  display: flex;
+}
+
+.chrome-segment-joined .btn {
+  border: 1px solid var(--border, var(--markdown-editor-divider));
+  border-radius: 0;
+  height: 1.75rem;
+  width: 2rem;
+}
+
+.chrome-segment-joined .btn:not(:first-child) {
+  margin-left: -1px;
+}
+
+.chrome-segment-joined .btn:first-child {
+  border-bottom-left-radius: 0.5rem;
+  border-top-left-radius: 0.5rem;
+}
+
+.chrome-segment-joined .btn:last-child {
+  border-bottom-right-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+}
+
+.chrome-segment-joined .btn[aria-checked="true"],
+.chrome-segment-joined .btn[aria-selected="true"] {
+  background: var(--accent, var(--markdown-editor-code-background));
+  z-index: 1;
+}
+
+/* The blocking overlay's spinner, formerly wa-spinner: a rotating ring. */
+.markdown-editor__blocking-spinner {
+  animation: chrome-spin 0.8s linear infinite;
+  border: 3px solid var(--markdown-editor-divider);
+  border-radius: 50%;
+  border-top-color: var(--markdown-editor-accent);
+  height: 1.5rem;
+  width: 1.5rem;
+}
+
+@keyframes chrome-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Document content typography. Basecoat's preflight zeroes every margin and
    drops list markers and heading scale globally, so the document surfaces
    set their typography deliberately (they previously leaned on UA defaults).

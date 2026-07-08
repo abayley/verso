@@ -1,4 +1,5 @@
 import { html, LitElement } from "lit";
+import { chromeButton, chromeIcon } from "./chrome.js";
 import type { VisualTableCommand } from "./tiptap-visual-editor.js";
 
 /** A column alignment the controls can apply. */
@@ -33,7 +34,7 @@ const ALIGN_BUTTONS: Array<{ align: TableAlign; icon: string; label: string }> =
  * event that the host element routes to the Tiptap table commands.
  */
 export class TableControlsElement extends LitElement {
-    /** Renders into the light DOM so the editor's global Web Awesome styles apply. */
+    /** Renders into the light DOM so the page's Basecoat styles apply. */
     protected override createRenderRoot(): HTMLElement {
         return this;
     }
@@ -62,42 +63,29 @@ export class TableControlsElement extends LitElement {
 
     protected override render(): unknown {
         return html`
-            <wa-button-group label="Table rows and columns">
-                ${STRUCTURE_BUTTONS.map(
-                    (button) => html`
-                        <wa-button
-                            appearance="plain"
-                            size="s"
-                            title=${button.label}
-                            @click=${(): void => this.emitCommand(button.command)}
-                        >
-                            ${button.label}
-                        </wa-button>
-                    `,
+            <div class="markdown-editor__button-group" role="group" aria-label="Table rows and columns">
+                ${STRUCTURE_BUTTONS.map((button) =>
+                    chromeButton("quiet", button.label, {
+                        ariaLabel: button.label,
+                        tooltip: button.label,
+                        onClick: (): void => this.emitCommand(button.command),
+                    }),
                 )}
-            </wa-button-group>
-            <wa-button-group label="Column alignment">
-                ${ALIGN_BUTTONS.map(
-                    (button) => html`
-                        <wa-button
-                            appearance="plain"
-                            size="s"
-                            title=${button.label}
-                            @click=${(): void => this.emitAlign(button.align)}
-                        >
-                            <wa-icon name=${button.icon} label=${button.label}></wa-icon>
-                        </wa-button>
-                    `,
+            </div>
+            <div class="markdown-editor__button-group" role="group" aria-label="Column alignment">
+                ${ALIGN_BUTTONS.map((button) =>
+                    chromeButton("icon", chromeIcon(button.icon), {
+                        ariaLabel: button.label,
+                        tooltip: button.label,
+                        onClick: (): void => this.emitAlign(button.align),
+                    }),
                 )}
-            </wa-button-group>
-            <wa-button
-                appearance="plain"
-                size="s"
-                title="Delete table"
-                @click=${(): void => this.emitCommand("delete")}
-            >
-                <wa-icon name="trash" label="Delete table"></wa-icon>
-            </wa-button>
+            </div>
+            ${chromeButton("icon", chromeIcon("trash"), {
+                ariaLabel: "Delete table",
+                tooltip: "Delete table",
+                onClick: (): void => this.emitCommand("delete"),
+            })}
         `;
     }
 }

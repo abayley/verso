@@ -1,17 +1,15 @@
 import { html, LitElement } from "lit";
 import { badgeStyle, COMMON_BADGE_COLOURS } from "./badge-syntax.js";
+import { chromeButton, chromeDropdown, chromeIcon, initBasecoat } from "./chrome.js";
 import {
     BLOCK_STYLES,
     blockLabel,
-    elementValue,
     INLINE_COMMANDS,
     inlineShortcut,
     preventDefault,
     STRUCTURE_COMMANDS,
-    type WaDropdownSelectEvent,
 } from "./editor-toolbar-shared.js";
 import type { VisualInlineStyle, VisualStructureStyle } from "./tiptap-visual-editor.js";
-import type { ToolbarTooltipController } from "./toolbar-tooltip-controller.js";
 
 /** Detail of the `command-block-style` event: the raw block style value the host validates. */
 export interface CommandBlockStyleEventDetail {
@@ -55,14 +53,15 @@ const CALLOUT_KINDS: { value: string; label: string }[] = [
 /** The block-insert command buttons (table, callout, collapsible), in toolbar order. */
 const INSERT_COMMANDS: { kind: InsertStructureKind; label: string; icon: string }[] = [
     { kind: "table", label: "Insert table", icon: "table" },
-    { kind: "collapsible", label: "Insert collapsible", icon: "down-left-and-up-right-to-center" },
+    { kind: "collapsible", label: "Insert collapsible", icon: "chevrons-down-up" },
 ];
 
 /**
  * The persistent command bar (style dropdown, inline/structure button groups, save button), rendered
- * declaratively with Lit. It owns no editor state: the host drives it through reactive properties and
- * each control dispatches a `command-*` event the host routes to the editor commands. The save button is
- * a native form submit; the host reflects the save-state controller's view onto its label and disabled flag.
+ * declaratively with Lit over the Basecoat chrome helpers (RFC-0035). It owns no editor state: the host
+ * drives it through reactive properties and each control dispatches a `command-*` event the host routes
+ * to the editor commands. The save button is a native form submit; the host reflects the save-state
+ * controller's view onto its label and disabled flag.
  */
 export class CommandBarElement extends LitElement {
     static override properties = {
@@ -80,8 +79,6 @@ export class CommandBarElement extends LitElement {
     declare saveLabel: string;
     /** Whether the save button is disabled (clean or saving). */
     declare saveDisabled: boolean;
-    /** The shared toolbar tooltip; set by the host before connection. */
-    tooltipController: ToolbarTooltipController | null = null;
 
     constructor() {
         super();
@@ -91,7 +88,7 @@ export class CommandBarElement extends LitElement {
         this.saveDisabled = true;
     }
 
-    /** Renders into the light DOM so the editor's global Web Awesome styles apply. */
+    /** Renders into the light DOM so the page's Basecoat styles apply. */
     protected override createRenderRoot(): HTMLElement {
         return this;
     }
@@ -101,76 +98,18 @@ export class CommandBarElement extends LitElement {
         this.performUpdate();
     }
 
-    /** Registers the rendered controls with the shared tooltip once, after the first render. */
-    protected override firstUpdated(): void {
-        const trigger = this.querySelector<HTMLElement>(".markdown-editor__style-trigger");
-
-        if (trigger) {
-            this.tooltipController?.register(trigger, "Paragraph");
-        }
-
-        for (const command of INLINE_COMMANDS) {
-            const button = this.querySelector<HTMLElement>(
-                `.markdown-editor__inline-button[data-inline-style="${command.style}"]`,
-            );
-
-            if (button) {
-                this.tooltipController?.register(button, command.label, inlineShortcut(command));
-            }
-        }
-
-        for (const command of STRUCTURE_COMMANDS) {
-            const button = this.querySelector<HTMLElement>(
-                `.markdown-editor__structure-button[data-structure-style="${command.style}"]`,
-            );
-
-            if (button) {
-                this.tooltipController?.register(button, command.label);
-            }
-        }
-
-        for (const command of INSERT_COMMANDS) {
-            const button = this.querySelector<HTMLElement>(
-                `.markdown-editor__insert-button[data-insert-kind="${command.kind}"]`,
-            );
-
-            if (button) {
-                this.tooltipController?.register(button, command.label);
-            }
-        }
-
-        const badge = this.querySelector<HTMLElement>(".markdown-editor__badge-trigger");
-
-        if (badge) {
-            this.tooltipController?.register(badge, "Badge colour");
-        }
-
-        const attachment = this.querySelector<HTMLElement>(".markdown-editor__attachment-button");
-
-        if (attachment) {
-            this.tooltipController?.register(attachment, "Insert image or file");
-        }
-
-        const save = this.querySelector<HTMLElement>(".markdown-editor__save-button");
-
-        if (save) {
-            this.tooltipController?.register(save, "Save");
-        }
+    /** Initialises any Basecoat components this render produced (spike contract). */
+    protected override updated(): void {
+        initBasecoat();
     }
 
     /** Dispatches the chosen block style for the host to validate and apply. */
-    private readonly handleStyleSelect = (event: Event): void => {
-        const item = (event as WaDropdownSelectEvent).detail.item;
-
-        if (!(item instanceof HTMLElement)) {
-            return;
-        }
-
+    private readonly handleStyleSelect = (style: string): void => {
         this.dispatchEvent(
             new CustomEvent<CommandBlockStyleEventDetail>("command-block-style", {
                 bubbles: true,
                 composed: true,
-                detail: { style: elementValue(item) },
+                detail: { style },
             }),
         );
     };
@@ -198,29 +137,19 @@ export class CommandBarElement extends LitElement {
     }
 
     /** Dispatches the chosen badge colour (or "remove") for the host to apply to the selection. */
-    private readonly handleBadgeSelect = (event: Event): void => {
-        const item = (event as WaDropdownSelectEvent).detail.item;
-
-        if (!(item instanceof HTMLElement)) {
-            return;
-        }
-
+    private readonly handleBadgeSelect = (value: string): void => {
         this.dispatchEvent(
             new CustomEvent<CommandBadgeEventDetail>("command-badge", {
                 bubbles: true,
                 composed: true,
-                detail: { value: elementValue(item) },
+                detail: { value },
             }),
         );
     };
 
     /** Dispatches the chosen callout type for the host to insert. */
-    private readonly handleCalloutSelect = (event: Event): void => {
-        const item = (event as WaDropdownSelectEvent).detail.item;
-
-        if (item instanceof HTMLElement) {
-            this.emitInsertStructure("admonition", elementValue(item));
-        }
+    private readonly handleCalloutSelect = (kind: string): void => {
+        this.emitInsertStructure("admonition", kind);
     };
 
     /** Dispatches a request to insert a block construct (table, callout, collapsible) for the host to run. */
@@ -247,175 +176,105 @@ export class CommandBarElement extends LitElement {
 
     protected override render(): unknown {
         return html`
-            <wa-dropdown
-                class="markdown-editor__style-dropdown"
-                aria-label="Block style"
-                size="s"
-                @wa-select=${this.handleStyleSelect}
-            >
-                <wa-button
-                    slot="trigger"
-                    class="markdown-editor__button markdown-editor__style-trigger"
-                    appearance="plain"
-                    size="s"
-                    type="button"
-                    aria-label="Paragraph"
-                    with-caret
-                    ?disabled=${this.commandsDisabled}
-                >${blockLabel(this.blockStyle)}</wa-button>
-                ${BLOCK_STYLES.map(
-                    (style) => html`
-                        <wa-dropdown-item value=${style.value} ?checked=${style.value === this.blockStyle}>
-                            ${style.label}
-                        </wa-dropdown-item>
-                    `,
+            ${chromeDropdown({
+                id: "command-bar-style",
+                className: "markdown-editor__style-dropdown",
+                intent: "quiet",
+                trigger: html`${blockLabel(this.blockStyle)} ${chromeIcon("chevron-down")}`,
+                triggerClassName: "markdown-editor__button markdown-editor__style-trigger",
+                triggerAriaLabel: "Block style",
+                triggerTooltip: "Paragraph",
+                triggerDisabled: this.commandsDisabled,
+                onTriggerMouseDown: preventDefault,
+                items: BLOCK_STYLES.map((style) => ({
+                    value: style.value,
+                    label: style.label,
+                    checked: style.value === this.blockStyle,
+                })),
+                onSelect: this.handleStyleSelect,
+            })}
+            <div class="markdown-editor__button-group" role="group">
+                ${INLINE_COMMANDS.map((command) =>
+                    chromeButton("icon", chromeIcon(command.icon), {
+                        className: "markdown-editor__button markdown-editor__inline-button",
+                        ariaLabel: command.label,
+                        tooltip: `${command.label} (${inlineShortcut(command)})`,
+                        disabled: this.commandsDisabled,
+                        onMouseDown: preventDefault,
+                        onClick: (): void => this.emitInline(command.style),
+                    }),
                 )}
-            </wa-dropdown>
-            <wa-button-group class="markdown-editor__button-group">
-                ${INLINE_COMMANDS.map(
-                    (command) => html`
-                        <wa-button
-                            class="markdown-editor__button markdown-editor__inline-button"
-                            appearance="plain"
-                            size="s"
-                            type="button"
-                            aria-label=${command.label}
-                            data-inline-style=${command.style}
-                            ?disabled=${this.commandsDisabled}
-                            @mousedown=${preventDefault}
-                            @click=${(): void => this.emitInline(command.style)}
-                        >
-                            <wa-icon
-                                class="markdown-editor__button-icon"
-                                name=${command.icon}
-                                variant="solid"
-                                label=${command.label}
-                            ></wa-icon>
-                        </wa-button>
-                    `,
+            </div>
+            <div class="markdown-editor__button-group" role="group">
+                ${STRUCTURE_COMMANDS.map((command) =>
+                    chromeButton("icon", chromeIcon(command.icon), {
+                        className: "markdown-editor__button markdown-editor__structure-button",
+                        ariaLabel: command.label,
+                        tooltip: command.label,
+                        onMouseDown: preventDefault,
+                        onClick: (): void => this.emitStructure(command.style),
+                    }),
                 )}
-            </wa-button-group>
-            <wa-button-group class="markdown-editor__button-group">
-                ${STRUCTURE_COMMANDS.map(
-                    (command) => html`
-                        <wa-button
-                            class="markdown-editor__button markdown-editor__structure-button"
-                            appearance="plain"
-                            size="s"
-                            type="button"
-                            aria-label=${command.label}
-                            data-structure-style=${command.style}
-                            @mousedown=${preventDefault}
-                            @click=${(): void => this.emitStructure(command.style)}
-                        >
-                            <wa-icon
-                                class="markdown-editor__button-icon"
-                                name=${command.icon}
-                                variant="solid"
-                                label=${command.label}
-                            ></wa-icon>
-                        </wa-button>
-                    `,
+            </div>
+            ${chromeDropdown({
+                id: "command-bar-badge",
+                className: "markdown-editor__badge-dropdown",
+                intent: "quiet",
+                trigger: html`Badge ${chromeIcon("chevron-down")}`,
+                triggerClassName: "markdown-editor__button markdown-editor__badge-trigger",
+                triggerAriaLabel: "Badge",
+                triggerTooltip: "Badge colour",
+                triggerDisabled: this.commandsDisabled,
+                onTriggerMouseDown: preventDefault,
+                items: [
+                    ...COMMON_BADGE_COLOURS.map((colour) => ({
+                        value: colour,
+                        label: html`<span class="badge" style=${badgeStyle(colour)}>${colour}</span>`,
+                    })),
+                    { value: "remove", label: "Remove badge" },
+                ],
+                onSelect: this.handleBadgeSelect,
+            })}
+            ${chromeDropdown({
+                id: "command-bar-callout",
+                className: "markdown-editor__callout-dropdown",
+                intent: "icon",
+                trigger: chromeIcon("info"),
+                triggerClassName: "markdown-editor__button markdown-editor__callout-trigger",
+                triggerAriaLabel: "Insert callout",
+                triggerTooltip: "Insert callout",
+                triggerDisabled: this.commandsDisabled,
+                onTriggerMouseDown: preventDefault,
+                items: CALLOUT_KINDS,
+                onSelect: this.handleCalloutSelect,
+            })}
+            <div class="markdown-editor__button-group" role="group">
+                ${INSERT_COMMANDS.map((command) =>
+                    chromeButton("icon", chromeIcon(command.icon), {
+                        className: "markdown-editor__button markdown-editor__insert-button",
+                        ariaLabel: command.label,
+                        tooltip: command.label,
+                        onMouseDown: preventDefault,
+                        onClick: (): void => this.emitInsertStructure(command.kind),
+                    }),
                 )}
-            </wa-button-group>
-            <wa-dropdown
-                class="markdown-editor__badge-dropdown"
-                aria-label="Badge colour"
-                size="s"
-                @wa-select=${this.handleBadgeSelect}
-            >
-                <wa-button
-                    slot="trigger"
-                    class="markdown-editor__button markdown-editor__badge-trigger"
-                    appearance="plain"
-                    size="s"
-                    type="button"
-                    aria-label="Badge"
-                    with-caret
-                    ?disabled=${this.commandsDisabled}
-                    @mousedown=${preventDefault}
-                >Badge</wa-button>
-                ${COMMON_BADGE_COLOURS.map(
-                    (colour) => html`
-                        <wa-dropdown-item value=${colour}>
-                            <span class="badge" style=${badgeStyle(colour)}>${colour}</span>
-                        </wa-dropdown-item>
-                    `,
-                )}
-                <wa-dropdown-item value="remove">Remove badge</wa-dropdown-item>
-            </wa-dropdown>
-            <wa-dropdown
-                class="markdown-editor__callout-dropdown"
-                aria-label="Insert callout"
-                size="s"
-                @wa-select=${this.handleCalloutSelect}
-            >
-                <wa-button
-                    slot="trigger"
-                    class="markdown-editor__button markdown-editor__callout-trigger"
-                    appearance="plain"
-                    size="s"
-                    type="button"
-                    aria-label="Insert callout"
-                    with-caret
-                    ?disabled=${this.commandsDisabled}
-                    @mousedown=${preventDefault}
-                >
-                    <wa-icon class="markdown-editor__button-icon" name="circle-info" variant="solid" label="Insert callout"></wa-icon>
-                </wa-button>
-                ${CALLOUT_KINDS.map(
-                    (callout) => html`<wa-dropdown-item value=${callout.value}>${callout.label}</wa-dropdown-item>`,
-                )}
-            </wa-dropdown>
-            <wa-button-group class="markdown-editor__button-group">
-                ${INSERT_COMMANDS.map(
-                    (command) => html`
-                        <wa-button
-                            class="markdown-editor__button markdown-editor__insert-button"
-                            appearance="plain"
-                            size="s"
-                            type="button"
-                            aria-label=${command.label}
-                            data-insert-kind=${command.kind}
-                            @mousedown=${preventDefault}
-                            @click=${(): void => this.emitInsertStructure(command.kind)}
-                        >
-                            <wa-icon
-                                class="markdown-editor__button-icon"
-                                name=${command.icon}
-                                variant="solid"
-                                label=${command.label}
-                            ></wa-icon>
-                        </wa-button>
-                    `,
-                )}
-            </wa-button-group>
-            <wa-button-group class="markdown-editor__button-group">
-                <wa-button
-                    class="markdown-editor__button markdown-editor__attachment-button"
-                    appearance="plain"
-                    size="s"
-                    type="button"
-                    aria-label="Insert image or file"
-                    @mousedown=${preventDefault}
-                    @click=${(): void => this.emitInsertAttachment()}
-                >
-                    <wa-icon
-                        class="markdown-editor__button-icon"
-                        name="image"
-                        variant="solid"
-                        label="Insert image or file"
-                    ></wa-icon>
-                </wa-button>
-            </wa-button-group>
-            <wa-button
-                class="markdown-editor__button markdown-editor__save-button"
-                type="submit"
-                appearance="plain"
-                size="s"
-                aria-label="Save"
-                ?disabled=${this.saveDisabled}
-            >${this.saveLabel}</wa-button>
+            </div>
+            <div class="markdown-editor__button-group" role="group">
+                ${chromeButton("icon", chromeIcon("image"), {
+                    className: "markdown-editor__button markdown-editor__attachment-button",
+                    ariaLabel: "Insert image or file",
+                    tooltip: "Insert image or file",
+                    onMouseDown: preventDefault,
+                    onClick: (): void => this.emitInsertAttachment(),
+                })}
+            </div>
+            ${chromeButton("quiet", this.saveLabel, {
+                className: "markdown-editor__button markdown-editor__save-button",
+                ariaLabel: "Save",
+                tooltip: "Save",
+                submit: true,
+                disabled: this.saveDisabled,
+            })}
         `;
     }
 }

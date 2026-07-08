@@ -30,7 +30,7 @@ export const BLOCK_STYLES: { value: string; label: string }[] = [
 export const INLINE_COMMANDS: InlineCommand[] = [
     { style: "strong", label: "Bold", icon: "bold", shortcut: "B" },
     { style: "emphasis", label: "Italic", icon: "italic", shortcut: "I" },
-    { style: "strikethrough", label: "Strike", icon: "strikethrough", shortcut: "Shift+S" },
+    { style: "strikethrough", label: "Strike", icon: "strike", shortcut: "Shift+S" },
     { style: "code", label: "Code", icon: "code", shortcut: "E" },
     { style: "link", label: "Link", icon: "link", shortcut: "K" },
 ];
@@ -45,10 +45,10 @@ export interface StructureCommand {
 /** The structural command buttons, in toolbar order. */
 export const STRUCTURE_COMMANDS: StructureCommand[] = [
     { style: "bullet-list", label: "Bullet List", icon: "list" },
-    { style: "ordered-list", label: "Ordered List", icon: "list-ol" },
-    { style: "blockquote", label: "Blockquote", icon: "quote-left" },
+    { style: "ordered-list", label: "Ordered List", icon: "list-ordered" },
+    { style: "blockquote", label: "Blockquote", icon: "quote" },
     { style: "code-block", label: "Code Block", icon: "file-code" },
-    { style: "thematic-break", label: "Horizontal rule", icon: "window-minimize" },
+    { style: "thematic-break", label: "Horizontal rule", icon: "minus" },
 ];
 
 /** Returns the display label for a block style value, defaulting to Paragraph. */

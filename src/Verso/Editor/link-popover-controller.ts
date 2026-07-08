@@ -53,14 +53,12 @@ export class LinkPopoverController {
         this.editor = new LinkEditorElement();
         this.editor.className = "markdown-editor__link-editor";
         this.editor.hidden = true;
-        this.editor.tooltipController = host.tooltipController;
         this.editor.addEventListener("link-apply", (): void => this.applyTarget());
         this.editor.addEventListener("link-cancel", (): void => this.hideEditor());
 
         this.actions = new LinkActionsElement();
         this.actions.className = "markdown-editor__link-actions";
         this.actions.hidden = true;
-        this.actions.tooltipController = host.tooltipController;
         this.actions.addEventListener("link-edit", (): void => this.editActive());
         this.actions.addEventListener("link-remove", (): void => this.removeActive());
         this.actions.addEventListener("pointerover", (): void => this.cancelHide());

@@ -10,6 +10,15 @@ import { attachmentMarkdown, isInlineImage, uploadAttachment } from "./attachmen
 import { badgeExtension } from "./badge-extension.js";
 import { type Breadcrumb, parseBreadcrumbs } from "./breadcrumbs.js";
 import { BubbleToolbarElement } from "./bubble-toolbar-element.js";
+import {
+    type ChromeDropdownElement,
+    type ChromeSegmentElement,
+    chromeButtonEl,
+    chromeDropdownEl,
+    chromeLinkEl,
+    chromeSegmentEl,
+    initBasecoat,
+} from "./chrome.js";
 import { type ClientErrorKind, ClientErrorReporter } from "./client-error-reporter.js";
 import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
 import type { CollapsibleKind } from "./collapsible-extension.js";
@@ -64,7 +73,6 @@ type EditorTheme = "light" | "dark" | "match-system";
 type BodyWidth = "narrow" | "medium" | "full";
 type VisualTheme = "paper" | "aurora" | "blueprint" | "shadcn" | "workbench" | "studio";
 type ActivePane = "source" | "visual";
-type ToolbarButtonElement = HTMLElement;
 
 const visualThemeStorageKey = "editor-theme";
 const colorSchemeStorageKey = "editor-color-scheme";
@@ -147,12 +155,6 @@ function writeStoredPreference(key: string, value: string): void {
     }
 }
 
-interface WaDropdownSelectEvent extends Event {
-    detail: {
-        item: Element;
-    };
-}
-
 interface HtmxConfigRequestEvent extends Event {
     detail: {
         parameters: Record<string, string>;
@@ -179,8 +181,8 @@ export class MarkdownEditorElement extends HTMLElement {
     private markdown = "";
     /** The document's preserved YAML frontmatter (verbatim), hidden from editing and re-attached on save. */
     private frontmatter: string | null = null;
-    private modeGroup: HTMLElement | null = null;
-    private widthGroup: HTMLElement | null = null;
+    private modeGroup: ChromeSegmentElement | null = null;
+    private widthGroup: ChromeSegmentElement | null = null;
     private bodyWidth: BodyWidth = "narrow";
     private attachmentPanel: AttachmentPanel | null = null;
     private tocPanel: TableOfContentsPanel | null = null;
@@ -215,9 +217,8 @@ export class MarkdownEditorElement extends HTMLElement {
      */
     private buildingEditors = false;
     private theme: EditorTheme = "match-system";
-    private themeGroup: HTMLElement | null = null;
-    private themeDropdown: HTMLElement | null = null;
-    private themeDropdownTrigger: ToolbarButtonElement | null = null;
+    private themeGroup: ChromeSegmentElement | null = null;
+    private themeDropdown: ChromeDropdownElement | null = null;
     private visualTheme: VisualTheme = "paper";
     private tooltipController: ToolbarTooltipController | null = null;
     /** A faster (200 ms) tooltip just for the navigation tree's truncated labels (RFC-0026). */
@@ -510,7 +511,7 @@ export class MarkdownEditorElement extends HTMLElement {
         // The navigation tree (RFC-0026), tree mode only: the workspace's leading column, so it sits below the
         // top bar and breadcrumbs and to the left of the editing pane (RFC-0026 position revision).
         if (this.isTreeMode()) {
-            this.navTooltipController = new ToolbarTooltipController(200);
+            this.navTooltipController = new ToolbarTooltipController();
             this.navTree = this.createNavTree();
             workspace.insertBefore(this.navTree.element(), main);
             this.append(this.navTooltipController.element());
@@ -549,6 +550,7 @@ export class MarkdownEditorElement extends HTMLElement {
             this.wordCount,
         );
         this.applyBodyWidth();
+        initBasecoat();
         this.observeTopBarHeight();
         this.renderMode();
         this.updateToolbarState();
@@ -782,10 +784,9 @@ export class MarkdownEditorElement extends HTMLElement {
         group.className = "markdown-editor__view-toggle-group";
 
         if (this.isReadonly()) {
-            const link = window.document.createElement("a");
-            link.className = "markdown-editor__view-toggle";
-            link.href = `/documents/${documentPath}?edit`;
-            link.textContent = "Edit";
+            const link = chromeLinkEl("outline", "Edit", `/documents/${documentPath}?edit`, {
+                className: "markdown-editor__view-toggle",
+            });
             group.append(link);
 
             if (this.hasAttribute("data-has-draft")) {
@@ -795,18 +796,16 @@ export class MarkdownEditorElement extends HTMLElement {
                 group.append(marker);
             }
         } else {
-            const publish = window.document.createElement("button");
-            publish.type = "button";
-            publish.className = "markdown-editor__view-toggle markdown-editor__publish";
-            publish.textContent = "Publish";
+            const publish = chromeButtonEl("primary", "Publish", {
+                className: "markdown-editor__view-toggle markdown-editor__publish",
+            });
             publish.addEventListener("click", (): void => {
                 void this.publishDocument(documentPath);
             });
 
-            const cancel = window.document.createElement("button");
-            cancel.type = "button";
-            cancel.className = "markdown-editor__view-toggle markdown-editor__cancel";
-            cancel.textContent = "Cancel";
+            const cancel = chromeButtonEl("outline", "Cancel", {
+                className: "markdown-editor__view-toggle markdown-editor__cancel",
+            });
             cancel.addEventListener("click", (): void => {
                 void this.discardDraft(documentPath);
             });
@@ -893,7 +892,6 @@ export class MarkdownEditorElement extends HTMLElement {
         const bar = new CommandBarElement();
         bar.className = "markdown-editor__toolbar markdown-editor__toolbar--commands";
         bar.setAttribute("role", "toolbar");
-        bar.tooltipController = this.tooltipController;
         bar.addEventListener("command-block-style", (event: Event): void => {
             const style = (event as CustomEvent<CommandBlockStyleEventDetail>).detail.style;
 
@@ -1021,18 +1019,17 @@ export class MarkdownEditorElement extends HTMLElement {
         return link;
     }
 
-    /** Creates the editor view mode radio group. */
-    private createModeGroup(): HTMLElement {
-        const group = document.createElement("wa-radio-group");
-        group.className = "markdown-editor__mode-group";
-        group.setAttribute("aria-label", "Editor view mode");
-        group.setAttribute("orientation", "horizontal");
-        group.setAttribute("size", "s");
-        group.append(
-            this.createModeOption("visual", "Visual"),
-            this.createModeOption("source", "Markdown"),
-            this.createModeOption("split", "Split"),
-        );
+    /** Creates the editor view mode segmented control. */
+    private createModeGroup(): ChromeSegmentElement {
+        const group = chromeSegmentEl({
+            className: "markdown-editor__mode-group",
+            ariaLabel: "Editor view mode",
+            entries: [
+                { value: "visual", label: "Visual" },
+                { value: "source", label: "Markdown" },
+                { value: "split", label: "Split" },
+            ],
+        });
         group.addEventListener("change", (): void => {
             const mode = elementValue(group);
 
@@ -1044,26 +1041,13 @@ export class MarkdownEditorElement extends HTMLElement {
         return group;
     }
 
-    /** Creates one editor view mode radio option with a text label. */
-    private createModeOption(mode: EditorMode, label: string): HTMLElement {
-        const option = document.createElement("wa-radio");
-        option.className = "markdown-editor__mode-option";
-        option.textContent = label;
-        option.setAttribute("appearance", "button");
-        option.setAttribute("aria-label", label);
-        option.setAttribute("value", mode);
-
-        return option;
-    }
-
-    /** Creates the editing-column width radio group. */
-    private createWidthGroup(): HTMLElement {
-        const group = document.createElement("wa-radio-group");
-        group.className = "markdown-editor__width-group";
-        group.setAttribute("aria-label", "Editor width");
-        group.setAttribute("orientation", "horizontal");
-        group.setAttribute("size", "s");
-        group.append(...bodyWidths.map((width): HTMLElement => this.createWidthOption(width.value, width.label)));
+    /** Creates the editing-column width segmented control. */
+    private createWidthGroup(): ChromeSegmentElement {
+        const group = chromeSegmentEl({
+            className: "markdown-editor__width-group",
+            ariaLabel: "Editor width",
+            entries: bodyWidths.map((width) => ({ value: width.value, label: width.label })),
+        });
         group.addEventListener("change", (): void => {
             // The width is locked to Full in split (the control is shown but inert there), so ignore changes.
             if (this.mode === "split") {
@@ -1081,18 +1065,6 @@ export class MarkdownEditorElement extends HTMLElement {
         });
 
         return group;
-    }
-
-    /** Creates one editing-column width radio option with a text label. */
-    private createWidthOption(value: BodyWidth, label: string): HTMLElement {
-        const option = document.createElement("wa-radio");
-        option.className = "markdown-editor__width-option";
-        option.textContent = label;
-        option.setAttribute("appearance", "button");
-        option.setAttribute("aria-label", `${label} width`);
-        option.setAttribute("value", value);
-
-        return option;
     }
 
     /** Resolves the initial editing-column width: stored preference, else the narrow default. */
@@ -1120,18 +1092,18 @@ export class MarkdownEditorElement extends HTMLElement {
         return this.mode === "split" ? "full" : this.bodyWidth;
     }
 
-    /** Creates the editor theme radio group. */
-    private createThemeGroup(): HTMLElement {
-        const group = document.createElement("wa-radio-group");
-        group.className = "markdown-editor__theme-group";
-        group.setAttribute("aria-label", "Editor colour theme");
-        group.setAttribute("orientation", "horizontal");
-        group.setAttribute("size", "s");
-        group.append(
-            this.createThemeOption("light", "Light", "sun"),
-            this.createThemeOption("dark", "Dark", "moon"),
-            this.createThemeOption("match-system", "Match system", "display"),
-        );
+    /** Creates the colour-scheme segmented control (joined outline icon buttons). */
+    private createThemeGroup(): ChromeSegmentElement {
+        const group = chromeSegmentEl({
+            className: "markdown-editor__theme-group",
+            ariaLabel: "Editor colour theme",
+            joined: true,
+            entries: [
+                { value: "light", label: "Light", icon: "sun", iconOnly: true },
+                { value: "dark", label: "Dark", icon: "moon", iconOnly: true },
+                { value: "match-system", label: "Match system", icon: "monitor", iconOnly: true },
+            ],
+        });
         group.addEventListener("change", (): void => {
             const theme = elementValue(group);
 
@@ -1145,56 +1117,22 @@ export class MarkdownEditorElement extends HTMLElement {
         return group;
     }
 
-    /** Creates one editor theme radio option. */
-    private createThemeOption(theme: EditorTheme, label: string, iconName: string): HTMLElement {
-        const option = document.createElement("wa-radio");
-        option.className = "markdown-editor__theme-option";
-        option.append(createToolbarIcon(iconName, label));
-        option.setAttribute("appearance", "button");
-        option.setAttribute("aria-label", label);
-        option.setAttribute("value", theme);
-        this.tooltipController?.register(option, label);
-
-        return option;
-    }
-
     /** Creates the visual-theme dropdown shown in the top bar. */
-    private createThemeDropdown(): HTMLElement {
-        const dropdown = document.createElement("wa-dropdown");
-        dropdown.className = "markdown-editor__theme-dropdown";
-        dropdown.setAttribute("aria-label", "Visual theme");
-        dropdown.setAttribute("size", "s");
-
-        this.themeDropdownTrigger = this.createToolbarButton(
-            "markdown-editor__theme-trigger",
-            themeLabel(this.visualTheme),
-        );
-        this.themeDropdownTrigger.setAttribute("slot", "trigger");
-        this.themeDropdownTrigger.setAttribute("with-caret", "");
-        dropdown.append(this.themeDropdownTrigger);
-
-        for (const theme of visualThemes) {
-            dropdown.append(this.createThemeDropdownItem(theme.value, theme.label));
-        }
-
-        dropdown.addEventListener("wa-select", (event: Event): void => {
-            const value = elementValue((event as WaDropdownSelectEvent).detail.item as HTMLElement);
-
-            if (isVisualTheme(value)) {
-                this.setVisualTheme(value);
-            }
+    private createThemeDropdown(): ChromeDropdownElement {
+        return chromeDropdownEl({
+            id: "editor-theme-menu",
+            className: "markdown-editor__theme-dropdown",
+            intent: "quiet",
+            triggerLabel: themeLabel(this.visualTheme),
+            triggerClassName: "markdown-editor__button markdown-editor__theme-trigger",
+            ariaLabel: "Visual theme",
+            items: visualThemes.map((theme) => ({ value: theme.value, label: theme.label })),
+            onSelect: (value: string): void => {
+                if (isVisualTheme(value)) {
+                    this.setVisualTheme(value);
+                }
+            },
         });
-
-        return dropdown;
-    }
-
-    /** Creates one item in the visual-theme dropdown. */
-    private createThemeDropdownItem(value: VisualTheme, label: string): HTMLElement {
-        const item = document.createElement("wa-dropdown-item");
-        item.setAttribute("value", value);
-        item.textContent = label;
-
-        return item;
     }
 
     /** Applies, persists, and reflects a chosen visual theme. */
@@ -1257,21 +1195,12 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Reflects the current visual theme into the dropdown trigger and items. */
     private syncThemeDropdown(): void {
-        if (this.themeDropdownTrigger) {
-            this.themeDropdownTrigger.textContent = themeLabel(this.visualTheme);
-        }
-
         if (!this.themeDropdown) {
             return;
         }
 
-        for (const item of this.themeDropdown.querySelectorAll("wa-dropdown-item")) {
-            if (item.getAttribute("value") === this.visualTheme) {
-                item.setAttribute("checked", "");
-            } else {
-                item.removeAttribute("checked");
-            }
-        }
+        this.themeDropdown.setTriggerLabel(themeLabel(this.visualTheme));
+        this.themeDropdown.syncChecked(this.visualTheme);
     }
 
     /** Creates the save error message shown when the last save failed. */
@@ -1403,7 +1332,6 @@ export class MarkdownEditorElement extends HTMLElement {
         bubble.className = "markdown-editor__bubble";
         bubble.setAttribute("role", "toolbar");
         bubble.hidden = true;
-        bubble.tooltipController = this.tooltipController;
         bubble.addEventListener("command-block-style", (event: Event): void => {
             const style = (event as CustomEvent<CommandBlockStyleEventDetail>).detail.style;
 
@@ -1673,24 +1601,6 @@ export class MarkdownEditorElement extends HTMLElement {
         this.visualEditor?.deleteSlashTrigger();
         apply();
         this.closeSlashMenu();
-    }
-
-    /** Creates one Web Awesome toolbar command button. */
-    private createToolbarButton(
-        className: string,
-        label: string,
-        shortcut: string | null = null,
-    ): ToolbarButtonElement {
-        const button = document.createElement("wa-button");
-        button.className = `markdown-editor__button ${className}`;
-        button.textContent = label;
-        button.setAttribute("appearance", "plain");
-        button.setAttribute("size", "s");
-        button.setAttribute("type", "button");
-        button.setAttribute("aria-label", label);
-        this.tooltipController?.register(button, label, shortcut);
-
-        return button;
     }
 
     /** Re-renders the editor body for the current mode. */
@@ -2343,50 +2253,15 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
-        if (this.modeGroup) {
-            setElementValue(this.modeGroup, this.mode);
-            this.modeGroup.setAttribute("value", this.mode);
-
-            for (const option of this.modeGroup.querySelectorAll("wa-radio")) {
-                if (option.getAttribute("value") === this.mode) {
-                    option.setAttribute("checked", "");
-                } else {
-                    option.removeAttribute("checked");
-                }
-            }
-        }
-
-        if (this.widthGroup) {
-            const width = this.effectiveBodyWidth();
-            setElementValue(this.widthGroup, width);
-            this.widthGroup.setAttribute("value", width);
-
-            for (const option of this.widthGroup.querySelectorAll("wa-radio")) {
-                if (option.getAttribute("value") === width) {
-                    option.setAttribute("checked", "");
-                } else {
-                    option.removeAttribute("checked");
-                }
-            }
-        }
+        this.modeGroup?.sync(this.mode);
+        this.widthGroup?.sync(this.effectiveBodyWidth());
 
         this.setAttribute("data-theme", this.theme);
         this.applyDocumentTheme();
         this.applyVisualTheme();
         this.syncThemeDropdown();
 
-        if (this.themeGroup) {
-            setElementValue(this.themeGroup, this.theme);
-            this.themeGroup.setAttribute("value", this.theme);
-
-            for (const option of this.themeGroup.querySelectorAll("wa-radio")) {
-                if (option.getAttribute("value") === this.theme) {
-                    option.setAttribute("checked", "");
-                } else {
-                    option.removeAttribute("checked");
-                }
-            }
-        }
+        this.themeGroup?.sync(this.theme);
 
         if (this.commandBar) {
             this.commandBar.commandsDisabled = !this.visualEditor && !this.sourceEditor;
@@ -2485,6 +2360,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
         root.classList.toggle("wa-light", theme === "light");
         root.classList.toggle("wa-dark", theme === "dark");
+        root.classList.toggle("dark", theme === "dark");
     }
 
     /** Resolves match-system to the current browser colour preference. */
@@ -2654,12 +2530,6 @@ function elementValue(element: HTMLElement): string {
     return element.getAttribute("value") ?? "";
 }
 
-/** Sets the string value on an HTML or custom form control host. */
-function setElementValue(element: HTMLElement, value: string): void {
-    (element as HTMLElement & { value?: string }).value = value;
-}
-
-/** Creates an icon for one toolbar command. */
 /** Derives a display file name from the document src path. */
 /**
  * Whether a global error message is benign browser noise the error banner should ignore. The "ResizeObserver
@@ -2709,18 +2579,4 @@ function structureMarkdown(kind: InsertStructureKind, admonitionKind?: string): 
     }
 
     return '??? note "Title"\n    Text\n';
-}
-
-function createToolbarIcon(name: string, label: string, family?: string): HTMLElement {
-    const icon = document.createElement("wa-icon");
-    icon.className = "markdown-editor__button-icon";
-    icon.setAttribute("name", name);
-    icon.setAttribute("variant", "solid");
-    icon.setAttribute("label", label);
-
-    if (family) {
-        icon.setAttribute("family", family);
-    }
-
-    return icon;
 }

@@ -18,8 +18,9 @@ export function showBlockingOverlay(message: string): void {
         const card = document.createElement("div");
         card.className = "markdown-editor__blocking-card";
 
-        const spinner = document.createElement("wa-spinner");
+        const spinner = document.createElement("div");
         spinner.className = "markdown-editor__blocking-spinner";
+        spinner.setAttribute("aria-hidden", "true");
 
         const label = document.createElement("span");
         label.className = "markdown-editor__blocking-label";

@@ -1,6 +1,6 @@
 import { html, LitElement } from "lit";
+import { chromeButton, chromeIcon } from "./chrome.js";
 import { preventDefault } from "./editor-toolbar-shared.js";
-import type { ToolbarTooltipController } from "./toolbar-tooltip-controller.js";
 
 /**
  * The link target editor (RFC-0002), rendered declaratively with Lit. It owns no state: the
@@ -9,26 +9,9 @@ import type { ToolbarTooltipController } from "./toolbar-tooltip-controller.js";
  * Escape inside the input emit the same events.
  */
 export class LinkEditorElement extends LitElement {
-    /** The shared toolbar tooltip; set by the controller before connection. */
-    tooltipController: ToolbarTooltipController | null = null;
-
-    /** Renders into the light DOM so the editor's global Web Awesome styles apply. */
+    /** Renders into the light DOM so the page's Basecoat styles apply. */
     protected override createRenderRoot(): HTMLElement {
         return this;
-    }
-
-    /** Registers the Apply and Cancel controls with the shared tooltip once, after the first render. */
-    protected override firstUpdated(): void {
-        const apply = this.querySelector<HTMLElement>(".markdown-editor__link-apply");
-        const cancel = this.querySelector<HTMLElement>(".markdown-editor__link-cancel");
-
-        if (apply) {
-            this.tooltipController?.register(apply, "Apply");
-        }
-
-        if (cancel) {
-            this.tooltipController?.register(cancel, "Cancel");
-        }
     }
 
     /** The current link target text. */
@@ -72,27 +55,23 @@ export class LinkEditorElement extends LitElement {
     protected override render(): unknown {
         return html`
             <input
-                class="markdown-editor__link-target"
+                class="input markdown-editor__link-target"
                 type="url"
                 placeholder="Link target"
                 @keydown=${this.handleKeydown}
             />
-            <wa-button
-                class="markdown-editor__button markdown-editor__link-apply"
-                appearance="plain"
-                size="s"
-                type="button"
-                aria-label="Apply"
-                @click=${(): void => this.emit("link-apply")}
-            >Apply</wa-button>
-            <wa-button
-                class="markdown-editor__button markdown-editor__link-cancel"
-                appearance="plain"
-                size="s"
-                type="button"
-                aria-label="Cancel"
-                @click=${(): void => this.emit("link-cancel")}
-            >Cancel</wa-button>
+            ${chromeButton("quiet", "Apply", {
+                className: "markdown-editor__button markdown-editor__link-apply",
+                ariaLabel: "Apply",
+                tooltip: "Apply",
+                onClick: (): void => this.emit("link-apply"),
+            })}
+            ${chromeButton("quiet", "Cancel", {
+                className: "markdown-editor__button markdown-editor__link-cancel",
+                ariaLabel: "Cancel",
+                tooltip: "Cancel",
+                onClick: (): void => this.emit("link-cancel"),
+            })}
         `;
     }
 }
@@ -103,26 +82,9 @@ export class LinkEditorElement extends LitElement {
  * events to edit or remove the hovered link.
  */
 export class LinkActionsElement extends LitElement {
-    /** The shared toolbar tooltip; set by the controller before connection. */
-    tooltipController: ToolbarTooltipController | null = null;
-
-    /** Renders into the light DOM so the editor's global Web Awesome styles apply. */
+    /** Renders into the light DOM so the page's Basecoat styles apply. */
     protected override createRenderRoot(): HTMLElement {
         return this;
-    }
-
-    /** Registers the Edit and Remove controls with the shared tooltip once, after the first render. */
-    protected override firstUpdated(): void {
-        const edit = this.querySelector<HTMLElement>(".markdown-editor__link-edit");
-        const remove = this.querySelector<HTMLElement>(".markdown-editor__link-remove");
-
-        if (edit) {
-            this.tooltipController?.register(edit, "Edit link");
-        }
-
-        if (remove) {
-            this.tooltipController?.register(remove, "Remove link");
-        }
     }
 
     private emit(name: "link-edit" | "link-remove"): void {
@@ -131,33 +93,20 @@ export class LinkActionsElement extends LitElement {
 
     protected override render(): unknown {
         return html`
-            <wa-button
-                class="markdown-editor__button markdown-editor__link-edit"
-                appearance="plain"
-                size="s"
-                type="button"
-                aria-label="Edit link"
-                @mousedown=${preventDefault}
-                @click=${(): void => this.emit("link-edit")}
-            >
-                <wa-icon class="markdown-editor__button-icon" name="pencil" variant="solid" label="Edit link"></wa-icon>
-            </wa-button>
-            <wa-button
-                class="markdown-editor__button markdown-editor__link-remove"
-                appearance="plain"
-                size="s"
-                type="button"
-                aria-label="Remove link"
-                @mousedown=${preventDefault}
-                @click=${(): void => this.emit("link-remove")}
-            >
-                <wa-icon
-                    class="markdown-editor__button-icon"
-                    name="link-slash"
-                    variant="solid"
-                    label="Remove link"
-                ></wa-icon>
-            </wa-button>
+            ${chromeButton("icon", chromeIcon("pencil"), {
+                className: "markdown-editor__button markdown-editor__link-edit",
+                ariaLabel: "Edit link",
+                tooltip: "Edit link",
+                onMouseDown: preventDefault,
+                onClick: (): void => this.emit("link-edit"),
+            })}
+            ${chromeButton("icon", chromeIcon("link-off"), {
+                className: "markdown-editor__button markdown-editor__link-remove",
+                ariaLabel: "Remove link",
+                tooltip: "Remove link",
+                onMouseDown: preventDefault,
+                onClick: (): void => this.emit("link-remove"),
+            })}
         `;
     }
 }

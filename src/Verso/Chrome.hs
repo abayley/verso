@@ -34,6 +34,8 @@ data ButtonIntent
       OutlineControl
     | -- | Icon-only square control (toolbar and header actions).
       IconControl
+    | -- | Destructive action needing emphasis (Delete, Discard).
+      DangerAction
 
 -- | The Basecoat attributes for an intent; the only variant vocabulary site.
 intentAttrs :: ButtonIntent -> [(String, String)]
@@ -43,6 +45,7 @@ intentAttrs intent =
         QuietControl -> [Html.attr "data-variant" "ghost", Html.attr "data-size" "sm"]
         OutlineControl -> [Html.attr "data-variant" "outline", Html.attr "data-size" "sm"]
         IconControl -> [Html.attr "data-variant" "ghost", Html.attr "data-size" "icon-sm"]
+        DangerAction -> [Html.attr "data-variant" "destructive", Html.attr "data-size" "sm"]
 
 {- | The full attribute list for a chrome button: one merged class attribute
 (@btn@ plus any classes from the extras, keeping our BEM test-contract

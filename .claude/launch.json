@@ -24,6 +24,45 @@
             "port": 8123
         },
         {
+            "name": "shadcn-mockup",
+            "runtimeExecutable": "bun",
+            "runtimeArgs": [
+                "run",
+                "--cwd",
+                "/Users/alistairbayley/git/shadcn/vite-app",
+                "dev"
+            ],
+            "port": 5173
+        },
+        {
+            "name": "basecoat-mockup",
+            "runtimeExecutable": "python3",
+            "runtimeArgs": [
+                "-m",
+                "http.server",
+                "5175",
+                "--bind",
+                "127.0.0.1",
+                "--directory",
+                "/Users/alistairbayley/git/shadcn/basecoat-app"
+            ],
+            "port": 5175
+        },
+        {
+            "name": "basecoat-lit-spike",
+            "runtimeExecutable": "python3",
+            "runtimeArgs": [
+                "-m",
+                "http.server",
+                "5176",
+                "--bind",
+                "127.0.0.1",
+                "--directory",
+                "spike/basecoat-lit"
+            ],
+            "port": 5176
+        },
+        {
             "name": "verso-search-demo",
             "runtimeExecutable": "env",
             "runtimeArgs": [

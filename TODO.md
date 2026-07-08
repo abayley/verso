@@ -9,6 +9,7 @@ backend:
   <https://givemeyourdata.org/>
   <https://mysysinfo.com/>
 
+- search: first term takes about 3s to respond after server start
 - automatic tag classification - create set of canonical tags
 - generate image descriptions - gemma4?
 - openknowledge file format: <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md>
@@ -29,6 +30,7 @@ backend:
 frontend:
 
 - implement new themes
+- code fence highlighting in markdown editor
 - test pasting in tables from word or excel
 - fix UI for trash - maybe separate page?
 - review code structure

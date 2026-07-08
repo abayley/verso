@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Spike: Basecoat inside Lit + htmx</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/basecoat-css@1.0.2/dist/basecoat-nova.cdn.min.css">
+<script src="https://cdn.jsdelivr.net/npm/basecoat-css@1.0.2/dist/js/all.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js" defer></script>
+<style>
+  body { margin: 2rem; display: flex; flex-direction: column; gap: 2rem; max-width: 48rem; }
+  section { border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; display: flex; flex-direction: column; gap: 0.75rem; }
+  h2 { margin: 0; font-size: 1rem; }
+  .row { display: flex; align-items: center; gap: 0.75rem; }
+  #spike-log { font-family: monospace; font-size: 0.75rem; white-space: pre-wrap; color: var(--muted-foreground); }
+</style>
+</head>
+<body>
+
+<h1>Basecoat + Lit + htmx spike</h1>
+
+<!-- Case 1+2: a Basecoat dropdown rendered by a light-DOM Lit element, with
+     in-place re-renders (bound counter) and structural re-renders (template
+     branch switch) exercising Lit's reconciliation against Basecoat's
+     attribute mutations. -->
+<spike-widget></spike-widget>
+
+<!-- Case 3: htmx swapping in a fragment that contains a dropdown. -->
+<section>
+  <h2>Case 3: htmx swap</h2>
+  <div class="row">
+    <button type="button" class="btn" data-variant="outline" data-size="sm"
+            hx-get="fragment.html" hx-target="#swap-zone" hx-swap="innerHTML">
+      Swap fragment in
+    </button>
+  </div>
+  <div id="swap-zone"><em>nothing swapped yet</em></div>
+</section>
+
+<section>
+  <h2>Log</h2>
+  <div id="spike-log"></div>
+</section>
+
+<script type="module">
+  import { LitElement, html } from "https://cdn.jsdelivr.net/npm/lit@3/+esm";
+
+  const log = (msg) => {
+    document.getElementById("spike-log").textContent += msg + "\n";
+  };
+
+  class SpikeWidget extends LitElement {
+    static properties = {
+      count: { type: Number },
+      layout: { type: String },
+    };
+
+    constructor() {
+      super();
+      this.count = 0;
+      this.layout = "a";
+    }
+
+    // Light DOM, matching Verso's convention.
+    createRenderRoot() {
+      return this;
+    }
+
+    dropdown(id, label) {
+      return html`
+        <div class="dropdown-menu" id="${id}">
+          <button type="button" id="${id}-trigger" class="btn" data-variant="outline" data-size="sm"
+                  aria-haspopup="menu" aria-controls="${id}-menu" aria-expanded="false">
+            ${label}
+          </button>
+          <div id="${id}-popover" data-popover aria-hidden="true">
+            <div role="menu" id="${id}-menu" aria-labelledby="${id}-trigger">
+              <button type="button" role="menuitem" @click=${() => log(`${id}: item clicked`)}>First</button>
+              <button type="button" role="menuitem">Second</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    render() {
+      return html`
+        <section>
+          <h2>Case 1+2: dropdown inside a Lit light-DOM element</h2>
+          <div class="row">
+            <span>renders seen: ${this.count}</span>
+            <button type="button" class="btn" data-variant="secondary" data-size="sm"
+                    @click=${() => { this.count += 1; }}>
+              Re-render in place
+            </button>
+            <button type="button" class="btn" data-variant="secondary" data-size="sm"
+                    @click=${() => { this.layout = this.layout === "a" ? "b" : "a"; }}>
+              Structural re-render (layout ${this.layout})
+            </button>
+          </div>
+          ${this.layout === "a"
+            ? html`<div class="row">${this.dropdown("dd-lit", "Lit dropdown (layout a)")}</div>`
+            : html`<div class="row"><em>layout b:</em>${this.dropdown("dd-lit-b", "Lit dropdown (layout b)")}</div>`}
+        </section>`;
+    }
+
+    updated() {
+      // The documented pattern for DOM inserted outside basecoat's own
+      // observers: idempotent re-scan after every Lit commit.
+      if (window.basecoat) {
+        window.basecoat.initAll();
+        log(`spike-widget updated (count=${this.count}, layout=${this.layout}); initAll() called`);
+      }
+    }
+  }
+
+  customElements.define("spike-widget", SpikeWidget);
+
+  // The htmx integration hook the RFC would specify.
+  document.addEventListener("htmx:afterSwap", () => {
+    window.basecoat && window.basecoat.initAll();
+    log("htmx:afterSwap; initAll() called");
+  });
+
+  document.addEventListener("DOMContentLoaded", () => {
+    window.basecoat && window.basecoat.initAll();
+    log("DOMContentLoaded; initAll() called");
+  });
+</script>
+</body>
+</html>

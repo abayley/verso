@@ -21,6 +21,7 @@ module Verso.Attachment (
     fileAttachmentStore,
     inlineImageExtension,
     originalUploadFilename,
+    percentDecode,
     uploadFilename,
 ) where
 

@@ -27,6 +27,9 @@
    aria-selected (tab semantics). */
 .chrome-segment-joined {
   display: flex;
+  /* Buttons abut via the -1px overlap below; a flex gap (e.g. Basecoat's radiogroup
+     default on the version pages) would break the joined look, so pin it to zero. */
+  gap: 0;
 }
 
 .chrome-segment-joined .btn {
@@ -311,6 +314,11 @@ markdown-editor {
   padding: 0 0.75rem 0.75rem 1rem;
   position: sticky;
   top: 0;
+  /* Above the sticky top bar (z 6), so the nav's dropdown popovers -- pinned to fixed
+     coordinates that overhang into the content column -- paint over the top bar rather
+     than under it. The nav is a sticky stacking context, so this lifts its whole subtree;
+     it never overlaps the top bar spatially (they share no column), only the popover does. */
+  z-index: 10;
   /* Hide the scrollbar (Firefox / legacy); the WebKit rule follows. */
   scrollbar-width: none;
 }
@@ -844,20 +852,24 @@ a.markdown-editor__crumb:hover {
   text-decoration: underline;
 }
 
-.verso-history {
+.verso-history,
+.verso-trash {
   border-collapse: collapse;
   width: 100%;
 }
 
 .verso-history th,
-.verso-history td {
+.verso-history td,
+.verso-trash th,
+.verso-trash td {
   text-align: left;
   padding: 0.4rem 0.75rem;
   border-bottom: 1px solid var(--markdown-editor-border, rgba(128, 128, 128, 0.25));
   vertical-align: middle;
 }
 
-.verso-history th {
+.verso-history th,
+.verso-trash th {
   color: var(--markdown-editor-muted);
   font-weight: 600;
   font-size: 0.85em;
@@ -900,28 +912,54 @@ a.markdown-editor__crumb:hover {
   margin: 0 0 1rem;
 }
 
-/* The revision list is a fixed-height scroll region with a sticky header. */
-.verso-history-scroll {
+/* On the version pages the appearance controls are the only toolbar group, so the editor's
+   three-column grid would strand them (compressed) in the left column. Flex-end instead puts
+   them at the top-right, at their natural width, matching the editor's top bar. */
+.verso-version-toolbar .markdown-editor__toolbar-controls {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Match the editor's theme dropdown: a fixed trigger width (so the label length never shifts
+   the control) with the label and chevron pushed to the two edges. On the editor this lives on
+   .markdown-editor__theme-trigger; the version pages build the dropdown server-side by id. */
+.verso-version-toolbar #verso-theme-menu-trigger {
+  justify-content: space-between;
+  width: 6.5rem;
+  /* Match the editor's .markdown-editor__button font and the 1.75rem height of the
+     scheme buttons beside it, so the trigger aligns with the group (the version toolbar's
+     13px would otherwise make it a few px taller with a smaller label). */
+  font: 14px system-ui, sans-serif;
+  height: 1.75rem;
+}
+
+/* The revision/trash list is a fixed-height scroll region with a sticky header. */
+.verso-history-scroll,
+.verso-trash-scroll {
   max-height: 24rem;
   overflow-y: auto;
   border: 1px solid var(--markdown-editor-border, rgba(128, 128, 128, 0.25));
   border-radius: 0.3rem;
 }
 
-/* Compact rows: small type and tight cell padding so the revision list stays dense. */
-.verso-history {
+/* Compact rows: small type and tight cell padding so the list stays dense. */
+.verso-history,
+.verso-trash {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.8rem;
 }
 
 .verso-history th,
-.verso-history td {
+.verso-history td,
+.verso-trash th,
+.verso-trash td {
   padding: 0.15rem 0.5rem;
   text-align: left;
 }
 
-.verso-history thead th {
+.verso-history thead th,
+.verso-trash thead th {
   position: sticky;
   top: 0;
   background: var(--markdown-editor-background);
@@ -933,13 +971,18 @@ a.markdown-editor__crumb:hover {
   color: var(--markdown-editor-muted);
 }
 
-.verso-history td a {
+.verso-history td a,
+.verso-trash td a {
   color: var(--markdown-editor-text);
 }
 
-/* The diff pane below the table. */
+/* The diff pane below the table. It breaks out of the page's 70rem column to use
+   (nearly) the full viewport width, so side-by-side diffs have room; the symmetric
+   inline margin keeps it centred within whatever container width it sits in. */
 .verso-diff-pane {
   margin-top: 1.25rem;
+  width: 94vw;
+  margin-inline: calc(50% - 47vw);
 }
 
 .verso-diff-revs {

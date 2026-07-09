@@ -336,7 +336,8 @@ treeRoutes writeLock indexStore search versioning editorThemeDefault root logPat
     , Static.static "/static/editor" "static/editor"
     , Router.get "/tree/*path" (treeChildrenHandler root)
     , Router.post "/tree/*path" (treePostDispatch versioning writeLock findRelevant maint root logPath trashRoot)
-    , Router.get "/trash" (treeTrashListHandler trashRoot)
+    , Router.get "/trash" (treeTrashListHandler trashRoot logPath)
+    , Router.get "/trashbin" (treeTrashPageHandler editorThemeDefault trashRoot logPath)
     , Router.post "/trash/*id" (treeRestoreHandler versioning writeLock maint root logPath trashRoot)
     , Router.get "/operations" (treeOperationsHandler logPath)
     , Router.post "/undo" (treeUndoHandler versioning writeLock findRelevant maint root logPath trashRoot)
@@ -758,11 +759,91 @@ applyInverse findRelevant maint root logPath trashRoot op = case OperationLog.op
                 , OperationLog.opTrash = trash
                 }
 
--- | The trash listing endpoint (RFC-0028): @GET /trash@ returns the trash entries as JSON for the Trash view.
-treeTrashListHandler :: FilePath -> Router.Handler
-treeTrashListHandler trashRoot _ _ = do
-    entries <- Iteratee.liftIO (TreeMove.listTrash trashRoot)
-    pure (jsonResponse (TreeMove.trashListJson entries))
+{- | The trash listing endpoint (RFC-0028): @GET /trash@ returns the trash
+entries as JSON, newest-first, each tagged with its deletion timestamp -- the
+data behind both the recent-deletes dropdown and the trash page.
+-}
+treeTrashListHandler :: FilePath -> FilePath -> Router.Handler
+treeTrashListHandler trashRoot logPath _ _ = do
+    entries <- Iteratee.liftIO (trashEntriesNewestFirst trashRoot logPath)
+    pure (jsonResponse (trashEntriesJson entries))
+
+{- | The trash page (@GET /trashbin@): a full, newest-first listing of every
+restorable item with a per-row Restore, for when the recent-deletes dropdown is
+too small. Complements the dropdown; both restore through @POST /trash/\<id\>@.
+-}
+treeTrashPageHandler :: String -> FilePath -> FilePath -> Router.Handler
+treeTrashPageHandler themeDefault trashRoot logPath _ request = do
+    entries <- Iteratee.liftIO (trashEntriesNewestFirst trashRoot logPath)
+    -- The page that opened the trash view, so "back" returns there rather than the root (RFC-0028).
+    pure (documentResponse (View.trashPage themeDefault (originFromReferer request) entries))
+
+{- | The originating page for the trash page's back link, taken from the request's
+@Referer@ (the page the trash view was opened from): the tree path of its
+@\/documents\/\<path\>@, percent-decoded and validated. 'Nothing' when there is no
+usable same-tree referer -- a direct visit, a reload, or an off-tree URL -- so the
+link falls back to the wiki root.
+-}
+originFromReferer :: Http.RequestHead -> Maybe String
+originFromReferer request = do
+    raw <- lookup (Http.normaliseHeaderName (BS.pack "referer")) (Http.requestHeaders request)
+    afterDocs <- stringAfter "/documents/" (BS.unpack raw)
+    safeTrashOrigin (Attachment.percentDecode (takeWhile (\c -> c /= '?' && c /= '#') afterDocs))
+
+-- | Everything after the first occurrence of @marker@ in @s@, or 'Nothing' when it is absent.
+stringAfter :: String -> String -> Maybe String
+stringAfter marker = go
+  where
+    go [] = Nothing
+    go s
+        | marker `List.isPrefixOf` s = Just (drop (length marker) s)
+        | otherwise = go (drop 1 s)
+
+{- | Validates an origin path for the trash back link: a tree-relative Markdown path
+only. Anything with a scheme, a leading slash, or a @..@ segment is rejected (falls
+back to the root), so the link can never point off the tree.
+-}
+safeTrashOrigin :: String -> Maybe String
+safeTrashOrigin origin
+    | null origin = Nothing
+    | not (isMarkdownPath origin) = Nothing
+    | "/" `List.isPrefixOf` origin = Nothing
+    | "://" `List.isInfixOf` origin = Nothing
+    | ".." `elem` pathSegments origin = Nothing
+    | otherwise = Just origin
+
+{- | Trash entries as @(id, originalPath, kind, deletedAt)@, newest-first. A
+trash id is its delete's monotonic operation-log seq, so ordering by id
+descending is newest-first; the deletion timestamp is joined from the log's
+delete records (empty when the log has no matching entry).
+-}
+trashEntriesNewestFirst :: FilePath -> FilePath -> IO [(String, String, String, String)]
+trashEntriesNewestFirst trashRoot logPath = do
+    entries <- TreeMove.listTrash trashRoot
+    ops <- OperationLog.readOperations logPath
+    let deletionTs =
+            [(show (OperationLog.opSeq o), OperationLog.opTs o) | o <- ops, OperationLog.opType o == OperationLog.OpDelete]
+        tagged =
+            [(entryId, path, kind, Maybe.fromMaybe "" (lookup entryId deletionTs)) | (entryId, path, kind) <- entries]
+    pure (List.sortBy (\a b -> compare (seqOf b) (seqOf a)) tagged)
+  where
+    seqOf (entryId, _, _, _) = if not (null entryId) && all Char.isDigit entryId then (read entryId :: Int) else -1
+
+-- | The enriched trash listing as JSON @[{"id","path","kind","ts"}]@, newest-first.
+trashEntriesJson :: [(String, String, String, String)] -> String
+trashEntriesJson entries =
+    "[" ++ List.intercalate "," (map one entries) ++ "]"
+  where
+    one (entryId, path, kind, ts) =
+        "{\"id\":"
+            ++ View.jsonString entryId
+            ++ ",\"path\":"
+            ++ View.jsonString path
+            ++ ",\"kind\":"
+            ++ View.jsonString kind
+            ++ ",\"ts\":"
+            ++ View.jsonString ts
+            ++ "}"
 
 -- Replay is an operator action run from the @replay-tool@ CLI (RFC-0028), not a web
 -- endpoint, so it is deliberately not surfaced under the routes; the logic lives in

@@ -97,7 +97,9 @@ chromeDropdown ident intent triggerContent items =
     Html.div [Html.class_ "dropdown-menu", Html.attr "id" ident] $ do
         Html.button_
             ( [Html.attr "type" "button", Html.attr "id" (ident ++ "-trigger")]
-                ++ intentAttrs intent
+                -- The @btn@ class is what Basecoat styles (inline-flex layout, sizing); without it the
+                -- trigger is an unstyled block and the label/caret stack. Mirrors the TS chromeDropdown.
+                ++ buttonAttrs intent []
                 ++ [ Html.attr "aria-haspopup" "menu"
                    , Html.attr "aria-controls" (ident ++ "-menu")
                    , Html.attr "aria-expanded" "false"

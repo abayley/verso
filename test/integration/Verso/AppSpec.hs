@@ -353,6 +353,75 @@ spec = do
             BS.isInfixOf (BS.pack "Delete sec/page.md") (BS.pack deleteSubject) `shouldBe` True
             draftAfterRestore `shouldBe` True
 
+    describe "Verso.App trash listing and page (RFC-0028)" $ do
+        it "given two deletions, when listing /trash, then entries are JSON newest-first with a deletion timestamp" $ do
+            root <- setupTreeFixture
+            writeFile (root ++ "/sec/trash-older.md") "# Older\n\nfirst to go."
+            writeFile (root ++ "/sec/trash-newer.md") "# Newer\n\nsecond to go."
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTree "paper" root)
+                    (BS.pack (postRequest "/tree/sec/trash-older.md?delete" ""))
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTree "paper" root)
+                    (BS.pack (postRequest "/tree/sec/trash-newer.md?delete" ""))
+            listing <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTree "paper" root)
+                    (BS.pack (getRequest "/trash"))
+            fmap (Http.statusCode . Http.responseStatus) listing `shouldBe` Right 200
+            let body = either (const "") bodyString listing
+            ("sec/trash-newer.md" `List.isInfixOf` body) `shouldBe` True
+            ("sec/trash-older.md" `List.isInfixOf` body) `shouldBe` True
+            -- each entry carries a non-empty deletion timestamp joined from the operation log
+            ("\"ts\":\"\"" `List.isInfixOf` body) `shouldBe` False
+            ("\"ts\":" `List.isInfixOf` body) `shouldBe` True
+            -- newest-first: the later deletion precedes the earlier one
+            orderedBefore "sec/trash-newer.md" "sec/trash-older.md" body `shouldBe` True
+        it "given a deleted page, when viewing /trashbin, then the trash page lists it newest-first with a Restore control" $ do
+            root <- setupTreeFixture
+            writeFile (root ++ "/sec/trash-page.md") "# Bin me\n\ncontent."
+            deleteOutcome <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTree "paper" root)
+                    (BS.pack (postRequest "/tree/sec/trash-page.md?delete" ""))
+            let trashId = either (const "") trashIdOf deleteOutcome
+            page <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTree "paper" root)
+                    (BS.pack (getRequest "/trashbin"))
+            fmap (Http.statusCode . Http.responseStatus) page `shouldBe` Right 200
+            fmap (bodyContains (BS.pack "Trash")) page `shouldBe` Right True
+            fmap (bodyContains (BS.pack "sec/trash-page.md")) page `shouldBe` Right True
+            fmap (bodyContains (BS.pack "verso-trash")) page `shouldBe` Right True
+            -- the Restore control carries the entry id + path for the client to confirm and post
+            fmap (bodyContains (BS.pack "verso-trash-restore")) page `shouldBe` Right True
+            fmap (bodyContains (BS.pack ("data-restore-id=\"" ++ trashId ++ "\""))) page `shouldBe` Right True
+            fmap (bodyContains (BS.pack "data-restore-path=\"sec/trash-page.md\"")) page `shouldBe` Right True
+            -- the standalone page carries the shared editor chrome (theme head)
+            fmap (bodyContains (BS.pack "data-editor-theme")) page `shouldBe` Right True
+        it "given a Referer page, when viewing /trashbin, then the back link returns to that page" $ do
+            root <- setupTreeFixture
+            withReferer <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTree "paper" root)
+                    (BS.pack (getRequestWithReferer "/trashbin" "http://localhost:8080/documents/sec/page.md?edit"))
+            fmap (bodyContains (BS.pack "/documents/sec/page.md")) withReferer `shouldBe` Right True
+            fmap (bodyContains (BS.pack "Back to sec/page.md")) withReferer `shouldBe` Right True
+            -- no Referer (a direct visit): the link falls back to the wiki root
+            noReferer <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTree "paper" root)
+                    (BS.pack (getRequest "/trashbin"))
+            fmap (bodyContains (BS.pack "Back to the wiki")) noReferer `shouldBe` Right True
+            -- an off-tree Referer is ignored: the link falls back to the wiki root
+            offTree <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTree "paper" root)
+                    (BS.pack (getRequestWithReferer "/trashbin" "http://evil.example/documents/../../etc/passwd"))
+            fmap (bodyContains (BS.pack "Back to the wiki")) offTree `shouldBe` Right True
+
     describe "Verso.App revision history and rollback (RFC-0032)" $ do
         it "lists a page's revisions in the history view" $ do
             root <- setupVersionedFixture
@@ -475,6 +544,11 @@ getRequest :: String -> String
 getRequest target =
     "GET " ++ target ++ " HTTP/1.1\r\n\r\n"
 
+-- | A GET request carrying a @Referer@ header (for the trash page's back-link derivation).
+getRequestWithReferer :: String -> String -> String
+getRequestWithReferer target referer =
+    "GET " ++ target ++ " HTTP/1.1\r\nReferer: " ++ referer ++ "\r\n\r\n"
+
 postRequest :: String -> String -> String
 postRequest target body =
     "POST "
@@ -532,6 +606,22 @@ bodyContains needle response =
     case Http.responseBody response of
         Http.StrictBody bytes -> needle `BS.isInfixOf` bytes
         _ -> False
+
+-- | A strict response body as a 'String' (empty for non-strict bodies).
+bodyString :: Http.Response -> String
+bodyString response =
+    case Http.responseBody response of
+        Http.StrictBody bytes -> BS.unpack bytes
+        _ -> ""
+
+-- | Whether @first@ appears before @second@ in @haystack@ (both must be present).
+orderedBefore :: String -> String -> String -> Bool
+orderedBefore first second haystack =
+    case (indexOf first haystack, indexOf second haystack) of
+        (Just i, Just j) -> i < j
+        _ -> False
+  where
+    indexOf needle hay = List.findIndex (List.isPrefixOf needle) (List.tails hay)
 
 documentRoot :: FilePath
 documentRoot =

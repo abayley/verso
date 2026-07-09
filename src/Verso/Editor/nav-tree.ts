@@ -143,6 +143,13 @@ export interface MoveOp {
     to: string;
 }
 
+/** How many recent deletions the trash dropdown shows before deferring to the full trash page. */
+const TRASH_DROPDOWN_LIMIT = 10;
+/** The sentinel menu value that navigates to the full trash page rather than restoring an entry. */
+const TRASH_VIEW_ALL = "__view_all__";
+/** The full trash page (server-rendered, RFC-0028). */
+const TRASH_PAGE_URL = "/trashbin";
+
 /** The callbacks the panel needs from the editor element to fetch, create, navigate, and reorganise. */
 export interface NavTreeOptions {
     /** The open document's tree-relative path (`data-document`). */
@@ -192,15 +199,14 @@ export class NavTreePanel {
     private creatingUnder: string | null = null;
     private createTitle = "";
     private createKind: "page" | "section" = "page";
-    /** Whether the Trash view is open (renders the trash list above the tree). */
-    private trashOpen = false;
+    /** The trash entries backing the trash dropdown (newest first), loaded when it opens. */
     private trashEntries: TrashEntry[] = [];
-    /** The container the Trash view renders into, between the header and the tree list. */
-    private readonly trashPanel: HTMLDivElement;
     /** The logged moves backing the undo dropdown (most recent first), loaded when it opens. */
     private moves: MoveOp[] = [];
     /** The undo dropdown (a Basecoat menu anchored to its header button). */
     private readonly undoDropdown: ChromeDropdownElement;
+    /** The trash dropdown: recent deletions with quick-restore, plus a link to the full trash page. */
+    private readonly trashDropdown: ChromeDropdownElement;
     /** The tree path of the node currently being dragged (for drag-and-drop move), or null. */
     private draggingPath: string | null = null;
     /** A drop zone shown during a drag for moving an item out to the top level (always reachable, unlike the list's empty space). */
@@ -243,12 +249,15 @@ export class NavTreePanel {
         collapseAll.addEventListener("click", (): void => this.collapseAll());
 
         this.undoDropdown = this.createUndoDropdown();
-        const trash = this.createHeaderButton(chromeIconEl("trash"), "Trash", (): void => void this.toggleTrash());
-        header.append(toggle, heading, collapseAll, this.undoDropdown, trash, this.createRootCreateButton());
-
-        this.trashPanel = document.createElement("div");
-        this.trashPanel.className = "markdown-editor__nav-trash";
-        this.trashPanel.hidden = true;
+        this.trashDropdown = this.createTrashDropdown();
+        header.append(
+            toggle,
+            heading,
+            collapseAll,
+            this.undoDropdown,
+            this.trashDropdown,
+            this.createRootCreateButton(),
+        );
 
         // A top-level drop target. Its space is reserved permanently (so it never reflows the list
         // mid-drag -- a box change during dragstart cancels the native drag); the branded box is only
@@ -295,7 +304,7 @@ export class NavTreePanel {
             }
         });
 
-        this.panel.append(header, this.rootDrop, this.trashPanel, this.list);
+        this.panel.append(header, this.rootDrop, this.list);
         this.applyCollapsed();
         this.render();
         // Reveal the open page's row immediately (the rAF inside runs before first paint, so the panel
@@ -567,21 +576,6 @@ export class NavTreePanel {
         this.render();
     }
 
-    /** A small header action button (undo/trash/replay). */
-    private createHeaderButton(content: Node | string, ariaLabel: string, onClick: () => void): HTMLButtonElement {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "markdown-editor__nav-op";
-        button.setAttribute("aria-label", ariaLabel);
-        button.setAttribute("data-tooltip", ariaLabel);
-        button.append(content);
-        button.addEventListener("click", (event: MouseEvent): void => {
-            event.stopPropagation();
-            onClick();
-        });
-        return button;
-    }
-
     /** A per-row action button (move/delete) for a node. */
     private createRowAction(glyph: string, label: string, node: TreeNodeData, onClick: () => void): HTMLButtonElement {
         const button = document.createElement("button");
@@ -814,10 +808,9 @@ export class NavTreePanel {
         const trigger = dropdown.querySelector("#nav-undo-menu-trigger");
         trigger?.append(chromeIconEl("undo"));
         trigger?.setAttribute("data-tooltip", "Undo a move");
-        // The nav is a scroll container, so a right-opening popover overflows its
-        // narrow width and is clipped. Open it left-aligned to its right edge
-        // (data-align end) so it stays within the nav (RFC-0035).
-        dropdown.querySelector("#nav-undo-menu-popover")?.setAttribute("data-align", "end");
+        const popover = dropdown.querySelector<HTMLElement>("#nav-undo-menu-popover");
+        // Pin the popover into the viewport whenever it opens (escapes the nav's clipping/stacking).
+        this.pinNavPopover(popover, trigger as HTMLElement);
         // Refresh the logged moves each time the menu is about to open.
         trigger?.addEventListener("click", (): void => void this.loadUndoItems());
         initBasecoat();
@@ -836,8 +829,16 @@ export class NavTreePanel {
         );
     }
 
-    /** Applies the inverse of a chosen move (the item at its destination goes back to its source). */
+    /** Confirms, then applies the inverse of a chosen move (the item at its destination goes back to its source). */
     private async undoMove(move: MoveOp): Promise<void> {
+        const confirmed = await themedConfirm({
+            title: "Undo move",
+            message: `Undo this move? “${move.to}” moves back to “${move.from}”.`,
+            confirmLabel: "Undo move",
+        });
+        if (!confirmed) {
+            return;
+        }
         this.options.notify("Undoing move…", false);
         await this.withBlockedUI("Undoing move…", async (): Promise<boolean> => {
             const result = await this.options.undo(move.seq);
@@ -857,53 +858,102 @@ export class NavTreePanel {
         });
     }
 
-    /** Opens or closes the Trash view, loading the entries when opening. */
-    private async toggleTrash(): Promise<void> {
-        this.trashOpen = !this.trashOpen;
-        if (this.trashOpen) {
-            this.trashEntries = await this.options.listTrash();
-        }
-        this.renderTrash();
+    /**
+     * The trash dropdown: a Basecoat floating menu anchored to a header icon button. It lists the most
+     * recent deletions (newest first, capped) for quick one-click restore, and a final item that opens
+     * the full trash page for older entries. A dropdown (not the old inline panel) so it does not push
+     * the tree down and matches the undo control beside it.
+     */
+    private createTrashDropdown(): ChromeDropdownElement {
+        const dropdown = chromeDropdownEl({
+            id: "nav-trash-menu",
+            className: "markdown-editor__trash-dropdown",
+            intent: "icon",
+            caret: false,
+            triggerLabel: "",
+            triggerClassName: "markdown-editor__nav-op",
+            ariaLabel: "Trash",
+            items: [{ value: TRASH_VIEW_ALL, label: "View all in trash…" }],
+            onSelect: (value: string): void => {
+                if (value === TRASH_VIEW_ALL) {
+                    // The trash page derives its "back" link from the Referer (the page we navigate from).
+                    window.location.assign(TRASH_PAGE_URL);
+                    return;
+                }
+                const entry = this.trashEntries.find((candidate): boolean => candidate.id === value);
+                if (entry) {
+                    void this.restoreEntry(entry);
+                }
+            },
+        });
+        const trigger = dropdown.querySelector("#nav-trash-menu-trigger");
+        trigger?.append(chromeIconEl("trash"));
+        trigger?.setAttribute("data-tooltip", "Trash");
+        const popover = dropdown.querySelector<HTMLElement>("#nav-trash-menu-popover");
+        // Pin the popover into the viewport whenever it opens (escapes the nav's clipping/stacking).
+        this.pinNavPopover(popover, trigger as HTMLElement);
+        // Refresh the trash entries each time the menu is about to open.
+        trigger?.addEventListener("click", (): void => void this.loadTrashItems());
+        initBasecoat();
+
+        return dropdown;
     }
 
-    /** Renders the Trash view (a list of trashed entries each with a Restore button). */
-    private renderTrash(): void {
-        this.trashPanel.hidden = !this.trashOpen;
-        if (!this.trashOpen) {
-            this.trashPanel.replaceChildren();
+    /**
+     * Pins a nav dropdown's popover to fixed viewport coordinates just below its trigger. The nav is a
+     * narrow `overflow: auto` scroll container with a low stacking context, so a CSS-positioned popover is
+     * clipped at the nav's edge (opening right) or runs off-screen (opening left) and paints under the
+     * editor pane. Fixed positioning with a high z-index escapes both -- the same tactic as the delegated
+     * body-level tooltip (RFC-0035). Basecoat only toggles `aria-hidden`, so these inline styles survive.
+     */
+    private pinNavPopover(popover: HTMLElement | null, trigger: HTMLElement): void {
+        if (popover === null) {
             return;
         }
-        const heading = document.createElement("div");
-        heading.className = "markdown-editor__nav-trash-heading";
-        heading.textContent = this.trashEntries.length === 0 ? "Trash is empty" : "Trash";
-        const rows = this.trashEntries.map((entry): HTMLElement => this.renderTrashEntry(entry));
-        this.trashPanel.replaceChildren(heading, ...rows);
+        // Re-pin whenever Basecoat opens the popover (it only toggles aria-hidden). Synchronous, not
+        // rAF: the position is read from the trigger, which is always laid out, and rAF can be throttled.
+        const reposition = (): void => {
+            if (popover.getAttribute("aria-hidden") !== "false") {
+                return;
+            }
+            const rect = trigger.getBoundingClientRect();
+            popover.style.position = "fixed";
+            popover.style.left = `${Math.round(rect.left)}px`;
+            popover.style.top = `${Math.round(rect.bottom + 4)}px`;
+            popover.style.insetInlineStart = "auto";
+            popover.style.insetInlineEnd = "auto";
+            popover.style.bottom = "auto";
+            // Above the editor pane and the delegated tooltip (z 900), below the blocking overlay (z 1000).
+            popover.style.zIndex = "950";
+        };
+        new MutationObserver(reposition).observe(popover, { attributes: true, attributeFilter: ["aria-hidden"] });
     }
 
-    private renderTrashEntry(entry: TrashEntry): HTMLElement {
-        const row = document.createElement("div");
-        row.className = "markdown-editor__nav-trash-row";
-        const label = document.createElement("span");
-        label.textContent = `${entry.path} (${entry.kind})`;
-        const restore = document.createElement("button");
-        restore.type = "button";
-        restore.className = "markdown-editor__nav-retry";
-        restore.textContent = "Restore";
-        restore.addEventListener("click", (event: MouseEvent): void => {
-            event.stopPropagation();
-            void this.restoreEntry(entry);
-        });
-        row.append(label, restore);
-        return row;
+    /** Loads the recent trash entries (newest first, server-ordered) as menu items, capped, plus the "view all" link. */
+    private async loadTrashItems(): Promise<void> {
+        this.trashEntries = await this.options.listTrash();
+        const recent = this.trashEntries.slice(0, TRASH_DROPDOWN_LIMIT);
+        const entryItems =
+            recent.length === 0
+                ? [{ value: "", label: "Trash is empty", disabled: true }]
+                : recent.map((entry) => ({ value: entry.id, label: entry.path }));
+        this.trashDropdown.setItems([...entryItems, { value: TRASH_VIEW_ALL, label: "View all in trash…" }]);
     }
 
+    /** Confirms, then restores a trashed entry to its origin, then refreshes the tree. */
     private async restoreEntry(entry: TrashEntry): Promise<void> {
+        const confirmed = await themedConfirm({
+            title: "Restore",
+            message: `Restore “${entry.path}” to its original location?`,
+            confirmLabel: "Restore",
+        });
+        if (!confirmed) {
+            return;
+        }
         await this.withBlockedUI("Restoring…", async (): Promise<boolean> => {
             const result = await this.options.restore(entry.id);
             this.options.notify(result.message, !result.ok);
             if (result.ok) {
-                this.trashEntries = await this.options.listTrash();
-                this.renderTrash();
                 await this.refresh();
             }
             return false;

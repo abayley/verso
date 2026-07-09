@@ -21,6 +21,7 @@ module Verso.View (
     safeEditorTheme,
     saveStatusFragment,
     searchPage,
+    trashPage,
     validationStatusFragment,
     versionPageShell,
 ) where
@@ -176,6 +177,45 @@ trimSpace :: String -> String
 trimSpace = f . f
   where
     f = reverse . dropWhile (`elem` " \t\r\n")
+
+{- | The trash page (RFC-0028): every restorable item, newest-first, with a
+per-row Restore. The Restore button carries the entry id and path as data
+attributes; @trash-page.ts@ (loaded with the shared bundle) confirms, posts to
+@\/trash\/\<id\>@, and removes the row. Entries are @(id, originalPath, kind, deletedAt)@.
+-}
+trashPage :: String -> Maybe String -> [(String, String, String, String)] -> Html.Html ()
+trashPage themeDefault origin entries =
+    versionPageShell themeDefault "Trash" $ do
+        versionControls themeDefault
+        Html.el "h1" [] (Html.text "Trash")
+        Html.p [Html.class_ "verso-version-back"] (backLink origin)
+        if null entries
+            then Html.p [] (Html.text "Trash is empty.")
+            else Html.div [Html.class_ "verso-trash-scroll"] $
+                Html.el "table" [Html.class_ "verso-trash"] $ do
+                    Html.el "thead" [] (Html.el "tr" [] (mapM_ (Html.el "th" [] . Html.text) ["When", "Item", "Kind", ""]))
+                    Html.el "tbody" [] (mapM_ trashRow entries)
+
+-- | The trash page's back link: to the originating page when known, else the wiki root.
+backLink :: Maybe String -> Html.Html ()
+backLink Nothing = Html.a [Html.href "/documents/"] (Html.text "Back to the wiki")
+backLink (Just path) = Html.a [Html.href ("/documents/" ++ path)] (Html.text ("Back to " ++ path))
+
+-- | One trash-table row: deletion time, the original path, kind, and an htmx Restore.
+trashRow :: (String, String, String, String) -> Html.Html ()
+trashRow (entryId, path, kind, ts) =
+    Html.el "tr" [Html.class_ "verso-trash-row"] $ do
+        Html.el "td" [] (Html.text ts)
+        Html.el "td" [] (Html.text path)
+        Html.el "td" [] (Html.text kind)
+        Html.el "td" [] $
+            Chrome.chromeButton
+                Chrome.OutlineControl
+                [ Html.class_ "verso-trash-restore"
+                , Html.attr "data-restore-id" entryId
+                , Html.attr "data-restore-path" path
+                ]
+                (Html.text "Restore")
 
 {- | Renders the revision-history page: theme\/appearance controls, a
 fixed-height scrollable table of revisions (each timestamp links to that

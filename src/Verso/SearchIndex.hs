@@ -127,10 +127,30 @@ startSearch cfg = do
                                         , srWritesSinceOptimise = writes
                                         }
                             Monad.unless modelOk (wipeIndex runtime)
+                            warmEmbedder runtime
                             _ <- Concurrent.forkIO (workerLoop runtime)
                             enqueueReconcile runtime
                             searchLog cfg "search: enabled"
                             pure (Just runtime)
+
+{- | Pays the embedder's one-off lazy initialisation now, at startup, so the
+first user query does not. The first ONNX inference does graph optimisation and
+arena allocation (seconds on this profile); every embed after it is milliseconds.
+This runs before the server announces its listen address (RFC-0034), and a shim
+call blocks the whole runtime, so warming here freezes nothing a client can see.
+A failure is non-fatal -- it just leaves the cost on the first query, as before.
+-}
+warmEmbedder :: SearchRuntime -> IO ()
+warmEmbedder runtime = do
+    let cfg = srConfig runtime
+        profile = searchProfile cfg
+    _ <-
+        Embedding.embedText
+            (srEmbedder runtime)
+            (srVocab runtime)
+            profile
+            (Embedding.profileQueryPrefix profile ++ "warmup")
+    searchLog cfg "search: embedder warmed"
 
 {- | Compares the configured model id with the one recorded beside the
 index; a mismatch means every stored vector is invalid. Records the

@@ -422,46 +422,37 @@ escapeText = escapeChars
 escapeAttr :: String -> Builder
 escapeAttr = escapeChars
 
-{- | Escapes the five HTML-significant characters, coalescing runs of safe
-characters into one packed chunk. Byte-identical to the per-character renderer.
+{- | Escapes the five HTML-significant characters into a single packed chunk.
+Byte-identical to the per-character renderer.
+
+Escaping emits one chunk for the whole string rather than a @Builder@ node per
+special: composing thousands of @<>@ nodes is the dominant render cost in mhs
+(~1 ms per node to force), so a page with hundreds of specials would otherwise
+take seconds to serialise. Packing the escaped byte stream in one pass keeps it
+linear (docs/design/link-index-performance.md).
 -}
 escapeChars :: String -> Builder
 escapeChars [] = mempty
-escapeChars input =
-    case break isSpecial input of
-        (safe, []) -> packSafe safe
-        (safe, c : rest) -> packSafe safe <> replacement c <> escapeChars rest
-  where
-    packSafe [] = mempty
-    packSafe safe = chunk (BS.pack safe)
+escapeChars input = chunk (BS.pack (concatMap escapeChar input))
 
-{- | The 'ByteString' analogue of 'escapeChars': escapes the HTML-significant
-characters in place, emitting safe runs as zero-copy slices. The specials are all
-ASCII and UTF-8 never places an ASCII byte inside a multibyte sequence, so byte-
-level escaping is correct for UTF-8 content.
+{- | The 'ByteString' analogue of 'escapeChars', escaping at the byte level. The
+specials are all ASCII and UTF-8 never places an ASCII byte inside a multibyte
+sequence, so byte-level escaping is correct for UTF-8 content. Emits one packed
+chunk for the same reason as 'escapeChars'.
 -}
 escapeBytes :: BS.ByteString -> Builder
-escapeBytes input =
-    case BS.break isSpecial input of
-        (safe, rest) -> safeChunk safe <> escapeRest rest
-  where
-    safeChunk safe = if BS.null safe then mempty else chunk safe
-    escapeRest rest = case BS.uncons rest of
-        Nothing -> mempty
-        Just (c, more) -> replacement c <> escapeBytes more
+escapeBytes input
+    | BS.null input = mempty
+    | otherwise = chunk (BS.pack (concatMap escapeChar (BS.unpack input)))
 
--- | Whether a character is one of the five HTML-significant characters.
-isSpecial :: Char -> Bool
-isSpecial c = c == '<' || c == '>' || c == '&' || c == '"' || c == '\''
-
--- | The escaped builder fragment for an HTML-significant character.
-replacement :: Char -> Builder
-replacement '<' = ltChunk
-replacement '>' = gtChunk
-replacement '&' = ampChunk
-replacement '"' = quotChunk
-replacement '\'' = aposChunk
-replacement c = chunk (BS.pack [c])
+-- | The escaped form of one character; the identity fragment for safe characters.
+escapeChar :: Char -> String
+escapeChar '<' = "&lt;"
+escapeChar '>' = "&gt;"
+escapeChar '&' = "&amp;"
+escapeChar '"' = "&quot;"
+escapeChar '\'' = "&#39;"
+escapeChar c = [c]
 
 -- Pre-packed constant fragments (shared CAFs).
 
@@ -473,11 +464,3 @@ closeOpen = chunk (BS.pack "</")
 attrSpace = chunk (BS.pack " ")
 attrEquals = chunk (BS.pack "=\"")
 attrQuote = chunk (BS.pack "\"")
-
--- | Pre-packed escape fragments for the five HTML-significant characters.
-ltChunk, gtChunk, ampChunk, quotChunk, aposChunk :: Builder
-ltChunk = chunk (BS.pack "&lt;")
-gtChunk = chunk (BS.pack "&gt;")
-ampChunk = chunk (BS.pack "&amp;")
-quotChunk = chunk (BS.pack "&quot;")
-aposChunk = chunk (BS.pack "&#39;")

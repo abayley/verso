@@ -33,6 +33,10 @@ spec =
                 res <- Process.runProcess "false" [] Nothing Nothing
                 Process.procExit res `shouldBe` Exit.ExitFailure 1
 
+            it "reports exit 127 when the executable does not exist" $ do
+                res <- Process.runProcess "micro-http-no-such-program" [] Nothing Nothing
+                Process.procExit res `shouldBe` Exit.ExitFailure 127
+
             it "captures stderr separately on failure" $ do
                 res <- Process.runProcess "ls" ["/no/such/path/here"] Nothing Nothing
                 (Process.procExit res == Exit.ExitSuccess) `shouldBe` False

@@ -47,17 +47,24 @@ SEARCH_LINK = -optl $(SEARCH_BUILD)/concordance_stub.o
 SEARCH_GHC_LINK = $(SEARCH_OBJS)
 SEARCH_DEP = $(SEARCH_BUILD)/concordance_stub.o
 endif
-# The filesystem syscall wrappers (MicroHttp.FileSystem) are unconditional: every
-# build links them, so they ride along in the cbits flags and dependencies.
+# The filesystem syscall wrappers (MicroHttp.FileSystem) and the posix_spawn
+# wrapper (MicroHttp.Process) are unconditional: every build links them, so
+# they ride along in the cbits flags and dependencies.
 FS_OBJ = $(BUILD)/microhttp_fs.o
-MHS_SEARCH = -optc -I$(CBITS) $(SEARCH_LINK) -optl $(FS_OBJ)
-SEARCH_DEP += $(FS_OBJ)
+PROC_OBJ = $(BUILD)/microhttp_process.o
+CBITS_OBJS = $(FS_OBJ) $(PROC_OBJ)
+MHS_SEARCH = -optc -I$(CBITS) $(SEARCH_LINK) $(foreach o,$(CBITS_OBJS),-optl $(o))
+SEARCH_DEP += $(CBITS_OBJS)
 
 $(SEARCH_BUILD)/concordance_stub.o: $(CBITS)/concordance_stub.c $(CBITS)/concordance_shim.h
 	mkdir -p $(SEARCH_BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(CBITS)
 
 $(FS_OBJ): $(CBITS)/microhttp_fs.c $(CBITS)/microhttp_fs.h
+	mkdir -p $(BUILD)
+	cc -O2 -Wall -c $< -o $@ -I$(CBITS)
+
+$(PROC_OBJ): $(CBITS)/microhttp_process.c $(CBITS)/microhttp_process.h
 	mkdir -p $(BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(CBITS)
 
@@ -171,7 +178,7 @@ test: test-unit test-integration
 coverage-unit: $(SEARCH_DEP)
 	rm -rf $(BUILD)/coverage/unit
 	mkdir -p $(BUILD)/coverage/unit/mix $(BUILD)/coverage/unit/objects $(BUILD)/coverage/unit/report
-	$(GHC) -threaded -fhpc -hpcdir $(BUILD)/coverage/unit/mix $(SEARCH_GHC_LINK) $(FS_OBJ) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -outputdir $(BUILD)/coverage/unit/objects -o $(BUILD)/coverage/unit/unit-test
+	$(GHC) -threaded -fhpc -hpcdir $(BUILD)/coverage/unit/mix $(SEARCH_GHC_LINK) $(CBITS_OBJS) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -outputdir $(BUILD)/coverage/unit/objects -o $(BUILD)/coverage/unit/unit-test
 	HPCTIXFILE=$(BUILD)/coverage/unit/unit-test.tix $(BUILD)/coverage/unit/unit-test
 	$(HPC) report $(BUILD)/coverage/unit/unit-test.tix --hpcdir $(BUILD)/coverage/unit/mix --per-module
 	$(HPC) markup $(BUILD)/coverage/unit/unit-test.tix --hpcdir $(BUILD)/coverage/unit/mix --destdir $(BUILD)/coverage/unit/report
@@ -179,7 +186,7 @@ coverage-unit: $(SEARCH_DEP)
 coverage-integration: $(SEARCH_DEP)
 	rm -rf $(BUILD)/coverage/integration
 	mkdir -p $(BUILD)/coverage/integration/mix $(BUILD)/coverage/integration/objects $(BUILD)/coverage/integration/report
-	$(GHC) -threaded -fhpc -hpcdir $(BUILD)/coverage/integration/mix $(SEARCH_GHC_LINK) $(FS_OBJ) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -outputdir $(BUILD)/coverage/integration/objects -o $(BUILD)/coverage/integration/integration-test
+	$(GHC) -threaded -fhpc -hpcdir $(BUILD)/coverage/integration/mix $(SEARCH_GHC_LINK) $(CBITS_OBJS) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -outputdir $(BUILD)/coverage/integration/objects -o $(BUILD)/coverage/integration/integration-test
 	HPCTIXFILE=$(BUILD)/coverage/integration/integration-test.tix $(BUILD)/coverage/integration/integration-test
 	$(HPC) report $(BUILD)/coverage/integration/integration-test.tix --hpcdir $(BUILD)/coverage/integration/mix --per-module
 	$(HPC) markup $(BUILD)/coverage/integration/integration-test.tix --hpcdir $(BUILD)/coverage/integration/mix --destdir $(BUILD)/coverage/integration/report

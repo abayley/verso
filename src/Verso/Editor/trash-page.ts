@@ -38,7 +38,13 @@ async function restoreEntry(button: HTMLButtonElement): Promise<void> {
     try {
         const response = await fetch(`/trash/${encodeURIComponent(id)}`, { method: "POST" });
         if (response.ok) {
-            removeRow(button);
+            // A restored page returns to its original path: open it. Sections have no page to open,
+            // so just drop the row and stay on the trash page.
+            if (path.endsWith(".md")) {
+                window.location.assign(`/documents/${path.split("/").map(encodeURIComponent).join("/")}`);
+            } else {
+                removeRow(button);
+            }
             return;
         }
     } catch {

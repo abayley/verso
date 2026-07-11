@@ -940,7 +940,7 @@ export class NavTreePanel {
         this.trashDropdown.setItems([...entryItems, { value: TRASH_VIEW_ALL, label: "View all in trash…" }]);
     }
 
-    /** Confirms, then restores a trashed entry to its origin, then refreshes the tree. */
+    /** Confirms, then restores a trashed entry to its origin; opens the restored page (else refreshes the tree). */
     private async restoreEntry(entry: TrashEntry): Promise<void> {
         const confirmed = await themedConfirm({
             title: "Restore",
@@ -953,9 +953,16 @@ export class NavTreePanel {
         await this.withBlockedUI("Restoring…", async (): Promise<boolean> => {
             const result = await this.options.restore(entry.id);
             this.options.notify(result.message, !result.ok);
-            if (result.ok) {
-                await this.refresh();
+            if (!result.ok) {
+                return false;
             }
+            // Navigate to the restored page (a section has none, so just refresh the tree in place).
+            // Returning true keeps the overlay up across the navigation, as the undo flow does.
+            if (entry.kind === "page") {
+                this.options.navigate(entry.path);
+                return true;
+            }
+            await this.refresh();
             return false;
         });
     }

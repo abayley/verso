@@ -225,17 +225,17 @@ spec =
                 logged `shouldInclude` "\"from\":\"x\""
                 logged `shouldInclude` "\"to\":\"y/x\""
 
-            it "given POST /tree ?delete on a referenced page, when routed, then it is refused with the referrer list" $ do
+            it "given DELETE /tree on a referenced page, when routed, then it is refused with the referrer list" $ do
                 appliedRoot <- setupDeleteRouteFixture
-                let req = (request Http.POST ["tree", "a.md"]){Http.requestQuery = [("delete", "")]}
+                let req = request Http.DELETE ["tree", "a.md"]
                 response <- runTreeAppBody appliedRoot req ""
                 Http.statusCode (Http.responseStatus response) `shouldBe` 409
                 bodyText response `shouldInclude` "\"refused\":true"
                 bodyText response `shouldInclude` "\"page\":\"b.md\""
 
-            it "given POST /tree ?delete on an unreferenced page, when routed, then it trashes the page and logs a delete" $ do
+            it "given DELETE /tree on an unreferenced page, when routed, then it trashes the page and logs a delete" $ do
                 appliedRoot <- setupDeleteRouteFixture
-                let req = (request Http.POST ["tree", "b.md"]){Http.requestQuery = [("delete", "")]}
+                let req = request Http.DELETE ["tree", "b.md"]
                 response <- runTreeAppBody appliedRoot req ""
                 Http.statusCode (Http.responseStatus response) `shouldBe` 200
                 bodyText response `shouldInclude` "\"deleted\":\"b.md\""
@@ -247,7 +247,7 @@ spec =
 
             it "given POST /trash/<id> after a delete, when routed, then it restores the page and logs a restore" $ do
                 appliedRoot <- setupDeleteRouteFixture
-                let delReq = (request Http.POST ["tree", "b.md"]){Http.requestQuery = [("delete", "")]}
+                let delReq = request Http.DELETE ["tree", "b.md"]
                 _ <- runTreeAppBody appliedRoot delReq ""
                 response <- runTreeAppBody appliedRoot (request Http.POST ["trash", "0"]) ""
                 Http.statusCode (Http.responseStatus response) `shouldBe` 200
@@ -269,7 +269,7 @@ spec =
 
             it "given GET /trash after a delete, when routed, then the trashed entry is listed" $ do
                 appliedRoot <- setupDeleteRouteFixture
-                _ <- runTreeAppBody appliedRoot ((request Http.POST ["tree", "b.md"]){Http.requestQuery = [("delete", "")]}) ""
+                _ <- runTreeAppBody appliedRoot (request Http.DELETE ["tree", "b.md"]) ""
                 response <- runTreeApp appliedRoot (request Http.GET ["trash"])
                 Http.statusCode (Http.responseStatus response) `shouldBe` 200
                 bodyText response `shouldInclude` "\"path\":\"b.md\""
@@ -277,7 +277,7 @@ spec =
 
             it "given POST /undo after a delete, when routed, then the page is restored from trash" $ do
                 appliedRoot <- setupDeleteRouteFixture
-                _ <- runTreeAppBody appliedRoot ((request Http.POST ["tree", "b.md"]){Http.requestQuery = [("delete", "")]}) ""
+                _ <- runTreeAppBody appliedRoot (request Http.DELETE ["tree", "b.md"]) ""
                 Directory.doesFileExist (appliedRoot ++ "/b.md") `shouldReturn` False
                 response <- runTreeAppBody appliedRoot (request Http.POST ["undo"]) ""
                 Http.statusCode (Http.responseStatus response) `shouldBe` 200

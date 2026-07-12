@@ -264,13 +264,15 @@ treeRoutes writeLock indexStore search versioning editorThemeDefault root logPat
     , Router.get "/search" (treeSearchHandler editorThemeDefault search)
     , Static.static "/static/editor" "static/editor"
     , Router.get "/tree/*path" (treeChildrenHandler root)
-    , Router.post "/tree/*path" (treePostDispatch versioning writeLock findRelevant maint root logPath trashRoot)
+    , Router.post "/tree/*path" (treePostDispatch versioning writeLock findRelevant maint root logPath)
     , Router.get "/trash" (treeTrashListHandler trashRoot logPath)
     , Router.get "/trashbin" (treeTrashPageHandler editorThemeDefault trashRoot logPath)
     , Router.post "/trash/*id" (treeRestoreHandler versioning writeLock maint root logPath trashRoot)
     , Router.get "/operations" (treeOperationsHandler logPath)
     , Router.post "/undo" (treeUndoHandler versioning writeLock findRelevant maint root logPath trashRoot)
     , Router.post "/index/refresh" (treeRefreshHandler writeLock refresh)
+    , Router.put "/documents/*path" (treePutDocument versioning maint root)
+    , Router.delete "/tree/*path" (treeDelete versioning writeLock findRelevant maint root logPath trashRoot)
     , Router.put "/drafts/*path" (draftPut versioning root)
     , Router.delete "/drafts/*path" (draftDelete versioning root)
     , Router.post "/documents/*path" (treePost versioning maint root)
@@ -421,13 +423,24 @@ treeCreateHandler writeLock maint root captures _ = do
         Right (response, _) -> pure response
 
 {- | Dispatches a @POST /tree/*path@: a section/page move when the @?move@ flag is
-present (RFC-0027), otherwise a create (RFC-0026).
+present (RFC-0027), otherwise a create (RFC-0026). Delete is a real @DELETE@
+on the same path (RFC-0036, 'treeDelete').
 -}
-treePostDispatch :: Versioning -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> FilePath -> Router.Handler
-treePostDispatch versioning writeLock findRelevant maint root logPath trashRoot captures request
+treePostDispatch :: Versioning -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> Router.Handler
+treePostDispatch versioning writeLock findRelevant maint root logPath captures request
     | hasQueryFlag "move" request = treeMoveHandler versioning author writeLock findRelevant maint root logPath captures
-    | hasQueryFlag "delete" request = treeDeleteHandler versioning author writeLock findRelevant maint root logPath trashRoot captures
     | otherwise = treeCreateHandler writeLock maint root captures request
+  where
+    author = Identity.currentIdentity (versioningIdentity versioning) request
+
+{- | The tree delete endpoint (RFC-0036): @DELETE /tree/*path@ moves the page or
+section to trash, appends to the operation log, and commits -- the RFC-0027/0028
+behaviour behind a real @DELETE@ (it removes the resource at the URL; restore is
+the @POST /trash/*id@ controller).
+-}
+treeDelete :: Versioning -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> FilePath -> FilePath -> FilePath -> Router.Handler
+treeDelete versioning writeLock findRelevant maint root logPath trashRoot captures request =
+    treeDeleteHandler versioning author writeLock findRelevant maint root logPath trashRoot captures
   where
     author = Identity.currentIdentity (versioningIdentity versioning) request
 
@@ -917,8 +930,7 @@ document's peer @assets/@ folder, or otherwise a document save.
 treePost :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
 treePost versioning maint root captures request
     | hasQueryFlag "asset" request = treeUpload root captures request
-    | hasQueryFlag "publish" request = treePublish versioning maint root captures request
-    | hasQueryFlag "discard-draft" request = treeDiscard versioning root captures request
+    | hasQueryFlag "image-titles" request = treeImageTitles root captures request
     | hasQueryFlag "rollback" request = treeRollback versioning maint root captures request
     | otherwise = treeSave versioning maint root captures request
 
@@ -1521,7 +1533,6 @@ treeSave versioning maint root captures request = do
                 else do
                     Iteratee.liftIO (Directory.createDirectoryIfMissing True (parentDirectory fsPath))
                     Iteratee.liftIO (writeDocumentText fsPath markdown)
-                    Iteratee.liftIO (syncImageTitles root path fields)
                     -- The page's body (and so its outbound links) changed; maintain its index entry.
                     Iteratee.liftIO (onSave maint path)
                     saveResponse request path markdown
@@ -1536,44 +1547,48 @@ saveResponse request path markdown =
         then pure (htmlResponseChunks (View.saveStatusFragment markdown))
         else pure (seeOtherResponse ("/documents/" ++ path ++ "?edit"))
 
-{- | Publishes the editor's content (RFC-0032): writes it to the live page through
-the publish-time path (page write, sidecar image-title sync, link-index update),
-records a git commit attributed to the acting author, clears the draft, and exits
-to read (view) mode. The submitted @markdown@ (and image fields) are authoritative
--- they equal the resumed draft -- so an unchanged page yields no commit but still
-clears the draft.
+{- | The page resource's @PUT@ (RFC-0036): replaces the live page with the raw
+request body, stored verbatim (byte-exact, ADR-038 -- no urlencoding, so
+nothing decodes on this hot path), and maintains the page's index entry. With
+versioning on this is Publish (RFC-0032): the write is committed, attributed
+to the acting author, and the page's staged draft cleared. Idempotent: an
+unchanged body yields no new commit (git sees no diff) but still clears the
+draft.
 -}
-treePublish :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
-treePublish versioning maint root captures request = do
-    bodyBytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) formBodyLimit
-    let fields = formFields (BS.unpack bodyBytes)
-        markdown = normaliseNewlines (capture "markdown" fields)
-        path = capture "path" captures
+treePutDocument :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
+treePutDocument versioning maint root captures request = do
+    bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) formBodyLimit
+    let path = capture "path" captures
     case Static.resolveStaticPath root (pathSegments path) of
         Nothing -> pure treeNotFound
         Just fsPath -> do
             Iteratee.liftIO (Directory.createDirectoryIfMissing True (parentDirectory fsPath))
-            Iteratee.liftIO (writeDocumentText fsPath markdown)
-            Iteratee.liftIO (syncImageTitles root path fields)
+            Iteratee.liftIO (writeDocumentBytes fsPath bytes)
             Iteratee.liftIO (onSave maint path)
-            let author = Identity.currentIdentity (versioningIdentity versioning) request
-            _ <- Iteratee.liftIO (Git.commitAll root author (publishMessage path markdown))
-            Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) path)
-            clientRedirect request ("/documents/" ++ path)
+            Monad.when (versioningOn versioning) $ do
+                let author = Identity.currentIdentity (versioningIdentity versioning) request
+                -- BS.unpack is lazy and publishMessage reads only the frontmatter head,
+                -- so the whole page body is never widened to a String here.
+                _ <- Iteratee.liftIO (Git.commitAll root author (publishMessage path (BS.unpack bytes)))
+                Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) path)
+            pure noContentResponse
 
-{- | Discards a page's staged draft without publishing (RFC-0032) and returns to
-read (view) mode. The path is validated against the tree before the draft is
-touched.
+{- | The image-title sync controller (RFC-0036): @POST /documents/*path?image-titles@
+with the indexed @image_count@/@image_path_<i>@/@image_title_<i>@ form fields
+(RFC-0019, ADR-049). Split out of the save payload so the page body travels as
+raw bytes; the editor calls this after a publish, only when the page has
+page-relative images. Update-only and idempotent.
 -}
-treeDiscard :: Versioning -> FilePath -> Router.Handler
-treeDiscard versioning root captures request =
+treeImageTitles :: FilePath -> Router.Handler
+treeImageTitles root captures _request = do
+    bodyBytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) formBodyLimit
+    let fields = formFields (BS.unpack bodyBytes)
+        path = capture "path" captures
     case Static.resolveStaticPath root (pathSegments path) of
         Nothing -> pure treeNotFound
         Just _ -> do
-            Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) path)
-            clientRedirect request ("/documents/" ++ path)
-  where
-    path = capture "path" captures
+            Iteratee.liftIO (syncImageTitles root path fields)
+            pure noContentResponse
 
 -- | The auto-generated commit message for a publish: the page's frontmatter title, falling back to its path.
 publishMessage :: String -> String -> String
@@ -1581,22 +1596,6 @@ publishMessage path markdown =
     case frontmatterTitle markdown of
         Just title -> "Publish " ++ title
         Nothing -> "Publish " ++ path
-
-{- | Sends the client to @target@: an @HX-Redirect@ header for an htmx request (so
-htmx does a full navigation), or a @303@ for a plain form post. Used to leave edit
-mode after publishing or discarding.
--}
-clientRedirect :: Http.RequestHead -> String -> Iteratee.Iter Stream.StreamError Http.Response
-clientRedirect request target =
-    if isHtmxRequest request
-        then
-            pure
-                ( Http.Response
-                    Http.okStatus
-                    [(Http.normaliseHeaderName (BS.pack "HX-Redirect"), BS.pack target)]
-                    (Http.StrictBody BS.empty)
-                )
-        else pure (seeOtherResponse target)
 
 {- | The revision-history view (RFC-0032): @GET /documents/\<path\>?history@ renders
 the page's git revisions (newest first) with a compare form (pick two revisions to
@@ -1675,7 +1674,8 @@ treeRollback versioning maint root captures request = do
                     Iteratee.liftIO (onSave maint path)
                     let author = Identity.currentIdentity (versioningIdentity versioning) request
                     _ <- Iteratee.liftIO (Git.commitAll root author ("Roll back " ++ path ++ " to " ++ rev))
-                    clientRedirect request ("/documents/" ++ path)
+                    -- Rollback is a plain history-page form post: classic POST -> 303 -> GET.
+                    pure (seeOtherResponse ("/documents/" ++ path))
 
 {- | Answers @GET /search?q=...@ (RFC-0034): the search page with its form
 and, for a non-empty query, the fused hybrid results -- one per page, best
@@ -1874,7 +1874,11 @@ readDocumentText path = fmap BS.unpack (BS.readFile path)
 
 -- | Writes a document's bytes verbatim (the byte-exact counterpart of 'readDocumentText').
 writeDocumentText :: FilePath -> String -> IO ()
-writeDocumentText path content = BS.writeFile path (BS.pack content)
+writeDocumentText path content = writeDocumentBytes path (BS.pack content)
+
+-- | Writes a document's bytes verbatim, with no widening through a 'String'.
+writeDocumentBytes :: FilePath -> BS.ByteString -> IO ()
+writeDocumentBytes = BS.writeFile
 
 -- | The first value of a query-string key, or @""@ when absent.
 queryValue :: String -> Http.RequestHead -> String

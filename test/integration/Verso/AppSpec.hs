@@ -230,7 +230,7 @@ spec = do
             fmap (bodyContains (BS.pack "data-attachments")) outcome `shouldBe` Right True
             fmap (bodyContains (BS.pack "My Report.pdf")) outcome `shouldBe` Right True
             fmap (bodyContains (BS.pack "assets/My_Report.pdf")) outcome `shouldBe` Right True
-        it "given a save carrying image titles, when routing, then it syncs the page's images.yaml short_title" $ do
+        it "given an image-titles post, when routing, then it syncs the page's images.yaml short_title" $ do
             root <- setupTreeFixture
             _ <-
                 Server.respondToRequestBytes
@@ -241,8 +241,8 @@ spec = do
                     (App.appWithDocumentTree "paper" root)
                     ( BS.pack
                         ( postRequest
-                            "/documents/sec/page.md"
-                            "markdown=%23+H&image_count=1&image_path_0=assets%2FDiagram_One.png&image_title_0=Edited+Caption"
+                            "/documents/sec/page.md?image-titles"
+                            "image_count=1&image_path_0=assets%2FDiagram_One.png&image_title_0=Edited+Caption"
                         )
                     )
             recorded <- readFile (root ++ "/sec/meta/page.meta/images.yaml")
@@ -345,38 +345,46 @@ spec = do
             stillDrafted `shouldBe` False
             live `shouldBe` "# Hello tree\n\nA tree document."
     describe "Verso.App publish and discard (RFC-0032)" $ do
-        it "given a staged draft, when publishing, then the page is written, committed, and the draft cleared" $ do
+        it "given a staged draft, when a raw body is PUT to the page, then it is written, committed, and the draft cleared" $ do
             root <- setupVersionedFixture
             _ <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
-                    (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Published+content"))
+                    (BS.pack (rawPutRequest "/drafts/sec/page.md" "# Published content"))
             outcome <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
-                    (BS.pack (postRequest "/documents/sec/page.md?publish" "markdown=%23+Published+content"))
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# Published content"))
             live <- readFile (root ++ "/sec/page.md")
             stillDrafted <- Directory.doesFileExist (treeDraftRoot ++ "/sec/page.md")
             revs <- Git.logForPath root "sec/page.md"
             live `shouldBe` "# Published content"
             stillDrafted `shouldBe` False
             any ((== "anonymous") . Git.revAuthor) revs `shouldBe` True
-            fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 303
-            fmap locationOf outcome `shouldBe` Right (Just (BS.pack "/documents/sec/page.md"))
-        it "given a staged draft, when discarding, then the draft is removed and the live page is unchanged" $ do
+            fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 204
+        it "given an already-published body, when the identical PUT repeats, then no new revision is recorded (idempotent)" $ do
             root <- setupVersionedFixture
             _ <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
-                    (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Throwaway+draft"))
-            _ <-
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# Same content"))
+            revsAfterFirst <- Git.logForPath root "sec/page.md"
+            outcome <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
-                    (BS.pack (postRequest "/documents/sec/page.md?discard-draft" ""))
-            stillDrafted <- Directory.doesFileExist (treeDraftRoot ++ "/sec/page.md")
-            live <- readFile (root ++ "/sec/page.md")
-            stillDrafted `shouldBe` False
-            live `shouldBe` "# Hello tree\n\nA tree document."
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# Same content"))
+            revsAfterSecond <- Git.logForPath root "sec/page.md"
+            fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 204
+            length revsAfterSecond `shouldBe` length revsAfterFirst
+        it "given versioning off, when a raw body is PUT to the page, then the live page is written directly" $ do
+            root <- setupTreeFixture
+            outcome <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTree "paper" root)
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# Direct write\n"))
+            live <- BS.readFile (root ++ "/sec/page.md")
+            fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 204
+            live `shouldBe` BS.pack "# Direct write\n"
     describe "Verso.App structural-op commits (RFC-0032)" $
         it "given a deleted page with a draft, then the deletion is committed and the draft round-trips through trash on restore" $ do
             root <- setupVersionedFixture
@@ -389,7 +397,7 @@ spec = do
             deleteOutcome <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
-                    (BS.pack (postRequest "/tree/sec/page.md?delete" ""))
+                    (BS.pack (deleteRequest "/tree/sec/page.md"))
             draftAfterDelete <- Directory.doesFileExist draftPath
             deleteSubject <- lastCommitSubject root
             -- the trash id comes from the delete response (its op-log seq), not assumed
@@ -412,11 +420,11 @@ spec = do
             _ <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTree "paper" root)
-                    (BS.pack (postRequest "/tree/sec/trash-older.md?delete" ""))
+                    (BS.pack (deleteRequest "/tree/sec/trash-older.md"))
             _ <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTree "paper" root)
-                    (BS.pack (postRequest "/tree/sec/trash-newer.md?delete" ""))
+                    (BS.pack (deleteRequest "/tree/sec/trash-newer.md"))
             listing <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTree "paper" root)
@@ -436,7 +444,7 @@ spec = do
             deleteOutcome <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTree "paper" root)
-                    (BS.pack (postRequest "/tree/sec/trash-page.md?delete" ""))
+                    (BS.pack (deleteRequest "/tree/sec/trash-page.md"))
             let trashId = either (const "") trashIdOf deleteOutcome
             page <-
                 Server.respondToRequestBytes
@@ -479,7 +487,7 @@ spec = do
             _ <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
-                    (BS.pack (postRequest "/documents/sec/page.md?publish" "markdown=%23+Version+one"))
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# Version one"))
             history <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
@@ -506,7 +514,7 @@ spec = do
             _ <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
-                    (BS.pack (postRequest "/documents/sec/page.md?publish" "markdown=%23+Changed+line"))
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# Changed line"))
             toRev <- gitRevParse root "HEAD"
             fromRev <- gitRevParse root "HEAD^"
             diff <-
@@ -529,12 +537,12 @@ spec = do
             _ <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
-                    (BS.pack (postRequest "/documents/sec/page.md?publish" "markdown=%23+First+version"))
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# First version"))
             firstRev <- gitRevParse root "HEAD"
             _ <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
-                    (BS.pack (postRequest "/documents/sec/page.md?publish" "markdown=%23+Second+version"))
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# Second version"))
             atFirst <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
@@ -548,12 +556,12 @@ spec = do
             _ <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
-                    (BS.pack (postRequest "/documents/sec/page.md?publish" "markdown=%23+Version+one"))
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# Version one"))
             v1Hash <- gitRevParse root "HEAD"
             _ <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
-                    (BS.pack (postRequest "/documents/sec/page.md?publish" "markdown=%23+Version+two"))
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# Version two"))
             -- strict reads: GHC's lazy readFile holds the handle open until the
             -- content is consumed, and the rollback below writes the same file
             -- ("resource busy" under the coverage build; mhs reads strictly)

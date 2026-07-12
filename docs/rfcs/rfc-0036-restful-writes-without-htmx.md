@@ -324,19 +324,19 @@ work (ADR-078) is unrelated and stays.
 
 ### Phase 4: Publish, Delete, and Image-Title Verbs
 
-- [ ] Test: `PUT /documents/sec/page.md` (raw body) writes the page
+- [x] Test: `PUT /documents/sec/page.md` (raw body) writes the page
       byte-exact, records a commit with the author identity, and clears the
       draft.
-- [ ] Test: a second identical `PUT /documents/...` yields no new commit
+- [x] Test: a second identical `PUT /documents/...` yields no new commit
       (idempotency contract).
-- [ ] Test: `PUT /documents/...` in non-versioned tree mode writes the live
+- [x] Test: `PUT /documents/...` in non-versioned tree mode writes the live
       page directly (no commit machinery).
-- [ ] Test: `DELETE /tree/sec/page.md` moves the page to trash, appends to
+- [x] Test: `DELETE /tree/sec/page.md` moves the page to trash, appends to
       the operation log, and commits -- the existing `?delete` seam tests
       move to the new verb.
-- [ ] Test: `POST /documents/<path>?image-titles` updates `images.yaml`
+- [x] Test: `POST /documents/<path>?image-titles` updates `images.yaml`
       short titles (the existing image-title-on-save test moves here).
-- [ ] Implement `PUT /documents/*path`, `DELETE /tree/*path`, and the
+- [x] Implement `PUT /documents/*path`, `DELETE /tree/*path`, and the
       `?image-titles` controller; remove `?publish`, `?discard-draft`, and
       `?delete` routes and their handler branches.
 

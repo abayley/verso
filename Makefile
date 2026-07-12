@@ -68,7 +68,7 @@ $(PROC_OBJ): $(CBITS)/microhttp_process.c $(CBITS)/microhttp_process.h
 	mkdir -p $(BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(CBITS)
 
-.PHONY: chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11 all-spikes search-lancedb search-nanoarrow search-model search-shim check clean
+.PHONY: chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11 all-spikes search-lancedb search-nanoarrow search-model search-shim check clean
 
 spike1:
 	mkdir -p $(BUILD)
@@ -192,6 +192,12 @@ coverage-integration: $(SEARCH_DEP)
 	$(HPC) markup $(BUILD)/coverage/integration/integration-test.tix --hpcdir $(BUILD)/coverage/integration/mix --destdir $(BUILD)/coverage/integration/report
 
 coverage: coverage-unit coverage-integration
+
+# Measurement spike: Haskell vs C for the form-decode per-byte pass.
+bench-form-decode: $(CBITS_OBJS)
+	mkdir -p $(BUILD)
+	$(MHS) $(MHSFLAGS) -optc -I$(CBITS) $(foreach o,$(CBITS_OBJS),-optl $(o)) -i$(SRC) -i$(BENCH) $(BENCH)/FormDecodeBench.hs -o $(BUILD)/form-decode-bench
+	$(BUILD)/form-decode-bench
 
 bench-socket: $(FS_OBJ)
 	mkdir -p $(BUILD)

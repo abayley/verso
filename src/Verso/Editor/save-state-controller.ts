@@ -18,8 +18,8 @@ const saveTimeoutMilliseconds = 10_000;
 /**
  * The editor's save state machine (RFC-0002), extracted from the custom element as
  * a plain controller. It owns the clean/dirty/saving/retry states, the
- * minimum-saving-time transition, and the save timeout; the element forwards htmx
- * lifecycle and content-change notifications and renders the reported view. Timers
+ * minimum-saving-time transition, and the save timeout; the element forwards its
+ * fetch lifecycle and content-change notifications and renders the reported view. Timers
  * are direct `window` timers (the tests drive them with fake timers).
  */
 export class SaveStateController {

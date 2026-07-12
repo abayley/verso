@@ -145,22 +145,10 @@ function writeStoredPreference(key: string, value: string): void {
     }
 }
 
-interface HtmxConfigRequestEvent extends Event {
-    detail: {
-        parameters: Record<string, string>;
-    };
-}
+/** Web component that edits one Markdown document, saving through its own fetch autosave (RFC-0036). */
+/** The autosave debounce: a pause this long after the last change saves (was hx-trigger delay:2s). */
+const autosaveDebounceMilliseconds = 2000;
 
-interface HtmxAfterRequestEvent extends Event {
-    detail: {
-        successful?: boolean;
-        xhr?: {
-            status: number;
-        };
-    };
-}
-
-/** Web component that edits one Markdown document through an htmx form. */
 export class MarkdownEditorElement extends HTMLElement {
     /** Participates in form submission natively (RFC-0001), so htmx and ordinary posts share one value. */
     static formAssociated = true;
@@ -192,6 +180,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private footer: HTMLDivElement | null = null;
     private readonly clientErrorReporter = new ClientErrorReporter();
     private saveController: SaveStateController | null = null;
+    private autosaveHandle: number | null = null;
     private sourceEditor: CodeMirrorSourceEditor | null = null;
     private syncingEditors = false;
     /**
@@ -349,6 +338,10 @@ export class MarkdownEditorElement extends HTMLElement {
         this.closeSlashMenu();
         this.linkController?.dispose();
         this.saveController?.dispose();
+        if (this.autosaveHandle !== null) {
+            window.clearTimeout(this.autosaveHandle);
+            this.autosaveHandle = null;
+        }
         this.sourceEditor?.destroy();
         this.sourceEditor = null;
         this.visualEditor?.destroy();
@@ -559,7 +552,7 @@ export class MarkdownEditorElement extends HTMLElement {
         if (!this.isReadonly()) {
             this.fileInput = this.createFileInput();
             this.append(this.fileInput);
-            this.configureFormSubmission();
+            this.configureAutosave();
             this.body.addEventListener("dragover", this.handleDragOver);
             this.body.addEventListener("drop", this.handleDrop);
             this.body.addEventListener("paste", this.handlePaste, true);
@@ -612,7 +605,7 @@ export class MarkdownEditorElement extends HTMLElement {
             notify: (message: string, isError: boolean): void => this.showUploadNotice(message, isError),
             deleteNode: async (path: string): Promise<DeleteResult> => {
                 try {
-                    const response = await fetch(`/tree/${encodePath(path)}?delete`, { method: "POST" });
+                    const response = await fetch(`/tree/${encodePath(path)}`, { method: "DELETE" });
                     if (response.status === 409) {
                         const data: unknown = safeJson(await response.text());
                         const referrers =
@@ -816,8 +809,9 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /**
-     * Discards the staged draft (RFC-0032): drops it via ?discard-draft so the page reverts to its last
-     * published (committed) version, then returns to the read view. Confirms first, since it abandons changes.
+     * Discards the staged draft (RFC-0032): a `DELETE` of the draft resource, so the page reverts to its
+     * last published (committed) version, then returns to the read view. Confirms first, since it abandons
+     * changes.
      */
     private async discardDraft(documentPath: string): Promise<void> {
         // Nothing edited and no resumed draft: leave edit mode quietly, no dialog and no request.
@@ -838,33 +832,47 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         try {
-            await fetch(`/documents/${documentPath}?discard-draft`, {
-                method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: "",
-            });
+            await fetch(`/drafts/${documentPath}`, { method: "DELETE" });
         } finally {
             window.location.href = `/documents/${documentPath}`;
         }
     }
 
     /**
-     * Publishes the staged edit (RFC-0032): posts the current document (and image metadata, as autosave does)
-     * to `?publish`, which commits it to the tree and clears the draft, then navigates to the read view.
+     * Publishes the staged edit (RFC-0032/0036): a `PUT` of the raw document to the page resource (which
+     * commits it and clears the draft), then the image-title sidecar sync when the page has page-relative
+     * images, then navigation to the read view.
      */
     private async publishDocument(documentPath: string): Promise<void> {
-        const parameters: Record<string, string> = { markdown: this.documentMarkdown() };
-        this.attachImageMetadata(parameters);
-
         try {
-            await fetch(`/documents/${documentPath}?publish`, {
-                method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: new URLSearchParams(parameters).toString(),
+            await fetch(`/documents/${documentPath}`, {
+                method: "PUT",
+                headers: { "Content-Type": "text/markdown; charset=utf-8" },
+                body: this.documentMarkdown(),
             });
+            await this.syncImageTitles(documentPath);
         } finally {
             window.location.href = `/documents/${documentPath}`;
         }
+    }
+
+    /**
+     * Posts the page's image short_titles to the image-titles controller (RFC-0019 fields, RFC-0036
+     * endpoint) after a publish. Skipped when the page has no page-relative images.
+     */
+    private async syncImageTitles(documentPath: string): Promise<void> {
+        const parameters: Record<string, string> = {};
+        this.attachImageMetadata(parameters);
+
+        if (parameters["image_count"] === "0") {
+            return;
+        }
+
+        await fetch(`/documents/${documentPath}?image-titles`, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams(parameters).toString(),
+        });
     }
 
     /** The metadata-pane panel linking to the page's revision history (RFC-0032), tree mode only. */
@@ -2111,7 +2119,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.updateTableControls();
     }
 
-    /** Records a valid Markdown change and notifies htmx autosave listeners. */
+    /** Records a valid Markdown change and notifies autosave and chrome listeners. */
     private dispatchMarkdownChange(markdown: string): void {
         this.markdown = markdown;
         this.hasUnpublishedChanges = true;
@@ -2166,49 +2174,77 @@ export class MarkdownEditorElement extends HTMLElement {
         });
     }
 
-    /** Hooks the editor value into the surrounding htmx form submission. */
-    private configureFormSubmission(): void {
-        const form = this.closest("form");
-
-        if (!(form instanceof HTMLFormElement)) {
+    /**
+     * Wires the editor's own autosave (RFC-0036, no htmx): every `editor:changed` schedules a debounced
+     * `PUT` of the raw document to the save endpoint, and a form submit (the command bar's Save button,
+     * or implicit submission from a field) is intercepted into an immediate save. The `<form>` itself
+     * stays untouched as the no-JavaScript floor (native POST via the textarea fallback).
+     */
+    private configureAutosave(): void {
+        // No document path, no save target (also keeps detached test editors from scheduling saves).
+        if (!this.getAttribute("data-document")) {
             return;
         }
 
-        // The current Markdown reaches the server natively through ElementInternals
-        // (RFC-0001); this also writes it into the htmx request parameters so an
-        // htmx autosave carries the live value regardless of how htmx collects
-        // form-associated custom element values.
-        form.addEventListener("htmx:configRequest", (event: Event): void => {
-            const htmxEvent = event as HtmxConfigRequestEvent;
+        this.addEventListener("editor:changed", (): void => this.scheduleAutosave());
 
-            // Persist the full document (frontmatter re-attached); track save state against the editor body,
-            // which is what the save controller's baseline getter returns.
-            htmxEvent.detail.parameters["markdown"] = this.documentMarkdown();
-            this.attachImageMetadata(htmxEvent.detail.parameters);
-            this.saveController?.markSubmitted(this.toMarkdown());
-        });
-        form.addEventListener("htmx:beforeRequest", (): void => {
-            this.saveController?.markSaving();
-        });
-        form.addEventListener("htmx:afterRequest", (event: Event): void => {
-            const detail = (event as HtmxAfterRequestEvent).detail;
-            const successful = detail.successful ?? isSuccessfulStatus(detail.xhr?.status);
+        const form = this.closest("form");
+        if (form instanceof HTMLFormElement) {
+            form.addEventListener("submit", (event: Event): void => {
+                event.preventDefault();
+                void this.performAutosave();
+            });
+        }
+    }
 
-            if (successful) {
+    /** (Re)arms the autosave debounce window after a content change. */
+    private scheduleAutosave(): void {
+        if (this.autosaveHandle !== null) {
+            window.clearTimeout(this.autosaveHandle);
+        }
+
+        this.autosaveHandle = window.setTimeout((): void => {
+            void this.performAutosave();
+        }, autosaveDebounceMilliseconds);
+    }
+
+    /**
+     * Saves the current document now: a `PUT` of the raw Markdown bytes (frontmatter re-attached, no
+     * urlencoding) to the draft resource when versioning is on, else straight to the page. Drives the
+     * save-state controller's dirty/saving/settled transitions.
+     */
+    private async performAutosave(): Promise<void> {
+        if (this.autosaveHandle !== null) {
+            window.clearTimeout(this.autosaveHandle);
+            this.autosaveHandle = null;
+        }
+
+        // Track save state against the editor body, which is what the controller's baseline getter returns.
+        this.saveController?.markSubmitted(this.toMarkdown());
+        this.saveController?.markSaving();
+
+        try {
+            const response = await fetch(this.saveEndpoint(), {
+                method: "PUT",
+                headers: { "Content-Type": "text/markdown; charset=utf-8" },
+                body: this.documentMarkdown(),
+            });
+
+            if (response.ok) {
                 this.saveController?.markSucceeded();
             } else {
-                this.saveController?.markFailed(saveFailureReason(event as HtmxAfterRequestEvent));
+                this.saveController?.markFailed(`HTTP ${response.status}`);
             }
-        });
-        form.addEventListener("htmx:responseError", (): void => {
+        } catch {
             this.saveController?.markFailed("connection error");
-        });
-        form.addEventListener("htmx:sendError", (): void => {
-            this.saveController?.markFailed("connection error");
-        });
-        form.addEventListener("htmx:timeout", (): void => {
-            this.saveController?.markFailed("request timed out");
-        });
+        }
+    }
+
+    /** The autosave target: the draft resource with versioning on, else the live page. */
+    private saveEndpoint(): string {
+        const documentPath = this.getAttribute("data-document") ?? "";
+
+        return this.hasAttribute("data-versioning") ? `/drafts/${documentPath}` : `/documents/${documentPath}`;
     }
 
     /** Renders the save controller's reported view onto the Save button and error text. */
@@ -2422,22 +2458,6 @@ function isEditorMode(mode: string): mode is EditorMode {
 /** Checks whether a value is an editor colour theme. */
 function isEditorTheme(theme: string): theme is EditorTheme {
     return theme === "light" || theme === "dark" || theme === "match-system";
-}
-
-/** Checks whether an HTTP status code should be treated as a successful save. */
-function isSuccessfulStatus(status: number | undefined): boolean {
-    return typeof status === "number" && status >= 200 && status < 300;
-}
-
-/** Returns a concise user-facing save failure reason from an htmx response event. */
-function saveFailureReason(event: HtmxAfterRequestEvent): string {
-    const status = event.detail.xhr?.status;
-
-    if (typeof status === "number" && status > 0) {
-        return `HTTP ${status}`;
-    }
-
-    return "connection error";
 }
 
 /** Returns the current non-empty selection rectangle, if the browser can provide one. */

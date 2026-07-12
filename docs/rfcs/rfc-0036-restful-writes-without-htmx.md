@@ -342,22 +342,22 @@ work (ADR-078) is unrelated and stays.
 
 ### Phase 5: Editor Fetch Writes and htmx Removal
 
-- [ ] Editor test: the save controller debounces `editor:changed` and issues
+- [x] Editor test: the save controller debounces `editor:changed` and issues
       `PUT /drafts/...` with the raw document, transitioning
       dirty -> saving -> saved (and -> failed on error).
-- [ ] Editor test: publish issues `PUT /documents/...` then the
+- [x] Editor test: publish issues `PUT /documents/...` then the
       image-titles controller call (only when page-relative images exist),
       then navigates.
-- [ ] Editor test: discard issues `DELETE /drafts/...`; nav-tree delete
+- [x] Editor test: discard issues `DELETE /drafts/...`; nav-tree delete
       issues `DELETE /tree/...`.
-- [ ] Remove the htmx script tag, the `hx-*` form attributes, and the
+- [x] Remove the htmx script tag, the `hx-*` form attributes, and the
       `htmx:*` listeners; keep the form + `<noscript>` submit +
       `ElementInternals` for the no-JS floor.
-- [ ] Remove `isHtmxRequest` save/publish branches, `saveStatusFragment`,
+- [x] Remove `isHtmxRequest` save/publish branches, `saveStatusFragment`,
       and the `HX-Redirect` arm of `clientRedirect`; `treeSave` keeps only
       the form branch.
-- [ ] `make test-editor-browser` autosave/publish smoke passes without htmx.
-- [ ] Update `scripts/hang-repro.sh` to the new verbs; storm run shows no
+- [x] `make test-editor-browser` autosave/publish smoke passes without htmx.
+- [x] Update `scripts/hang-repro.sh` to the new verbs; storm run shows no
       HANG/CRASH/SLOW.
 
 ### Phase 6: Supersede the C Decode Layer and Record Decisions

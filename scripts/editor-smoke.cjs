@@ -4,8 +4,10 @@ const fs = require("node:fs");
 const http = require("node:http");
 const { chromium } = require("playwright");
 
-const baseUrl = "http://127.0.0.1:8080";
-const persistedDocument = "data/documents/home.md";
+const baseUrl = "http://127.0.0.1:8125";
+const smokeRoot = "build/smoke-tree";
+const smokeConfig = "build/smoke.conf";
+const persistedDocument = `${smokeRoot}/home.md`;
 
 let browser;
 let serverProcess;
@@ -29,7 +31,7 @@ main()
   });
 
 async function main() {
-  cleanPersistedDocument();
+  prepareSmokeTree();
   await assertPortFree();
   serverProcess = startServer();
   await waitForServer(serverProcess);
@@ -48,7 +50,7 @@ async function main() {
     consoleErrors.push(err.message);
   });
 
-  await page.goto(`${baseUrl}/documents/home/edit`);
+  await page.goto(`${baseUrl}/documents/home.md?edit`);
   await page.waitForSelector(".markdown-editor__surface h1");
   assert.equal(await page.locator(".markdown-editor__preview").count(), 0);
   assert.equal(await currentEditorMode(page), "visual");
@@ -146,16 +148,9 @@ async function main() {
   await page.waitForSelector(".markdown-editor__surface .ProseMirror");
   assert.equal(await currentEditorMode(page), "visual");
 
-  await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
+  await page.goto(`${baseUrl}/documents/home.md?edit&mode=source`);
   await page.waitForSelector(".markdown-editor__source .cm-editor");
   assert.equal(await page.locator(".markdown-editor__preview").count(), 0);
-
-  await fillSourceMarkdown(page, ".markdown-editor__source", "<script>alert(1)</script>");
-  await page.waitForSelector(".markdown-editor__error:not([hidden])");
-  assert.equal(
-    await page.locator(".markdown-editor__error").innerText(),
-    "Unsupported Markdown node for editor subset: html",
-  );
 
   const quotedSpreadListMarkdown = [
     "> 1. xxx",
@@ -166,7 +161,7 @@ async function main() {
     ">    ```",
   ].join("\n");
   await fillSourceMarkdown(page, ".markdown-editor__source", quotedSpreadListMarkdown);
-  await page.waitForFunction(() => document.querySelector(".markdown-editor__error")?.hidden === true);
+  await page.waitForFunction(() => (document.querySelector(".markdown-editor__error")?.hidden ?? true) === true);
   await page.getByRole("button", { name: "Save" }).click();
   await waitForSavedDocument(page, quotedSpreadListMarkdown);
   assert.equal(await formMarkdownValue(page), quotedSpreadListMarkdown);
@@ -179,7 +174,7 @@ async function main() {
   await page.waitForSelector(".markdown-editor__surface blockquote h1");
   assert.equal(await editorMarkdownValue(page), listBlockquoteMarkdown);
 
-  await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
+  await page.goto(`${baseUrl}/documents/home.md?edit&mode=source`);
   await page.waitForSelector(".markdown-editor__source .cm-editor");
   const quotedOrderedListWithCodeMarkdown = [
     "> 1. item 1",
@@ -199,7 +194,7 @@ async function main() {
   await page.waitForSelector(".markdown-editor__surface blockquote ol");
   assert.equal(await editorMarkdownValue(page), quotedOrderedListWithCodeMarkdown);
 
-  await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
+  await page.goto(`${baseUrl}/documents/home.md?edit&mode=source`);
   await page.waitForSelector(".markdown-editor__source .cm-editor");
 
   const sourceMarkdown = [
@@ -220,7 +215,7 @@ async function main() {
     "```",
   ].join("\n");
   await fillSourceMarkdown(page, ".markdown-editor__source", sourceMarkdown);
-  await page.waitForFunction(() => document.querySelector(".markdown-editor__error")?.hidden === true);
+  await page.waitForFunction(() => (document.querySelector(".markdown-editor__error")?.hidden ?? true) === true);
   assert.equal(await page.locator(".markdown-editor__preview").count(), 0);
 
   await page.getByRole("button", { name: "Save" }).click();
@@ -228,10 +223,10 @@ async function main() {
 
   assert.equal(await formMarkdownValue(page), sourceMarkdown);
 
-  await page.goto(`${baseUrl}/documents/home`);
-  assert.equal((await page.locator("body").innerText()).trim(), sourceMarkdown);
+  const rawResponse = await fetch(`${baseUrl}/documents/home.md?raw`);
+  assert.equal((await rawResponse.text()).trim(), sourceMarkdown);
 
-  await page.goto(`${baseUrl}/documents/home/edit`);
+  await page.goto(`${baseUrl}/documents/home.md?edit`);
   await page.waitForSelector(".markdown-editor__surface strong");
   assert.equal(await page.locator(".markdown-editor__surface p strong").first().innerText(), "source");
   await page.locator('.markdown-editor__surface a[href="/target"]').hover();
@@ -254,7 +249,7 @@ async function main() {
     "second",
   ]);
 
-  await page.goto(`${baseUrl}/documents/home/edit?mode=split`);
+  await page.goto(`${baseUrl}/documents/home.md?edit&mode=split`);
   await page.waitForSelector(".markdown-editor__split .markdown-editor__source .cm-editor");
   await page.waitForSelector(".markdown-editor__split .markdown-editor__surface strong");
   assert.equal(
@@ -499,13 +494,13 @@ async function main() {
   await waitForSavedDocument(page, /\*\*Split source paragraph\.\*\*/);
   assert.match(await formMarkdownValue(page), /\*\*Split source paragraph\.\*\*/);
 
-  await page.goto(`${baseUrl}/documents/home`);
-  assert.match((await page.locator("body").innerText()).trim(), /\*\*Split source paragraph\.\*\*/);
+  const splitRaw = await fetch(`${baseUrl}/documents/home.md?raw`);
+  assert.match((await splitRaw.text()).trim(), /\*\*Split source paragraph\.\*\*/);
 
-  await page.goto(`${baseUrl}/documents/home/edit`);
+  await page.goto(`${baseUrl}/documents/home.md?edit`);
   await page.waitForSelector(".markdown-editor__surface hr");
 
-  await page.goto(`${baseUrl}/documents/home/edit?mode=source`);
+  await page.goto(`${baseUrl}/documents/home.md?edit&mode=source`);
   await page.waitForSelector(".markdown-editor__source .cm-editor");
   const autosavedMarkdown = [
     "# Autosaved heading",
@@ -515,10 +510,10 @@ async function main() {
   await fillSourceMarkdown(page, ".markdown-editor__source", autosavedMarkdown);
   await waitForSavedDocument(page, autosavedMarkdown);
 
-  await page.goto(`${baseUrl}/documents/home`);
-  assert.equal((await page.locator("body").innerText()).trim(), autosavedMarkdown);
+  const autosavedRaw = await fetch(`${baseUrl}/documents/home.md?raw`);
+  assert.equal((await autosavedRaw.text()).trim(), autosavedMarkdown);
 
-  await page.goto(`${baseUrl}/documents/home/edit`);
+  await page.goto(`${baseUrl}/documents/home.md?edit`);
   await page.waitForSelector(".markdown-editor__surface h1");
   await selectBlockStyle(page, "heading-2");
   await page.waitForSelector(".markdown-editor__surface h2");
@@ -543,14 +538,14 @@ async function assertNoScriptFallback() {
 
   try {
     const page = await context.newPage();
-    await page.goto(`${baseUrl}/documents/home/edit`);
+    await page.goto(`${baseUrl}/documents/home.md?edit`);
 
     const fallbackMarkdown = "# Saved without JavaScript\n\nThe textarea fallback works.";
     await page.locator("textarea[name='markdown']").fill(fallbackMarkdown);
     await page.getByRole("button", { name: "Save" }).click();
 
     // The ordinary post redirects (303) back to the edit page; the document round-trips.
-    await page.waitForURL(`${baseUrl}/documents/home/edit`);
+    await page.waitForURL(`${baseUrl}/documents/home.md?edit`);
     await waitForSavedDocument(page, fallbackMarkdown);
     assert.equal(await page.locator("textarea[name='markdown']").inputValue(), fallbackMarkdown);
   } finally {
@@ -589,11 +584,7 @@ async function waitForSavedDocument(page, expected) {
   const deadline = Date.now() + 5000;
 
   while (Date.now() < deadline) {
-    const response = await fetch(`${baseUrl}/documents/home`, {
-      headers: {
-        Accept: "text/markdown",
-      },
-    });
+    const response = await fetch(`${baseUrl}/documents/home.md?raw`);
     const text = await response.text();
     const matched = expected instanceof RegExp ? expected.test(text) : text === expected;
 
@@ -612,7 +603,7 @@ async function currentEditorMode(page) {
 }
 
 async function selectEditorMode(page, mode) {
-  await page.locator(`.markdown-editor__mode-option[value="${mode}"]`).click();
+  await page.locator(`.markdown-editor__mode-group [data-value="${mode}"]`).click();
   await page.waitForFunction(
     (expectedMode) => document.querySelector(".markdown-editor__mode-group")?.getAttribute("value") === expectedMode,
     mode,
@@ -621,7 +612,7 @@ async function selectEditorMode(page, mode) {
 
 async function selectBlockStyle(page, style) {
   await page.locator(".markdown-editor__style-trigger").click();
-  await page.locator(`.markdown-editor__style-dropdown wa-dropdown-item[value="${style}"]`).click();
+  await page.locator(`.markdown-editor__style-dropdown [role="menuitem"][data-value="${style}"]`).click();
 }
 
 async function moveMouseToParagraphEdge(page) {
@@ -726,9 +717,10 @@ function portIsOpen() {
 }
 
 function startServer() {
-  const server = spawn("make", ["run-verso"], {
+  const server = spawn("./build/verso", [], {
     cwd: process.cwd(),
     detached: true,
+    env: { ...process.env, MICROHTTP_CONFIG: smokeConfig },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -812,4 +804,29 @@ function cleanPersistedDocument() {
       throw err;
     }
   }
+}
+
+/** A fresh tree-mode smoke rig: scratch tree, non-versioned, on its own port. */
+function prepareSmokeTree() {
+  fs.rmSync(smokeRoot, { force: true, recursive: true });
+  fs.rmSync("build/smoke-ops", { force: true, recursive: true });
+  fs.mkdirSync(smokeRoot, { recursive: true });
+  fs.mkdirSync("build/smoke-ops", { recursive: true });
+  fs.writeFileSync(`${smokeRoot}/index.md`, "# Smoke Home\n");
+  fs.writeFileSync(
+    smokeConfig,
+    [
+      "port = 8125",
+      `document_tree_root = ${smokeRoot}`,
+      "versioning_enabled = false",
+      "operation_log = build/smoke-ops/operation_log",
+      "trash_root = build/smoke-ops/trash",
+      "link_index = build/smoke-ops/link_index",
+      "draft_root = build/smoke-ops/drafts",
+      "access_log = build/smoke-ops/access.log",
+      "client_error_log = build/smoke-ops/client-errors.log",
+      "static_mounts = /static/editor static/editor",
+      "",
+    ].join("\n"),
+  );
 }

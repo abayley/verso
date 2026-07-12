@@ -25,6 +25,7 @@ describe("MarkdownEditorElement", (): void => {
     afterEach((): void => {
         vi.useRealTimers();
         vi.restoreAllMocks();
+        vi.unstubAllGlobals();
     });
 
     it("given raw HTML in source mode, when initialised, then it keeps the source without a client validation error", async (): Promise<void> => {
@@ -1062,9 +1063,19 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.getAttribute("data-save-state")).toBe("clean");
     });
 
-    it("given edited content, when htmx save succeeds, then save returns to clean disabled state after minimum saving time", async (): Promise<void> => {
+    it("given edited content, when the autosave succeeds, then save returns to clean disabled state after minimum saving time", async (): Promise<void> => {
         const { editor } = await initialiseEditorForm();
         vi.useFakeTimers();
+        let resolveFetch: (response: Response) => void = (): void => {};
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(
+                (): Promise<Response> =>
+                    new Promise((resolve: (response: Response) => void): void => {
+                        resolveFetch = resolve;
+                    }),
+            ),
+        );
 
         selectText(editor, "Plain");
         clickToolbarButton(editor, "Bold");
@@ -1072,38 +1083,40 @@ describe("MarkdownEditorElement", (): void => {
         expect(saveButton(editor).textContent).toBe("Save");
         expect(saveButton(editor).hasAttribute("disabled")).toBe(false);
 
-        dispatchHtmxConfigRequest(editor);
-        dispatchHtmxRequestEvent(editor, "htmx:beforeRequest");
+        await vi.advanceTimersByTimeAsync(2000);
 
         expect(saveButton(editor).textContent).toBe("Saving…");
         expect(saveButton(editor).hasAttribute("disabled")).toBe(true);
 
-        dispatchHtmxRequestEvent(editor, "htmx:afterRequest", { successful: true });
+        resolveFetch(new Response(null, { status: 204 }));
+        await vi.advanceTimersByTimeAsync(0);
 
         expect(saveButton(editor).textContent).toBe("Saving…");
         expect(saveButton(editor).hasAttribute("disabled")).toBe(true);
 
-        vi.advanceTimersByTime(499);
+        await vi.advanceTimersByTimeAsync(499);
 
         expect(saveButton(editor).textContent).toBe("Saving…");
         expect(saveButton(editor).hasAttribute("disabled")).toBe(true);
 
-        vi.advanceTimersByTime(1);
+        await vi.advanceTimersByTimeAsync(1);
 
         expect(saveButton(editor).textContent).toBe("Save");
         expect(saveButton(editor).hasAttribute("disabled")).toBe(true);
         expect(saveError(editor).hidden).toBe(true);
     });
 
-    it("given edited content, when htmx save fails with an HTTP status, then save becomes retry and shows the status", async (): Promise<void> => {
+    it("given edited content, when the autosave fails with an HTTP status, then save becomes retry and shows the status", async (): Promise<void> => {
         const { editor } = await initialiseEditorForm();
+        vi.useFakeTimers();
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async (): Promise<Response> => new Response(null, { status: 500 })),
+        );
 
         selectText(editor, "Plain");
         clickToolbarButton(editor, "Bold");
-        dispatchHtmxConfigRequest(editor);
-        dispatchHtmxRequestEvent(editor, "htmx:beforeRequest");
-
-        dispatchHtmxRequestEvent(editor, "htmx:afterRequest", { successful: false, xhr: { status: 500 } });
+        await vi.advanceTimersByTimeAsync(2000);
 
         expect(saveButton(editor).textContent).toBe("Retry");
         expect(saveButton(editor).hasAttribute("disabled")).toBe(false);
@@ -1111,15 +1124,17 @@ describe("MarkdownEditorElement", (): void => {
         expect(saveError(editor).textContent).toBe("Save failed: HTTP 500");
     });
 
-    it("given edited content, when htmx cannot send the save request, then save shows a connection error", async (): Promise<void> => {
+    it("given edited content, when the save request cannot be sent, then save shows a connection error", async (): Promise<void> => {
         const { editor } = await initialiseEditorForm();
+        vi.useFakeTimers();
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async (): Promise<Response> => Promise.reject(new Error("offline"))),
+        );
 
         selectText(editor, "Plain");
         clickToolbarButton(editor, "Bold");
-        dispatchHtmxConfigRequest(editor);
-        dispatchHtmxRequestEvent(editor, "htmx:beforeRequest");
-
-        dispatchHtmxRequestEvent(editor, "htmx:sendError");
+        await vi.advanceTimersByTimeAsync(2000);
 
         expect(saveButton(editor).textContent).toBe("Retry");
         expect(saveButton(editor).hasAttribute("disabled")).toBe(false);
@@ -1130,13 +1145,15 @@ describe("MarkdownEditorElement", (): void => {
     it("given auto-save starts, when no response arrives within ten seconds, then save becomes retry and shows an error", async (): Promise<void> => {
         const { editor } = await initialiseEditorForm();
         vi.useFakeTimers();
+        vi.stubGlobal(
+            "fetch",
+            vi.fn((): Promise<Response> => new Promise((): void => {})),
+        );
 
         selectText(editor, "Plain");
         clickToolbarButton(editor, "Bold");
-        dispatchHtmxConfigRequest(editor);
-        dispatchHtmxRequestEvent(editor, "htmx:beforeRequest");
-
-        vi.advanceTimersByTime(10_000);
+        await vi.advanceTimersByTimeAsync(2000);
+        await vi.advanceTimersByTimeAsync(10_000);
 
         expect(saveButton(editor).textContent).toBe("Retry");
         expect(saveButton(editor).hasAttribute("disabled")).toBe(false);
@@ -1928,42 +1945,18 @@ function saveError(editor: Element): HTMLElement {
     return error;
 }
 
-/** Creates an editor inside the same htmx form shape used by Verso. */
+/** Creates an editor inside the same no-JS form shell Verso renders, with a save target. */
 async function initialiseEditorForm(): Promise<{ editor: MarkdownEditorElement }> {
     const form = document.createElement("form");
     const editor = document.createElement(elementName) as MarkdownEditorElement;
+    editor.setAttribute("data-document", "sec/page.md");
+    editor.setAttribute("data-versioning", "");
     editor.textContent = "Plain paragraph";
     form.append(editor);
     document.body.append(form);
     await waitForInitialisation();
 
     return { editor };
-}
-
-/** Dispatches the htmx config request event and asserts the live Markdown reaches the request parameters. */
-function dispatchHtmxConfigRequest(editor: Element): void {
-    const parameters: Record<string, unknown> = {};
-    editor.dispatchEvent(
-        new CustomEvent("htmx:configRequest", {
-            bubbles: true,
-            detail: {
-                parameters,
-            },
-        }),
-    );
-
-    expect(parameters["markdown"]).toBe((editor as MarkdownEditorElement).toMarkdown());
-}
-
-/** Dispatches an htmx request lifecycle event from the editor form. */
-function dispatchHtmxRequestEvent(editor: Element, name: string, detail: Record<string, unknown> = {}): void {
-    const form = editor.closest("form");
-
-    if (!(form instanceof HTMLFormElement)) {
-        throw new Error("Expected editor form.");
-    }
-
-    form.dispatchEvent(new CustomEvent(name, { bubbles: true, detail }));
 }
 
 /** Returns the view mode radio group. */

@@ -160,7 +160,9 @@ replay-tool: $(SEARCH_DEP)
 	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) $(SRC)/Verso/ReplayTool.hs -o $(BUILD)/replay-tool
 	$(BUILD)/replay-tool
 
-test-editor-browser:
+test-editor-browser: editor-build $(SEARCH_DEP)
+	mkdir -p $(BUILD)
+	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) $(SRC)/Verso/Main.hs -o $(BUILD)/verso
 	bun scripts/editor-smoke.cjs
 
 test-unit: $(SEARCH_DEP)

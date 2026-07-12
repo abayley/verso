@@ -27,10 +27,6 @@ module MicroHttp.Html (
     href,
     html,
     html_,
-    hxDelete,
-    hxPost,
-    hxSwap,
-    hxTarget,
     input,
     input_,
     label,
@@ -190,22 +186,6 @@ href = attr "href"
 -- | The @lang@ attribute.
 lang :: String -> (String, String)
 lang = attr "lang"
-
--- | The htmx @hx-post@ attribute.
-hxPost :: String -> (String, String)
-hxPost = attr "hx-post"
-
--- | The htmx @hx-delete@ attribute.
-hxDelete :: String -> (String, String)
-hxDelete = attr "hx-delete"
-
--- | The htmx @hx-target@ attribute.
-hxTarget :: String -> (String, String)
-hxTarget = attr "hx-target"
-
--- | The htmx @hx-swap@ attribute.
-hxSwap :: String -> (String, String)
-hxSwap = attr "hx-swap"
 
 -- | A container element with a caller-supplied tag name.
 custom :: String -> [(String, String)] -> Html () -> Html ()

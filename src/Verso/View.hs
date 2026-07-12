@@ -18,7 +18,6 @@ module Verso.View (
     jsonString,
     knownEditorThemes,
     safeEditorTheme,
-    saveStatusFragment,
     searchPage,
     trashPage,
     versionPageShell,
@@ -93,16 +92,13 @@ chromeHeadAssets = do
     Html.rawTrusted "<script src=\"/static/editor/basecoat.js\" defer></script>"
     Html.rawTrusted chromeInitScript
 
-{- | Re-scans for uninitialised Basecoat components after every DOM-producing
-event the runtime cannot observe itself: initial load and htmx swaps (the
-spike's integration contract; Lit elements call initAll from their own
-updated() hooks). initAll is idempotent, so over-calling is harmless.
+{- | Scans for uninitialised Basecoat components on load (Lit elements call
+initAll from their own updated() hooks; initAll is idempotent).
 -}
 chromeInitScript :: String
 chromeInitScript =
     "<script>(function(){function i(){window.basecoat&&window.basecoat.initAll();}"
-        ++ "document.addEventListener('DOMContentLoaded',i);"
-        ++ "document.addEventListener('htmx:afterSwap',i);})()</script>"
+        ++ "document.addEventListener('DOMContentLoaded',i);})()</script>"
 
 {- | The full-page shell shared by the history, diff, and search views. It
 reuses the editor page's theming (the @data-editor-theme@ default, the
@@ -199,7 +195,7 @@ backLink :: Maybe String -> Html.Html ()
 backLink Nothing = Html.a [Html.href "/documents/"] (Html.text "Back to the wiki")
 backLink (Just path) = Html.a [Html.href ("/documents/" ++ path)] (Html.text ("Back to " ++ path))
 
--- | One trash-table row: deletion time, the original path, kind, and an htmx Restore.
+-- | One trash-table row: deletion time, the original path, kind, and a Restore control.
 trashRow :: (String, String, String, String) -> Html.Html ()
 trashRow (entryId, path, kind, ts) =
     Html.el "tr" [Html.class_ "verso-trash-row"] $ do
@@ -410,15 +406,14 @@ breadcrumbsJson crumbs = "[" ++ List.intercalate "," (map crumbObject crumbs) ++
     crumbObject (Crumb label href) =
         "{\"label\":" ++ jsonString label ++ maybe "" (\h -> ",\"href\":" ++ jsonString h) href ++ "}"
 
-editorPage :: String -> Maybe String -> String -> String -> BS.ByteString -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Html.Html ()
-editorPage docId mode themeDefault pageTitle content editable hasDraft attachments breadcrumbs treeSpine =
+editorPage :: String -> Maybe String -> String -> String -> BS.ByteString -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Html.Html ()
+editorPage docId mode themeDefault pageTitle content versioned editable hasDraft attachments breadcrumbs treeSpine =
     Html.html [Html.lang "en", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
             Html.rawTrusted editorThemeBootstrapScript
             Html.title [] (Html.text pageTitle)
             chromeHeadAssets
-            Html.rawTrusted "<script src=\"https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js\"></script>"
             Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\"></script>"
         Html.body [Html.class_ "markdown-editor-page"] $
             Html.main [] $
@@ -428,22 +423,19 @@ editorPage docId mode themeDefault pageTitle content editable hasDraft attachmen
                     then Html.form_
                         [ Html.attr "action" ("/documents/" ++ docId)
                         , Html.attr "method" "post"
-                        , Html.hxPost ("/documents/" ++ docId)
-                        , Html.hxSwap "none"
-                        , Html.attr "hx-trigger" "submit, editor:changed delay:2s from:markdown-editor"
                         ]
                         $ do
-                            editorElement docId mode editable hasDraft attachments breadcrumbs treeSpine content
+                            editorElement docId mode versioned editable hasDraft attachments breadcrumbs treeSpine content
                             Html.custom "noscript" [] $
                                 Html.button_ [Html.attr "type" "submit"] (Html.text "Save")
-                    else editorElement docId mode editable hasDraft attachments breadcrumbs treeSpine content
+                    else editorElement docId mode versioned editable hasDraft attachments breadcrumbs treeSpine content
 
 {- | The @\<markdown-editor\>@ custom element with its server-set attributes and the
 no-script @\<textarea\>@ fallback holding the document. @data-readonly@ is set in the
 read view (RFC-0020); the element disables editing and hides the editing chrome.
 -}
-editorElement :: String -> Maybe String -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> BS.ByteString -> Html.Html ()
-editorElement docId mode editable hasDraft attachments breadcrumbs treeSpine content =
+editorElement :: String -> Maybe String -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> BS.ByteString -> Html.Html ()
+editorElement docId mode versioned editable hasDraft attachments breadcrumbs treeSpine content =
     Html.custom
         "markdown-editor"
         ( [Html.attr "name" "markdown", Html.attr "data-document" docId]
@@ -452,6 +444,8 @@ editorElement docId mode editable hasDraft attachments breadcrumbs treeSpine con
             ++ [Html.attr "data-breadcrumbs" (breadcrumbsJson breadcrumbs) | not (null breadcrumbs)]
             ++ [Html.attr "data-tree-spine" treeSpine | not (null treeSpine)]
             ++ [Html.attr "data-readonly" "" | not editable]
+            -- RFC-0036: versioning on means autosave targets the draft resource (PUT /drafts/<path>).
+            ++ [Html.attr "data-versioning" "" | versioned]
             -- RFC-0032: marks a page that has an unpublished draft, so the read view can flag it.
             ++ [Html.attr "data-has-draft" "" | hasDraft]
         )
@@ -460,10 +454,3 @@ editorElement docId mode editable hasDraft attachments breadcrumbs treeSpine con
             [Html.attr "name" "markdown", Html.attr "aria-label" "Markdown source", Html.class_ "markdown-editor__fallback"]
             (Html.bytesText content)
         )
-
--- | The htmx save-confirmation status fragment.
-saveStatusFragment :: String -> Html.Html ()
-saveStatusFragment markdown =
-    Html.p [Html.attr "id" "save-status"] $ do
-        Html.text "Saved Markdown document: "
-        Html.text markdown

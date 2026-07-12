@@ -122,18 +122,19 @@ stuck_children() {
     echo "$out"
 }
 
-# POSTs and classifies; body form data in $2 (may be empty, or @file for a
-# urlencoded markdown field), URL in $1.
+# Issues a write and classifies the outcome. $1 = method, $2 = URL, $3 = body
+# (empty, @file for a raw markdown body, or a urlencoded form string), $4 = label.
 hangs=0 crashes=0 httpfails=0 slows=0
 post_write() {
-    local url=$1 data=$2 label=$3 rc
+    local method=$1 url=$2 data=$3 label=$4 rc
     if [ -z "$data" ]; then
-        curl -sf -o /dev/null --max-time $TIMEOUT -X POST "$url"
+        curl -sf -o /dev/null --max-time $TIMEOUT -X "$method" "$url"
     elif [ "${data#@}" != "$data" ]; then
-        curl -sf -o /dev/null --max-time $TIMEOUT -X POST \
-            --data-urlencode "markdown${data}" "$url"
+        curl -sf -o /dev/null --max-time $TIMEOUT -X "$method" \
+            -H "Content-Type: text/markdown; charset=utf-8" \
+            --data-binary "$data" "$url"
     else
-        curl -sf -o /dev/null --max-time $TIMEOUT -X POST --data "$data" "$url"
+        curl -sf -o /dev/null --max-time $TIMEOUT -X "$method" --data "$data" "$url"
     fi
     rc=$?
     [ $rc -eq 0 ] && return 0
@@ -175,20 +176,20 @@ stamp="$$$(date +%s)"
 # repeatedly - each publish forks git while the previous publish's re-index
 # (and, with HANG_REPRO_FRESH=1, the startup rebuild) is in flight.
 pubpage="hangrepro${stamp}pub"
-post_write "$BASE/tree/" "kind=page&title=$pubpage" "publish-page create" || true
+post_write POST "$BASE/tree/" "kind=page&title=$pubpage" "publish-page create" || true
 for i in $(seq 1 "$PUBLISHES"); do
-    post_write "$BASE/documents/$pubpage.md?publish" "@$BODY_FILE" "publish $i" || break
+    post_write PUT "$BASE/documents/$pubpage.md" "@$BODY_FILE" "publish $i" || break
 done
 
 # Phase 2: create+delete rounds.
 for round in $(seq 1 "$ROUNDS"); do
     for i in $(seq 1 $BURST); do
         title="hangrepro${stamp}r${round}n${i}"
-        post_write "$BASE/tree/" "kind=page&title=$title" "round $round create $i" || break 2
+        post_write POST "$BASE/tree/" "kind=page&title=$title" "round $round create $i" || break 2
     done
     for i in $(seq 1 $BURST); do
         title="hangrepro${stamp}r${round}n${i}"
-        post_write "$BASE/tree/$title.md?delete" "" "round $round delete $i" || break 2
+        post_write DELETE "$BASE/tree/$title.md" "" "round $round delete $i" || break 2
     done
 done
 

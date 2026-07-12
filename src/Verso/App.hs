@@ -271,6 +271,8 @@ treeRoutes writeLock indexStore search versioning editorThemeDefault root logPat
     , Router.get "/operations" (treeOperationsHandler logPath)
     , Router.post "/undo" (treeUndoHandler versioning writeLock findRelevant maint root logPath trashRoot)
     , Router.post "/index/refresh" (treeRefreshHandler writeLock refresh)
+    , Router.put "/drafts/*path" (draftPut versioning root)
+    , Router.delete "/drafts/*path" (draftDelete versioning root)
     , Router.post "/documents/*path" (treePost versioning maint root)
     , Router.get "/documents/*path" (treeGet versioning editorThemeDefault root)
     ]
@@ -1455,6 +1457,43 @@ clientPeerHost :: Socket.ConnectionInfo -> String
 clientPeerHost conn = case Socket.connPeerHost conn of
     Socket.HostAny -> "0.0.0.0"
     Socket.HostIPv4 a b c d -> show a ++ "." ++ show b ++ "." ++ show c ++ "." ++ show d
+
+{- | The draft resource's @PUT@ (RFC-0036): stages the raw request body as the
+page's draft, verbatim (autosave). Idempotent -- re-sending the same bytes
+re-stages the same draft -- so a debounced client can retry safely. The path is
+validated against the tree exactly as a page save is; without versioning there
+is no draft resource, so the route answers 404.
+-}
+draftPut :: Versioning -> FilePath -> Router.Handler
+draftPut versioning root captures _ = do
+    bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) formBodyLimit
+    let path = capture "path" captures
+    if not (versioningOn versioning)
+        then pure treeNotFound
+        else case Static.resolveStaticPath root (pathSegments path) of
+            Nothing -> pure treeNotFound
+            Just _ -> do
+                Iteratee.liftIO (Draft.writeDraft (draftStagingRoot versioning) path bytes)
+                pure noContentResponse
+
+{- | The draft resource's @DELETE@ (RFC-0036): discards the page's staged draft
+without publishing. Idempotent -- deleting an absent draft is still a @204@.
+-}
+draftDelete :: Versioning -> FilePath -> Router.Handler
+draftDelete versioning root captures _ = do
+    let path = capture "path" captures
+    if not (versioningOn versioning)
+        then pure treeNotFound
+        else case Static.resolveStaticPath root (pathSegments path) of
+            Nothing -> pure treeNotFound
+            Just _ -> do
+                Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) path)
+                pure noContentResponse
+
+-- | The bodyless @204 No Content@ response for a completed state transfer.
+noContentResponse :: Http.Response
+noContentResponse =
+    Http.Response (Http.Status 204 "No Content") [] (Http.StrictBody BS.empty)
 
 {- | Saves a posted Markdown document back to its file in the tree, creating any
 missing parent directories. Unlike the flat 'saveDocument', the tree mode does

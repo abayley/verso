@@ -310,16 +310,16 @@ work (ADR-078) is unrelated and stays.
 
 ### Phase 3: Draft Resource Endpoints
 
-- [ ] Test: `PUT /drafts/sec/page.md` with a raw body stores the draft
+- [x] Test: `PUT /drafts/sec/page.md` with a raw body stores the draft
       byte-exact (including bytes that would be mangled by urldecoding, e.g.
       `+` and `%20` literals).
-- [ ] Test: `PUT /drafts/<path>` refuses an unsafe path (traversal) exactly
+- [x] Test: `PUT /drafts/<path>` refuses an unsafe path (traversal) exactly
       as `/documents/` does.
-- [ ] Test: `DELETE /drafts/sec/page.md` removes the draft; the next edit
+- [x] Test: `DELETE /drafts/sec/page.md` removes the draft; the next edit
       view no longer resumes it.
-- [ ] Test: editing a page after `PUT /drafts/...` resumes the draft (the
+- [x] Test: editing a page after `PUT /drafts/...` resumes the draft (the
       RFC-0032 resume contract holds through the new route).
-- [ ] Implement the `/drafts/*path` PUT/DELETE handlers (versioning mode
+- [x] Implement the `/drafts/*path` PUT/DELETE handlers (versioning mode
       only; 404 otherwise).
 
 ### Phase 4: Publish, Delete, and Image-Title Verbs

@@ -290,6 +290,60 @@ spec = do
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
                     (BS.pack (getRequest "/documents/sec/page.md?edit"))
             fmap (bodyContains (BS.pack "Drafted heading")) outcome `shouldBe` Right True
+    describe "Verso.App draft resource (RFC-0036)" $ do
+        it "given versioning on, when a raw body is PUT to /drafts, then it is staged byte-exact and the live page is unchanged" $ do
+            root <- setupTreeFixture
+            removeIfExists (treeDraftRoot ++ "/sec/page.md")
+            outcome <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (rawPutRequest "/drafts/sec/page.md" "# Draft edit\n\nliteral + and %20 stay\n"))
+            live <- readFile (root ++ "/sec/page.md")
+            drafted <- BS.readFile (treeDraftRoot ++ "/sec/page.md")
+            fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 204
+            live `shouldBe` "# Hello tree\n\nA tree document."
+            drafted `shouldBe` BS.pack "# Draft edit\n\nliteral + and %20 stay\n"
+        it "given a draft staged via PUT, when editing, then the editor resumes it over the published page" $ do
+            root <- setupTreeFixture
+            removeIfExists (treeDraftRoot ++ "/sec/page.md")
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (rawPutRequest "/drafts/sec/page.md" "# Drafted via PUT"))
+            outcome <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (getRequest "/documents/sec/page.md?edit"))
+            fmap (bodyContains (BS.pack "Drafted via PUT")) outcome `shouldBe` Right True
+        it "given an unsafe path, when PUT to /drafts, then it is refused" $ do
+            root <- setupTreeFixture
+            outcome <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (rawPutRequest "/drafts/../escape.md" "# Escape"))
+            fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 404
+        it "given versioning off, when PUT to /drafts, then there is no draft resource" $ do
+            root <- setupTreeFixture
+            outcome <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTree "paper" root)
+                    (BS.pack (rawPutRequest "/drafts/sec/page.md" "# No drafts here"))
+            fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 404
+        it "given a staged draft, when DELETE on /drafts, then it is removed and the live page is unchanged" $ do
+            root <- setupTreeFixture
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (rawPutRequest "/drafts/sec/page.md" "# Throwaway"))
+            outcome <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (BS.pack (deleteRequest "/drafts/sec/page.md"))
+            stillDrafted <- Directory.doesFileExist (treeDraftRoot ++ "/sec/page.md")
+            live <- readFile (root ++ "/sec/page.md")
+            fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 204
+            stillDrafted `shouldBe` False
+            live `shouldBe` "# Hello tree\n\nA tree document."
     describe "Verso.App publish and discard (RFC-0032)" $ do
         it "given a staged draft, when publishing, then the page is written, committed, and the draft cleared" $ do
             root <- setupVersionedFixture
@@ -545,6 +599,21 @@ getRequest target =
 getRequestWithReferer :: String -> String -> String
 getRequestWithReferer target referer =
     "GET " ++ target ++ " HTTP/1.1\r\nReferer: " ++ referer ++ "\r\n\r\n"
+
+-- | A raw-body PUT (RFC-0036): the body bytes verbatim, no form encoding.
+rawPutRequest :: String -> String -> String
+rawPutRequest target body =
+    "PUT "
+        ++ target
+        ++ " HTTP/1.1\r\nContent-Type: text/markdown; charset=utf-8\r\nContent-Length: "
+        ++ show (length body)
+        ++ "\r\n\r\n"
+        ++ body
+
+-- | A bodyless DELETE request.
+deleteRequest :: String -> String
+deleteRequest target =
+    "DELETE " ++ target ++ " HTTP/1.1\r\nContent-Length: 0\r\n\r\n"
 
 postRequest :: String -> String -> String
 postRequest target body =

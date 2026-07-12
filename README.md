@@ -2,8 +2,8 @@
 
 MicroHttp is a small HTTP/1.1 server library for MicroHs, plus Verso, a
 Markdown wiki application built on it. It targets server-rendered HTML
-applications that use htmx and web-component markup without depending on
-GHC-only web frameworks.
+applications with web-component markup and fetch-based mutations, without
+depending on GHC-only web frameworks.
 
 ## MicroHttp Project Goals
 
@@ -80,9 +80,11 @@ Verso is a filesystem-backed Markdown wiki assembled in `src/Verso/App.hs`:
 
 ## Verso Frontend Architecture
 
-The server renders HTML pages and htmx fragments; Markdown text is the wire
-contract between browser and server, and the server never parses Markdown
-(ADR-019). Explicit Save submits the Markdown through htmx.
+The server renders HTML pages; mutations are fetch requests with status/JSON
+responses (RFC-0036: `PUT`/`DELETE` on pages and drafts, POST controllers for
+domain operations). Markdown text is the wire contract between browser and
+server -- saves carry it as the raw request body -- and the server never
+parses Markdown (ADR-019). A plain form post remains the no-JavaScript floor.
 
 The editor is a `<markdown-editor>` web component, written in TypeScript under
 `src/Verso/Editor/`:

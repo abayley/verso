@@ -1,11 +1,11 @@
 ---
 id: RFC-0036
 name: RESTful Writes Without htmx
-status: Draft
+status: Implemented
 owners:
     - alistair
 created: 2026-07-12
-updated: 2026-07-12
+updated: 2026-07-13
 supersedes: []
 superseded_by: null
 ---
@@ -16,7 +16,7 @@ superseded_by: null
 |-----------|------------|
 | Authored  | 2026-07-12 |
 | Started   | 2026-07-12 |
-| Completed |            |
+| Completed | 2026-07-13 |
 
 ## Summary
 
@@ -362,16 +362,16 @@ work (ADR-078) is unrelated and stays.
 
 ### Phase 6: Supersede the C Decode Layer and Record Decisions
 
-- [ ] Remove `cbits/microhttp_http.c/.h`, the `HTTP_OBJ` Makefile plumbing,
+- [x] Remove `cbits/microhttp_http.c/.h`, the `HTTP_OBJ` Makefile plumbing,
       `Http.formFieldsBytes`/`decodeFormBytes`/`normaliseFormNewlines` and
       their unit tests; restore the String `formFields` path for the
       remaining small urlencoded bodies; keep the CRLF seam test green.
-- [ ] Trim `bench/FormDecodeBench.hs` to the Haskell strategies; record the
+- [x] Trim `bench/FormDecodeBench.hs` to the Haskell strategies; record the
       C measurements in this RFC only.
-- [ ] ADR: the interaction model (server-rendered pages, fetch commands,
+- [x] ADR: the interaction model (server-rendered pages, fetch commands,
       resource verbs vs POST controllers, no-JS form floor); note RFC-0035's
       htmx open question as closed by removal.
-- [ ] Update CONTEXT.md language entries touched by the route changes
+- [x] Update CONTEXT.md language entries touched by the route changes
       (Draft, Publish) and the decision register.
 
 ### Rollout Plan Escape Hatch

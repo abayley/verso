@@ -13,23 +13,12 @@ import qualified Verso.Git as Git
 
 spec :: Spec
 spec = do
-    describe "Verso.App persistence" $
-        it "given an ordinary form post, when saving, then markdown is persisted and it redirects to the edit page" $ do
-            let body = "markdown=%23+Saved+heading"
-            outcome <-
-                Server.respondToRequestBytes
-                    (App.appWithDocumentRoot documentRoot)
-                    (BS.pack (postRequest "/documents/home" body))
-            saved <- readFile documentFile
-            Directory.removeFile documentFile
-            fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 303
-            fmap locationOf outcome `shouldBe` Right (Just (BS.pack "/documents/home/edit"))
-            saved `shouldBe` "# Saved heading"
     describe "Verso.App static serving" $
         it "given an editor stylesheet request, when routing, then it is served as a sized text/css file body" $ do
+            root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentRoot documentRoot)
+                    (App.appWithDocumentTree "paper" root)
                     (BS.pack (getRequest "/static/editor/markdown-editor.css"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
             fmap contentTypeOf outcome `shouldBe` Right (Just (BS.pack "text/css"))
@@ -630,14 +619,6 @@ orderedBefore first second haystack =
         _ -> False
   where
     indexOf needle hay = List.findIndex (List.isPrefixOf needle) (List.tails hay)
-
-documentRoot :: FilePath
-documentRoot =
-    "build"
-
-documentFile :: FilePath
-documentFile =
-    documentRoot ++ "/home.md"
 
 -- | The draft staging root for the RFC-0032 draft-staging tests.
 treeDraftRoot :: FilePath

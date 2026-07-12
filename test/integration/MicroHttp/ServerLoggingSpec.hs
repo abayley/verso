@@ -8,10 +8,10 @@ import qualified MicroHttp.Http as Http
 import qualified MicroHttp.Log as Log
 import qualified MicroHttp.Middleware as Middleware
 import qualified MicroHttp.Network.Socket as Socket
+import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified System.Directory as Directory
 import Test.Hspec
-import qualified Verso.App as App
 
 spec :: Spec
 spec =
@@ -62,9 +62,12 @@ spec =
                 ("event=RESP" `List.isInfixOf` contents) `shouldBe` True
                 ("status=200" `List.isInfixOf` contents) `shouldBe` True
 
--- | The document application (frames and routes; no middleware).
+-- | A minimal framework-only fixture application (no Verso dependency): a @GET /@ probe.
 documentApp :: Middleware.Application
-documentApp = App.appWithDocumentRoot documentRoot
+documentApp =
+    Router.serveRoutes
+        (Server.parseLimits Server.defaultSettings)
+        [Router.get "/" (\_ _ -> pure (Http.Response Http.okStatus [] (Http.StrictBody (BS.pack "ok\n"))))]
 
 -- | Wraps an application with a capturing logging middleware (outermost).
 logged :: IORef.IORef [Log.AccessEvent] -> Middleware.Application -> Middleware.Application
@@ -97,9 +100,6 @@ tagOf event =
         Log.RequestReceived _ _ -> "received"
         Log.RequestCompleted _ _ status _ _ _ -> "completed:" ++ show (Http.statusCode status)
         Log.RequestAborted _ _ reason _ _ -> "aborted:" ++ reason
-
-documentRoot :: FilePath
-documentRoot = "build"
 
 loopback :: Socket.Host
 loopback = Socket.HostIPv4 127 0 0 1

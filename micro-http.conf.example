@@ -19,19 +19,19 @@ idle_write_timeout_micros = 30000000
 # --- application ---
 access_log = build/access.log
 client_error_log = build/client-errors.log
-document_root = data/documents
 
 # A comma-separated list of "<url-prefix> <filesystem-root>" mounts.
 static_mounts = /static/editor static/editor
 
-# --- document tree mode (RFC-0026+) ---
-# Set document_tree_root to serve and edit a MkDocs-style tree in place (ADR-045),
-# instead of the flat document_root above. The remaining keys take effect in this mode;
-# their defaults are shown. operation_log and trash_root must be OUTSIDE the tree but on
-# the same filesystem (RFC-0027/0028). link_index is the persisted link graph used by
-# move/delete (RFC-0029); rebuilt automatically if absent/stale/corrupt, and by
-# POST /index/refresh after a corpus re-export.
-# document_tree_root = data/tree
+# --- document tree (RFC-0026+) ---
+# document_tree_root (REQUIRED) is the MkDocs-style tree served and edited in
+# place (ADR-045; the flat single-document mode retired with RFC-0036). The
+# remaining keys' defaults are shown. operation_log and trash_root must be
+# OUTSIDE the tree but on the same filesystem (RFC-0027/0028). link_index is
+# the persisted link graph used by move/delete (RFC-0029); rebuilt
+# automatically if absent/stale/corrupt, and by POST /index/refresh after a
+# corpus re-export.
+document_tree_root = data/tree
 # operation_log = data/operation_log
 # trash_root = data/trash
 # link_index = data/link_index

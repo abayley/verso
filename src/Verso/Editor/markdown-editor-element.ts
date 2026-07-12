@@ -385,13 +385,11 @@ export class MarkdownEditorElement extends HTMLElement {
         this.frontmatter = loaded.frontmatter;
         this.markdown = loaded.body;
 
-        if (this.isTreeMode()) {
-            // The trusted document tree may contain raw HTML (export-metadata comments, occasional
-            // markup); preserve it verbatim and inert rather than throwing on it (ADR-040/041 reject raw
-            // HTML only in the untrusted flat mode). Badge lozenges (RFC-0021) are likewise tree-only.
-            registerExtension(rawHtmlExtension);
-            registerExtension(badgeExtension);
-        }
+        // The trusted document tree may contain raw HTML (export-metadata comments, occasional
+        // markup); preserve it verbatim and inert rather than throwing on it (ADR-040/041).
+        // Badge lozenges (RFC-0021) ride along.
+        registerExtension(rawHtmlExtension);
+        registerExtension(badgeExtension);
 
         this.visualTheme = this.editorVisualTheme();
         this.theme = this.editorTheme();
@@ -494,24 +492,20 @@ export class MarkdownEditorElement extends HTMLElement {
         this.sidebar.append(sidebarToggle);
         this.tocPanel = new TableOfContentsPanel((index: number): void => this.scrollToHeading(index));
         this.sidebar.append(this.tocPanel.element());
-        if (this.isTreeMode()) {
-            this.attachmentPanel = new AttachmentPanel(
-                (attachment: PanelAttachment): void => this.insertAttachmentLink(attachment),
-                this.isReadonly(),
-            );
-            this.attachmentPanel.setAttachments(parseEmbeddedAttachments(this.getAttribute("data-attachments")));
-            this.sidebar.append(this.attachmentPanel.element());
-            this.sidebar.append(this.createHistoryPanel());
-            if (!this.isReadonly()) {
-                this.enableAttachmentDrop(this.body);
-            }
+        this.attachmentPanel = new AttachmentPanel(
+            (attachment: PanelAttachment): void => this.insertAttachmentLink(attachment),
+            this.isReadonly(),
+        );
+        this.attachmentPanel.setAttachments(parseEmbeddedAttachments(this.getAttribute("data-attachments")));
+        this.sidebar.append(this.attachmentPanel.element());
+        this.sidebar.append(this.createHistoryPanel());
+        if (!this.isReadonly()) {
+            this.enableAttachmentDrop(this.body);
         }
         // The navigation tree (RFC-0026, RFC-0035): a full-height column pinned to the viewport's left edge,
         // a sibling of the content column rather than inside the centred workspace, so it reads as an app
         // sidebar (the shadcn layout) rather than sitting inside the page gutter.
-        if (this.isTreeMode()) {
-            this.navTree = this.createNavTree();
-        }
+        this.navTree = this.createNavTree();
         workspace.append(this.sidebar);
 
         // The top bar (presentation controls + breadcrumb) is one unit so it can stick to the top of the
@@ -526,11 +520,9 @@ export class MarkdownEditorElement extends HTMLElement {
         const topBarRow = document.createElement("div");
         topBarRow.className = "markdown-editor__topbar-row";
         topBarRow.append(this.documentName);
-        if (this.isTreeMode()) {
-            const searchPanel = new SearchPanel();
-            topBarRow.append(searchPanel.element());
-            void searchPanel.connect();
-        }
+        const searchPanel = new SearchPanel();
+        topBarRow.append(searchPanel.element());
+        void searchPanel.connect();
         this.topBar.append(this.toolbar, topBarRow);
 
         // The content column holds the top bar, the editing workspace, and the bottom bars. It is a flex
@@ -784,13 +776,8 @@ export class MarkdownEditorElement extends HTMLElement {
      * server's `data-has-draft` attribute). In the edit view it is a "Publish" button (RFC-0032): publishing
      * commits the staged edit to the tree and exits to the read view -- the way to leave edit mode. The "Edit"
      * link is plain navigation (works without JavaScript); Publish needs JavaScript, as editing itself does.
-     * Returns null outside tree mode, where the read/edit selectors do not apply.
      */
     private createReadEditLink(): HTMLElement | null {
-        if (!this.isTreeMode()) {
-            return null;
-        }
-
         const documentPath = this.getAttribute("data-document") ?? "";
         const group = window.document.createElement("span");
         group.className = "markdown-editor__view-toggle-group";
@@ -1672,7 +1659,7 @@ export class MarkdownEditorElement extends HTMLElement {
                 this.markdown,
                 (): void => this.handleVisualInput(),
                 (): void => this.handleVisualLinkShortcut(),
-                { preserveRawHtml: this.isTreeMode(), editable: !this.isReadonly() },
+                { preserveRawHtml: true, editable: !this.isReadonly() },
             );
             this.visualEditor.element().addEventListener("focusin", (): void => {
                 this.activePane = "visual";
@@ -1713,11 +1700,6 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         return "visual";
-    }
-
-    /** Whether the editor is serving a document from the filesystem tree (set by the server). */
-    private isTreeMode(): boolean {
-        return this.getAttribute("data-document-mode") === "tree";
     }
 
     /** Whether the document is shown read-only (the rendered reading view, RFC-0020); set by the server. */
@@ -1991,7 +1973,7 @@ export class MarkdownEditorElement extends HTMLElement {
             try {
                 const url = await uploadAttachment(file, endpoint);
                 this.insertUpload(file, url);
-                if (this.isTreeMode() && !isInlineImage(file)) {
+                if (!isInlineImage(file)) {
                     this.attachmentPanel?.add({ name: file.name, localPath: url });
                 }
                 this.hideUploadNotice();
@@ -2002,15 +1984,11 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /**
-     * The upload endpoint: in tree mode the editing document's peer-`assets/` endpoint (which returns a
-     * page-relative URL the editor inserts as `assets/<name>`); otherwise the content-addressed store.
+     * The upload endpoint: the editing document's peer-`assets/` endpoint, which returns a
+     * page-relative URL the editor inserts as `assets/<name>` (RFC-0018 as amended).
      */
     private uploadEndpoint(): string {
-        if (this.isTreeMode()) {
-            return `/documents/${this.getAttribute("data-document") ?? ""}?asset`;
-        }
-
-        return "/attachments";
+        return `/documents/${this.getAttribute("data-document") ?? ""}?asset`;
     }
 
     /** Inserts an uploaded file's Markdown at the caret: an inline image, or a download link otherwise. */
@@ -2174,16 +2152,12 @@ export class MarkdownEditorElement extends HTMLElement {
     }
 
     /**
-     * In tree mode, carries each page-relative image's short_title (its alt text, else its filename) into
-     * the save as indexed form fields, so the server syncs the page's `images.yaml` (RFC-0019, ADR-049).
-     * The server reads `image_count` and the `image_path_<i>`/`image_title_<i>` pairs. A no-op outside tree
-     * mode (the flat store has no sidecar metadata) and when the document has no page-relative images.
+     * Carries each page-relative image's short_title (its alt text, else its filename) into the save as
+     * indexed form fields, so the server syncs the page's `images.yaml` (RFC-0019, ADR-049). The server
+     * reads `image_count` and the `image_path_<i>`/`image_title_<i>` pairs. A no-op when the document has
+     * no page-relative images.
      */
     private attachImageMetadata(parameters: Record<string, string>): void {
-        if (!this.isTreeMode()) {
-            return;
-        }
-
         const titles = imageShortTitles(this.toMarkdown());
         parameters["image_count"] = String(titles.length);
         titles.forEach((entry, index): void => {
@@ -2331,7 +2305,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.tocPanel.setEntries(entries);
 
         if (this.sidebar) {
-            this.sidebar.hidden = !this.isTreeMode() && entries.length === 0;
+            this.sidebar.hidden = false;
         }
     }
 

@@ -21,8 +21,6 @@ import qualified MicroHttp.Config as Config
 -- | The application's resolved configuration, read once from a 'Config.Config'.
 data VersoConfig = VersoConfig
     { documentTreeRoot :: String
-    , documentRoot :: String
-    , attachmentRoot :: String
     , editorTheme :: String
     , operationLog :: String
     , trashRoot :: String
@@ -57,8 +55,6 @@ so the overlay can be scoped to exactly these keys (RFC-0030).
 appEnvKeys :: [String]
 appEnvKeys =
     [ "document_tree_root"
-    , "document_root"
-    , "attachment_root"
     , "editor_theme"
     , "operation_log"
     , "trash_root"
@@ -95,8 +91,10 @@ defaultLogKeep :: Int
 defaultLogKeep = 5
 
 {- | Reads the application's keys into a 'VersoConfig', failing fast on a
-malformed integer (matching 'MicroHttp.Config.toSettings' for server keys). An
-absent key takes its built-in default.
+malformed integer (matching 'MicroHttp.Config.toSettings' for server keys) or
+a missing @document_tree_root@ -- the document tree is the only serving mode
+(RFC-0036 retired the flat store), so a config without it is an error, not a
+fallback. Other absent keys take their built-in defaults.
 -}
 fromConfig :: Config.Config -> Either Config.ConfigError VersoConfig
 fromConfig cfg = do
@@ -108,11 +106,12 @@ fromConfig cfg = do
     searchTokens <- Config.configInt "search_max_tokens" 384 cfg
     searchDim <- Config.configInt "search_dims" 384 cfg
     searchThr <- Config.configInt "search_threads" 4 cfg
+    treeRoot <- case Config.configString "document_tree_root" "" cfg of
+        "" -> Left (Config.ConfigError "document_tree_root is required (the directory of the document tree to serve)")
+        root -> Right root
     pure
         VersoConfig
-            { documentTreeRoot = Config.configString "document_tree_root" "" cfg
-            , documentRoot = Config.configString "document_root" "data/documents" cfg
-            , attachmentRoot = Config.configString "attachment_root" "data/attachments" cfg
+            { documentTreeRoot = treeRoot
             , editorTheme = Config.configString "editor_theme" "shadcn" cfg
             , operationLog = Config.configString "operation_log" "data/operation_log" cfg
             , trashRoot = Config.configString "trash_root" "data/trash" cfg

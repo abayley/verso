@@ -1,27 +1,19 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Verso.App (
-    DocumentStore (..),
     NodeKind (..),
     TreeNode (..),
     Versioning (..),
     noVersioning,
-    app,
     appFromConfig,
-    appWith,
-    appWithDocumentRoot,
     appWithDocumentTree,
     appWithDocumentTreeVersioned,
-    appWithStore,
     childrenOf,
     clientErrorRoute,
-    documentRoutes,
-    fileStore,
     frontmatterTitle,
     searchResultsJson,
     linkedFolderPaths,
     orderTreeNodes,
-    routes,
     slugify,
     treeChildrenJson,
     treeEntryKind,
@@ -63,26 +55,6 @@ import qualified Verso.SearchIndex as SearchIndex
 import qualified Verso.TreeMove as TreeMove
 import qualified Verso.View as View
 
--- | A document store: how the flat (single-root) mode loads and saves a document by id.
-data DocumentStore = DocumentStore
-    { loadDocument :: String -> IO String
-    , saveDocumentContent :: String -> String -> IO ()
-    }
-
-{- | The bare routed application (no middleware). 'appWith' wraps it with the
-logging and error-response middleware for the running server.
--}
-app :: Server.Application
-app =
-    appWithDocumentRoot "data/documents"
-
-{- | The application the executable serves: the bare app wrapped with the
-error-response middleware and, outermost, request logging to the given sink.
--}
-appWith :: Log.Logger -> Server.Application
-appWith logger =
-    Middleware.logRequests logger (Middleware.withErrorResponses app)
-
 {- | The application composed from configuration (RFC-0011): the access-log
 path, document root, and static mounts come from the config, and the parse
 limits from the (config-derived) settings. Logging is the outermost middleware.
@@ -97,7 +69,7 @@ appFromConfig settings vc = do
     -- link_index_enabled is off the index is not opened and move/delete use the byte-scan
     -- fallback (RFC-0032 escape hatch: skip the index entirely).
     maybeIndexStore <-
-        if not (null (VConfig.documentTreeRoot vc)) && VConfig.linkIndexEnabled vc
+        if VConfig.linkIndexEnabled vc
             then do
                 indexStore <- LinkIndexStore.newLinkIndexStore
                 Log.consoleLog "opening link index..."
@@ -105,11 +77,11 @@ appFromConfig settings vc = do
                 Log.consoleLog (either ("link index FAILED (move/delete degraded until refresh): " ++) (const "link index ready") opened)
                 pure (Just indexStore)
             else do
-                Monad.unless (null (VConfig.documentTreeRoot vc)) (Log.consoleLog "link index disabled (move/delete use the byte-scan fallback)")
+                Log.consoleLog "link index disabled (move/delete use the byte-scan fallback)"
                 pure Nothing
     -- Ensure the document tree is a git repository when versioning is on (RFC-0032): a one-time
     -- import commit on first run, then reused. A missing git degrades to no versioning, not a crash.
-    Monad.when (not (null (VConfig.documentTreeRoot vc)) && VConfig.versioningEnabled vc) $ do
+    Monad.when (VConfig.versioningEnabled vc) $ do
         available <- Git.gitAvailable
         if not available
             then Log.consoleLog "versioning ON but git not found on PATH (history/publish degraded)"
@@ -121,7 +93,7 @@ appFromConfig settings vc = do
     writeLock <- MVar.newMVar ()
     -- Concordance search (RFC-0034): optional; absent shim/model degrades to disabled.
     search <-
-        if VConfig.searchEnabled vc && not (null (VConfig.documentTreeRoot vc))
+        if VConfig.searchEnabled vc
             then SearchIndex.startSearch (searchConfigFrom vc)
             else pure Nothing
     pure
@@ -135,20 +107,16 @@ appFromConfig settings vc = do
             )
         )
 
-{- | The route set chosen by configuration. A non-empty @document_tree_root@
-selects the filesystem-tree mode (a MkDocs-style tree served and edited in place,
-with per-page peer @assets/@); otherwise the flat single-document store is used.
+{- | The route set from configuration: the document tree (a MkDocs-style tree
+served and edited in place, with per-page peer @assets/@) plus any static
+mounts. The tree is the only serving mode (RFC-0036 retired the flat store);
+'VConfig.fromConfig' guarantees a non-empty root.
 -}
 configuredRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> VConfig.VersoConfig -> (String -> IO ()) -> [Router.Route]
 configuredRoutes writeLock indexStore search vc clientErrorSink =
     clientErrorRoute clientErrorSink
-        : case VConfig.documentTreeRoot vc of
-            "" ->
-                documentRoutes (VConfig.editorTheme vc) (VConfig.documentRoot vc)
-                    ++ Attachment.attachmentRoutes (Attachment.fileAttachmentStore (VConfig.attachmentRoot vc))
-                    ++ mounts
-            treeRoot ->
-                treeRoutes writeLock indexStore search (versioningFromConfig vc) (VConfig.editorTheme vc) treeRoot (VConfig.operationLog vc) (VConfig.trashRoot vc) (VConfig.linkIndex vc) ++ mounts
+        : treeRoutes writeLock indexStore search (versioningFromConfig vc) (VConfig.editorTheme vc) (VConfig.documentTreeRoot vc) (VConfig.operationLog vc) (VConfig.trashRoot vc) (VConfig.linkIndex vc)
+        ++ mounts
   where
     mounts = [Static.static prefix root | (prefix, root) <- VConfig.staticMounts vc]
 
@@ -256,45 +224,6 @@ draftPathPresent path = do
     isFile <- Directory.doesFileExist path
     isDir <- Directory.doesDirectoryExist path
     pure (isFile || isDir)
-
--- | The bare flat-mode application backed by a filesystem document root.
-appWithDocumentRoot :: FilePath -> Server.Application
-appWithDocumentRoot root =
-    appWithStore (fileStore root)
-
--- | A filesystem-backed document store rooted at @root@.
-fileStore :: FilePath -> DocumentStore
-fileStore root =
-    DocumentStore
-        { loadDocument = loadFileDocument root
-        , saveDocumentContent = saveFileDocument root
-        }
-
-{- | The routes for a filesystem document root (the bottom of the app stack).
-@editorThemeDefault@ is the visual theme the editor page emits for a first-time
-visitor (one with no stored preference); see RFC-0015.
--}
-documentRoutes :: String -> FilePath -> [Router.Route]
-documentRoutes editorThemeDefault root =
-    routes editorThemeDefault (fileStore root)
-
--- | The bare flat-mode application backed by a given document store (with default attachments).
-appWithStore :: DocumentStore -> Server.Application
-appWithStore store =
-    Router.serveRoutes
-        (Server.parseLimits Server.defaultSettings)
-        (routes "shadcn" store ++ Attachment.attachmentRoutes (Attachment.fileAttachmentStore "data/attachments"))
-
--- | The flat single-document routes (index, show, edit, save) over a document store.
-routes :: String -> DocumentStore -> [Router.Route]
-routes editorThemeDefault store =
-    [ Router.get "/" index
-    , Router.get "/index.html" index
-    , Router.get "/documents/:id/edit" (editDocument editorThemeDefault store)
-    , Router.get "/documents/:id" (showDocument store)
-    , Router.post "/documents/:id" (saveDocument editorThemeDefault store)
-    , Static.static "/static/editor" "static/editor"
-    ]
 
 {- | The per-request versioning context for the tree handlers (RFC-0032): whether
 draft/publish versioning is on, and the draft staging root. When off, the tree
@@ -933,7 +862,7 @@ treeEdit versioning editorThemeDefault root path request =
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
             breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
             spine <- Iteratee.liftIO (treeSpineFor root path)
-            pure (documentResponse (View.editorPage path (editorMode request) editorThemeDefault (documentPageTitle isNew path content) content True True (Maybe.isJust mDraft) attachments breadcrumbs spine Nothing))
+            pure (documentResponse (View.editorPage path (editorMode request) editorThemeDefault (documentPageTitle isNew path content) content True (Maybe.isJust mDraft) attachments breadcrumbs spine))
 
 {- | Renders the read-only view for a tree document (the default @GET@, RFC-0020):
 the editor shell with editing disabled. A missing page is a @404@ -- reading never
@@ -957,7 +886,7 @@ treeRead versioning editorThemeDefault root path request =
                         if versioningOn versioning
                             then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
                             else pure False
-                    pure (documentResponse (View.editorPage path (editorMode request) editorThemeDefault (documentPageTitle False path content) content True False hasDraft attachments breadcrumbs spine Nothing))
+                    pure (documentResponse (View.editorPage path (editorMode request) editorThemeDefault (documentPageTitle False path content) content False hasDraft attachments breadcrumbs spine))
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
 treeServeFile :: FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
@@ -1683,7 +1612,7 @@ treeReadAt editorThemeDefault root path request = do
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
             breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
             spine <- Iteratee.liftIO (treeSpineFor root path)
-            pure (documentResponse (View.editorPage path (editorMode request) editorThemeDefault (documentPageTitle False path content) content True False False attachments breadcrumbs spine Nothing))
+            pure (documentResponse (View.editorPage path (editorMode request) editorThemeDefault (documentPageTitle False path content) content False False attachments breadcrumbs spine))
 
 {- | The rollback action (RFC-0032): @POST /documents/\<path\>?rollback@ with a
 @rev@ field restores the page's content at that revision, writes it through the
@@ -1849,46 +1778,6 @@ treeNotFound =
         [contentTypeHeader "text/plain"]
         (Http.StrictBody (BS.pack "not found\n"))
 
--- | The flat-mode landing page handler.
-index :: Router.Handler
-index _ _ =
-    pure (documentResponse View.indexPage)
-
--- | The flat-mode editor page handler for a document id.
-editDocument :: String -> DocumentStore -> Router.Handler
-editDocument editorThemeDefault store captures request = do
-    let docId = documentId captures
-    content <- Iteratee.liftIO (loadDocument store docId)
-    pure (documentResponse (View.editorPage docId (editorMode request) editorThemeDefault (documentPageTitle False docId (BS.pack content)) (BS.pack content) False True False [] [] "" Nothing))
-
--- | The flat-mode handler that serves a document's raw Markdown.
-showDocument :: DocumentStore -> Router.Handler
-showDocument store captures _ = do
-    markdown <- Iteratee.liftIO (loadDocument store (documentId captures))
-    pure (markdownResponse markdown)
-
-{- | Saves a posted Markdown document, answering both htmx and ordinary form
-posts from one route (RFC-0001). An htmx request (the @hx-request@ header is
-present) keeps the status-fragment behaviour; an ordinary form post follows
-post-redirect-get on success (@303@ back to the edit page) and re-renders the
-edit page with the validation message and the submitted Markdown on failure.
--}
-saveDocument :: String -> DocumentStore -> Router.Handler
-saveDocument editorThemeDefault store captures request = do
-    bodyBytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) formBodyLimit
-    let markdown = markdownFromBody bodyBytes
-        docId = documentId captures
-    case validateMarkdown markdown of
-        Just err
-            | isHtmxRequest request -> pure (htmlResponseChunks (View.validationStatusFragment err))
-            | otherwise ->
-                pure (documentResponse (View.editorPage docId Nothing editorThemeDefault (documentPageTitle False docId (BS.pack markdown)) (BS.pack markdown) False True False [] [] "" (Just err)))
-        Nothing -> do
-            Iteratee.liftIO (saveDocumentContent store docId markdown)
-            if isHtmxRequest request
-                then pure (htmlResponseChunks (View.saveStatusFragment markdown))
-                else pure (seeOtherResponse ("/documents/" ++ docId ++ "/edit"))
-
 -- | The handler's own body bound; the server pipeline also caps the body.
 formBodyLimit :: Int
 formBodyLimit = 1048576
@@ -1909,14 +1798,6 @@ htmlResponseChunks page =
 documentResponse :: Html.Html () -> Http.Response
 documentResponse page =
     htmlResponseChunks (Html.rawTrusted "<!doctype html>" >> page)
-
--- | A @200@ @text/markdown@ response with the given body.
-markdownResponse :: String -> Http.Response
-markdownResponse body =
-    Http.Response
-        Http.okStatus
-        [(Http.normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/markdown")]
-        (Http.StrictBody (BS.pack body))
 
 -- | A @303 See Other@ redirect to the given location, with an empty body.
 seeOtherResponse :: String -> Http.Response
@@ -1942,25 +1823,6 @@ capture name ((key, value) : rest)
     | name == key = value
     | otherwise = capture name rest
 
--- | The @id@ capture (the flat-mode document id).
-documentId :: Router.Captures -> String
-documentId =
-    capture "id"
-
--- | Loads a flat-mode document's text from disk, or the seed when the file is absent.
-loadFileDocument :: FilePath -> String -> IO String
-loadFileDocument root name = do
-    let path = documentPath root name
-    exists <- Directory.doesFileExist path
-    if exists
-        then readDocumentText path
-        else return seededMarkdown
-
--- | Saves a flat-mode document's text to its file.
-saveFileDocument :: FilePath -> String -> String -> IO ()
-saveFileDocument root name =
-    writeDocumentText (documentPath root name)
-
 {- | Read a document's bytes as an opaque (UTF-8) string and write them back
 verbatim. The document is handled as bytes, never decoded: MicroHs's 'readFile'
 decodes UTF-8 to Unicode characters which the @Char8@ HTML builder then truncates
@@ -1974,11 +1836,6 @@ readDocumentText path = fmap BS.unpack (BS.readFile path)
 -- | Writes a document's bytes verbatim (the byte-exact counterpart of 'readDocumentText').
 writeDocumentText :: FilePath -> String -> IO ()
 writeDocumentText path content = BS.writeFile path (BS.pack content)
-
--- | The filesystem path of a flat-mode document (@root/name.md@).
-documentPath :: FilePath -> String -> FilePath
-documentPath root name =
-    root ++ "/" ++ name ++ ".md"
 
 -- | The first value of a query-string key, or @""@ when absent.
 queryValue :: String -> Http.RequestHead -> String
@@ -1995,11 +1852,6 @@ editorMode request =
         "split" -> Just "split"
         "visual" -> Just "visual"
         _ -> Nothing
-
--- | The @markdown@ form field from a request body, newline-normalised.
-markdownFromBody :: BS.ByteString -> String
-markdownFromBody bytes =
-    normaliseNewlines (capture "markdown" (formFields (BS.unpack bytes)))
 
 {- | Canonicalises line endings to @\\n@. A no-JavaScript form post encodes
 textarea newlines as @CRLF@ (HTML form submission, RFC-0001), so the document
@@ -2046,22 +1898,6 @@ documentPageTitle isNew docId content
 seededMarkdown :: String
 seededMarkdown =
     "# Hello from MicroHttp\n\nEdit this Markdown document."
-
--- The save-time guard defends the trust boundary only: raw HTML stays rejected
--- (the server never trusts client Markdown to be safe). Block-structure validation
--- was dropped (RFC-0017) -- the editor is the authority on its own open, extensible
--- subset, so keeping a Haskell recogniser in sync would be the cross-language
--- dual-implementation trap ADR-040 rejected for rendering. See ADR-041.
-validateMarkdown :: String -> Maybe String
-validateMarkdown markdown
-    | containsRawHtml markdown = Just "raw HTML is not supported in this spike."
-    | otherwise = Nothing
-
--- | Whether the text contains a @<@ (the raw-HTML guard's crude test).
-containsRawHtml :: String -> Bool
-containsRawHtml [] = False
-containsRawHtml ('<' : _) = True
-containsRawHtml (_ : rest) = containsRawHtml rest
 
 -- | Trims leading and trailing whitespace.
 trim :: String -> String

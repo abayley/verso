@@ -2,12 +2,10 @@ import type { PhrasingContent, RootContent } from "mdast";
 import type { ContentExtension } from "./content-extension.js";
 import type { EditorBlock, InlineNode } from "./editor-model.js";
 
-// Raw-HTML passthrough (opt-in, for the trusted document-tree editing mode). The editor's strict parse
-// otherwise throws on an `html` mdast node (ADR-040/041 reject raw HTML in the untrusted flat mode). Here
-// raw HTML -- almost always export metadata comments (`<!-- ... -->`), occasionally visible markup like
-// MkDocs grid cards -- is carried through verbatim and shown inert (escaped, never rendered as live HTML),
-// so editing a document never loses or executes its HTML. This extension is registered by the editor only
-// in tree mode; the flat mode keeps rejecting raw HTML, so the save-time trust boundary is unchanged.
+// Raw-HTML passthrough for the trusted document tree. The editor's strict parse otherwise throws on an
+// `html` mdast node (ADR-040/041). Raw HTML -- almost always export metadata comments (`<!-- ... -->`),
+// occasionally visible markup like MkDocs grid cards -- is carried through verbatim and shown inert
+// (escaped, never rendered as live HTML), so editing a document never loses or executes its HTML.
 
 /** The payload on a preserved raw-HTML node: the verbatim HTML text. */
 interface RawHtmlData {

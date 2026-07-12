@@ -15,7 +15,7 @@ superseded_by: null
 | Stage     | Timestamp  |
 |-----------|------------|
 | Authored  | 2026-07-12 |
-| Started   |            |
+| Started   | 2026-07-12 |
 | Completed |            |
 
 ## Summary
@@ -290,17 +290,17 @@ work (ADR-078) is unrelated and stays.
 
 ### Phase 1: Flat-Mode Retirement
 
-- [ ] Test: starting with an empty `document_tree_root` fails with a clear
+- [x] Test: starting with an empty `document_tree_root` fails with a clear
       configuration error (replacing the silent flat fallback).
-- [ ] Remove the flat routes, handlers, `DocumentStore`, the flat attachment
+- [x] Remove the flat routes, handlers, `DocumentStore`, the flat attachment
       store and routes, the raw-HTML guard and `validationStatusFragment`,
       and the `maybeError` threading in `editorPage`; relocate the
       `Verso.Attachment` helpers the tree uses.
-- [ ] Remove the flat branches from the editor element (`isTreeMode` guards
+- [x] Remove the flat branches from the editor element (`isTreeMode` guards
       that exist only to skip flat mode).
-- [ ] Remove `document_root`/`attachment_root` config keys; delete the flat
+- [x] Remove `document_root`/`attachment_root` config keys; delete the flat
       unit specs and `AttachmentSpec` coverage that has no tree counterpart.
-- [ ] `make check` green; tree-mode integration suite unchanged.
+- [x] `make check` green; tree-mode integration suite unchanged.
 
 ### Phase 2: Framework Verb Plumbing
 

@@ -15,14 +15,12 @@ module Verso.View (
     editorThemeBootstrapScript,
     excerptOf,
     historyPage,
-    indexPage,
     jsonString,
     knownEditorThemes,
     safeEditorTheme,
     saveStatusFragment,
     searchPage,
     trashPage,
-    validationStatusFragment,
     versionPageShell,
 ) where
 
@@ -412,20 +410,8 @@ breadcrumbsJson crumbs = "[" ++ List.intercalate "," (map crumbObject crumbs) ++
     crumbObject (Crumb label href) =
         "{\"label\":" ++ jsonString label ++ maybe "" (\h -> ",\"href\":" ++ jsonString h) href ++ "}"
 
-indexPage :: Html.Html ()
-indexPage =
-    Html.html [Html.lang "en"] $ do
-        Html.head [] $ do
-            Html.meta [Html.attr "charset" "utf-8"]
-            Html.title [] "MicroHttp Test App"
-        Html.body [] $ do
-            Html.main [] $ do
-                Html.h1 [] "MicroHttp"
-                Html.p [] "The MicroHs HTTP server is running."
-                Html.custom "status-card" [Html.attr "data-state" "ok"] "Served by src/Verso/Main.hs"
-
-editorPage :: String -> Maybe String -> String -> String -> BS.ByteString -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Maybe String -> Html.Html ()
-editorPage docId mode themeDefault pageTitle content treeMode editable hasDraft attachments breadcrumbs treeSpine maybeError =
+editorPage :: String -> Maybe String -> String -> String -> BS.ByteString -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Html.Html ()
+editorPage docId mode themeDefault pageTitle content editable hasDraft attachments breadcrumbs treeSpine =
     Html.html [Html.lang "en", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
@@ -447,26 +433,24 @@ editorPage docId mode themeDefault pageTitle content treeMode editable hasDraft 
                         , Html.attr "hx-trigger" "submit, editor:changed delay:2s from:markdown-editor"
                         ]
                         $ do
-                            maybe (return ()) validationStatusFragment maybeError
-                            editorElement docId mode treeMode editable hasDraft attachments breadcrumbs treeSpine content
+                            editorElement docId mode editable hasDraft attachments breadcrumbs treeSpine content
                             Html.custom "noscript" [] $
                                 Html.button_ [Html.attr "type" "submit"] (Html.text "Save")
-                    else editorElement docId mode treeMode editable hasDraft attachments breadcrumbs treeSpine content
+                    else editorElement docId mode editable hasDraft attachments breadcrumbs treeSpine content
 
 {- | The @\<markdown-editor\>@ custom element with its server-set attributes and the
 no-script @\<textarea\>@ fallback holding the document. @data-readonly@ is set in the
 read view (RFC-0020); the element disables editing and hides the editing chrome.
 -}
-editorElement :: String -> Maybe String -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> BS.ByteString -> Html.Html ()
-editorElement docId mode treeMode editable hasDraft attachments breadcrumbs treeSpine content =
+editorElement :: String -> Maybe String -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> BS.ByteString -> Html.Html ()
+editorElement docId mode editable hasDraft attachments breadcrumbs treeSpine content =
     Html.custom
         "markdown-editor"
         ( [Html.attr "name" "markdown", Html.attr "data-document" docId]
             ++ maybe [] (\m -> [Html.attr "mode" m]) mode
-            ++ [Html.attr "data-document-mode" "tree" | treeMode]
-            ++ [Html.attr "data-attachments" (attachmentsJson attachments) | treeMode, not (null attachments)]
+            ++ [Html.attr "data-attachments" (attachmentsJson attachments) | not (null attachments)]
             ++ [Html.attr "data-breadcrumbs" (breadcrumbsJson breadcrumbs) | not (null breadcrumbs)]
-            ++ [Html.attr "data-tree-spine" treeSpine | treeMode, not (null treeSpine)]
+            ++ [Html.attr "data-tree-spine" treeSpine | not (null treeSpine)]
             ++ [Html.attr "data-readonly" "" | not editable]
             -- RFC-0032: marks a page that has an unpublished draft, so the read view can flag it.
             ++ [Html.attr "data-has-draft" "" | hasDraft]
@@ -483,10 +467,3 @@ saveStatusFragment markdown =
     Html.p [Html.attr "id" "save-status"] $ do
         Html.text "Saved Markdown document: "
         Html.text markdown
-
--- | The htmx validation-error status fragment.
-validationStatusFragment :: String -> Html.Html ()
-validationStatusFragment err =
-    Html.p [Html.attr "id" "save-status"] $ do
-        Html.text "Unsupported Markdown: "
-        Html.text err

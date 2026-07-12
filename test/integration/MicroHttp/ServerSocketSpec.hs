@@ -3,6 +3,8 @@ module MicroHttp.ServerSocketSpec (spec) where
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as List
 import qualified MicroHttp.Http as Http
+import qualified MicroHttp.Http.Parse as Parse
+import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Middleware as Middleware
 import qualified MicroHttp.Network.Socket as Socket
 import qualified MicroHttp.Router as Router
@@ -11,7 +13,6 @@ import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
 import qualified System.Timeout as Timeout
 import Test.Hspec
-import qualified Verso.App as App
 
 spec :: Spec
 spec =
@@ -175,23 +176,41 @@ timeout, so a hang (a regression) fails the test rather than wedging the suite.
 testGuardMicros :: Int
 testGuardMicros = 5000000
 
--- | The document application wrapped with the 400/408 error-response middleware.
+{- | A minimal framework-only fixture application (no Verso dependency): a
+@GET /@ probe and a @POST /documents/home@ save that persists the posted
+form value, wrapped with the 400/408 error-response middleware.
+-}
 documentApp :: Middleware.Application
 documentApp =
-    Middleware.withErrorResponses (App.appWithDocumentRoot documentRoot)
+    Middleware.withErrorResponses (Router.serveRoutes (Server.parseLimits Server.defaultSettings) fixtureRoutes)
 
-{- | The document application composed with a small body limit, since the body
+{- | The fixture application composed with a small body limit, since the body
 bound now lives in the application stack (serveRoutes), not the server.
 -}
 smallBodyApp :: Middleware.Application
 smallBodyApp =
-    Middleware.withErrorResponses (Router.serveRoutes (Server.parseLimits smallBodySettings) (App.documentRoutes "paper" documentRoot))
+    Middleware.withErrorResponses (Router.serveRoutes (Server.parseLimits smallBodySettings) fixtureRoutes)
 
-documentRoot :: FilePath
-documentRoot = "build"
+-- | The fixture routes: an OK probe and a body-persisting save.
+fixtureRoutes :: [Router.Route]
+fixtureRoutes =
+    [ Router.get "/" (\_ _ -> pure okResponse)
+    , Router.post "/documents/home" saveHandler
+    ]
+
+-- | Persists the posted body's @markdown=@ value to 'documentFile'.
+saveHandler :: Router.Handler
+saveHandler _ _ = do
+    bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) 1048576
+    Iteratee.liftIO (BS.writeFile documentFile (BS.drop (length "markdown=") bytes))
+    pure okResponse
+
+-- | A minimal @200@ response for the fixture routes.
+okResponse :: Http.Response
+okResponse = Http.Response Http.okStatus [] (Http.StrictBody (BS.pack "ok\n"))
 
 documentFile :: FilePath
-documentFile = documentRoot ++ "/home.md"
+documentFile = "build/home.md"
 
 loopback :: Socket.Host
 loopback = Socket.HostIPv4 127 0 0 1

@@ -6,6 +6,7 @@ module MicroHttp.Router (
     frameAndParse,
     get,
     post,
+    put,
     route,
     serveRoutes,
 ) where
@@ -38,6 +39,10 @@ get = routeFor Http.GET
 -- | A route matching @POST@ on the given path pattern.
 post :: String -> Handler -> Route
 post = routeFor Http.POST
+
+-- | A route matching @PUT@ on the given path pattern.
+put :: String -> Handler -> Route
+put = routeFor Http.PUT
 
 -- | A route matching @DELETE@ on the given path pattern.
 delete :: String -> Handler -> Route

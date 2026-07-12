@@ -19,6 +19,12 @@ spec =
         it "given POST route, when routing, then POST handler response is returned" $ do
             created <- routed (request Http.POST ["todos"])
             fmap Http.responseBody created `shouldBe` Right (Http.StrictBody (bs "create"))
+        it "given a PUT route, when routing a PUT, then the PUT handler response is returned" $ do
+            replaced <- routed (request Http.PUT ["todos", "42"])
+            fmap Http.responseBody replaced `shouldBe` Right (Http.StrictBody (bs "replace 42"))
+        it "given a DELETE route, when routing a DELETE, then the DELETE handler response is returned" $ do
+            removed <- routed (request Http.DELETE ["todos", "42"])
+            fmap Http.responseBody removed `shouldBe` Right (Http.StrictBody (bs "remove 42"))
         it "given no matching path, when routing, then not found response is returned" $ do
             missing <- routed (request Http.GET ["missing"])
             fmap (Http.statusCode . Http.responseStatus) missing `shouldBe` Right 404
@@ -41,6 +47,8 @@ routes =
     [ Router.get "/todos" (\_ _ -> pureText "index")
     , Router.get "/todos/:id" (\captures _ -> pureText ("show " ++ capture "id" captures))
     , Router.post "/todos" (\_ _ -> pureText "create")
+    , Router.put "/todos/:id" (\captures _ -> pureText ("replace " ++ capture "id" captures))
+    , Router.delete "/todos/:id" (\captures _ -> pureText ("remove " ++ capture "id" captures))
     , Router.get "/static/*path" (\captures _ -> pureText (capture "path" captures))
     ]
 

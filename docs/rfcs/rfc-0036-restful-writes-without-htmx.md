@@ -304,9 +304,9 @@ work (ADR-078) is unrelated and stays.
 
 ### Phase 2: Framework Verb Plumbing
 
-- [ ] Test: RouterSpec routes a `PUT` request to a `Router.put` route and a
+- [x] Test: RouterSpec routes a `PUT` request to a `Router.put` route and a
       `DELETE` request to a `Router.delete` route (given/when/then form).
-- [ ] Add `Router.put`; confirm `DELETE` routing needs no framework change.
+- [x] Add `Router.put`; confirm `DELETE` routing needs no framework change.
 
 ### Phase 3: Draft Resource Endpoints
 

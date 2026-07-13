@@ -5,7 +5,7 @@
 // to that page. The panel probes search availability once on mount and hides
 // itself entirely when the server has search disabled.
 
-import { chromeButtonEl, chromeIconEl } from "./chrome.js";
+import { chromeButtonEl, chromeIconEl, NETWORK_ERROR } from "./chrome.js";
 
 /** One search result row, as the server's json flavour reports it. */
 interface SearchResult {
@@ -148,16 +148,32 @@ export class SearchPanel {
             this.render(query, body.pending ?? 0);
         } catch (error) {
             if ((error as Error).name !== "AbortError") {
-                this.close();
+                this.renderError();
             }
         }
     }
 
-    private render(query: string, pending: number): void {
+    /** Replaces the dropdown content with the unreachable-server message, keeping it open. */
+    private renderError(): void {
+        this.results = [];
+        this.selected = -1;
+        this.openDropdown();
+        const message = document.createElement("p");
+        message.className = "markdown-editor__search-error";
+        message.textContent = NETWORK_ERROR;
+        this.dropdown.append(message);
+    }
+
+    /** Opens the (emptied) dropdown with its backdrop and page-softening attribute. */
+    private openDropdown(): void {
         this.dropdown.replaceChildren();
         this.dropdown.hidden = false;
         this.backdrop.hidden = false;
         this.panel.closest("markdown-editor")?.setAttribute("data-search-open", "");
+    }
+
+    private render(query: string, pending: number): void {
+        this.openDropdown();
 
         if (pending > 0) {
             const note = document.createElement("p");

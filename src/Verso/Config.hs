@@ -24,6 +24,7 @@ data VersoConfig = VersoConfig
     , editorTheme :: String
     , operationLog :: String
     , trashRoot :: String
+    , trashRetentionDays :: Int
     , linkIndex :: String
     , accessLog :: String
     , clientErrorLog :: String
@@ -58,6 +59,7 @@ appEnvKeys =
     , "editor_theme"
     , "operation_log"
     , "trash_root"
+    , "trash_retention_days"
     , "link_index"
     , "access_log"
     , "client_error_log"
@@ -82,6 +84,10 @@ appEnvKeys =
     , "search_query_prefix"
     ]
 
+-- | The default trash retention in days (zero or negative disables the sweep).
+defaultTrashRetentionDays :: Int
+defaultTrashRetentionDays = 90
+
 -- | The default log-rotation threshold in bytes (10 MiB) and retained-file count (RFC-0024).
 defaultLogMaxBytes :: Int
 defaultLogMaxBytes = 10485760
@@ -103,6 +109,7 @@ fromConfig cfg = do
     versioning <- Config.configBool "versioning_enabled" True cfg
     indexEnabled <- Config.configBool "link_index_enabled" True cfg
     searchOn <- Config.configBool "search_enabled" False cfg
+    retention <- Config.configInt "trash_retention_days" defaultTrashRetentionDays cfg
     searchTokens <- Config.configInt "search_max_tokens" 384 cfg
     searchDim <- Config.configInt "search_dims" 384 cfg
     searchThr <- Config.configInt "search_threads" 4 cfg
@@ -115,6 +122,7 @@ fromConfig cfg = do
             , editorTheme = Config.configString "editor_theme" "shadcn" cfg
             , operationLog = Config.configString "operation_log" "data/operation_log" cfg
             , trashRoot = Config.configString "trash_root" "data/trash" cfg
+            , trashRetentionDays = retention
             , linkIndex = Config.configString "link_index" "data/link_index" cfg
             , accessLog = Config.configString "access_log" "build/access.log" cfg
             , clientErrorLog = Config.configString "client_error_log" "build/client-errors.log" cfg

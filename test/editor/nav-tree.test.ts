@@ -8,7 +8,7 @@ import {
 } from "../../src/Verso/Editor/nav-tree.js";
 
 /** Builds a nav panel over a small fixed tree (root -> Engineering[Runbook], Guide), open at Runbook. */
-function mountNav(): { panel: HTMLElement; navigateCalls: string[] } {
+function mountNav(overrides: Record<string, unknown> = {}): { panel: HTMLElement; navigateCalls: string[] } {
     const navigateCalls: string[] = [];
     const eng = { hasChildren: true, kind: "section", name: "Engineering", path: "engineering" };
     const guide = { hasChildren: true, kind: "section", name: "Guide", path: "guide" };
@@ -32,6 +32,7 @@ function mountNav(): { panel: HTMLElement; navigateCalls: string[] } {
         listMoves: async (): Promise<unknown[]> => [],
         listTrash: async (): Promise<unknown[]> => [],
         restore: async (): Promise<unknown> => ({}),
+        ...overrides,
     } as unknown as NavTreeOptions;
     const tree = new NavTreePanel(options);
     const panel = tree.element();
@@ -111,6 +112,49 @@ describe("NavTreePanel navigation (RFC-0026)", () => {
         const expanded = expandedPaths();
         expect(expanded).toContain("engineering");
         expect(expanded).not.toContain("guide");
+    });
+
+    it("given an unreachable server, when the undo dropdown opens, then it shows the error item", async () => {
+        const { panel } = mountNav({ listMoves: async (): Promise<null> => null });
+
+        const trigger = panel.querySelector("#nav-undo-menu-trigger") as HTMLElement;
+        trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve));
+
+        const labels = [...panel.querySelectorAll('#nav-undo-menu [role="menuitem"]')].map(
+            (item): string => item.textContent?.trim() ?? "",
+        );
+        expect(labels).toContain("Couldn’t reach the server.");
+    });
+
+    it("given an unreachable server, when the trash dropdown opens, then it shows the error item (view-all stays)", async () => {
+        const { panel } = mountNav({ listTrash: async (): Promise<null> => null });
+
+        const trigger = panel.querySelector("#nav-trash-menu-trigger") as HTMLElement;
+        trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve));
+
+        const labels = [...panel.querySelectorAll('#nav-trash-menu [role="menuitem"]')].map(
+            (item): string => item.textContent?.trim() ?? "",
+        );
+        expect(labels).toContain("Couldn’t reach the server.");
+        expect(labels).toContain("View all in trash…");
+    });
+
+    it("given logged moves, when the undo dropdown opens, then a view-all item linking the undo page is last", async () => {
+        const { panel } = mountNav({
+            listMoves: async (): Promise<unknown[]> => [{ seq: 0, from: "a", to: "b/a" }],
+        });
+
+        const trigger = panel.querySelector("#nav-undo-menu-trigger") as HTMLElement;
+        trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await new Promise((resolve) => setTimeout(resolve));
+
+        const labels = [...panel.querySelectorAll('#nav-undo-menu [role="menuitem"]')].map(
+            (item): string => item.textContent?.trim() ?? "",
+        );
+        expect(labels[labels.length - 1]).toBe("View all moves…");
+        expect(labels).toContain("a → b/a");
     });
 });
 

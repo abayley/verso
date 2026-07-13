@@ -50,6 +50,9 @@ function intentAttrs(intent: ButtonIntent): IntentAttrs {
     }
 }
 
+/** The user-facing message for any fetch that failed to reach the server. */
+export const NETWORK_ERROR = "Couldn’t reach the server.";
+
 /** Re-scans for Basecoat components; hosts call this from updated(). */
 export function initBasecoat(): void {
     const runtime = (window as { basecoat?: { initAll: () => void } }).basecoat;
@@ -261,6 +264,55 @@ export function chromeIconEl(name: string): SVGElement {
     }
 
     return icon;
+}
+
+/** A dismissible notice alert's handle: the card, its message slot, and the variant switch. */
+export interface ChromeAlertHandle {
+    root: HTMLDivElement;
+    /** The message slot; set its textContent. */
+    message: HTMLElement;
+    /** The dismiss button (hides the card on click). */
+    dismiss: HTMLButtonElement;
+    /** Switches the card between the default and destructive look. */
+    setDestructive: (on: boolean) => void;
+}
+
+/**
+ * An imperative notice alert (the shadcn alert look): a message section plus an icon dismiss button
+ * pinned to the trailing edge. Created hidden; callers fill the message and unhide.
+ */
+export function chromeAlertEl(options: { className: string; role: string; destructive?: boolean }): ChromeAlertHandle {
+    const root = document.createElement("div");
+    root.className = `alert ${options.className}`;
+    root.setAttribute("role", options.role);
+    root.hidden = true;
+
+    const setDestructive = (on: boolean): void => {
+        if (on) {
+            root.setAttribute("data-variant", "destructive");
+        } else {
+            root.removeAttribute("data-variant");
+        }
+    };
+    setDestructive(options.destructive ?? false);
+
+    const message = document.createElement("section");
+    message.className = "markdown-editor__notice-message";
+
+    const footer = document.createElement("footer");
+    const dismiss = chromeButtonEl("icon", "", {
+        className: "markdown-editor__notice-dismiss",
+        ariaLabel: "Dismiss",
+        tooltip: "Dismiss",
+    });
+    dismiss.append(chromeIconEl("x"));
+    dismiss.addEventListener("click", (): void => {
+        root.hidden = true;
+    });
+    footer.append(dismiss);
+    root.append(message, footer);
+
+    return { root, message, dismiss, setDestructive };
 }
 
 /** One entry of a segmented control: a text label, an icon, or both. */

@@ -5,7 +5,7 @@
 // (caching fetched children for the session), navigates on click, and creates new pages/sections.
 
 import { hideBlockingOverlay, showBlockingOverlay } from "./blocking-overlay.js";
-import { type ChromeDropdownElement, chromeDropdownEl, chromeIconEl, initBasecoat } from "./chrome.js";
+import { type ChromeDropdownElement, chromeDropdownEl, chromeIconEl, initBasecoat, NETWORK_ERROR } from "./chrome.js";
 import { themedConfirm } from "./confirm-dialog.js";
 
 /** A navigation-tree node as the server serialises it: a section (folder) or page, with its tree-relative path. */
@@ -150,6 +150,11 @@ const TRASH_VIEW_ALL = "__view_all__";
 /** The full trash page (server-rendered, RFC-0028). */
 const TRASH_PAGE_URL = "/trashbin";
 
+/** The undo dropdown's "view all" item value and full-page target (mirrors the trash pair above). */
+const UNDO_VIEW_ALL = "__view_all_moves__";
+
+const UNDO_PAGE_URL = "/undo";
+
 /** The callbacks the panel needs from the editor element to fetch, create, navigate, and reorganise. */
 export interface NavTreeOptions {
     /** The open document's tree-relative path (`data-document`). */
@@ -172,10 +177,10 @@ export interface NavTreeOptions {
     moveNode: (path: string, destParent: string, slug: string, confirm: boolean) => Promise<MoveResult>;
     /** Undo a logged operation by its seq (generates and applies its inverse). */
     undo: (seq: number) => Promise<OpResult>;
-    /** List the logged moves for the undo picker (most recent first). */
-    listMoves: () => Promise<MoveOp[]>;
-    /** List the trash entries for the Trash view. */
-    listTrash: () => Promise<TrashEntry[]>;
+    /** List the logged moves for the undo picker (most recent first); null when the server is unreachable. */
+    listMoves: () => Promise<MoveOp[] | null>;
+    /** List the trash entries for the Trash view; null when the server is unreachable. */
+    listTrash: () => Promise<TrashEntry[] | null>;
     /** Restore a trash entry to its origin. */
     restore: (id: string) => Promise<OpResult>;
 }
@@ -796,8 +801,13 @@ export class NavTreePanel {
             triggerLabel: "",
             triggerClassName: "markdown-editor__nav-op",
             ariaLabel: "Undo a move",
-            items: [{ value: "", label: "No moves to undo", disabled: true }],
+            items: [{ value: UNDO_VIEW_ALL, label: "View all moves…" }],
             onSelect: (value: string): void => {
+                if (value === UNDO_VIEW_ALL) {
+                    // The undo page derives its "back" link from the Referer (the page we navigate from).
+                    window.location.assign(UNDO_PAGE_URL);
+                    return;
+                }
                 const move = this.moves.find((candidate): boolean => String(candidate.seq) === value);
 
                 if (move) {
@@ -818,15 +828,20 @@ export class NavTreePanel {
         return dropdown;
     }
 
-    /** Loads the logged moves and renders them as menu items (most recent first). */
+    /**
+     * Loads the logged moves and renders them as menu items (most recent first), or the fetch-failure
+     * item, always followed by the link to the full undo page.
+     */
     private async loadUndoItems(): Promise<void> {
         const moves = await this.options.listMoves();
-        this.moves = [...moves].reverse(); // most recent first
-        this.undoDropdown.setItems(
-            this.moves.length === 0
-                ? [{ value: "", label: "No moves to undo", disabled: true }]
-                : this.moves.map((move) => ({ value: String(move.seq), label: `${move.from} → ${move.to}` })),
-        );
+        this.moves = [...(moves ?? [])].reverse(); // most recent first
+        const moveItems =
+            moves === null
+                ? [{ value: "", label: NETWORK_ERROR, disabled: true }]
+                : this.moves.length === 0
+                  ? [{ value: "", label: "No moves to undo", disabled: true }]
+                  : this.moves.map((move) => ({ value: String(move.seq), label: `${move.from} → ${move.to}` }));
+        this.undoDropdown.setItems([...moveItems, { value: UNDO_VIEW_ALL, label: "View all moves…" }]);
     }
 
     /** Confirms, then applies the inverse of a chosen move (the item at its destination goes back to its source). */
@@ -929,14 +944,20 @@ export class NavTreePanel {
         new MutationObserver(reposition).observe(popover, { attributes: true, attributeFilter: ["aria-hidden"] });
     }
 
-    /** Loads the recent trash entries (newest first, server-ordered) as menu items, capped, plus the "view all" link. */
+    /**
+     * Loads the recent trash entries (newest first, server-ordered) as menu items, capped, plus the
+     * "view all" link; a fetch failure renders as the error item instead of a false "empty".
+     */
     private async loadTrashItems(): Promise<void> {
-        this.trashEntries = await this.options.listTrash();
+        const entries = await this.options.listTrash();
+        this.trashEntries = entries ?? [];
         const recent = this.trashEntries.slice(0, TRASH_DROPDOWN_LIMIT);
         const entryItems =
-            recent.length === 0
-                ? [{ value: "", label: "Trash is empty", disabled: true }]
-                : recent.map((entry) => ({ value: entry.id, label: entry.path }));
+            entries === null
+                ? [{ value: "", label: NETWORK_ERROR, disabled: true }]
+                : recent.length === 0
+                  ? [{ value: "", label: "Trash is empty", disabled: true }]
+                  : recent.map((entry) => ({ value: entry.id, label: entry.path }));
         this.trashDropdown.setItems([...entryItems, { value: TRASH_VIEW_ALL, label: "View all in trash…" }]);
     }
 

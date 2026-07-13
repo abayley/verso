@@ -43,6 +43,7 @@ import qualified MicroHttp.Static as Static
 import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
 import qualified System.IO as IO
+import qualified System.IO.TimeMilli as TimeMilli
 import qualified Verso.Attachment as Attachment
 import qualified Verso.Config as VConfig
 import qualified Verso.DocumentMeta as DocumentMeta
@@ -115,7 +116,7 @@ mounts. The tree is the only serving mode (RFC-0036 retired the flat store);
 configuredRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> VConfig.VersoConfig -> (String -> IO ()) -> [Router.Route]
 configuredRoutes writeLock indexStore search vc clientErrorSink =
     clientErrorRoute clientErrorSink
-        : treeRoutes writeLock indexStore search (versioningFromConfig vc) (VConfig.editorTheme vc) (VConfig.documentTreeRoot vc) (VConfig.operationLog vc) (VConfig.trashRoot vc) (VConfig.linkIndex vc)
+        : treeRoutes writeLock indexStore search (versioningFromConfig vc) (VConfig.editorTheme vc) (VConfig.documentTreeRoot vc) (VConfig.operationLog vc) (VConfig.trashRoot vc) (VConfig.trashRetentionDays vc) (VConfig.linkIndex vc)
         ++ mounts
   where
     mounts = [Static.static prefix root | (prefix, root) <- VConfig.staticMounts vc]
@@ -257,18 +258,21 @@ and every other tree file (images, attachments, raw Markdown) is served
 statically and path-safely (reusing 'Static.resolveStaticPath'). The document id
 is the tree-relative path including the @.md@ extension.
 -}
-treeRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> Versioning -> String -> FilePath -> FilePath -> FilePath -> FilePath -> [Router.Route]
-treeRoutes writeLock indexStore search versioning editorThemeDefault root logPath trashRoot indexPath =
+treeRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> Versioning -> String -> FilePath -> FilePath -> FilePath -> Int -> FilePath -> [Router.Route]
+treeRoutes writeLock indexStore search versioning editorThemeDefault root logPath trashRoot trashRetentionDays indexPath =
     [ Router.get "/" (redirectTo "/documents/")
     , Router.get "/index.html" (redirectTo "/documents/")
     , Router.get "/search" (treeSearchHandler editorThemeDefault search)
     , Static.static "/static/editor" "static/editor"
     , Router.get "/tree/*path" (treeChildrenHandler root)
     , Router.post "/tree/*path" (treePostDispatch versioning writeLock findRelevant maint root logPath)
-    , Router.get "/trash" (treeTrashListHandler trashRoot logPath)
-    , Router.get "/trashbin" (treeTrashPageHandler editorThemeDefault trashRoot logPath)
+    , Router.get "/trash" (treeTrashListHandler trashRetentionDays trashRoot logPath)
+    , Router.get "/trashbin" (treeTrashPageHandler editorThemeDefault trashRetentionDays trashRoot logPath)
     , Router.post "/trash/*id" (treeRestoreHandler versioning writeLock maint root logPath trashRoot)
+    , Router.delete "/trash" (treeTrashEmptyHandler trashRoot)
+    , Router.delete "/trash/*id" (treeTrashDeleteHandler trashRoot)
     , Router.get "/operations" (treeOperationsHandler logPath)
+    , Router.get "/undo" (treeUndoPageHandler editorThemeDefault logPath)
     , Router.post "/undo" (treeUndoHandler versioning writeLock findRelevant maint root logPath trashRoot)
     , Router.post "/index/refresh" (treeRefreshHandler writeLock refresh)
     , Router.put "/documents/*path" (treePutDocument versioning maint root)
@@ -596,6 +600,23 @@ treeOperationsHandler logPath _ _ = do
     ops <- Iteratee.liftIO (OperationLog.readOperations logPath)
     pure (jsonResponse ("[" ++ List.intercalate "," (map OperationLog.renderOperation ops) ++ "]"))
 
+{- | The undo page (@GET /undo@): a full, newest-first listing of every logged
+move with a per-row Undo, for when the recent-moves dropdown is too small.
+Complements the dropdown; both invert through @POST /undo@.
+-}
+treeUndoPageHandler :: String -> FilePath -> Router.Handler
+treeUndoPageHandler themeDefault logPath _ request = do
+    ops <- Iteratee.liftIO (OperationLog.readOperations logPath)
+    let moves =
+            [ (show (OperationLog.opSeq op), from, to, OperationLog.opTs op)
+            | op <- reverse ops
+            , OperationLog.opType op == OperationLog.OpMove
+            , Just from <- [OperationLog.opFrom op]
+            , Just to <- [OperationLog.opTo op]
+            ]
+    -- The page that opened the undo view, so "back" returns there rather than the root.
+    pure (documentResponse (View.undoPage themeDefault (originFromReferer request) moves))
+
 {- | The undo endpoint (RFC-0028): @POST /undo@ applies the inverse of an operation and
 appends that inverse as a new record (undo is itself logged, so a further undo is a
 redo). A @seq@ form field selects which operation to invert (the undo picker lists
@@ -707,22 +728,70 @@ applyInverse findRelevant maint root logPath trashRoot op = case OperationLog.op
 entries as JSON, newest-first, each tagged with its deletion timestamp -- the
 data behind both the recent-deletes dropdown and the trash page.
 -}
-treeTrashListHandler :: FilePath -> FilePath -> Router.Handler
-treeTrashListHandler trashRoot logPath _ _ = do
-    entries <- Iteratee.liftIO (trashEntriesNewestFirst trashRoot logPath)
+treeTrashListHandler :: Int -> FilePath -> FilePath -> Router.Handler
+treeTrashListHandler retentionDays trashRoot logPath _ _ = do
+    entries <- Iteratee.liftIO $ do
+        purgeExpiredTrash retentionDays trashRoot logPath
+        trashEntriesNewestFirst trashRoot logPath
     pure (jsonResponse (trashEntriesJson entries))
+
+{- | Permanently removes trash entries older than the retention period, in days
+(zero or negative disables the sweep). Runs lazily whenever the trash is listed
+-- there is no background work on the single-threaded runtime. Ages come from
+the operation log's delete timestamps; an entry with no logged timestamp is
+never auto-purged. Timestamps compare on their sortable date-time prefix (the
+zone suffix is ignored), which is exact to well under a day -- ample here.
+-}
+purgeExpiredTrash :: Int -> FilePath -> FilePath -> IO ()
+purgeExpiredTrash retentionDays trashRoot logPath
+    | retentionDays <= 0 = pure ()
+    | otherwise = do
+        now <- TimeMilli.getTimeMilli
+        cutoff <- Log.localTimestampAtMillis (now - retentionDays * 86400000)
+        entries <- trashEntriesNewestFirst trashRoot logPath
+        Monad.forM_ entries $ \(entryId, _, _, ts) ->
+            Monad.when (not (null ts) && take 19 ts < take 19 cutoff) $
+                Monad.void (TreeMove.deleteTrashEntry trashRoot entryId)
+
+{- | Permanently deletes one trash entry (@DELETE /trash/\<id\>@, RFC-0028 as
+amended): the entry's files are removed for good. Nothing is logged -- the op
+log keeps the original delete, and undoing it simply refuses once the entry is
+gone. A 404 for an unknown id.
+-}
+treeTrashDeleteHandler :: FilePath -> Router.Handler
+treeTrashDeleteHandler trashRoot captures _ = do
+    let trashId = capture "id" captures
+    removed <- Iteratee.liftIO (TreeMove.deleteTrashEntry trashRoot trashId)
+    pure
+        ( if removed
+            then jsonResponse ("{\"purged\":" ++ View.jsonString trashId ++ "}")
+            else statusResponse 404 "Not Found" "no such trash entry\n"
+        )
+
+{- | Empties the trash (@DELETE /trash@): permanently removes every entry.
+Answers with the removed count.
+-}
+treeTrashEmptyHandler :: FilePath -> Router.Handler
+treeTrashEmptyHandler trashRoot _ _ = do
+    emptied <- Iteratee.liftIO $ do
+        entries <- TreeMove.listTrash trashRoot
+        outcomes <- mapM (\(entryId, _, _) -> TreeMove.deleteTrashEntry trashRoot entryId) entries
+        pure (length (filter id outcomes))
+    pure (jsonResponse ("{\"emptied\":" ++ show emptied ++ "}"))
 
 {- | The trash page (@GET /trashbin@): a full, newest-first listing of every
 restorable item with a per-row Restore, for when the recent-deletes dropdown is
 too small. Complements the dropdown; both restore through @POST /trash/\<id\>@.
 -}
-treeTrashPageHandler :: String -> FilePath -> FilePath -> Router.Handler
-treeTrashPageHandler themeDefault trashRoot logPath _ request = do
-    entries <- Iteratee.liftIO (trashEntriesNewestFirst trashRoot logPath)
+treeTrashPageHandler :: String -> Int -> FilePath -> FilePath -> Router.Handler
+treeTrashPageHandler themeDefault retentionDays trashRoot logPath _ request = do
+    entries <- Iteratee.liftIO $ do
+        purgeExpiredTrash retentionDays trashRoot logPath
+        trashEntriesNewestFirst trashRoot logPath
     -- The page that opened the trash view, so "back" returns there rather than the root (RFC-0028).
-    pure (documentResponse (View.trashPage themeDefault (originFromReferer request) entries))
+    pure (documentResponse (View.trashPage themeDefault (originFromReferer request) retentionDays entries))
 
-{- | The originating page for the trash page's back link, taken from the request's
+{- | The originating page for a full-page view's back link (trash, search), taken from the request's
 @Referer@ (the page the trash view was opened from): the tree path of its
 @\/documents\/\<path\>@, percent-decoded and validated. 'Nothing' when there is no
 usable same-tree referer -- a direct visit, a reload, or an off-tree URL -- so the
@@ -732,7 +801,7 @@ originFromReferer :: Http.RequestHead -> Maybe String
 originFromReferer request = do
     raw <- lookup (Http.normaliseHeaderName (BS.pack "referer")) (Http.requestHeaders request)
     afterDocs <- stringAfter "/documents/" (BS.unpack raw)
-    safeTrashOrigin (Attachment.percentDecode (takeWhile (\c -> c /= '?' && c /= '#') afterDocs))
+    safeBackLinkOrigin (Attachment.percentDecode (takeWhile (\c -> c /= '?' && c /= '#') afterDocs))
 
 -- | Everything after the first occurrence of @marker@ in @s@, or 'Nothing' when it is absent.
 stringAfter :: String -> String -> Maybe String
@@ -743,12 +812,12 @@ stringAfter marker = go
         | marker `List.isPrefixOf` s = Just (drop (length marker) s)
         | otherwise = go (drop 1 s)
 
-{- | Validates an origin path for the trash back link: a tree-relative Markdown path
+{- | Validates an origin path for a back link: a tree-relative Markdown path
 only. Anything with a scheme, a leading slash, or a @..@ segment is rejected (falls
 back to the root), so the link can never point off the tree.
 -}
-safeTrashOrigin :: String -> Maybe String
-safeTrashOrigin origin
+safeBackLinkOrigin :: String -> Maybe String
+safeBackLinkOrigin origin
     | null origin = Nothing
     | not (isMarkdownPath origin) = Nothing
     | "/" `List.isPrefixOf` origin = Nothing
@@ -827,14 +896,14 @@ appWithDocumentTree :: String -> FilePath -> Server.Application
 appWithDocumentTree editorThemeDefault root =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
-        (treeRoutes Nothing Nothing Nothing noVersioning editorThemeDefault root "data/operation_log" "data/trash" "data/link_index")
+        (treeRoutes Nothing Nothing Nothing noVersioning editorThemeDefault root "data/operation_log" "data/trash" 90 "data/link_index")
 
 -- | A tree-mode app with draft/publish versioning on and drafts staged under @draftRoot@ (RFC-0032; tests).
 appWithDocumentTreeVersioned :: String -> FilePath -> FilePath -> Server.Application
 appWithDocumentTreeVersioned editorThemeDefault root draftRoot =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
-        (treeRoutes Nothing Nothing Nothing (Versioning True draftRoot defaultIdentityConfig) editorThemeDefault root "data/operation_log" "data/trash" "data/link_index")
+        (treeRoutes Nothing Nothing Nothing (Versioning True draftRoot defaultIdentityConfig) editorThemeDefault root "data/operation_log" "data/trash" 90 "data/link_index")
 
 {- | A GET under the tree: the editor page for @?edit@ on a Markdown file,
 otherwise the file served statically (raw Markdown, images, attachments).
@@ -1683,11 +1752,13 @@ treeSearchHandler :: String -> Maybe SearchIndex.SearchRuntime -> Router.Handler
 treeSearchHandler themeDefault search _captures request = do
     let query = capture "q" (Http.requestQuery request)
         wantsJson = hasQueryFlag "json" request
+        -- The page that opened the search view, so "back" returns there rather than the root.
+        origin = originFromReferer request
     case search of
         Nothing ->
             if wantsJson
                 then pure (jsonResponse "{\"enabled\":false}")
-                else pure (documentResponse (View.searchPage themeDefault query Nothing))
+                else pure (documentResponse (View.searchPage themeDefault origin query Nothing))
         Just runtime -> do
             outcome <-
                 if null query
@@ -1700,7 +1771,7 @@ treeSearchHandler themeDefault search _captures request = do
                 Right hits
                     | wantsJson -> pure (jsonResponse (searchResultsJson depth hits))
                     | otherwise ->
-                        pure (documentResponse (View.searchPage themeDefault query (Just (hits, depth))))
+                        pure (documentResponse (View.searchPage themeDefault origin query (Just (hits, depth))))
 
 -- | The most results a search answers with (one per page).
 searchResultLimit :: Int

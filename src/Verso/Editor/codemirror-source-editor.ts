@@ -3,6 +3,7 @@ import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { EditorState, Prec } from "@codemirror/state";
 import { tags } from "@lezer/highlight";
 import { basicSetup, EditorView } from "codemirror";
+import { fenceHighlighting } from "./codemirror-fence-highlight.js";
 import { headingLineNumbers } from "./table-of-contents.js";
 import type { VisualBlockStyle } from "./tiptap-visual-editor.js";
 
@@ -56,6 +57,11 @@ export class CodeMirrorSourceEditor {
             doc: markdownText,
             extensions: [
                 basicSetup,
+                // Before the palette within the same precedence: equal-precedence extensions keep
+                // their order, and an earlier decoration source nests INSIDE a later one -- the hljs
+                // token marks must sit inside the palette's blanket literal (blue) span to colour
+                // fence bodies at all.
+                Prec.highest(fenceHighlighting()),
                 Prec.highest(syntaxHighlighting(paletteHighlightStyle)),
                 markdown(),
                 EditorView.lineWrapping,

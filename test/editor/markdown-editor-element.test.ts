@@ -1124,6 +1124,24 @@ describe("MarkdownEditorElement", (): void => {
         expect(saveError(editor).textContent).toBe("Save failed: HTTP 500");
     });
 
+    it("given a shown save error, when its dismiss button is clicked, then the notice hides", async (): Promise<void> => {
+        const { editor } = await initialiseEditorForm();
+        vi.useFakeTimers();
+        vi.stubGlobal(
+            "fetch",
+            vi.fn(async (): Promise<Response> => new Response(null, { status: 500 })),
+        );
+
+        selectText(editor, "Plain");
+        clickToolbarButton(editor, "Bold");
+        await vi.advanceTimersByTimeAsync(2000);
+        expect(saveError(editor).hidden).toBe(false);
+
+        (saveError(editor).querySelector(".markdown-editor__notice-dismiss") as HTMLElement).click();
+
+        expect(saveError(editor).hidden).toBe(true);
+    });
+
     it("given edited content, when the save request cannot be sent, then save shows a connection error", async (): Promise<void> => {
         const { editor } = await initialiseEditorForm();
         vi.useFakeTimers();
@@ -1420,6 +1438,20 @@ describe("MarkdownEditorElement studio surfaces", (): void => {
         expect(bubbleToolbar(editor).hidden).toBe(false);
     });
 
+    it("given the studio bubble toolbar, when it shows, then it offers no Horizontal rule button", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("Edit this Markdown document.");
+
+        selectText(editor, "Markdown");
+        dispatchSelectionChange();
+
+        const labels = Array.from(bubbleToolbar(editor).querySelectorAll(".markdown-editor__bubble-button")).map(
+            (button: Element): string | null => button.getAttribute("aria-label"),
+        );
+        expect(labels).toContain("Code Block");
+        expect(labels).not.toContain("Horizontal rule");
+    });
+
     it("given the studio bubble toolbar, when Bold is clicked, then bold applies to the Markdown", async (): Promise<void> => {
         window.localStorage.setItem("editor-theme", "studio");
         const editor = await mountStudioEditor("Edit this Markdown document.");
@@ -1530,7 +1562,19 @@ describe("MarkdownEditorElement studio surfaces", (): void => {
         dispatchSelectionChange();
 
         expect(slashMenu(editor).hidden).toBe(false);
-        expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(16);
+        expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(17);
+    });
+
+    it("given the studio slash menu, when Horizontal rule is chosen, then a thematic break is inserted", async (): Promise<void> => {
+        window.localStorage.setItem("editor-theme", "studio");
+        const editor = await mountStudioEditor("/");
+
+        placeCaretAfterText(editor, "/");
+        dispatchSelectionChange();
+        slashItem(editor, "Horizontal rule").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+        expect(editor.toMarkdown()).toContain("---");
+        expect(slashMenu(editor).hidden).toBe(true);
     });
 
     it("given the studio slash menu, when Callout is chosen, then a submenu of callout kinds opens", async (): Promise<void> => {
@@ -1572,7 +1616,7 @@ describe("MarkdownEditorElement studio surfaces", (): void => {
 
         slashItem(editor, "Back").dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
-        expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(16);
+        expect(slashMenu(editor).querySelectorAll(".markdown-editor__slash-item").length).toBe(17);
         expect(slashItem(editor, "Callout")).toBeInstanceOf(HTMLElement);
     });
 

@@ -28,6 +28,7 @@ module Verso.TreeMove (
     replayReportJson,
     listTrash,
     trashListJson,
+    deleteTrashEntry,
 ) where
 
 import qualified Control.Monad as Monad
@@ -593,6 +594,33 @@ listTrash trashRoot = do
             else do
                 text <- fmap BS.unpack (BS.readFile manifestFile)
                 pure (fmap (\m -> (entryId, Trash.manPath m, Trash.manKind m)) (Trash.parseManifest text))
+
+{- | Permanently removes a trash entry (its directory and everything stored in
+it). The id must be a plain all-digit entry name -- anything path-like is
+refused, so a crafted id can never escape the trash root. Returns whether the
+entry existed.
+-}
+deleteTrashEntry :: FilePath -> String -> IO Bool
+deleteTrashEntry trashRoot trashId
+    | null trashId || not (all Char.isDigit trashId) = pure False
+    | otherwise = do
+        let entryDir = trashRoot ++ "/" ++ trashId
+        exists <- Directory.doesDirectoryExist entryDir
+        if not exists
+            then pure False
+            else do
+                removeTree entryDir
+                pure True
+
+-- | Recursively removes a directory tree (MicroHs's System.Directory has no removeDirectoryRecursive).
+removeTree :: FilePath -> IO ()
+removeTree dir = do
+    names <- Directory.listDirectory dir
+    Monad.forM_ names $ \name -> do
+        let child = dir ++ "/" ++ name
+        isDir <- Directory.doesDirectoryExist child
+        if isDir then removeTree child else Monad.void (FileSystem.removeFilePath child)
+    Monad.void (FileSystem.removeEmptyDir dir)
 
 -- | The trash listing as JSON @[{"id","path","kind"}]@.
 trashListJson :: [(String, String, String)] -> String

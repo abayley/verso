@@ -935,9 +935,9 @@ a.markdown-editor__crumb:hover {
 
 /* The revision/trash list is a fixed-height scroll region with a sticky header. */
 .verso-history-scroll,
+/* Unlike the history list (which reserves space below for the diff pane), the trash and undo
+   lists may grow to their full length and let the whole page scroll. */
 .verso-trash-scroll {
-  max-height: 24rem;
-  overflow-y: auto;
   border: 1px solid var(--markdown-editor-border, rgba(128, 128, 128, 0.25));
   border-radius: 0.3rem;
 }
@@ -964,6 +964,23 @@ a.markdown-editor__crumb:hover {
   top: 0;
   background: var(--markdown-editor-background);
   z-index: 1;
+}
+
+/* The trash and undo tables' timestamp column is one token; never wrap it. */
+.verso-trash td:first-child,
+.verso-trash th:first-child {
+  white-space: nowrap;
+}
+
+/* A row's action pair (Restore / Delete forever) sits side by side with a small gap. */
+.verso-trash td .btn + .btn {
+  margin-left: 0.5rem;
+}
+
+/* The retention notice under the trash heading. */
+.verso-trash-retention {
+  color: var(--markdown-editor-muted);
+  font-size: 0.85rem;
 }
 
 /* The hint shown below the list until two revisions are selected. */
@@ -1451,49 +1468,55 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
 /* Syntax highlighting (RFC-0033): lowlight emits highlight.js `hljs-*` token classes inside the code block;
    map them to the editor palette so code reads correctly in every theme and flips with light/dark (the
    palette variables flip under :root.dark), rather than shipping a fixed highlight.js theme. */
-.markdown-editor__surface :is(.hljs-comment, .hljs-quote) {
+
+/* The source view's base mark over a highlighted fence body: resets the CodeMirror palette's blanket
+   literal (blue) colour so unclassed code text reads as plain text between the hljs tokens. */
+.markdown-editor__source .markdown-editor__fence-code {
+  color: var(--markdown-editor-text);
+}
+:is(.markdown-editor__surface, .markdown-editor__source) :is(.hljs-comment, .hljs-quote) {
   color: var(--markdown-editor-muted);
   font-style: italic;
 }
 
-.markdown-editor__surface :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-type, .hljs-name, .hljs-tag) {
+:is(.markdown-editor__surface, .markdown-editor__source) :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-type, .hljs-name, .hljs-tag) {
   color: var(--markdown-editor-emphasis);
 }
 
-.markdown-editor__surface :is(.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-addition) {
+:is(.markdown-editor__surface, .markdown-editor__source) :is(.hljs-string, .hljs-regexp, .hljs-symbol, .hljs-addition) {
   color: var(--markdown-editor-success);
 }
 
-.markdown-editor__surface :is(.hljs-number, .hljs-bullet) {
+:is(.markdown-editor__surface, .markdown-editor__source) :is(.hljs-number, .hljs-bullet) {
   color: var(--markdown-editor-warning);
 }
 
-.markdown-editor__surface
+:is(.markdown-editor__surface, .markdown-editor__source)
   :is(.hljs-title, .hljs-section, .hljs-attr, .hljs-attribute, .hljs-selector-id, .hljs-selector-class) {
   color: var(--markdown-editor-info);
 }
 
-.markdown-editor__surface .hljs-built_in {
+:is(.markdown-editor__surface, .markdown-editor__source) .hljs-built_in {
   color: var(--markdown-editor-accent);
 }
 
-.markdown-editor__surface :is(.hljs-meta, .hljs-comment .hljs-doctag) {
+:is(.markdown-editor__surface, .markdown-editor__source) :is(.hljs-meta, .hljs-comment .hljs-doctag) {
   color: var(--markdown-editor-muted);
 }
 
-.markdown-editor__surface .hljs-deletion {
+:is(.markdown-editor__surface, .markdown-editor__source) .hljs-deletion {
   color: var(--markdown-editor-danger);
 }
 
-.markdown-editor__surface .hljs-emphasis {
+:is(.markdown-editor__surface, .markdown-editor__source) .hljs-emphasis {
   font-style: italic;
 }
 
-.markdown-editor__surface .hljs-strong {
+:is(.markdown-editor__surface, .markdown-editor__source) .hljs-strong {
   font-weight: 600;
 }
 
-.markdown-editor__surface .hljs-link {
+:is(.markdown-editor__surface, .markdown-editor__source) .hljs-link {
   color: var(--markdown-editor-accent);
   text-decoration: underline;
 }
@@ -1731,33 +1754,23 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
 /* The client-error banner lives inside the notification area (with the save error
    and upload notices), so it is a plain box here -- the notification area itself
    is positioned per theme. */
-.markdown-editor__error-banner {
-  align-items: center;
-  background: var(--markdown-editor-pill-background);
-  border: 1px solid var(--markdown-editor-pill-border);
-  border-left: 3px solid var(--markdown-editor-error-accent);
-  border-radius: 8px;
-  color: var(--markdown-editor-error-text);
-  display: flex;
-  font: 13px system-ui, sans-serif;
-  gap: 0.75rem;
-  justify-content: space-between;
-  padding: 0.5rem 0.75rem;
-  width: 100%;
+/* The footer notices (save error, upload status, catch-all banner) are Basecoat alerts (RFC-0035):
+   the component supplies the card look and the destructive variant; these rules size them for the
+   notices strip and pin the icon dismiss to the alert's trailing edge. */
+.markdown-editor__notices .alert {
+  font-size: 13px;
+  margin-bottom: 0.5rem;
+}
+
+.markdown-editor__notices .alert > footer {
+  position: absolute;
+  right: 0.4rem;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .markdown-editor__error-banner[hidden] {
   display: none;
-}
-
-.markdown-editor__error-banner-dismiss {
-  background: transparent;
-  border: 1px solid var(--markdown-editor-pill-border);
-  border-radius: 6px;
-  color: inherit;
-  cursor: pointer;
-  font: 12px system-ui, sans-serif;
-  padding: 0.2rem 0.5rem;
 }
 
 .markdown-editor__footer {
@@ -1854,16 +1867,6 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   background: var(--markdown-editor-save-retry);
 }
 
-.markdown-editor__save-error {
-  background: var(--markdown-editor-pill-background);
-  border: 1px solid var(--markdown-editor-pill-border);
-  border-left: 3px solid var(--markdown-editor-error-accent);
-  border-radius: 8px;
-  color: var(--markdown-editor-error-text);
-  font: 13px system-ui, sans-serif;
-  margin-bottom: 0.5rem;
-  padding: 0.5rem 0.75rem;
-}
 
 .markdown-editor__word-count {
   color: var(--markdown-editor-muted);
@@ -1913,22 +1916,6 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 
 .markdown-editor__save-error[hidden] {
   display: none;
-}
-
-.markdown-editor__upload-notice {
-  background: var(--markdown-editor-pill-background);
-  border: 1px solid var(--markdown-editor-pill-border);
-  border-left: 3px solid var(--markdown-editor-pill-border);
-  border-radius: 8px;
-  color: var(--markdown-editor-muted);
-  font: 13px system-ui, sans-serif;
-  margin-bottom: 0.5rem;
-  padding: 0.5rem 0.75rem;
-}
-
-.markdown-editor__upload-notice--error {
-  border-left-color: var(--markdown-editor-error-accent);
-  color: var(--markdown-editor-error-text);
 }
 
 .markdown-editor__upload-notice[hidden] {
@@ -2313,10 +2300,16 @@ markdown-editor[data-search-open] .markdown-editor__workspace {
 }
 
 .markdown-editor__search-pending,
-.markdown-editor__search-empty {
+.markdown-editor__search-empty,
+.markdown-editor__search-error {
     font-size: 0.78rem;
     opacity: 0.7;
     margin: 0.35rem 0.5rem;
+}
+
+.markdown-editor__search-error {
+    color: var(--markdown-editor-danger);
+    opacity: 1;
 }
 
 .markdown-editor__search-all {

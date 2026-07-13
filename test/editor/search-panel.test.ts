@@ -118,6 +118,21 @@ describe("SearchPanel", (): void => {
         expect(dropdown.hidden).toBe(true);
     });
 
+    it("given an unreachable server, when a query is typed, then the dropdown shows an error message", async (): Promise<void> => {
+        vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+        const panel = new SearchPanel();
+        const input = panel.element().querySelector("input") as HTMLInputElement;
+        input.value = "failover";
+        input.dispatchEvent(new Event("input"));
+        await vi.advanceTimersByTimeAsync(300);
+
+        const dropdown = panel.element().querySelector(".markdown-editor__search-results") as HTMLElement;
+        expect(dropdown.hidden).toBe(false);
+        expect(dropdown.querySelector(".markdown-editor__search-error")?.textContent).toBe(
+            "Couldn’t reach the server.",
+        );
+    });
+
     it("shows the indexing-pending note when the queue is busy", async (): Promise<void> => {
         vi.stubGlobal("fetch", vi.fn().mockResolvedValue(enabledResponse([aResult], 42)));
         const panel = new SearchPanel();

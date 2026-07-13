@@ -13,12 +13,14 @@ import { BubbleToolbarElement } from "./bubble-toolbar-element.js";
 import {
     type ChromeDropdownElement,
     type ChromeSegmentElement,
+    chromeAlertEl,
     chromeButtonEl,
     chromeDropdownEl,
     chromeIconEl,
     chromeLinkEl,
     chromeSegmentEl,
     initBasecoat,
+    NETWORK_ERROR,
 } from "./chrome.js";
 import { type ClientErrorKind, ClientErrorReporter } from "./client-error-reporter.js";
 import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
@@ -173,7 +175,8 @@ export class MarkdownEditorElement extends HTMLElement {
     private mode: EditorMode = "visual";
     private panes: HTMLDivElement | null = null;
     private linkController: LinkPopoverController | null = null;
-    private saveError: HTMLSpanElement | null = null;
+    private saveError: HTMLElement | null = null;
+    private saveErrorMessage: HTMLElement | null = null;
     private errorBanner: HTMLDivElement | null = null;
     /** The single notification area (save + client errors, upload notices); relocated per theme. */
     private notices: HTMLDivElement | null = null;
@@ -270,6 +273,8 @@ export class MarkdownEditorElement extends HTMLElement {
     private tableControls: TableControlsElement | null = null;
     private commandBar: CommandBarElement | null = null;
     private uploadNotice: HTMLDivElement | null = null;
+    private uploadNoticeMessage: HTMLElement | null = null;
+    private uploadNoticeDestructive: ((on: boolean) => void) | null = null;
     private fileInput: HTMLInputElement | null = null;
     private readonly handleDragOver = (event: DragEvent): void => {
         if (dragHasFiles(event.dataTransfer)) {
@@ -436,10 +441,10 @@ export class MarkdownEditorElement extends HTMLElement {
         statusMeta.append(this.cursorReadout, this.wordReadout);
         this.wordCount.append(statusMeta);
 
-        this.uploadNotice = document.createElement("div");
-        this.uploadNotice.className = "markdown-editor__upload-notice";
-        this.uploadNotice.setAttribute("role", "status");
-        this.uploadNotice.hidden = true;
+        const uploadNotice = chromeAlertEl({ className: "markdown-editor__upload-notice", role: "status" });
+        this.uploadNotice = uploadNotice.root;
+        this.uploadNoticeMessage = uploadNotice.message;
+        this.uploadNoticeDestructive = uploadNotice.setDestructive;
 
         // The single notification area: upload notices, the save error, and the client-error banner all live
         // here, so a theme has exactly one place for messages. It sits in the footer (above the command bar)
@@ -655,11 +660,11 @@ export class MarkdownEditorElement extends HTMLElement {
                     "Undone.",
                     "Nothing to undo.",
                 ),
-            listMoves: async (): Promise<MoveOp[]> => {
+            listMoves: async (): Promise<MoveOp[] | null> => {
                 try {
                     const response = await fetch("/operations", { headers: { Accept: "application/json" } });
                     if (!response.ok) {
-                        return [];
+                        return null;
                     }
                     const data: unknown = safeJson(await response.text());
                     if (!Array.isArray(data)) {
@@ -681,19 +686,19 @@ export class MarkdownEditorElement extends HTMLElement {
                             }),
                         );
                 } catch {
-                    return [];
+                    return null;
                 }
             },
-            listTrash: async (): Promise<TrashEntry[]> => {
+            listTrash: async (): Promise<TrashEntry[] | null> => {
                 try {
                     const response = await fetch("/trash", { headers: { Accept: "application/json" } });
                     if (!response.ok) {
-                        return [];
+                        return null;
                     }
                     const data: unknown = safeJson(await response.text());
                     return Array.isArray(data) ? (data as TrashEntry[]) : [];
                 } catch {
-                    return [];
+                    return null;
                 }
             },
             restore: (id: string): Promise<OpResult> =>
@@ -1223,40 +1228,31 @@ export class MarkdownEditorElement extends HTMLElement {
         this.themeDropdown.syncChecked(this.visualTheme);
     }
 
-    /** Creates the save error message shown when the last save failed. */
-    private createSaveError(): HTMLSpanElement {
-        const error = document.createElement("span");
-        error.className = "markdown-editor__save-error";
-        error.setAttribute("role", "status");
-        error.hidden = true;
-        this.saveError = error;
+    /** Creates the save error notice shown when the last save failed. */
+    private createSaveError(): HTMLElement {
+        const { root, message } = chromeAlertEl({
+            className: "markdown-editor__save-error",
+            role: "status",
+            destructive: true,
+        });
+        this.saveError = root;
+        this.saveErrorMessage = message;
 
-        return error;
+        return root;
     }
 
     /** Creates the dismissible catch-all error banner (RFC-0022); hidden until a failure surfaces. */
     private createErrorBanner(): HTMLDivElement {
-        const banner = document.createElement("div");
-        banner.className = "markdown-editor__error-banner";
-        banner.setAttribute("role", "alert");
-        banner.hidden = true;
-
-        const message = document.createElement("span");
-        message.className = "markdown-editor__error-banner-message";
-        message.textContent = "Something went wrong in the editor. Your last saved version is safe.";
-
-        const dismiss = document.createElement("button");
-        dismiss.type = "button";
-        dismiss.className = "markdown-editor__error-banner-dismiss";
-        dismiss.textContent = "Dismiss";
-        dismiss.setAttribute("aria-label", "Dismiss error");
-        dismiss.addEventListener("click", (): void => {
-            banner.hidden = true;
+        const { root, message, dismiss } = chromeAlertEl({
+            className: "markdown-editor__error-banner",
+            role: "alert",
+            destructive: true,
         });
+        message.textContent = "Something went wrong in the editor. Your last saved version is safe.";
+        dismiss.classList.add("markdown-editor__error-banner-dismiss");
+        dismiss.setAttribute("aria-label", "Dismiss error");
 
-        banner.append(message, dismiss);
-
-        return banner;
+        return root;
     }
 
     /** Surfaces an unexpected failure to the user and logs the underlying error to the console. */
@@ -1430,6 +1426,7 @@ export class MarkdownEditorElement extends HTMLElement {
             { label: "Numbered list", run: (): void => this.toggleStructure("ordered-list") },
             { label: "Quote", run: (): void => this.toggleStructure("blockquote") },
             { label: "Code block", run: (): void => this.toggleStructure("code-block") },
+            { label: "Horizontal rule", run: (): void => this.toggleStructure("thematic-break") },
             {
                 label: "Callout",
                 children: ADMONITION_KINDS.map((kind) => ({
@@ -2056,22 +2053,22 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Shows the upload status (or error) notice with the given message. */
     private showUploadNotice(message: string, isError: boolean): void {
-        if (!this.uploadNotice) {
+        if (!this.uploadNotice || !this.uploadNoticeMessage) {
             return;
         }
 
-        this.uploadNotice.textContent = message;
-        this.uploadNotice.classList.toggle("markdown-editor__upload-notice--error", isError);
+        this.uploadNoticeMessage.textContent = message;
+        this.uploadNoticeDestructive?.(isError);
         this.uploadNotice.hidden = false;
     }
 
     /** Hides the upload status notice. */
     private hideUploadNotice(): void {
-        if (!this.uploadNotice) {
+        if (!this.uploadNotice || !this.uploadNoticeMessage) {
             return;
         }
 
-        this.uploadNotice.textContent = "";
+        this.uploadNoticeMessage.textContent = "";
         this.uploadNotice.hidden = true;
     }
 
@@ -2257,8 +2254,8 @@ export class MarkdownEditorElement extends HTMLElement {
             this.commandBar.flush();
         }
 
-        if (this.saveError) {
-            this.saveError.textContent = view.error ?? "";
+        if (this.saveError && this.saveErrorMessage) {
+            this.saveErrorMessage.textContent = view.error ?? "";
             this.saveError.hidden = view.error === null;
         }
     }
@@ -2509,9 +2506,6 @@ function safeJson(text: string): unknown {
         return null;
     }
 }
-
-/** The message shown when a structural-operation request cannot reach the server. */
-const NETWORK_ERROR = "Couldn’t reach the server.";
 
 /**
  * Runs a structural-operation request (undo/restore/replay) and normalises it to an OpResult: the

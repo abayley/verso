@@ -20,6 +20,7 @@ module Verso.View (
     safeEditorTheme,
     searchPage,
     trashPage,
+    undoPage,
     versionPageShell,
 ) where
 
@@ -120,14 +121,15 @@ versionPageShell themeDefault pageTitle bodyContent =
             Html.main [] bodyContent
 
 {- | The search page: the query form and, when search ran, its results.
-'Nothing' means search is not enabled on this server.
+The outcome 'Nothing' means search is not enabled on this server; the origin
+is the page the search was opened from (its Referer), for the back link.
 -}
-searchPage :: String -> String -> Maybe ([Store.Hit], Int) -> Html.Html ()
-searchPage themeDefault query outcome =
+searchPage :: String -> Maybe String -> String -> Maybe ([Store.Hit], Int) -> Html.Html ()
+searchPage themeDefault origin query outcome =
     versionPageShell themeDefault "Search" $ do
         versionControls themeDefault
         Html.el "h1" [] (Html.text "Search")
-        Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href "/documents/"] (Html.text "Back to the wiki"))
+        Html.p [Html.class_ "verso-version-back"] (backLink origin)
         Html.el "form" [Html.attr "method" "get", Html.attr "action" "/search", Html.class_ "verso-search-form"] $ do
             Html.input [Html.class_ "input", Html.attr "type" "search", Html.attr "name" "q", Html.attr "value" query, Html.attr "placeholder" "Search the wiki", Html.attr "autofocus" ""]
             Chrome.chromeSubmitButton Chrome.OutlineControl [] (Html.text "Search")
@@ -173,36 +175,47 @@ trimSpace = f . f
     f = reverse . dropWhile (`elem` " \t\r\n")
 
 {- | The trash page (RFC-0028): every restorable item, newest-first, with a
-per-row Restore. The Restore button carries the entry id and path as data
-attributes; @trash-page.ts@ (loaded with the shared bundle) confirms, posts to
-@\/trash\/\<id\>@, and removes the row. Entries are @(id, originalPath, kind, deletedAt)@.
+per-row Restore and Delete forever, plus an Empty-trash control and the
+retention notice. The buttons carry the entry id and path as data attributes;
+@trash-page.ts@ (loaded with the shared bundle) confirms, sends the request,
+and updates the page. Entries are @(id, originalPath, kind, deletedAt)@.
 -}
-trashPage :: String -> Maybe String -> [(String, String, String, String)] -> Html.Html ()
-trashPage themeDefault origin entries =
+trashPage :: String -> Maybe String -> Int -> [(String, String, String, String)] -> Html.Html ()
+trashPage themeDefault origin retentionDays entries =
     versionPageShell themeDefault "Trash" $ do
         versionControls themeDefault
         Html.el "h1" [] (Html.text "Trash")
         Html.p [Html.class_ "verso-version-back"] (backLink origin)
+        Monad.when (retentionDays > 0) $
+            Html.p
+                [Html.class_ "verso-trash-retention"]
+                (Html.text ("Items older than " ++ show retentionDays ++ " days will be permanently deleted."))
         if null entries
             then Html.p [] (Html.text "Trash is empty.")
-            else Html.div [Html.class_ "verso-trash-scroll"] $
-                Html.el "table" [Html.class_ "verso-trash"] $ do
-                    Html.el "thead" [] (Html.el "tr" [] (mapM_ (Html.el "th" [] . Html.text) ["When", "Item", "Kind", ""]))
-                    Html.el "tbody" [] (mapM_ trashRow entries)
+            else do
+                Html.p [] $
+                    Chrome.chromeButton
+                        Chrome.DangerAction
+                        [Html.class_ "verso-trash-empty"]
+                        (Html.text "Empty trash")
+                Html.div [Html.class_ "verso-trash-scroll"] $
+                    Html.el "table" [Html.class_ "verso-trash"] $ do
+                        Html.el "thead" [] (Html.el "tr" [] (mapM_ (Html.el "th" [] . Html.text) ["When", "Item", "Kind", ""]))
+                        Html.el "tbody" [] (mapM_ trashRow entries)
 
--- | The trash page's back link: to the originating page when known, else the wiki root.
+-- | The trash and search pages' back link: to the originating page when known, else the wiki root.
 backLink :: Maybe String -> Html.Html ()
 backLink Nothing = Html.a [Html.href "/documents/"] (Html.text "Back to the wiki")
 backLink (Just path) = Html.a [Html.href ("/documents/" ++ path)] (Html.text ("Back to " ++ path))
 
--- | One trash-table row: deletion time, the original path, kind, and a Restore control.
+-- | One trash-table row: deletion time, the original path, kind, and the Restore / Delete forever controls.
 trashRow :: (String, String, String, String) -> Html.Html ()
 trashRow (entryId, path, kind, ts) =
     Html.el "tr" [Html.class_ "verso-trash-row"] $ do
         Html.el "td" [] (Html.text ts)
         Html.el "td" [] (Html.text path)
         Html.el "td" [] (Html.text kind)
-        Html.el "td" [] $
+        Html.el "td" [] $ do
             Chrome.chromeButton
                 Chrome.OutlineControl
                 [ Html.class_ "verso-trash-restore"
@@ -210,6 +223,49 @@ trashRow (entryId, path, kind, ts) =
                 , Html.attr "data-restore-path" path
                 ]
                 (Html.text "Restore")
+            Chrome.chromeButton
+                Chrome.DangerAction
+                [ Html.class_ "verso-trash-delete"
+                , Html.attr "data-delete-id" entryId
+                , Html.attr "data-delete-path" path
+                ]
+                (Html.text "Delete forever")
+
+{- | The undo page: every logged move, newest-first, with a per-row Undo, for
+when the recent-moves dropdown is too small. The Undo button carries the
+operation seq and both paths as data attributes; @undo-page.ts@ (loaded with
+the shared bundle) confirms, posts to @\/undo@, and reloads. Entries are
+@(seq, from, to, ts)@.
+-}
+undoPage :: String -> Maybe String -> [(String, String, String, String)] -> Html.Html ()
+undoPage themeDefault origin entries =
+    versionPageShell themeDefault "Undo" $ do
+        versionControls themeDefault
+        Html.el "h1" [] (Html.text "Undo")
+        Html.p [Html.class_ "verso-version-back"] (backLink origin)
+        if null entries
+            then Html.p [] (Html.text "No moves to undo.")
+            else Html.div [Html.class_ "verso-trash-scroll"] $
+                Html.el "table" [Html.class_ "verso-trash verso-undo"] $ do
+                    Html.el "thead" [] (Html.el "tr" [] (mapM_ (Html.el "th" [] . Html.text) ["When", "From", "To", ""]))
+                    Html.el "tbody" [] (mapM_ undoRow entries)
+
+-- | One undo-table row: the move's time, source, destination, and an Undo control.
+undoRow :: (String, String, String, String) -> Html.Html ()
+undoRow (seqNo, from, to, ts) =
+    Html.el "tr" [Html.class_ "verso-undo-row"] $ do
+        Html.el "td" [] (Html.text ts)
+        Html.el "td" [] (Html.text from)
+        Html.el "td" [] (Html.text to)
+        Html.el "td" [] $
+            Chrome.chromeButton
+                Chrome.OutlineControl
+                [ Html.class_ "verso-undo-apply"
+                , Html.attr "data-undo-seq" seqNo
+                , Html.attr "data-undo-from" from
+                , Html.attr "data-undo-to" to
+                ]
+                (Html.text "Undo")
 
 {- | Renders the revision-history page: theme\/appearance controls, a
 fixed-height scrollable table of revisions (each timestamp links to that

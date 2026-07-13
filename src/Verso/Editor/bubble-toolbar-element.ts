@@ -18,6 +18,12 @@ import {
 import type { VisualInlineStyle, VisualStructureStyle } from "./tiptap-visual-editor.js";
 
 /**
+ * The structural commands offered on a selection. A horizontal rule replaces the selected block
+ * rather than transforming it, so it stays on the command bar and slash menu only.
+ */
+const BUBBLE_STRUCTURE_COMMANDS = STRUCTURE_COMMANDS.filter((command) => command.style !== "thematic-break");
+
+/**
  * The Studio selection bubble toolbar (block-style dropdown + inline command buttons), rendered
  * declaratively with Lit over the Basecoat chrome helpers (RFC-0035). It owns no editor state: the host
  * shows, positions, and hides it, drives the block-style label and the active inline marks through
@@ -129,7 +135,7 @@ export class BubbleToolbarElement extends LitElement {
                     onClick: (): void => this.emitInline(command.style),
                 }),
             )}
-            ${STRUCTURE_COMMANDS.map((command) =>
+            ${BUBBLE_STRUCTURE_COMMANDS.map((command) =>
                 chromeButton("icon", chromeIcon(command.icon), {
                     className: "markdown-editor__button markdown-editor__bubble-button",
                     ariaLabel: command.label,

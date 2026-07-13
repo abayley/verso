@@ -17,6 +17,7 @@ module MicroHttp.Log (
     formatLogfmt,
     consoleLog,
     localTimestamp,
+    localTimestampAtMillis,
     logfmtTo,
     fileLogfmtLogger,
     rotatingAppender,
@@ -95,8 +96,11 @@ numeric zone offset, no internal spaces so it is one logfmt token). Built from
 zone and DST.
 -}
 localTimestamp :: IO String
-localTimestamp = do
-    millis <- TimeMilli.getTimeMilli
+localTimestamp = TimeMilli.getTimeMilli >>= localTimestampAtMillis
+
+-- | As 'localTimestamp' for an arbitrary epoch-milli instant (e.g. a retention cutoff).
+localTimestampAtMillis :: Int -> IO String
+localTimestampAtMillis millis =
     Alloc.alloca $ \timePtr -> do
         Storable.poke timePtr (millis `div` 1000)
         tmPtr <- c_localtime timePtr

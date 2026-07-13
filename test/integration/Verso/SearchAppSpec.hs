@@ -95,6 +95,7 @@ runRoute runtime reqHead body = do
                 root
                 "build/search-app-spec/oplog"
                 "build/search-app-spec/trash"
+                90
                 "build/search-app-spec/linkindex"
     outcome <-
         Iteratee.strictEnumerator (BS.pack body) (Router.route routes reqHead)

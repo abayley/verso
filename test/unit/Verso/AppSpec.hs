@@ -301,6 +301,66 @@ spec =
                 bodyText response `shouldInclude` "\"from\":\"x\""
                 bodyText response `shouldInclude` "\"seq\":0"
 
+            it "given DELETE /trash/<id>, when routed, then the entry is permanently removed" $ do
+                appliedRoot <- setupDeleteRouteFixture
+                deleteOutcome <- runTreeAppBody appliedRoot (request Http.DELETE ["tree", "b.md"]) ""
+                Http.statusCode (Http.responseStatus deleteOutcome) `shouldBe` 200
+                Directory.doesFileExist "build/tree-spec-trash/0/manifest" `shouldReturn` True
+                response <- runTreeAppBody appliedRoot (request Http.DELETE ["trash", "0"]) ""
+                Http.statusCode (Http.responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "\"purged\":\"0\""
+                Directory.doesFileExist "build/tree-spec-trash/0/manifest" `shouldReturn` False
+                -- the purged entry can no longer be restored
+                restoreResponse <- runTreeAppBody appliedRoot (request Http.POST ["trash", "0"]) ""
+                Http.statusCode (Http.responseStatus restoreResponse) `shouldBe` 409
+
+            it "given DELETE /trash, when routed, then every entry is permanently removed" $ do
+                appliedRoot <- setupDeleteRouteFixture
+                _ <- runTreeAppBody appliedRoot (request Http.DELETE ["tree", "b.md"]) ""
+                response <- runTreeAppBody appliedRoot (request Http.DELETE ["trash"]) ""
+                Http.statusCode (Http.responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "\"emptied\":1"
+                Directory.doesFileExist "build/tree-spec-trash/0/manifest" `shouldReturn` False
+                listing <- runTreeApp appliedRoot (request Http.GET ["trash"])
+                bodyText listing `shouldBe` "[]"
+
+            it "given an entry older than the retention period, when the trash is listed, then it is purged" $ do
+                appliedRoot <- setupDeleteRouteFixture
+                _ <- runTreeAppBody appliedRoot (request Http.DELETE ["tree", "b.md"]) ""
+                -- age the delete's log record past the 90-day default retention
+                logged <- readFile "build/tree-spec-oplog"
+                null logged `shouldBe` False
+                let aged = replaceTsWith "2020-01-01T00:00:00.000+1200" logged
+                writeFile "build/tree-spec-oplog" aged
+                listing <- runTreeApp appliedRoot (request Http.GET ["trash"])
+                bodyText listing `shouldBe` "[]"
+                Directory.doesFileExist "build/tree-spec-trash/0/manifest" `shouldReturn` False
+
+            it "given a fresh entry, when the trash is listed, then it survives the retention sweep" $ do
+                appliedRoot <- setupDeleteRouteFixture
+                _ <- runTreeAppBody appliedRoot (request Http.DELETE ["tree", "b.md"]) ""
+                listing <- runTreeApp appliedRoot (request Http.GET ["trash"])
+                bodyText listing `shouldInclude` "\"path\":\"b.md\""
+                Directory.doesFileExist "build/tree-spec-trash/0/manifest" `shouldReturn` True
+
+            it "given GET /undo after a move, when routed, then the undo page lists it with an undo control" $ do
+                appliedRoot <- setupMoveUndoFixture
+                let mv = (request Http.POST ["tree", "x"]){Http.requestQuery = [("move", "")]}
+                _ <- runTreeAppBody appliedRoot mv "to=y&slug=x&confirm=true"
+                response <- runTreeApp appliedRoot (request Http.GET ["undo"])
+                Http.statusCode (Http.responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "Undo"
+                bodyText response `shouldInclude` "verso-undo-apply"
+                bodyText response `shouldInclude` "data-undo-seq=\"0\""
+                bodyText response `shouldInclude` "data-undo-from=\"x\""
+                bodyText response `shouldInclude` "data-undo-to=\"y/x\""
+
+            it "given GET /undo with an empty log, when routed, then the undo page shows the empty state" $ do
+                appliedRoot <- setupMoveUndoFixture
+                response <- runTreeApp appliedRoot (request Http.GET ["undo"])
+                Http.statusCode (Http.responseStatus response) `shouldBe` 200
+                bodyText response `shouldInclude` "No moves to undo."
+
             it "given POST /undo with a seq, when routed, then that specific move is inverted" $ do
                 appliedRoot <- setupMoveUndoFixture
                 let mv = (request Http.POST ["tree", "x"]){Http.requestQuery = [("move", "")]}
@@ -382,10 +442,21 @@ runTreeApp root head = runTreeAppBody root head ""
 -- | As 'runTreeApp', with a request body (for create posts).
 runTreeAppBody :: FilePath -> Http.RequestHead -> String -> IO Http.Response
 runTreeAppBody root head body = do
-    outcome <- Iteratee.strictEnumerator (BS.pack body) (Router.route (App.treeRoutes Nothing Nothing Nothing App.noVersioning "paper" root "build/tree-spec-oplog" "build/tree-spec-trash" "build/tree-spec-index") head) >>= Iteratee.run
+    outcome <- Iteratee.strictEnumerator (BS.pack body) (Router.route (App.treeRoutes Nothing Nothing Nothing App.noVersioning "paper" root "build/tree-spec-oplog" "build/tree-spec-trash" 90 "build/tree-spec-index") head) >>= Iteratee.run
     case outcome of
         Right response -> return response
         Left err -> expectFailure err
+
+-- | Replaces every @"ts":"..."@ value in an operation-log text (ages entries for retention tests).
+replaceTsWith :: String -> String -> String
+replaceTsWith newTs = go
+  where
+    marker = "\"ts\":\""
+    go [] = []
+    go s
+        | marker `List.isPrefixOf` s =
+            marker ++ newTs ++ "\"" ++ go (drop 1 (dropWhile (/= '"') (drop (length marker) s)))
+        | otherwise = head s : go (tail s)
 
 -- | Removes a file if it exists (test cleanup).
 cleanFile :: FilePath -> IO ()

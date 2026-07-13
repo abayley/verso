@@ -460,6 +460,22 @@ spec = do
             fmap (bodyContains (BS.pack "data-restore-path=\"sec/trash-page.md\"")) page `shouldBe` Right True
             -- the standalone page carries the shared editor chrome (theme head)
             fmap (bodyContains (BS.pack "data-editor-theme")) page `shouldBe` Right True
+        it "given a deleted page, when viewing /trashbin, then it offers empty-trash, per-row delete-forever, and the retention notice" $ do
+            root <- setupTreeFixture
+            writeFile (root ++ "/sec/bin-me.md") "# Bin me\n\ncontent."
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTree "paper" root)
+                    (BS.pack (deleteRequest "/tree/sec/bin-me.md"))
+            page <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTree "paper" root)
+                    (BS.pack (getRequest "/trashbin"))
+            fmap (bodyContains (BS.pack "Items older than 90 days will be permanently deleted.")) page `shouldBe` Right True
+            fmap (bodyContains (BS.pack "verso-trash-empty")) page `shouldBe` Right True
+            fmap (bodyContains (BS.pack "verso-trash-delete")) page `shouldBe` Right True
+            fmap (bodyContains (BS.pack "data-delete-path=\"sec/bin-me.md\"")) page `shouldBe` Right True
+
         it "given a Referer page, when viewing /trashbin, then the back link returns to that page" $ do
             root <- setupTreeFixture
             withReferer <-
@@ -480,6 +496,19 @@ spec = do
                     (App.appWithDocumentTree "paper" root)
                     (BS.pack (getRequestWithReferer "/trashbin" "http://evil.example/documents/../../etc/passwd"))
             fmap (bodyContains (BS.pack "Back to the wiki")) offTree `shouldBe` Right True
+        it "given a Referer page, when viewing /search, then the back link returns to that page" $ do
+            root <- setupTreeFixture
+            withReferer <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTree "paper" root)
+                    (BS.pack (getRequestWithReferer "/search" "http://localhost:8080/documents/sec/page.md"))
+            fmap (bodyContains (BS.pack "Back to sec/page.md")) withReferer `shouldBe` Right True
+            -- no Referer (a direct visit): the link falls back to the wiki root
+            noReferer <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTree "paper" root)
+                    (BS.pack (getRequest "/search"))
+            fmap (bodyContains (BS.pack "Back to the wiki")) noReferer `shouldBe` Right True
 
     describe "Verso.App revision history and rollback (RFC-0032)" $ do
         it "lists a page's revisions in the history view" $ do

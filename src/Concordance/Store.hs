@@ -5,8 +5,13 @@ and the page listing drives reconcile. Strings cross the FFI boundary as
 UTF-8; hit and page records come back in a packed buffer the shim fills
 (records separated by 0x1e, fields by 0x1f).
 
-Like all shim calls, each store call blocks the whole MicroHs runtime for
-its duration (sub-millisecond to a few milliseconds).
+Store mutations (upsert, delete, optimise) run on the shim's worker thread
+(ADR-080): the submit copies its arguments and returns immediately, the
+calling green thread parks on the completion pipe like any descriptor, and
+the rest of the runtime keeps serving. A mutation can take from tens of
+milliseconds to several seconds (optimise's version cleanup), which would
+otherwise stall every request. Reads (search, listing) and embedding stay
+synchronous: they are short, and queries are user-initiated.
 -}
 module Concordance.Store (
     Store,
@@ -24,32 +29,18 @@ module Concordance.Store (
 ) where
 
 import qualified Concordance.Utf8 as Utf8
+import qualified Control.Concurrent.MVar as MVar
 import qualified Data.Map.Strict as Map
 import qualified Foreign.C.String as CStr
 import qualified Foreign.Marshal.Alloc as Alloc
 import qualified Foreign.Ptr as Ptr
 import qualified Foreign.Storable as Storable
+import qualified System.IO.FD as FD
 
 foreign import ccall "concordance_shim.h cn_available" c_available :: IO Int
 foreign import ccall "concordance_shim.h cn_store_open"
     c_storeOpen :: CStr.CString -> Int -> CStr.CString -> Int -> IO Int
 foreign import ccall "concordance_shim.h cn_store_close" c_storeClose :: IO ()
-foreign import ccall "concordance_shim.h cn_store_upsert"
-    c_storeUpsert ::
-        CStr.CString ->
-        CStr.CString ->
-        CStr.CString ->
-        Int ->
-        CStr.CString ->
-        CStr.CString ->
-        Ptr.Ptr Double ->
-        CStr.CString ->
-        Int ->
-        IO Int
-foreign import ccall "concordance_shim.h cn_store_delete"
-    c_storeDelete :: CStr.CString -> CStr.CString -> Int -> IO Int
-foreign import ccall "concordance_shim.h cn_store_optimize"
-    c_storeOptimize :: CStr.CString -> Int -> IO Int
 foreign import ccall "concordance_shim.h cn_store_search"
     c_storeSearch ::
         Ptr.Ptr Double ->
@@ -63,10 +54,31 @@ foreign import ccall "concordance_shim.h cn_store_search"
         IO Int
 foreign import ccall "concordance_shim.h cn_store_pages"
     c_storePages :: CStr.CString -> Int -> CStr.CString -> Int -> IO Int
+foreign import ccall "concordance_shim.h cn_async_fd" c_asyncFd :: IO Int
+foreign import ccall "concordance_shim.h cn_async_upsert"
+    c_asyncUpsert ::
+        CStr.CString ->
+        CStr.CString ->
+        CStr.CString ->
+        Int ->
+        CStr.CString ->
+        CStr.CString ->
+        Ptr.Ptr Double ->
+        IO Int
+foreign import ccall "concordance_shim.h cn_async_delete"
+    c_asyncDelete :: CStr.CString -> IO Int
+foreign import ccall "concordance_shim.h cn_async_optimize" c_asyncOptimize :: IO Int
+foreign import ccall "concordance_shim.h cn_async_collect"
+    c_asyncCollect :: CStr.CString -> Int -> IO Int
 
--- | An open store handle (the shim holds the actual connection).
-newtype Store = Store
+{- | An open store handle (the shim holds the actual connection). The lock
+serialises mutations across green threads -- the shim has one async job slot
+-- and the descriptor is the shim's completion pipe (ADR-080).
+-}
+data Store = Store
     { storeDims :: Int
+    , storeAsyncFd :: Int
+    , storeLock :: MVar.MVar ()
     }
 
 -- | One chunk to index: anchor, text, and its unit vector.
@@ -126,7 +138,13 @@ openStore dir dims =
             rc <- c_storeOpen dirC dims errC errBufSize
             if rc /= 0
                 then Left <$> CStr.peekCAString errC
-                else pure (Right (Store dims))
+                else do
+                    fd <- c_asyncFd
+                    if fd < 0
+                        then pure (Left "search store: async worker unavailable")
+                        else do
+                            lock <- MVar.newMVar ()
+                            pure (Right (Store dims fd lock))
 
 -- | Closes the shim's store connection.
 closeStore :: IO ()
@@ -138,33 +156,27 @@ so re-upserting is idempotent whatever the previous chunk count).
 upsertPage ::
     Store -> String -> String -> String -> [StoreChunk] -> IO (Either String ())
 upsertPage store pageId statFp contentFp chunks =
-    withUtf8 pageId $ \pageC ->
-        withUtf8 statFp $ \statC ->
-            withUtf8 contentFp $ \contentC ->
-                withUtf8 (packStrings (map storeChunkAnchor chunks)) $ \anchorsC ->
-                    withUtf8 (packStrings (map storeChunkText chunks)) $ \textsC ->
-                        withVectors store chunks $ \vecsC ->
-                            Alloc.allocaBytes errBufSize $ \errC -> do
-                                rc <-
-                                    c_storeUpsert
-                                        pageC
-                                        statC
-                                        contentC
-                                        (length chunks)
-                                        anchorsC
-                                        textsC
-                                        vecsC
-                                        errC
-                                        errBufSize
-                                shimResult rc errC (const ())
+    -- the submit copies every argument, so the marshalling scopes end here
+    mutate store $
+        withUtf8 pageId $ \pageC ->
+            withUtf8 statFp $ \statC ->
+                withUtf8 contentFp $ \contentC ->
+                    withUtf8 (packStrings (map storeChunkAnchor chunks)) $ \anchorsC ->
+                        withUtf8 (packStrings (map storeChunkText chunks)) $ \textsC ->
+                            withVectors store chunks $ \vecsC ->
+                                c_asyncUpsert
+                                    pageC
+                                    statC
+                                    contentC
+                                    (length chunks)
+                                    anchorsC
+                                    textsC
+                                    vecsC
 
 -- | Removes all of a page's chunks.
 deletePage :: Store -> String -> IO (Either String ())
-deletePage _store pageId =
-    withUtf8 pageId $ \pageC ->
-        Alloc.allocaBytes errBufSize $ \errC -> do
-            rc <- c_storeDelete pageC errC errBufSize
-            shimResult rc errC (const ())
+deletePage store pageId =
+    mutate store (withUtf8 pageId c_asyncDelete)
 
 {- | Optimises the dataset: compacts the fragments the delete-then-add
 upserts leave behind, prunes old versions, and folds fresh rows into the
@@ -172,10 +184,8 @@ vector and FTS indexes. When to call it is the worker's policy
 ('Verso.SearchQueue.optimiseDue').
 -}
 optimizeStore :: Store -> IO (Either String ())
-optimizeStore _store =
-    Alloc.allocaBytes errBufSize $ \errC -> do
-        rc <- c_storeOptimize errC errBufSize
-        shimResult rc errC (const ())
+optimizeStore store =
+    mutate store c_asyncOptimize
 
 -- | Hybrid search: query vector plus query text, top k fused hits.
 searchStore :: Store -> [Double] -> String -> Int -> IO (Either String [Hit])
@@ -242,6 +252,23 @@ withVectors store chunks action =
             (uncurry (Storable.pokeElemOff vecsC))
             (zip [0 ..] (concatMap storeChunkVector chunks))
         action vecsC
+
+{- | Runs a store mutation off-thread (ADR-080): submits the job to the
+shim's worker, parks this green thread on the completion descriptor (the
+rest of the runtime keeps running), then collects the outcome. The lock
+serialises green threads over the shim's single job slot.
+-}
+mutate :: Store -> IO Int -> IO (Either String ())
+mutate store submit =
+    MVar.withMVar (storeLock store) $ \_ -> do
+        rc <- submit
+        if rc < 0
+            then pure (Left "search store: async submit refused")
+            else do
+                FD.waitForReadFD (storeAsyncFd store)
+                Alloc.allocaBytes errBufSize $ \errC -> do
+                    collected <- c_asyncCollect errC errBufSize
+                    shimResult collected errC (const ())
 
 -- | Interprets a shim return code, reading the error buffer on failure.
 shimResult :: Int -> CStr.CString -> (Int -> a) -> IO (Either String a)

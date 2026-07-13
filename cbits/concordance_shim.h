@@ -61,4 +61,23 @@ long cn_store_search(const double *query_vec, long dims,
  * appearing once per chunk; callers dedupe). Returns the record count. */
 long cn_store_pages(char *out, long outlen, char *err, long errlen);
 
+/* Async store mutations (ADR-080). A store mutation can take from tens of
+ * milliseconds to several seconds (optimize's version cleanup), and a
+ * synchronous FFI call blocks the whole single-threaded MicroHs runtime for
+ * its duration. cn_async_* submit copies of the arguments to a dedicated
+ * worker thread and return immediately; the worker writes one byte to the
+ * cn_async_fd() pipe when the job finishes, so the Haskell side can park
+ * just its own green thread on the descriptor (System.IO.FD.waitForReadFD)
+ * and then fetch the outcome with cn_async_collect(). Exactly one job may
+ * be in flight; the caller serialises (Concordance.Store holds a lock).
+ * Submits return 0 on acceptance, < 0 on refusal. */
+long cn_async_fd(void);
+long cn_async_upsert(const char *page_id, const char *stat_fp,
+                     const char *content_fp, long nchunks,
+                     const char *anchors, const char *texts,
+                     const double *vectors);
+long cn_async_delete(const char *page_id);
+long cn_async_optimize(void);
+long cn_async_collect(char *err, long errlen);
+
 #endif

@@ -450,3 +450,188 @@ long cn_store_pages(char *out, long outlen, char *err, long errlen) {
     if (!res) { fail(err, errlen, "execute", NULL); return -4; }
     return emit_records(res, 0, out, outlen, err, errlen);
 }
+
+/* --- Async store mutations (ADR-080) ------------------------------------
+ * One worker thread runs store mutations off the MicroHs interpreter
+ * thread. The job slot holds owned copies of the submitted arguments, so
+ * the caller's marshalling scopes may unwind as soon as a submit returns;
+ * completion is one byte on a pipe the Haskell side can poll like any
+ * descriptor. Exactly one job is in flight at a time (the Haskell side
+ * serialises with a lock), so a plain slot with a state machine suffices.
+ * The worker only ever touches LanceDB, never the Haskell heap.
+ */
+#include <pthread.h>
+#include <unistd.h>
+
+enum cn_job_state { CN_IDLE = 0, CN_SUBMITTED, CN_DONE };
+enum cn_job_kind { CN_JOB_UPSERT = 1, CN_JOB_DELETE, CN_JOB_OPTIMIZE };
+
+static struct {
+    pthread_mutex_t mu;
+    pthread_cond_t cv;
+    int state;
+    int kind;
+    char *page_id;
+    char *stat_fp;
+    char *content_fp;
+    char *anchors;
+    char *texts;
+    double *vectors;
+    long nchunks;
+    long rc;
+    char err[512];
+} cn_job = { PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER,
+             CN_IDLE, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, {0} };
+
+static int cn_async_pipe[2] = { -1, -1 };
+static int cn_async_started = 0;
+
+static void *cn_async_main(void *arg) {
+    (void) arg;
+    for (;;) {
+        pthread_mutex_lock(&cn_job.mu);
+        while (cn_job.state != CN_SUBMITTED)
+            pthread_cond_wait(&cn_job.cv, &cn_job.mu);
+        int kind = cn_job.kind;
+        pthread_mutex_unlock(&cn_job.mu);
+        cn_job.err[0] = 0;
+        long rc = -1;
+        switch (kind) {
+        case CN_JOB_UPSERT:
+            rc = cn_store_upsert(cn_job.page_id, cn_job.stat_fp,
+                                 cn_job.content_fp, cn_job.nchunks,
+                                 cn_job.anchors, cn_job.texts, cn_job.vectors,
+                                 cn_job.err, (long) sizeof cn_job.err);
+            break;
+        case CN_JOB_DELETE:
+            rc = cn_store_delete(cn_job.page_id, cn_job.err,
+                                 (long) sizeof cn_job.err);
+            break;
+        case CN_JOB_OPTIMIZE:
+            rc = cn_store_optimize(cn_job.err, (long) sizeof cn_job.err);
+            break;
+        }
+        pthread_mutex_lock(&cn_job.mu);
+        cn_job.rc = rc;
+        cn_job.state = CN_DONE;
+        pthread_mutex_unlock(&cn_job.mu);
+        (void) !write(cn_async_pipe[1], "x", 1);
+    }
+    return NULL;
+}
+
+static long cn_async_ensure(void) {
+    if (cn_async_started) return 0;
+    if (pipe(cn_async_pipe) != 0) return -1;
+    pthread_t worker;
+    if (pthread_create(&worker, NULL, cn_async_main, NULL) != 0) return -1;
+    pthread_detach(worker);
+    cn_async_started = 1;
+    return 0;
+}
+
+long cn_async_fd(void) {
+    if (cn_async_ensure() != 0) return -1;
+    return cn_async_pipe[0];
+}
+
+static char *cn_dup_str(const char *s) {
+    size_t n = strlen(s) + 1;
+    char *d = malloc(n);
+    if (d) memcpy(d, s, n);
+    return d;
+}
+
+/* Copies n NUL-terminated strings laid out back to back. */
+static char *cn_dup_packed(const char *packed, long n) {
+    const char *p = packed;
+    for (long i = 0; i < n; i++) p += strlen(p) + 1;
+    size_t total = (size_t) (p - packed);
+    char *d = malloc(total ? total : 1);
+    if (d) memcpy(d, packed, total);
+    return d;
+}
+
+static void cn_job_free(void) {
+    free(cn_job.page_id);   cn_job.page_id = NULL;
+    free(cn_job.stat_fp);   cn_job.stat_fp = NULL;
+    free(cn_job.content_fp); cn_job.content_fp = NULL;
+    free(cn_job.anchors);   cn_job.anchors = NULL;
+    free(cn_job.texts);     cn_job.texts = NULL;
+    free(cn_job.vectors);   cn_job.vectors = NULL;
+}
+
+/* Claims the idle job slot; returns 0 holding the mutex, -1 otherwise. */
+static long cn_job_claim(int kind) {
+    if (cn_async_ensure() != 0) return -1;
+    pthread_mutex_lock(&cn_job.mu);
+    if (cn_job.state != CN_IDLE) {
+        pthread_mutex_unlock(&cn_job.mu);
+        return -1;
+    }
+    cn_job.kind = kind;
+    return 0;
+}
+
+/* Hands the claimed job to the worker and releases the mutex. */
+static long cn_job_start(void) {
+    cn_job.state = CN_SUBMITTED;
+    pthread_cond_signal(&cn_job.cv);
+    pthread_mutex_unlock(&cn_job.mu);
+    return 0;
+}
+
+long cn_async_upsert(const char *page_id, const char *stat_fp,
+                     const char *content_fp, long nchunks,
+                     const char *anchors, const char *texts,
+                     const double *vectors) {
+    if (cn_job_claim(CN_JOB_UPSERT) != 0) return -1;
+    cn_job.page_id = cn_dup_str(page_id);
+    cn_job.stat_fp = cn_dup_str(stat_fp);
+    cn_job.content_fp = cn_dup_str(content_fp);
+    cn_job.anchors = cn_dup_packed(anchors, nchunks);
+    cn_job.texts = cn_dup_packed(texts, nchunks);
+    size_t vbytes = (size_t) nchunks * (size_t) store_dims * sizeof(double);
+    cn_job.vectors = malloc(vbytes ? vbytes : 1);
+    if (cn_job.vectors) memcpy(cn_job.vectors, vectors, vbytes);
+    cn_job.nchunks = nchunks;
+    if (!cn_job.page_id || !cn_job.stat_fp || !cn_job.content_fp
+        || !cn_job.anchors || !cn_job.texts || !cn_job.vectors) {
+        cn_job_free();
+        cn_job.state = CN_IDLE;
+        pthread_mutex_unlock(&cn_job.mu);
+        return -1;
+    }
+    return cn_job_start();
+}
+
+long cn_async_delete(const char *page_id) {
+    if (cn_job_claim(CN_JOB_DELETE) != 0) return -1;
+    cn_job.page_id = cn_dup_str(page_id);
+    if (!cn_job.page_id) {
+        cn_job.state = CN_IDLE;
+        pthread_mutex_unlock(&cn_job.mu);
+        return -1;
+    }
+    return cn_job_start();
+}
+
+long cn_async_optimize(void) {
+    if (cn_job_claim(CN_JOB_OPTIMIZE) != 0) return -1;
+    return cn_job_start();
+}
+
+long cn_async_collect(char *err, long errlen) {
+    char byte;
+    if (read(cn_async_pipe[0], &byte, 1) != 1) {
+        fail(err, errlen, "async collect: pipe read", NULL);
+        return -1;
+    }
+    pthread_mutex_lock(&cn_job.mu);
+    long rc = cn_job.rc;
+    if (rc < 0) fail(err, errlen, cn_job.err[0] ? cn_job.err : "async job failed", NULL);
+    cn_job_free();
+    cn_job.state = CN_IDLE;
+    pthread_mutex_unlock(&cn_job.mu);
+    return rc;
+}

@@ -8,10 +8,14 @@ module Concordance.SearchSeamSpec (spec) where
 import qualified Concordance.Embedding as Embedding
 import qualified Concordance.Store as Store
 import qualified Concordance.WordPiece as WordPiece
+import qualified Control.Concurrent as Concurrent
+import qualified Control.Concurrent.MVar as MVar
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.IORef as IORef
 import qualified MicroHttp.Process as Process
 import qualified System.Directory as Directory
+import qualified System.IO.TimeMilli as TimeMilli
 import Test.Hspec
 
 -- | Where `make search-model` puts the model, per platform.
@@ -113,6 +117,55 @@ spec =
                     case listed of
                         Left e -> fail ("listPages: " ++ e)
                         Right pages -> length pages `shouldBe` nPages
+                    Store.closeStore
+                    Monad.void (Process.runProcess "rm" ["-rf", dir] Nothing Nothing)
+
+        it "given a store optimise in flight, when other green threads run, then they are not blocked (ADR-080)" $ do
+            available <- Store.searchAvailable
+            if not available
+                then skip "search shim not built"
+                else do
+                    let dir = "build/search-async-spec-store"
+                        dims = 8
+                    _ <- Process.runProcess "rm" ["-rf", dir] Nothing Nothing
+                    Right store <- Store.openStore dir dims
+                    -- Many tiny upserts: version-history growth is per CALL,
+                    -- and optimise's cleanup pass walks every accumulated
+                    -- version -- the production stall (a page publish behind
+                    -- seconds of cleanup). Tiny payloads keep marshalling and
+                    -- GC noise out of the gap measurement below.
+                    let chunk = Store.StoreChunk "a" "tiny chunk" (replicate dims 0.5)
+                    Monad.forM_ [1 .. 450] $ \i -> do
+                        Right () <- Store.upsertPage store ("async/tiny-" ++ show (i :: Int) ++ ".md") "s" "c" [chunk]
+                        pure ()
+                    done <- MVar.newEmptyMVar
+                    started <- TimeMilli.getTimeMilli
+                    _ <- Concurrent.forkIO $ do
+                        Right () <- Store.optimizeStore store
+                        MVar.putMVar done ()
+                    -- Tick while the optimise runs, recording the longest gap
+                    -- between ticks: a blocking FFI call shows up as one gap
+                    -- the length of the whole call.
+                    lastTick <- TimeMilli.getTimeMilli >>= IORef.newIORef
+                    maxGap <- IORef.newIORef (0 :: Int)
+                    let loop = do
+                            finished <- MVar.tryTakeMVar done
+                            now <- TimeMilli.getTimeMilli
+                            previous <- IORef.readIORef lastTick
+                            IORef.modifyIORef' maxGap (max (now - previous))
+                            IORef.writeIORef lastTick now
+                            case finished of
+                                Just () -> pure ()
+                                Nothing -> Concurrent.threadDelay 1000 >> loop
+                    loop
+                    finished <- TimeMilli.getTimeMilli
+                    gap <- IORef.readIORef maxGap
+                    let duration = finished - started
+                    putStrLn ("      [optimise " ++ show duration ++ "ms, longest tick gap " ++ show gap ++ "ms]")
+                    -- Guard: the optimise must be long enough to prove anything.
+                    (duration >= 100) `shouldBe` True
+                    -- The point: no stall the length of the optimise C call.
+                    (gap <= 50) `shouldBe` True
                     Store.closeStore
                     Monad.void (Process.runProcess "rm" ["-rf", dir] Nothing Nothing)
 

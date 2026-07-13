@@ -81,3 +81,20 @@ long cn_store_pages(char *out, long outlen, char *err, long errlen) {
     say_unavailable(err, errlen);
     return -1;
 }
+
+/* Async store mutations (ADR-080): unavailable in the stub. */
+long cn_async_fd(void) { return -1; }
+long cn_async_upsert(const char *page_id, const char *stat_fp,
+                     const char *content_fp, long nchunks,
+                     const char *anchors, const char *texts,
+                     const double *vectors) {
+    (void) page_id; (void) stat_fp; (void) content_fp; (void) nchunks;
+    (void) anchors; (void) texts; (void) vectors;
+    return -1;
+}
+long cn_async_delete(const char *page_id) { (void) page_id; return -1; }
+long cn_async_optimize(void) { return -1; }
+long cn_async_collect(char *err, long errlen) {
+    if (err && errlen > 0) err[0] = 0;
+    return -1;
+}

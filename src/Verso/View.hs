@@ -130,29 +130,44 @@ searchPage themeDefault origin query outcome =
         versionControls themeDefault
         Html.el "h1" [] (Html.text "Search")
         Html.p [Html.class_ "verso-version-back"] (backLink origin)
-        Html.el "form" [Html.attr "method" "get", Html.attr "action" "/search", Html.class_ "verso-search-form"] $ do
-            Html.input [Html.class_ "input", Html.attr "type" "search", Html.attr "name" "q", Html.attr "value" query, Html.attr "placeholder" "Search the wiki", Html.attr "autofocus" ""]
-            Chrome.chromeSubmitButton Chrome.OutlineControl [] (Html.text "Search")
+        -- The form still submits as a plain GET without JS; search-page.ts intercepts
+        -- it for instant results, so there is no submit button. The clear button is a
+        -- comfortable chrome icon button in place of the tiny native search-cancel
+        -- affordance (the same trade the top-bar SearchPanel makes).
+        Html.el "form" [Html.attr "method" "get", Html.attr "action" "/search", Html.class_ "verso-search-form"] $
+            Html.el "div" [Html.class_ "verso-search-box"] $ do
+                Html.input [Html.class_ "input", Html.attr "type" "search", Html.attr "name" "q", Html.attr "value" query, Html.attr "placeholder" "Search the wiki", Html.attr "autofocus" ""]
+                Chrome.chromeButton
+                    Chrome.IconControl
+                    (("class", "verso-search-clear") : ("aria-label", "Clear search") : [("hidden", "") | null query])
+                    (Chrome.chromeIcon "x")
         case outcome of
             Nothing ->
                 Html.p [] (Html.text "Search is not enabled on this server (see search_enabled and make search-shim).")
-            Just (hits, depth) -> do
-                Monad.when (depth > 0) $
-                    Html.p [Html.class_ "verso-search-pending"] (Html.text ("Indexing in progress: " ++ show depth ++ " page(s) pending; results may be incomplete."))
-                Monad.unless (null query) $
-                    if null hits
-                        then Html.p [] (Html.text "No results.")
-                        else Html.el "ol" [Html.class_ "verso-search-results"] (mapM_ searchResult hits)
+            Just (hits, depth) ->
+                -- The region search-page.ts re-renders on each keystroke; its absence
+                -- (search disabled) leaves the enhancement inert.
+                Html.el "div" [Html.class_ "verso-search-output"] $ do
+                    Monad.when (depth > 0) $
+                        Html.p [Html.class_ "verso-search-pending"] (Html.text ("Indexing in progress: " ++ show depth ++ " page(s) pending; results may be incomplete."))
+                    Monad.unless (null query) $
+                        if null hits
+                            then Html.p [] (Html.text "No results.")
+                            else Html.el "ol" [Html.class_ "verso-search-results"] (mapM_ searchResult hits)
 
--- | One search result: the page (and section) linked, with a text excerpt.
+{- | One search result as a Basecoat card: the header links the page (and
+section), the body is a text excerpt.
+-}
 searchResult :: Store.Hit -> Html.Html ()
 searchResult hit =
-    Html.el "li" [] $ do
-        Html.p [Html.class_ "verso-search-hit"] $ do
-            Html.a [Html.href ("/documents/" ++ Store.hitPage hit)] (Html.text (Store.hitPage hit))
-            Monad.unless (null (Store.hitAnchor hit)) $
-                Html.el "span" [Html.class_ "verso-search-anchor"] (Html.text (" > " ++ Store.hitAnchor hit))
-        Html.p [Html.class_ "verso-search-excerpt"] (Html.text (excerptOf (Store.hitText hit)))
+    Html.el "li" [Html.class_ "card verso-search-result"] $ do
+        Html.el "header" [] $
+            Html.el "h2" [Html.class_ "verso-search-hit"] $ do
+                Html.a [Html.href ("/documents/" ++ Store.hitPage hit)] (Html.text (Store.hitPage hit))
+                Monad.unless (null (Store.hitAnchor hit)) $
+                    Html.el "span" [Html.class_ "verso-search-anchor"] (Html.text (" > " ++ Store.hitAnchor hit))
+        Html.el "section" [] $
+            Html.p [Html.class_ "verso-search-excerpt"] (Html.text (excerptOf (Store.hitText hit)))
 
 {- | A result's one-line excerpt: the chunk text past its context line and
 its own heading line, flattened.

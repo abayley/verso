@@ -112,7 +112,10 @@ spec =
                 response <- runTreeApp treeRoot (request Http.GET ["search"])
                 Http.statusCode (Http.responseStatus response) `shouldBe` 200
                 bodyText response `shouldInclude` "class=\"input\""
-                bodyText response `shouldInclude` "<button type=\"submit\" class=\"btn\" data-variant=\"outline\" data-size=\"sm\">Search</button>"
+                -- Instant search (search-page.ts): a chrome icon clear button, no submit button.
+                bodyText response `shouldInclude` "class=\"btn verso-search-clear\" data-variant=\"ghost\" data-size=\"icon-sm\""
+                bodyText response `shouldInclude` "aria-label=\"Clear search\""
+                ("type=\"submit\"" `List.isInfixOf` bodyText response) `shouldBe` False
 
             it "given a titled page, when read, then the html title is the frontmatter name" $ do
                 treeRoot <- setupTreeFixture

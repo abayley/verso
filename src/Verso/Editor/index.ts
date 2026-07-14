@@ -1,4 +1,5 @@
 import { MarkdownEditorElement } from "./markdown-editor-element.js";
+import { installSearchPage } from "./search-page.js";
 import { installTooltips } from "./toolbar-tooltip-controller.js";
 import { installTrashPurge, installTrashRestore } from "./trash-page.js";
 import { installUndoApply } from "./undo-page.js";
@@ -16,3 +17,5 @@ installTrashRestore();
 installTrashPurge();
 // The undo page's Undo buttons (likewise a delegated no-op elsewhere).
 installUndoApply();
+// The search page's instant results (likewise a delegated no-op elsewhere).
+installSearchPage();

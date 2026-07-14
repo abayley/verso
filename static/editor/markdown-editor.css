@@ -829,17 +829,81 @@ a.markdown-editor__crumb:hover {
   padding-left: 2em;
 }
 
-/* The search form: input and button on one row, the input taking the width. */
-.verso-search-form {
-  align-items: center;
+/* The results: a stack of cards (list semantics kept, decoration dropped). */
+.verso-version-page main ol.verso-search-results {
   display: flex;
-  gap: 0.5rem;
+  flex-direction: column;
+  gap: 0.75rem;
+  list-style: none;
+  max-width: 40rem;
+  padding-left: 0;
+}
+
+/* The title link stretches over the whole card, so anywhere on it clicks
+   through (and native modified-clicks still work on the real anchor). */
+.verso-search-result {
+  position: relative;
+}
+
+.verso-search-result .verso-search-hit a {
+  color: var(--markdown-editor-text);
+  text-decoration: none;
+}
+
+.verso-search-result .verso-search-hit a::after {
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+
+.verso-search-result:hover {
+  background-color: var(--color-accent);
+}
+
+.verso-search-result:hover .verso-search-hit a {
+  text-decoration: underline;
+}
+
+.verso-search-result .verso-search-anchor {
+  color: var(--markdown-editor-muted);
+  font-weight: normal;
+}
+
+.verso-search-result .verso-search-excerpt {
+  color: var(--markdown-editor-muted);
+  margin: 0;
+}
+
+/* The search form: one full-width instant input (no submit button); the clear
+   button overlays the input's right edge with a comfortable hit area, replacing
+   the tiny native search-cancel affordance (as the top-bar SearchPanel does). */
+.verso-search-form {
   margin: 1em 0;
   max-width: 40rem;
 }
 
-.verso-search-form .input {
-  flex: 1;
+.verso-search-box {
+  position: relative;
+}
+
+.verso-search-box .input {
+  padding-right: 2.5rem;
+  width: 100%;
+}
+
+.verso-search-box .input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.verso-search-clear {
+  position: absolute;
+  right: 0.3rem;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.verso-search-clear[hidden] {
+  display: none;
 }
 
 .verso-version-back a {
@@ -1199,10 +1263,15 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   display: inline-flex;
   justify-content: center;
   padding: 0.25rem;
+  transition: transform 0.15s ease;
 }
 
 .markdown-editor__sidebar-toggle:hover {
   color: var(--markdown-editor-text);
+}
+
+.markdown-editor__sidebar[data-collapsed="true"] .markdown-editor__sidebar-toggle {
+  transform: rotate(180deg);
 }
 
 /* Collapsed: a thin rail showing only the toggle (the panels are hidden), so the

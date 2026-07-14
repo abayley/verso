@@ -42,6 +42,13 @@ frontend:
 
 done:
 
+- 2026-07-14: RHS metadata-panel collapse toggle now rotates like the LHS nav
+  toggle (transition + rotate(180deg) on data-collapsed)
+- 2026-07-14: search results render as clickable Basecoat cards (stretched
+  title link, hover tint); search page is instant like the top-bar search
+  (search-page.ts: debounced /search?json, URL sync, no submit button) with a
+  chrome icon clear button replacing the tiny native search-cancel affordance
+- what would moving to react look like? (docs/react.md)
 - delete action now uses the HTTP DELETE verb (RFC-0036; client
   markdown-editor-element.ts:608, server DELETE /tree/*path)
 - 2026-07-13: search page back link now referrer-based like the trash page

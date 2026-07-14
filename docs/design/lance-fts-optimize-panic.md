@@ -1,6 +1,17 @@
 # Lance FTS optimize panic (lance-index 7.0.0)
 
-Status: OPEN upstream; reproduced locally 2026-07-14. Kills the whole server
+Status: FIXED locally 2026-07-14 by upgrading the vendored build to
+lancedb 0.31.0 / lance + lance-index 8.0.0 (the lance#7325 area fix for the
+inverted index under deletions). Verification: 10/10 hang-repro storm runs
+GREEN on the upgraded dylib (churned index, fresh index, and the full
+integration search seam), where lance-index 7.0.0 crashed ~1 in 3 runs.
+The vendored clone carries the dep bump as a commit on branch
+`lance-upgrade-7325`; `spike/search/lancedb-c-fts-query.patch` now includes
+the version pins, so `make search-lancedb` reproduces the fixed build (needs
+rustc >= 1.94; `rustup update stable`). Still worth reporting upstream so
+7.x users hit a fix, hence the notes below.
+
+Original diagnosis (lance-index 7.0.0): kills the whole server
 (Rust panic -> abort across the C FFI; nothing our side can catch).
 
 ## Symptom

@@ -96,7 +96,6 @@ pieceId vocab = exactLookup (vocabStart vocab)
 {- | Encodes text as a BERT input sequence: @[CLS]@, the text's word pieces,
 @[SEP]@, capped at the given total token budget. The attention mask is all
 ones (no padding is produced).
-
 -}
 encode :: Vocab -> Int -> String -> Encoded
 encode vocab cap text =
@@ -140,8 +139,9 @@ characters outside the table pass through unchanged.
 normalise :: String -> String
 normalise = map (foldAccent . Char.toLower)
 
--- | Folds one lowercased character's accent away, if it has one. ASCII (the
--- overwhelming majority of corpus text) short-circuits before the table lookup.
+{- | Folds one lowercased character's accent away, if it has one. ASCII (the
+overwhelming majority of corpus text) short-circuits before the table lookup.
+-}
 foldAccent :: Char -> Char
 foldAccent c
     | c <= '\127' = c

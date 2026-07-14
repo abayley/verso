@@ -2,15 +2,13 @@
 
 carried over from 2026-07-13 session (RFC-0036 / ADR-080):
 
-- lance FTS optimize panic (SIGABRT, `InnerBuilder::merge_from` OOB in lance-index 7.0.0);
-  REPRODUCED 2026-07-14 at ~1/3 storm runs (`scripts/hang-repro.sh`); see
-  docs/design/lance-fts-optimize-panic.md (incl. draft upstream issue text);
-  likely fixed by upgrading vendored lance (lance#7325 area) with the
-  lancedb-c PR work
-- search chunking/tokenisation allocation (Concordance, String-heavy);
-  the memchr-scan technique from `Verso.DocumentLinks.pageLinks` may apply
-  (see docs/design/link-index-performance.md, 2026-07-14 section)
-- lancedb-c PR (RFC-0034 era) still to be raised upstream
+- lancedb-c PR (RFC-0034 era) still to be raised upstream; the vendored clone
+  now also carries the lance 8.0.0 dep bump (branch `lance-upgrade-7325`) that
+  fixed the FTS optimize panic -- fold it into the PR, and consider reporting
+  the 7.0.0 panic upstream (draft text in docs/design/lance-fts-optimize-panic.md)
+- search indexing allocation, next round (optional): restructure
+  SearchChunks/WordPiece over ByteString with the memchr technique; the
+  2026-07-14 pass cut it 2.4x in place (see link-index-performance.md)
 
 backend:
 
@@ -69,3 +67,7 @@ done:
   the link index (was: listen-but-fail-every-request)
 - 2026-07-14: `make check` runs the browser smoke; its startup poll no longer
   hangs bun on failure
+- 2026-07-14: search tokenisation 2.4x less allocation (trie vocab, ASCII
+  fast paths, linear chunker; `make bench-search-chunk`)
+- 2026-07-14: vendored lancedb upgraded to 0.31.0 / lance 8.0.0; the FTS
+  optimize panic no longer reproduces (10/10 storm runs GREEN, was ~1/3 crash)

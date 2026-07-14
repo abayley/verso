@@ -12,6 +12,7 @@ module Concordance.WordPiece (
     mkVocab,
     Encoded (..),
     encode,
+    encodeMany,
 ) where
 
 import qualified Concordance.Utf8 as Utf8
@@ -50,23 +51,6 @@ exactLookup :: Trie -> String -> Maybe Int
 exactLookup (Trie value _) [] = value
 exactLookup (Trie _ children) (c : cs) = Map.lookup c children >>= \child -> exactLookup child cs
 
-{- | The longest piece in the trie that prefixes the word (consuming at least
-one character), with the unconsumed remainder.
--}
-longestMatch :: Trie -> String -> Maybe (Int, String)
-longestMatch trie word = case word of
-    [] -> Nothing
-    (c : cs) -> descend trie Nothing c cs
-  where
-    descend (Trie _ children) best c cs =
-        case Map.lookup c children of
-            Nothing -> best
-            Just child@(Trie value _) ->
-                let best' = maybe best (\tokenId -> Just (tokenId, cs)) value
-                 in case cs of
-                        [] -> best'
-                        (c' : cs') -> descend child best' c' cs'
-
 -- | An encoded sequence: token ids and the matching attention mask.
 data Encoded = Encoded
     { encodedIds :: [Int]
@@ -93,28 +77,133 @@ mkVocab bytes = List.foldl' add (Vocab emptyTrie emptyTrie) pieces
 pieceId :: Vocab -> String -> Maybe Int
 pieceId vocab = exactLookup (vocabStart vocab)
 
-{- | Encodes text as a BERT input sequence: @[CLS]@, the text's word pieces,
-@[SEP]@, capped at the given total token budget. The attention mask is all
-ones (no padding is produced).
--}
-encode :: Vocab -> Int -> String -> Encoded
-encode vocab cap text =
-    let tokens = concatMap splitPunctuation (words (normalise text))
-        pieces = take (cap - 2) (concatMap (wordPieces vocab) tokens)
-        ids = specialId vocab "[CLS]" : pieces ++ [specialId vocab "[SEP]"]
-     in Encoded ids (map (const 1) ids)
+{- | Encodes UTF-8 text as a BERT input sequence: @[CLS]@, the text's word
+pieces, @[SEP]@, capped at the given total token budget. The attention mask
+is all ones (no padding is produced).
 
-{- | Splits a whitespace-delimited token at punctuation, every punctuation
-character becoming its own token (the BERT basic-tokeniser rule).
+The walk runs directly over the bytes: each character is decoded and
+normalised on the fly, whitespace and punctuation delimit tokens (the BERT
+basic-tokeniser rules), and words feed the trie in place -- no intermediate
+decoded 'String', word list, or token list is ever built. On mhs that
+intermediate churn was most of the search-indexing cost
+(@make bench-search-chunk@).
 -}
-splitPunctuation :: String -> [String]
-splitPunctuation = go []
+encode :: Vocab -> Int -> BS.ByteString -> Encoded
+encode vocab cap text = fst (encodeCached vocab cap Map.empty text)
+
+{- | Encodes several texts (a page's chunks), sharing one word -> piece-ids
+cache across them: a page repeats its words heavily across chunks, and the
+cache key is the word's raw byte view, whose comparison is an mhs primitive
+(@bscmp@) -- unlike the 'String'-keyed memo this replaces, the lookup is far
+cheaper than re-walking the trie.
+-}
+encodeMany :: Vocab -> Int -> [BS.ByteString] -> [Encoded]
+encodeMany vocab cap = go Map.empty
   where
-    go acc [] = flush acc []
-    go acc (c : rest)
-        | isPunct c = flush acc ([c] : go [] rest)
-        | otherwise = go (c : acc) rest
-    flush acc more = if null acc then more else reverse acc : more
+    go _ [] = []
+    go cache (text : rest) =
+        let (encoded, cache') = encodeCached vocab cap cache text
+         in encoded : go cache' rest
+
+-- | The word cache: raw word bytes to piece ids.
+type PieceCache = Map.Map BS.ByteString [Int]
+
+-- | One text's encoding, threading the shared word cache.
+encodeCached :: Vocab -> Int -> PieceCache -> BS.ByteString -> (Encoded, PieceCache)
+encodeCached vocab cap cache0 text =
+    let (pieces, cacheOut) = scan (cap - 2) cache0 0
+        ids = specialId vocab "[CLS]" : pieces ++ [specialId vocab "[SEP]"]
+     in (Encoded ids (map (const 1) ids), cacheOut)
+  where
+    len = BS.length text
+    unkId = specialId vocab "[UNK]"
+
+    -- The decoded char at byte i and its width (permissive, mirroring Utf8.decodeUtf8).
+    charAt i =
+        let b0 = BS.index text i
+            n0 = Char.ord b0
+            contAt k = Char.ord (BS.index text (i + k))
+            multi n lead =
+                let ok = i + n < len && all (\k -> let x = contAt k in x >= 0x80 && x < 0xC0) [1 .. n]
+                 in if ok
+                        then (Char.chr (List.foldl' (\acc k -> acc * 64 + (contAt k - 0x80)) lead [1 .. n]), n + 1)
+                        else (b0, 1)
+         in if n0 < 0x80
+                then (b0, 1)
+                else
+                    if n0 >= 0xC0 && n0 < 0xE0
+                        then multi 1 (n0 - 0xC0)
+                        else
+                            if n0 >= 0xE0 && n0 < 0xF0
+                                then multi 2 (n0 - 0xE0)
+                                else if n0 >= 0xF0 && n0 < 0xF8 then multi 3 (n0 - 0xF0) else (b0, 1)
+
+    -- The normalised (lowercased, accent-folded) char at byte i and its width.
+    -- ASCII (the overwhelming majority) short-circuits the decode and fold machinery.
+    normAt i =
+        let b = BS.index text i
+         in if b <= '\127'
+                then (if Char.isAsciiUpper b then Char.chr (Char.ord b + 32) else b, 1)
+                else let (c, w) = charAt i in (foldAccent (Char.toLower c), w)
+
+    -- The token-id stream from byte i (at most budget ids), and the updated cache.
+    scan budget cache i
+        | budget <= 0 || i >= len = ([], cache)
+        | otherwise =
+            let (c, w) = normAt i
+             in if isSpaceChar c
+                    then scan budget cache (i + w)
+                    else
+                        if isPunct c
+                            then emit budget [singlePieceId c] cache (i + w)
+                            else
+                                let (wordTo, wordChars) = wordEnd (i + w) 1
+                                    key = BS.take (wordTo - i) (BS.drop i text)
+                                 in case Map.lookup key cache of
+                                        Just ids -> emit budget ids cache wordTo
+                                        Nothing ->
+                                            let ids = wordIds i wordTo wordChars
+                                             in emit budget ids (Map.insert key ids cache) wordTo
+
+    emit budget ids cache i =
+        let (rest, cache') = scan (budget - length ids) cache i
+         in (take budget ids ++ rest, cache')
+
+    -- The word's end byte and char count, scanning from byte j (n chars consumed).
+    wordEnd j n
+        | j >= len = (j, n)
+        | otherwise =
+            let (c, w) = normAt j
+             in if isSpaceChar c || isPunct c then (j, n) else wordEnd (j + w) (n + 1)
+
+    -- A single punctuation char's piece id ([UNK] when the vocab lacks it).
+    singlePieceId c = case vocabStart vocab of
+        Trie _ children -> case Map.lookup c children of
+            Just (Trie (Just tokenId) _) -> tokenId
+            _ -> unkId
+
+    -- A word's piece ids over bytes [from, to): greedy longest match, [UNK] on any failure.
+    wordIds from to chars
+        | chars > maxWordLength = [unkId]
+        | otherwise = Maybe.fromMaybe [unkId] (go (vocabStart vocab) from)
+      where
+        go trie j = do
+            (tokenId, j') <- longest trie j Nothing
+            if j' >= to then Just [tokenId] else (tokenId :) <$> go (vocabContinuation vocab) j'
+        longest (Trie _ children) j best
+            | j >= to = best
+            | otherwise =
+                let (c, w) = normAt j
+                 in case Map.lookup c children of
+                        Nothing -> best
+                        Just child@(Trie value _) ->
+                            longest child (j + w) (maybe best (\tokenId -> Just (tokenId, j + w)) value)
+
+-- | The exact ASCII whitespace set of 'Char.isSpace', with the Unicode fallback.
+isSpaceChar :: Char -> Bool
+isSpaceChar c
+    | c <= '\127' = c == ' ' || (c >= '\t' && c <= '\r')
+    | otherwise = Char.isSpace c
 
 {- | BERT's punctuation test: ASCII punctuation plus Unicode P\/S categories.
 ASCII answers with range tests (the four ASCII punctuation\/symbol runs --
@@ -130,14 +219,6 @@ isPunct c
             || (c >= '[' && c <= '`')
             || (c >= '{' && c <= '~')
     | otherwise = Char.isPunctuation c || Char.isSymbol c
-
-{- | BERT uncased normalisation: lowercase and strip accents. Accent
-stripping folds common Latin accented letters to their base letter (the
-practical subset of Unicode NFD + drop-combining-marks for this corpus);
-characters outside the table pass through unchanged.
--}
-normalise :: String -> String
-normalise = map (foldAccent . Char.toLower)
 
 {- | Folds one lowercased character's accent away, if it has one. ASCII (the
 overwhelming majority of corpus text) short-circuits before the table lookup.
@@ -165,22 +246,6 @@ accentTable =
         , ('s', "\353")
         , ('z', "\382\380\378")
         ]
-
-{- | A single word's piece ids: greedy longest-match-first against the
-vocabulary, continuation pieces carrying the @##@ prefix. A word any part
-of which cannot be matched becomes a single @[UNK]@ (the BERT rule: no
-partial piece sequences).
--}
-wordPieces :: Vocab -> String -> [Int]
-wordPieces vocab word
-    | length word > maxWordLength = [specialId vocab "[UNK]"]
-    | otherwise = Maybe.fromMaybe [specialId vocab "[UNK]"] (go (vocabStart vocab) word)
-  where
-    go trie rest = do
-        (tokenId, remaining) <- longestMatch trie rest
-        if null remaining
-            then Just [tokenId]
-            else (tokenId :) <$> go (vocabContinuation vocab) remaining
 
 -- | BERT's per-word character limit: longer words become @[UNK]@ unmatched.
 maxWordLength :: Int

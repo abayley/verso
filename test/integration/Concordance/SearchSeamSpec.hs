@@ -102,7 +102,7 @@ spec =
                     -- Long page ids and many chunk rows per page push the
                     -- packed listing well past the 1 MiB result buffer.
                     let pageId i = "pages/" ++ replicate 500 'x' ++ "-" ++ show (i :: Int)
-                        chunk = Store.StoreChunk "" "t" [1, 0, 0, 0]
+                        chunk = Store.StoreChunk "" (BS.pack "t") [1, 0, 0, 0]
                         nPages = 30
                     Monad.forM_ [1 .. nPages] $ \i -> do
                         Right () <-
@@ -134,7 +134,7 @@ spec =
                     -- version -- the production stall (a page publish behind
                     -- seconds of cleanup). Tiny payloads keep marshalling and
                     -- GC noise out of the gap measurement below.
-                    let chunk = Store.StoreChunk "a" "tiny chunk" (replicate dims 0.5)
+                    let chunk = Store.StoreChunk "a" (BS.pack "tiny chunk") (replicate dims 0.5)
                     Monad.forM_ [1 .. 450] $ \i -> do
                         Right () <- Store.upsertPage store ("async/tiny-" ++ show (i :: Int) ++ ".md") "s" "c" [chunk]
                         pure ()
@@ -181,11 +181,11 @@ spec =
                     Right embedder <- Embedding.openEmbedder profile
                     Right store <- Store.openStore storeDir 384
                     let embedOrDie text = do
-                            r <- Embedding.embedText embedder vocab profile text
+                            r <- Embedding.embedText embedder vocab profile (BS.pack text)
                             either (fail . ("embed: " ++)) pure r
                         chunkFor anchor text = do
                             vec <- embedOrDie text
-                            pure (Store.StoreChunk anchor text vec)
+                            pure (Store.StoreChunk anchor (BS.pack text) vec)
 
                     -- upsert two pages
                     aChunks <-

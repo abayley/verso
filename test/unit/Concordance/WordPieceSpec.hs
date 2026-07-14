@@ -1,5 +1,6 @@
 module Concordance.WordPieceSpec (spec) where
 
+import qualified Concordance.Utf8 as Utf8
 import qualified Concordance.WordPiece as WordPiece
 import qualified Data.ByteString.Char8 as BS
 import Test.Hspec
@@ -10,46 +11,50 @@ tinyVocab =
     WordPiece.mkVocab
         (BS.pack "[PAD]\n[UNK]\n[CLS]\n[SEP]\nhello\nworld\n,\n!\nun\n##believ\n##able\n##b\n##hello")
 
+-- | Test input as UTF-8 bytes (encode's input type).
+utf8 :: String -> BS.ByteString
+utf8 = BS.pack . Utf8.encodeUtf8
+
 spec :: Spec
 spec =
     describe "Concordance.WordPiece" $ do
         it "encodes the empty string as [CLS] [SEP] with an all-ones mask" $ do
-            let enc = WordPiece.encode tinyVocab 512 ""
+            let enc = WordPiece.encode tinyVocab 512 (utf8 "")
             WordPiece.encodedIds enc `shouldBe` [2, 3]
             WordPiece.encodedMask enc `shouldBe` [1, 1]
 
         it "encodes a single in-vocab word between the specials" $ do
-            let enc = WordPiece.encode tinyVocab 512 "hello"
+            let enc = WordPiece.encode tinyVocab 512 (utf8 "hello")
             WordPiece.encodedIds enc `shouldBe` [2, 4, 3]
             WordPiece.encodedMask enc `shouldBe` [1, 1, 1]
 
         it "lowercases and strips accents before lookup" $ do
-            let enc = WordPiece.encode tinyVocab 512 "H\233LL\214"
+            let enc = WordPiece.encode tinyVocab 512 (utf8 "H\233LL\214")
             WordPiece.encodedIds enc `shouldBe` [2, 4, 3]
 
         it "splits punctuation into its own tokens" $ do
-            let enc = WordPiece.encode tinyVocab 512 "hello, world!"
+            let enc = WordPiece.encode tinyVocab 512 (utf8 "hello, world!")
             WordPiece.encodedIds enc `shouldBe` [2, 4, 6, 5, 7, 3]
 
         it "splits an out-of-vocab word greedily into ## continuation pieces" $ do
             -- greedy longest match must pick ##believ over ##b
-            let enc = WordPiece.encode tinyVocab 512 "unbelievable"
+            let enc = WordPiece.encode tinyVocab 512 (utf8 "unbelievable")
             WordPiece.encodedIds enc `shouldBe` [2, 8, 9, 10, 3]
 
         it "encodes a word with no matching pieces as [UNK]" $ do
-            let enc = WordPiece.encode tinyVocab 512 "zzz"
+            let enc = WordPiece.encode tinyVocab 512 (utf8 "zzz")
             WordPiece.encodedIds enc `shouldBe` [2, 1, 3]
 
         it "encodes the whole word as [UNK] when matching fails mid-word" $ do
             -- un ##believ match, then 'zzz' has no piece: one [UNK], not partial pieces
-            let enc = WordPiece.encode tinyVocab 512 "unbelievzzz"
+            let enc = WordPiece.encode tinyVocab 512 (utf8 "unbelievzzz")
             WordPiece.encodedIds enc `shouldBe` [2, 1, 3]
 
         it "encodes words longer than 100 characters as [UNK] without matching" $ do
             -- 20 hellos (100 chars) still match; 21 (105 chars) trip the length rule
             let hellos n = concat (replicate n "hello")
-                atLimit = WordPiece.encode tinyVocab 512 (hellos 20)
-                overLimit = WordPiece.encode tinyVocab 512 (hellos 21)
+                atLimit = WordPiece.encode tinyVocab 512 (utf8 (hellos 20))
+                overLimit = WordPiece.encode tinyVocab 512 (utf8 (hellos 21))
             WordPiece.encodedIds atLimit `shouldBe` [2, 4] ++ replicate 19 12 ++ [3]
             WordPiece.encodedIds overLimit `shouldBe` [2, 1, 3]
 
@@ -58,10 +63,10 @@ spec =
             let vocab =
                     WordPiece.mkVocab
                         (BS.pack "[PAD]\n[UNK]\n[CLS]\n[SEP]\n\226\128\148")
-                enc = WordPiece.encode vocab 512 "\8212"
+                enc = WordPiece.encode vocab 512 (utf8 "\8212")
             WordPiece.encodedIds enc `shouldBe` [2, 4, 3]
 
         it "truncates to the cap, keeping [SEP] as the final token" $ do
-            let enc = WordPiece.encode tinyVocab 4 "hello world hello"
+            let enc = WordPiece.encode tinyVocab 4 (utf8 "hello world hello")
             WordPiece.encodedIds enc `shouldBe` [2, 4, 5, 3]
             WordPiece.encodedMask enc `shouldBe` [1, 1, 1, 1]

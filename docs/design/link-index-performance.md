@@ -463,7 +463,32 @@ lookup is cheaper than maintaining a per-chunk `Map String` (and
 `Data.Map.Strict.fromList` forces values per duplicate key, so the naive memo
 computed every occurrence anyway).
 
-Remaining (measured) structure per page: decode 56MB, chunking ~141MB, encode
-~620MB (trie walk ~30M cells, token-split churn ~10M). The next big step
-would be restructuring `SearchChunks`/`WordPiece` over `ByteString` with the
-memchr technique above -- a larger API change, not attempted in this pass.
+Remaining (measured) structure per page after that pass: decode 56MB,
+chunking ~141MB, encode ~620MB.
+
+## Search pipeline over ByteString (2026-07-14, second pass)
+
+The restructure the first pass deferred: `SearchChunks` and `WordPiece` now
+work over the page's UTF-8 bytes end to end.
+
+- `chunkPage` takes the raw bytes: memchr finds the line ends, classification
+  reads a handful of bytes per line, and sections/paragraphs are O(1) views.
+  The whole-page decode is gone -- only heading texts and the frontmatter
+  block (for the title; `frontmatterSlice`) are decoded. Chunking fell 13.6x
+  (198MB -> 14.6MB including the old decode). The size cap now counts bytes,
+  not decoded chars (equivalent on this corpus).
+- `encode` walks the chunk bytes directly (inline UTF-8 decode + ASCII fast
+  paths), feeding the trie in place -- no decoded String, word list, or token
+  list.
+- `encodeMany` shares a word -> piece-ids cache across a page's chunks,
+  keyed by the word's raw byte view. This is the memo that previously lost
+  with String keys: ByteString comparison is an mhs primitive (bscmp), so a
+  cache hit is far cheaper than re-walking the trie. `Store.StoreChunk` text
+  is bytes too, dropping the decode/re-encode round trip at the FFI.
+
+Whole pipeline per page (chunk + tokenise): 126.2M cells / 1.9GB / ~790ms at
+the day's baseline -> 35.6M cells / 544MB / ~238ms (3.5x cells, 3.3x time).
+The remainder is the per-char interpreted walk in `encode` (~1 map-step or
+byte test per char) and the embed/FFI marshalling; a further constant-factor
+win would need the tokenise loop out of interpreted code, which RFC-0036's
+decision against C string code rules out.

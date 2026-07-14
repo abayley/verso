@@ -16,6 +16,7 @@ module Concordance.Embedding (
 ) where
 
 import qualified Concordance.WordPiece as WordPiece
+import qualified Data.ByteString.Char8 as BS
 import qualified Foreign.C.String as CStr
 import qualified Foreign.Marshal.Alloc as Alloc
 import qualified Foreign.Ptr as Ptr
@@ -88,7 +89,7 @@ path both indexing and queries use (a correctness requirement -- RFC-0034
 decision 2).
 -}
 embedText ::
-    Embedder -> WordPiece.Vocab -> Profile -> String -> IO (Either String [Double])
+    Embedder -> WordPiece.Vocab -> Profile -> BS.ByteString -> IO (Either String [Double])
 embedText embedder vocab profile text =
     embedTokens
         embedder

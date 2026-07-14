@@ -9,7 +9,6 @@ module Main (main) where
 import qualified Concordance.Utf8 as Utf8
 import qualified Concordance.WordPiece as WordPiece
 import Data.ByteString.Char8 (ByteString)
-import qualified Data.Char as Char
 import qualified Data.ByteString.Char8 as BS
 import Data.List (foldl')
 import System.CPUTime (getCPUTime)
@@ -32,8 +31,7 @@ chunkCap = 2000
 main :: IO ()
 main = do
     let body = pageBody
-        content = Utf8.decodeUtf8 (BS.unpack body)
-        chunks = SearchChunks.chunkPage chunkCap "Bench Page" content
+        chunks = SearchChunks.chunkPage chunkCap "Bench Page" body
     vocabPath <- firstExisting vocabCandidates
     vocab <- WordPiece.mkVocab <$> BS.readFile vocabPath
     putStrLn "search-chunk bench: cells + time per phase for a publish-sized page"
@@ -47,27 +45,16 @@ main = do
             ++ " reps/phase"
         )
     putStrLn "phase         | cells/run   | MB/run   | ms/run"
-    bench "decode" (length . Utf8.decodeUtf8 . BS.unpack) body
-    bench "tolower" (length . map Char.toLower . Utf8.decodeUtf8 . BS.unpack) body
-    bench "punct-test" (length . filter (\c -> Char.isPunctuation c || Char.isSymbol c) . Utf8.decodeUtf8 . BS.unpack) body
-    bench "token-split" (length . concatMap splitPunct . words . map Char.toLower . Utf8.decodeUtf8 . BS.unpack) body
-    bench "chunkPage" (length . SearchChunks.chunkPage chunkCap "Bench Page" . Utf8.decodeUtf8 . BS.unpack) body
-    bench "encode-all" (encodeAll vocab . SearchChunks.chunkPage chunkCap "Bench Page" . Utf8.decodeUtf8 . BS.unpack) body
+    bench "title-slice" (length . Utf8.decodeUtf8 . BS.unpack . SearchChunks.frontmatterSlice) body
+    bench "chunkPage" (length . SearchChunks.chunkPage chunkCap "Bench Page") body
+    bench "encode-all" (encodeAll vocab . SearchChunks.chunkPage chunkCap "Bench Page") body
   where
     encodeAll vocab pageChunks =
-        sum [length (WordPiece.encodedIds (WordPiece.encode vocab tokenCap (SearchChunks.chunkText c))) | c <- pageChunks]
-
--- | A replica of the WordPiece basic-tokenise split (fast ASCII punctuation test).
-splitPunct :: String -> [String]
-splitPunct = go []
-  where
-    go acc [] = flush acc []
-    go acc (c : rest)
-        | isP c = flush acc ([c] : go [] rest)
-        | otherwise = go (c : acc) rest
-    flush acc more = if null acc then more else reverse acc : more
-    isP c =
-        (c >= '!' && c <= '/') || (c >= ':' && c <= '@') || (c >= '[' && c <= '`') || (c >= '{' && c <= '~')
+        sum
+            ( map
+                (length . WordPiece.encodedIds)
+                (WordPiece.encodeMany vocab tokenCap (map SearchChunks.chunkText pageChunks))
+            )
 
 -- | The first existing vocab path (per-platform model dirs), or fails loudly.
 firstExisting :: [FilePath] -> IO FilePath

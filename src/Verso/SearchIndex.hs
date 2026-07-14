@@ -149,7 +149,7 @@ warmEmbedder runtime = do
             (srEmbedder runtime)
             (srVocab runtime)
             profile
-            (Embedding.profileQueryPrefix profile ++ "warmup")
+            (textBytes (Embedding.profileQueryPrefix profile ++ "warmup"))
     searchLog cfg "search: embedder warmed"
 
 {- | Compares the configured model id with the one recorded beside the
@@ -266,10 +266,17 @@ indexPage runtime path = do
             | otherwise -> report cfg path (Left ("stat failed (" ++ show e ++ ")"))
         Right fileStat -> do
             bytes <- BS.readFile fsPath
-            let content = Utf8.decodeUtf8 (BS.unpack bytes)
-                title = searchTitleOf cfg path content
-                chunks = SearchChunks.chunkPage chunkCapChars title content
-            embedded <- mapM (embedChunk runtime) chunks
+            -- Only the frontmatter block is decoded (for the title); the chunker
+            -- and tokeniser work over the raw bytes (see Verso.SearchChunks).
+            let title = searchTitleOf cfg path (Utf8.decodeUtf8 (BS.unpack (SearchChunks.frontmatterSlice bytes)))
+                chunks = SearchChunks.chunkPage chunkCapChars title bytes
+                -- One page-wide tokenisation pass: the chunks share a word cache (encodeMany).
+                encoded =
+                    WordPiece.encodeMany
+                        (srVocab runtime)
+                        (Embedding.profileMaxTokens (searchProfile cfg))
+                        (map SearchChunks.chunkText chunks)
+            embedded <- mapM (embedChunk runtime) (zip chunks encoded)
             case sequence embedded of
                 Left e -> report cfg path (Left e)
                 Right storeChunks -> do
@@ -286,22 +293,21 @@ indexPage runtime path = do
     report cfg page (Left e) = searchLog cfg ("search: index " ++ page ++ " failed: " ++ e)
     report cfg page (Right what) = searchLog cfg ("search: indexed " ++ page ++ " (" ++ what ++ ")")
 
--- | Embeds one chunk, yielding to the scheduler around the blocking call.
-embedChunk :: SearchRuntime -> SearchChunks.Chunk -> IO (Either String Store.StoreChunk)
-embedChunk runtime chunk = do
+-- | Embeds one pre-tokenised chunk, yielding to the scheduler around the blocking call.
+embedChunk :: SearchRuntime -> (SearchChunks.Chunk, WordPiece.Encoded) -> IO (Either String Store.StoreChunk)
+embedChunk runtime (chunk, encoded) = do
     Concurrent.yield
-    embedded <-
-        Embedding.embedText
-            (srEmbedder runtime)
-            (srVocab runtime)
-            (searchProfile (srConfig runtime))
-            (SearchChunks.chunkText chunk)
+    embedded <- Embedding.embedTokens (srEmbedder runtime) (WordPiece.encodedIds encoded)
     pure
         ( Store.StoreChunk
             (SearchChunks.chunkAnchor chunk)
             (SearchChunks.chunkText chunk)
             <$> embedded
         )
+
+-- | Query-side text as UTF-8 bytes (the tokeniser's input type; queries are short).
+textBytes :: String -> BS.ByteString
+textBytes = BS.pack . Utf8.encodeUtf8
 
 -- | A page's stat fingerprint string: seconds, nanoseconds, size.
 statFingerprint :: FileSystem.FileStat -> String
@@ -384,7 +390,7 @@ searchQuery runtime query k = do
     vec <- case cached of
         Just v -> pure (Right v)
         Nothing -> do
-            embedded <- Embedding.embedText (srEmbedder runtime) (srVocab runtime) profile prefixed
+            embedded <- Embedding.embedText (srEmbedder runtime) (srVocab runtime) profile (textBytes prefixed)
             case embedded of
                 Right v ->
                     IORef.modifyIORef'

@@ -6,9 +6,6 @@ carried over from 2026-07-13 session (RFC-0036 / ADR-080):
   now also carries the lance 8.0.0 dep bump (branch `lance-upgrade-7325`) that
   fixed the FTS optimize panic -- fold it into the PR, and consider reporting
   the 7.0.0 panic upstream (draft text in docs/design/lance-fts-optimize-panic.md)
-- search indexing allocation, next round (optional): restructure
-  SearchChunks/WordPiece over ByteString with the memchr technique; the
-  2026-07-14 pass cut it 2.4x in place (see link-index-performance.md)
 
 backend:
 
@@ -71,3 +68,6 @@ done:
   fast paths, linear chunker; `make bench-search-chunk`)
 - 2026-07-14: vendored lancedb upgraded to 0.31.0 / lance 8.0.0; the FTS
   optimize panic no longer reproduces (10/10 storm runs GREEN, was ~1/3 crash)
+- 2026-07-14: search pipeline restructured over ByteString (memchr chunker,
+  byte-walking tokeniser, page-wide byte-keyed word cache): whole pipeline
+  1.9GB -> 544MB and 790ms -> 238ms per page vs the morning baseline

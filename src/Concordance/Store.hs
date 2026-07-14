@@ -30,6 +30,7 @@ module Concordance.Store (
 
 import qualified Concordance.Utf8 as Utf8
 import qualified Control.Concurrent.MVar as MVar
+import qualified Data.ByteString.Char8 as BS
 import qualified Data.Map.Strict as Map
 import qualified Foreign.C.String as CStr
 import qualified Foreign.Marshal.Alloc as Alloc
@@ -81,10 +82,10 @@ data Store = Store
     , storeLock :: MVar.MVar ()
     }
 
--- | One chunk to index: anchor, text, and its unit vector.
+-- | One chunk to index: anchor, text (UTF-8 bytes), and its unit vector.
 data StoreChunk = StoreChunk
     { storeChunkAnchor :: String
-    , storeChunkText :: String
+    , storeChunkText :: BS.ByteString
     , storeChunkVector :: [Double]
     }
 
@@ -162,7 +163,7 @@ upsertPage store pageId statFp contentFp chunks =
             withUtf8 statFp $ \statC ->
                 withUtf8 contentFp $ \contentC ->
                     withUtf8 (packStrings (map storeChunkAnchor chunks)) $ \anchorsC ->
-                        withUtf8 (packStrings (map storeChunkText chunks)) $ \textsC ->
+                        withPackedBytes (map storeChunkText chunks) $ \textsC ->
                             withVectors store chunks $ \vecsC ->
                                 c_asyncUpsert
                                     pageC
@@ -243,6 +244,16 @@ back to back ('CStr.withCAString' adds the final NUL).
 -}
 packStrings :: [String] -> String
 packStrings = concatMap (\s -> Utf8.encodeUtf8 s ++ "\0")
+
+{- | As 'packStrings' for byte strings already in UTF-8 (the chunk texts):
+each NUL-terminated, back to back, with no decode\/re-encode round trip
+('BS.useAsCString' copies once and adds the final NUL).
+-}
+withPackedBytes :: [BS.ByteString] -> (CStr.CString -> IO a) -> IO a
+withPackedBytes texts = BS.useAsCString (BS.concat (concatMap (\t -> [t, nulByte]) texts))
+
+nulByte :: BS.ByteString
+nulByte = BS.pack "\0"
 
 -- | Lays the chunks' vectors out as one flat double array.
 withVectors :: Store -> [StoreChunk] -> (Ptr.Ptr Double -> IO a) -> IO a

@@ -1,5 +1,6 @@
 module Concordance.WordPieceFixtureSpec (spec) where
 
+import qualified Concordance.Utf8 as Utf8
 import qualified Concordance.WordPiece as WordPiece
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
@@ -27,5 +28,5 @@ spec =
             probes <- readProbes
             length probes `shouldBe` 11
             Monad.forM_ probes $ \(text, expected) -> do
-                let got = WordPiece.encodedIds (WordPiece.encode vocab 512 text)
+                let got = WordPiece.encodedIds (WordPiece.encode vocab 512 (BS.pack (Utf8.encodeUtf8 text)))
                 (text, got) `shouldBe` (text, expected)

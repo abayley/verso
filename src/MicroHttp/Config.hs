@@ -28,6 +28,7 @@ import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified Data.Word as Word
+import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Network.Socket as Socket
 import qualified MicroHttp.Settings as Settings
 import qualified System.Directory as Directory
@@ -63,7 +64,7 @@ application supplies the overlays so it creates both the framework config (the
 loadConfigWith :: [(String, [String])] -> FilePath -> IO (Either ConfigError Config)
 loadConfigWith overlays path = do
     present <- Directory.doesFileExist path
-    fileText <- if present then readFile path else return ""
+    fileText <- if present then FileSystem.readFileStrict path else return ""
     environment <- Environment.getEnvironment
     return (fmap (overlay environment) (parseConfig fileText))
   where

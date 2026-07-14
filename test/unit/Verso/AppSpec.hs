@@ -167,7 +167,7 @@ spec =
                 bodyText response `shouldInclude` "\"path\":\"alpha/created-page.md\""
                 bodyText response `shouldInclude` "\"editPath\":\"alpha/created-page.md\""
                 bodyText response `shouldInclude` "\"kind\":\"page\""
-                written <- readFile (treeRoot ++ "/alpha/created-page.md")
+                written <- FileSystem.readFileStrict (treeRoot ++ "/alpha/created-page.md")
                 written `shouldBe` "---\nname: Created Page\n---\n\n# Created Page\n"
                 nodes <- App.childrenOf treeRoot "alpha"
                 map App.nodeName nodes `shouldBe` ["Alpha Page", "Created Page"]
@@ -219,7 +219,7 @@ spec =
                 let req = (request Http.POST ["tree", "x"]){Http.requestQuery = [("move", "")]}
                 response <- runTreeAppBody appliedRoot req "to=y&slug=x&confirm=true"
                 Http.statusCode (Http.responseStatus response) `shouldBe` 200
-                logged <- readFile logFile
+                logged <- FileSystem.readFileStrict logFile
                 logged `shouldInclude` "\"type\":\"move\""
                 logged `shouldInclude` "\"kind\":\"section\""
                 logged `shouldInclude` "\"from\":\"x\""
@@ -241,7 +241,7 @@ spec =
                 bodyText response `shouldInclude` "\"deleted\":\"b.md\""
                 Directory.doesFileExist (appliedRoot ++ "/b.md") `shouldReturn` False
                 Directory.doesFileExist "build/tree-spec-trash/0/manifest" `shouldReturn` True
-                logged <- readFile "build/tree-spec-oplog"
+                logged <- FileSystem.readFileStrict "build/tree-spec-oplog"
                 logged `shouldInclude` "\"type\":\"delete\""
                 logged `shouldInclude` "\"from\":\"b.md\""
 
@@ -253,7 +253,7 @@ spec =
                 Http.statusCode (Http.responseStatus response) `shouldBe` 200
                 bodyText response `shouldInclude` "\"restored\":\"b.md\""
                 Directory.doesFileExist (appliedRoot ++ "/b.md") `shouldReturn` True
-                logged <- readFile "build/tree-spec-oplog"
+                logged <- FileSystem.readFileStrict "build/tree-spec-oplog"
                 logged `shouldInclude` "\"type\":\"restore\""
 
             it "given POST /undo after a move, when routed, then the move is reversed and the inverse is logged" $ do
@@ -283,7 +283,7 @@ spec =
                 Http.statusCode (Http.responseStatus response) `shouldBe` 200
                 bodyText response `shouldInclude` "\"undo\":\"delete\""
                 Directory.doesFileExist (appliedRoot ++ "/b.md") `shouldReturn` True
-                logged <- readFile "build/tree-spec-oplog"
+                logged <- FileSystem.readFileStrict "build/tree-spec-oplog"
                 logged `shouldInclude` "\"type\":\"restore\""
 
             it "given POST /undo with an empty log, when routed, then it is a 409" $ do
@@ -328,7 +328,7 @@ spec =
                 appliedRoot <- setupDeleteRouteFixture
                 _ <- runTreeAppBody appliedRoot (request Http.DELETE ["tree", "b.md"]) ""
                 -- age the delete's log record past the 90-day default retention
-                logged <- readFile "build/tree-spec-oplog"
+                logged <- FileSystem.readFileStrict "build/tree-spec-oplog"
                 null logged `shouldBe` False
                 let aged = replaceTsWith "2020-01-01T00:00:00.000+1200" logged
                 writeFile "build/tree-spec-oplog" aged

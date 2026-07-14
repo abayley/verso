@@ -2,6 +2,7 @@ module MicroHttp.ServerSocketSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as List
+import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Http as Http
 import qualified MicroHttp.Http.Parse as Parse
 import qualified MicroHttp.Iteratee as Iteratee
@@ -30,7 +31,7 @@ spec =
                 sent <- Socket.sendAll client (BS.pack requestText)
                 sent `shouldBe` Right ()
                 result <- Server.handleClient smallBufferSettings documentApp served conn
-                saved <- readFile documentFile
+                saved <- FileSystem.readFileStrict documentFile
                 Directory.removeFile documentFile
                 result `shouldBe` Right ()
                 length saved `shouldBe` 5000

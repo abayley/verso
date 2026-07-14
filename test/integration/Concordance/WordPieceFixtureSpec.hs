@@ -4,6 +4,7 @@ import qualified Concordance.Utf8 as Utf8
 import qualified Concordance.WordPiece as WordPiece
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
+import qualified MicroHttp.FileSystem as FileSystem
 import Test.Hspec
 
 fixtureDir :: FilePath
@@ -14,7 +15,7 @@ the genuine HuggingFace tokenizer (see wordpiece-fixtures.mjs).
 -}
 readProbes :: IO [(String, [Int])]
 readProbes = do
-    content <- readFile (fixtureDir ++ "/tokenisations.txt")
+    content <- FileSystem.readFileStrict (fixtureDir ++ "/tokenisations.txt")
     pure (pairs (lines content))
   where
     pairs (text : ids : rest) = (text, map read (words ids)) : pairs rest

@@ -13,6 +13,7 @@ import qualified Control.Concurrent.MVar as MVar
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.IORef as IORef
+import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Process as Process
 import qualified System.Directory as Directory
 import qualified System.IO.TimeMilli as TimeMilli
@@ -57,7 +58,7 @@ storeDir = "build/search-seam-spec-store"
 -- | The committed reference: token ids and the fp32 reference vector.
 readEmbedReference :: IO ([Int], [Double])
 readEmbedReference = do
-    content <- readFile "test/integration/Concordance/fixtures/embed-reference.txt"
+    content <- FileSystem.readFileStrict "test/integration/Concordance/fixtures/embed-reference.txt"
     case lines content of
         (idsLine : vecLine : _) ->
             pure (map read (words idsLine), map read (words vecLine))

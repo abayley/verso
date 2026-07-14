@@ -3,6 +3,7 @@ module Verso.AppSpec (spec) where
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as List
+import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Http as Http
 import qualified MicroHttp.Process as Process
 import qualified MicroHttp.Server as Server
@@ -171,7 +172,7 @@ spec = do
                 Server.respondToRequestBytes
                     (App.appWithDocumentTree "paper" root)
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Edited+tree"))
-            saved <- readFile (root ++ "/sec/page.md")
+            saved <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 303
             fmap locationOf outcome `shouldBe` Right (Just (BS.pack "/documents/sec/page.md?edit"))
             saved `shouldBe` "# Edited tree"
@@ -188,7 +189,7 @@ spec = do
                 Server.respondToRequestBytes
                     (App.appWithDocumentTree "paper" root)
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=%3C%21--+note+--%3E%0A%0A%23+H"))
-            saved <- readFile (root ++ "/sec/page.md")
+            saved <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 303
             saved `shouldBe` "<!-- note -->\n\n# H"
         it "given an asset upload, when routing, then it is stored in the page's assets folder and a relative URL is returned" $ do
@@ -197,7 +198,7 @@ spec = do
                 Server.respondToRequestBytes
                     (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "PNGDATA"))
-            stored <- readFile (root ++ "/sec/assets/diagram.png")
+            stored <- FileSystem.readFileStrict (root ++ "/sec/assets/diagram.png")
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
             fmap (bodyContains (BS.pack "{\"url\":\"assets/diagram.png\"}")) outcome `shouldBe` Right True
             stored `shouldBe` "PNGDATA"
@@ -222,7 +223,7 @@ spec = do
                 Server.respondToRequestBytes
                     (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "SECOND"))
-            suffixed <- readFile (root ++ "/sec/assets/diagram-2.png")
+            suffixed <- FileSystem.readFileStrict (root ++ "/sec/assets/diagram-2.png")
             fmap (bodyContains (BS.pack "{\"url\":\"assets/diagram-2.png\"}")) outcome `shouldBe` Right True
             suffixed `shouldBe` "SECOND"
         it "given an upload of a disallowed type, when routing, then it is rejected with a 415" $ do
@@ -238,7 +239,7 @@ spec = do
                 Server.respondToRequestBytes
                     (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "Diagram One.png" "PNGDATA"))
-            recorded <- readFile (root ++ "/sec/meta/page.meta/images.yaml")
+            recorded <- FileSystem.readFileStrict (root ++ "/sec/meta/page.meta/images.yaml")
             recorded
                 `shouldBe` "- local_path: assets/Diagram_One.png\n\
                            \  short_title: 'Diagram One.png'\n\
@@ -249,7 +250,7 @@ spec = do
                 Server.respondToRequestBytes
                     (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "My Report.pdf" "PDFDATA"))
-            recorded <- readFile (root ++ "/sec/meta/page.meta/attachments.yaml")
+            recorded <- FileSystem.readFileStrict (root ++ "/sec/meta/page.meta/attachments.yaml")
             recorded
                 `shouldBe` "- name: 'My Report.pdf'\n\
                            \  local_path: assets/My_Report.pdf\n\
@@ -283,7 +284,7 @@ spec = do
                             "image_count=1&image_path_0=assets%2FDiagram_One.png&image_title_0=Edited+Caption"
                         )
                     )
-            recorded <- readFile (root ++ "/sec/meta/page.meta/images.yaml")
+            recorded <- FileSystem.readFileStrict (root ++ "/sec/meta/page.meta/images.yaml")
             recorded
                 `shouldBe` "- local_path: assets/Diagram_One.png\n\
                            \  short_title: 'Edited Caption'\n\
@@ -298,7 +299,7 @@ spec = do
                 Server.respondToRequestBytes
                     (App.appWithDocumentTree "paper" root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "My Report.pdf" "PDFDATA"))
-            recorded <- readFile (root ++ "/sec/meta/page.meta/attachments.yaml")
+            recorded <- FileSystem.readFileStrict (root ++ "/sec/meta/page.meta/attachments.yaml")
             recorded
                 `shouldBe` "- name: 'My Report.pdf'\n\
                            \  local_path: assets/My_Report.pdf\n\
@@ -312,8 +313,8 @@ spec = do
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Draft+edit"))
-            live <- readFile (root ++ "/sec/page.md")
-            drafted <- readFile (treeDraftRoot ++ "/sec/page.md")
+            live <- FileSystem.readFileStrict (root ++ "/sec/page.md")
+            drafted <- FileSystem.readFileStrict (treeDraftRoot ++ "/sec/page.md")
             live `shouldBe` "# Hello tree\n\nA tree document."
             drafted `shouldBe` "# Draft edit"
         it "given a staged draft, when editing, then the editor resumes the draft over the published page" $ do
@@ -336,7 +337,7 @@ spec = do
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
                     (BS.pack (rawPutRequest "/drafts/sec/page.md" "# Draft edit\n\nliteral + and %20 stay\n"))
-            live <- readFile (root ++ "/sec/page.md")
+            live <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             drafted <- BS.readFile (treeDraftRoot ++ "/sec/page.md")
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 204
             live `shouldBe` "# Hello tree\n\nA tree document."
@@ -378,7 +379,7 @@ spec = do
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
                     (BS.pack (deleteRequest "/drafts/sec/page.md"))
             stillDrafted <- Directory.doesFileExist (treeDraftRoot ++ "/sec/page.md")
-            live <- readFile (root ++ "/sec/page.md")
+            live <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 204
             stillDrafted `shouldBe` False
             live `shouldBe` "# Hello tree\n\nA tree document."
@@ -393,7 +394,7 @@ spec = do
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
                     (BS.pack (rawPutRequest "/documents/sec/page.md" "# Published content"))
-            live <- readFile (root ++ "/sec/page.md")
+            live <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             stillDrafted <- Directory.doesFileExist (treeDraftRoot ++ "/sec/page.md")
             revs <- Git.logForPath root "sec/page.md"
             live `shouldBe` "# Published content"
@@ -629,15 +630,12 @@ spec = do
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
                     (BS.pack (rawPutRequest "/documents/sec/page.md" "# Version two"))
-            -- strict reads: GHC's lazy readFile holds the handle open until the
-            -- content is consumed, and the rollback below writes the same file
-            -- ("resource busy" under the coverage build; mhs reads strictly)
-            liveAfterV2 <- BS.unpack <$> BS.readFile (root ++ "/sec/page.md")
+            liveAfterV2 <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             _ <-
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
                     (BS.pack (postRequest "/documents/sec/page.md?rollback" ("rev=" ++ v1Hash)))
-            liveAfterRollback <- BS.unpack <$> BS.readFile (root ++ "/sec/page.md")
+            liveAfterRollback <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             rollbackSubject <- lastCommitSubject root
             liveAfterV2 `shouldBe` "# Version two"
             liveAfterRollback `shouldBe` "# Version one"

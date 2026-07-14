@@ -4,6 +4,7 @@ import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.IORef as IORef
 import qualified Data.List as List
+import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Http as Http
 import qualified MicroHttp.Log as Log
 import qualified MicroHttp.Middleware as Middleware
@@ -56,7 +57,7 @@ spec =
                 result <- Server.handleClient Server.defaultSettings (Middleware.logRequests (Log.fileLogfmtLogger accessLogPath) documentApp) served conn
                 _ <- Socket.recv client 4096
                 result `shouldBe` Right ()
-                contents <- readFile accessLogPath
+                contents <- FileSystem.readFileStrict accessLogPath
                 removeIfExists accessLogPath
                 ("event=RQST" `List.isInfixOf` contents) `shouldBe` True
                 ("event=RESP" `List.isInfixOf` contents) `shouldBe` True

@@ -132,3 +132,21 @@ spec =
                 FileSystem.isDoesNotExist (FileSystem.Errno 2) `shouldBe` True
                 FileSystem.isDoesNotExist (FileSystem.Errno 13) `shouldBe` False
                 FileSystem.isDoesNotExist (FileSystem.Errno 66) `shouldBe` False
+
+        describe "readFileStrict" $ do
+            it "given a file, when read, then the whole content is returned" $ do
+                freshDir
+                let f = ioDir ++ "/strict.txt"
+                writeFile f "line one\nline two\n"
+                FileSystem.readFileStrict f `shouldReturn` "line one\nline two\n"
+
+            it "given a strict read, when the same path is rewritten immediately, then the write succeeds" $ do
+                -- GHC's lazy readFile holds a read lock until the string is forced,
+                -- so an unforced read followed by writeFile throws "resource busy"
+                freshDir
+                let f = ioDir ++ "/rewrite.txt"
+                writeFile f "before"
+                text <- FileSystem.readFileStrict f
+                writeFile f "after"
+                text `shouldBe` "before"
+                FileSystem.readFileStrict f `shouldReturn` "after"

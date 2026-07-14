@@ -161,7 +161,7 @@ checkModelId cfg = do
     let marker = searchIndexDir cfg ++ "/model-id"
     Directory.createDirectoryIfMissing True (searchIndexDir cfg)
     exists <- Directory.doesFileExist marker
-    stored <- if exists then readFile marker else pure ""
+    stored <- if exists then FileSystem.readFileStrict marker else pure ""
     writeFile marker (searchModelId cfg)
     pure (not exists || stored == searchModelId cfg)
 

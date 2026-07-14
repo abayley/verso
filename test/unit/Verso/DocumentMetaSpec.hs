@@ -1,6 +1,7 @@
 module Verso.DocumentMetaSpec (spec) where
 
 import qualified Control.Monad as Monad
+import qualified MicroHttp.FileSystem as FileSystem
 import qualified System.Directory as Directory
 import Test.Hspec
 import qualified Verso.DocumentMeta as DocumentMeta
@@ -137,21 +138,21 @@ spec =
             it "appendAttachment creates the file when absent and records the entry" $ do
                 cleanMeta
                 DocumentMeta.appendAttachment ioDir sampleAttachment
-                contents <- readFile (ioDir ++ "/attachments.yaml")
+                contents <- FileSystem.readFileStrict (ioDir ++ "/attachments.yaml")
                 contents `shouldBe` DocumentMeta.renderAttachmentEntry sampleAttachment
 
             it "appendAttachment is idempotent for an identical local_path" $ do
                 cleanMeta
                 DocumentMeta.appendAttachment ioDir sampleAttachment
                 DocumentMeta.appendAttachment ioDir sampleAttachment
-                contents <- readFile (ioDir ++ "/attachments.yaml")
+                contents <- FileSystem.readFileStrict (ioDir ++ "/attachments.yaml")
                 contents `shouldBe` DocumentMeta.renderAttachmentEntry sampleAttachment
 
             it "appendImage then updateImageShortTitle records and then syncs short_title" $ do
                 cleanMeta
                 DocumentMeta.appendImage ioDir "assets/p.png" "p.png"
                 DocumentMeta.updateImageShortTitle ioDir "assets/p.png" "A Caption"
-                contents <- readFile (ioDir ++ "/images.yaml")
+                contents <- FileSystem.readFileStrict (ioDir ++ "/images.yaml")
                 contents `shouldBe` DocumentMeta.renderImageEntry "assets/p.png" "A Caption"
 
             it "readAttachmentEntries reads back the recorded attachments" $ do

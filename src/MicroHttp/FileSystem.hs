@@ -29,6 +29,7 @@ module MicroHttp.FileSystem (
     removeEmptyDir,
     FileStat (..),
     fileStat,
+    readFileStrict,
 ) where
 
 import qualified Foreign.C.String as CStr
@@ -121,3 +122,16 @@ fileStat path =
                     nsec <- Storable.peekByteOff buf mtimeNsecOffset :: IO Int
                     size <- Storable.peekByteOff buf sizeOffset :: IO Int
                     pure (Right (FileStat sec nsec size))
+
+{- | Reads a whole text file strictly: the content is fully forced before this
+returns, so the handle is closed and the path can be rewritten immediately.
+Prelude's lazy 'readFile' must not be used anywhere (STANDARDS.md): under GHC
+it holds a read lock until the string is forced, so a later write to the same
+path fails with @resource busy@ -- and mhs's does not, so the bug only shows in
+GHC coverage builds. Text (UTF-8-decoded 'String') reads come through here;
+binary content uses strict @Data.ByteString.Char8.readFile@ directly.
+-}
+readFileStrict :: FilePath -> IO String
+readFileStrict path = do
+    text <- readFile path
+    length text `seq` pure text

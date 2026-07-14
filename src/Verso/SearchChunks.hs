@@ -40,28 +40,34 @@ chunkPage cap title content =
         if null anchor then context else context ++ " > " ++ anchor
 
 {- | Splits text into pieces of at most the cap (in characters) at blank-line
-paragraph boundaries; a single paragraph beyond the cap stays whole.
+paragraph boundaries; a single paragraph beyond the cap stays whole. The
+accumulator carries its running length (re-measuring it per paragraph was
+quadratic) and joins once per piece.
 -}
 splitAtParagraphs :: Int -> String -> [String]
 splitAtParagraphs cap body = go (paragraphs body)
   where
     go [] = []
-    go (p : ps) = accumulate p ps
-    accumulate acc (p : ps)
-        | length acc + 2 + length p <= cap = accumulate (acc ++ "\n\n" ++ p) ps
-    accumulate acc ps = acc : go ps
+    go (p : ps) = accumulate (length p) [p] ps
+    accumulate len acc (p : ps)
+        | len + 2 + length p <= cap = accumulate (len + 2 + length p) (p : acc) ps
+    accumulate _ acc ps = joinParagraphs (reverse acc) : go ps
+    joinParagraphs = concat . interleave "\n\n"
 
--- | Splits text into paragraphs at blank lines outside code fences.
+{- | Splits text into paragraphs at blank lines outside code fences. Lines
+accumulate reversed (consing; @acc ++ [l]@ per line was quadratic) and each
+paragraph is assembled once at emit.
+-}
 paragraphs :: String -> [String]
 paragraphs body = go False [] (lines body)
   where
     go _ acc [] = emit acc
     go inFence acc (l : ls)
-        | isFenceLine l = go (not inFence) (acc ++ [l]) ls
+        | isFenceLine l = go (not inFence) (l : acc) ls
         | not inFence && null (trimBlank l) = emit acc ++ go False [] ls
-        | otherwise = go inFence (acc ++ [l]) ls
+        | otherwise = go inFence (l : acc) ls
     emit [] = []
-    emit acc = [trimBlank (unlines acc)]
+    emit acc = [trimBlank (unlines (reverse acc))]
 
 -- | Whether a line opens or closes a code fence.
 isFenceLine :: String -> Bool
@@ -76,20 +82,24 @@ sections title body = go False [] "" [] (lines body)
   where
     go _ ancestors anchor acc [] = [emit ancestors anchor acc]
     go inFence ancestors anchor acc (l : ls)
-        | isFence l = go (not inFence) ancestors anchor (acc ++ [l]) ls
-        | inFence = go inFence ancestors anchor (acc ++ [l]) ls
+        | isFence l = go (not inFence) ancestors anchor (l : acc) ls
+        | inFence = go inFence ancestors anchor (l : acc) ls
         | otherwise =
             case headingOf l of
                 Just (level, text) ->
                     emit ancestors anchor acc
                         : go False (trimAncestors level ancestors ++ [(level, text)]) text [l] ls
-                Nothing -> go False ancestors anchor (acc ++ [l]) ls
+                Nothing -> go False ancestors anchor (l : acc) ls
     isFence = isFenceLine
+    -- Section lines accumulate reversed (consing; @acc ++ [l]@ per line was quadratic).
     emit ancestors anchor acc =
-        (anchor, context (if null anchor then ancestors else init ancestors), trimBlank (unlines acc))
+        (anchor, context (if null anchor then ancestors else init ancestors), trimBlank (unlines (reverse acc)))
     context ancestors = concat (interleave " > " (title : map snd ancestors))
     trimAncestors level = takeWhile (\(l, _) -> l < level)
-    interleave sep = foldr (\x acc -> if null acc then [x] else x : sep : acc) []
+
+-- | Intersperses a separator between list items (shared by the joiners above).
+interleave :: String -> [String] -> [String]
+interleave sep = foldr (\x acc -> if null acc then [x] else x : sep : acc) []
 
 -- | The ATX heading's level and text, when the line is one.
 headingOf :: String -> Maybe (Int, String)

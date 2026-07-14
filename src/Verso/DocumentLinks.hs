@@ -32,8 +32,15 @@ module Verso.DocumentLinks (
 ) where
 
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
+import qualified Foreign.C.String as CStr
+import qualified Foreign.C.Types as CTypes
+import qualified Foreign.Ptr as Ptr
+import qualified System.IO.Unsafe as Unsafe
+
+foreign import ccall "string.h memchr" c_memchr :: CStr.CString -> CTypes.CInt -> CTypes.CSize -> IO (Ptr.Ptr ())
 
 {- | An inline link or image target in a page body: the raw target token (the text
 between @](@ and the closing @)@ or a title, which may carry a @#anchor@/@?query@
@@ -51,48 +58,73 @@ data Link = Link
 @](target)@ (so both @[text](target)@ and @![alt](target)@), skipping fenced code
 blocks (``` and @~~~@). A title (@](path "title")@) is excluded from the target;
 the target token is the path plus any @#anchor@/@?query@.
+
+The scan is driven by libc @memchr@ over one marshalled copy of the body:
+newline hits delimit lines (for the fence state), @]@ hits find the @](@
+candidates, and a bounded @)@ search closes each target -- so the interpreter
+touches only those positions, never every byte. On mhs this is ~5.6x fewer
+cells (85MB -> 15MB per 73KB page) and ~4.5x faster than the previous per-byte
+'BS.index' walk (@make bench-link-parse@); no pure-Haskell arrangement came
+close, because any full scan pays ~50-100 interpreted cells per byte. Pure
+despite the FFI: @memchr@ only reads the copied bytes, so the result depends
+on the argument alone.
 -}
 pageLinks :: BS.ByteString -> [Link]
-pageLinks text = concat (scanLines False (linesWithOffsets text))
-  where
-    scanLines _ [] = []
-    scanLines inFence ((lineOff, line) : rest)
-        | isFenceLine line = [] : scanLines (not inFence) rest
-        | inFence = [] : scanLines inFence rest
-        | otherwise = lineLinks lineOff line : scanLines inFence rest
+pageLinks text = Unsafe.unsafePerformIO $
+    BS.useAsCStringLen text $ \(basePtr, len) -> do
+        let
+            -- The first `wanted` byte at or after `i` but before `bound`, via memchr.
+            findFrom i bound wanted
+                | i >= bound = pure Nothing
+                | otherwise = do
+                    p <- c_memchr (Ptr.plusPtr basePtr i) (fromIntegral (Char.ord wanted)) (fromIntegral (bound - i))
+                    pure (if p == Ptr.nullPtr then Nothing else Just (Ptr.minusPtr p basePtr))
 
-{- | The links on one (non-fence) line, with absolute spans from the line's offset.
-Walks the line once with O(1) 'ByteString' indexing (@BS.index@/@BS.drop@), so no
-@length@/@drop@ rescan and no @String@ allocation.
--}
-lineLinks :: Int -> BS.ByteString -> [Link]
-lineLinks lineOff line = go 0
-  where
-    len = BS.length line
-    go i
-        | i + 1 >= len = []
-        | BS.index line i == ']' && BS.index line (i + 1) == '(' =
-            case readTarget (BS.drop (i + 2) line) of
-                Just (token, tokenLen) ->
-                    Link (lineOff + i + 2) (lineOff + i + 2 + tokenLen) token : go (i + 2 + tokenLen)
-                Nothing -> go (i + 1)
-        | otherwise = go (i + 1)
+            -- One line per iteration: fence lines toggle, in-fence lines skip, others scan.
+            scanLines inFence lineStart = do
+                lineEnd <- Maybe.fromMaybe len <$> findFrom lineStart len '\n'
+                let continue fence rest = if lineEnd >= len then pure rest else fmap (rest ++) (scanLines fence (lineEnd + 1))
+                if fenceLineAt lineStart lineEnd
+                    then continue (not inFence) []
+                    else
+                        if inFence
+                            then continue inFence []
+                            else lineLinksAt lineStart lineEnd >>= continue inFence
 
-{- | From the bytes just after @](@, the target token and its length in the source
-(the raw path span, excluding any leading @<@/@>@, a following title, or the closing
-@)@). 'Nothing' if no closing @)@ is found on the line. The token is returned as a
-'String' (it is short).
--}
-readTarget :: BS.ByteString -> Maybe (String, Int)
-readTarget afterOpen = case BS.elemIndex ')' afterOpen of
-    Nothing -> Nothing
-    Just _ -> Just (BS.unpack (stripAngles raw), BS.length raw)
-  where
-    inner = BS.takeWhile (/= ')') afterOpen
-    raw = BS.takeWhile (\c -> c /= ' ' && c /= '\t') inner
-    stripAngles t
-        | BS.length t >= 2 && BS.head t == '<' && BS.last t == '>' = BS.init (BS.drop 1 t)
-        | otherwise = t
+            -- The links between two candidate-scan positions on one (non-fence) line.
+            lineLinksAt i lineEnd
+                | i + 1 >= lineEnd = pure []
+                | otherwise = do
+                    candidate <- findFrom i lineEnd ']'
+                    case candidate of
+                        Nothing -> pure []
+                        Just j
+                            | j + 1 >= lineEnd || BS.index text (j + 1) /= '(' -> lineLinksAt (j + 1) lineEnd
+                            | otherwise -> do
+                                closing <- findFrom (j + 2) lineEnd ')'
+                                case closing of
+                                    -- No @)@ later on this line: no further candidate can close either.
+                                    Nothing -> pure []
+                                    Just close ->
+                                        let inner = BS.take (close - j - 2) (BS.drop (j + 2) text)
+                                            raw = BS.takeWhile (\c -> c /= ' ' && c /= '\t') inner
+                                            token = BS.unpack (stripAngles raw)
+                                            link = Link (j + 2) (j + 2 + BS.length raw) token
+                                         in (link :) <$> lineLinksAt (j + 2 + BS.length raw) lineEnd
+
+            -- Fence marker (``` or ~~~) after optional indent, checked byte-wise (O(indent), not O(line)).
+            fenceLineAt lineStart lineEnd = go lineStart
+              where
+                go k
+                    | k < lineEnd && BS.index text k == ' ' = go (k + 1)
+                    | otherwise = k + 2 < lineEnd && (tripleAt k '`' || tripleAt k '~')
+                tripleAt k c = BS.index text k == c && BS.index text (k + 1) == c && BS.index text (k + 2) == c
+
+            stripAngles t
+                | BS.length t >= 2 && BS.head t == '<' && BS.last t == '>' = BS.init (BS.drop 1 t)
+                | otherwise = t
+
+        if len == 0 then pure [] else scanLines False 0
 
 {- | Splits a target token into its path part and a trailing @#anchor@/@?query@
 suffix (empty when there is none), so a path can be rewritten while the suffix is
@@ -326,28 +358,3 @@ commonPrefixLength :: [String] -> [String] -> Int
 commonPrefixLength (a : as) (b : bs)
     | a == b = 1 + commonPrefixLength as bs
 commonPrefixLength _ _ = 0
-
-{- | The page's lines as @(startOffset, lineBytes)@ pairs, split on @\\n@ (the line
-bytes exclude the newline; a trailing @\\r@ stays so offsets are exact). Each line's
-offset is the running sum of the preceding lines' lengths plus their newline byte.
-
-Splits with a single 'BS.split' pass rather than recursing with @BS.elemIndex@: in mhs
-@BS.elemIndex@ is @elemIndex . unpack@, so it unpacks the __whole remaining ByteString__
-to a list on every call; recursing it down the tail therefore re-unpacks O(n) bytes per
-line -> O(n^2) overall, which dominated the whole-tree index build (~23 s of a ~27 s parse
-on the reference corpus). ('BS.drop'/'BS.take' here are O(1) buffer-views, not the cost.)
-'BS.split' unpacks once and splits the list in a single linear pass (~2 s), making the
-parser ~5.8x faster with byte-identical output. (mhs BS cost model: see
-docs/design/link-index-performance.md.)
--}
-linesWithOffsets :: BS.ByteString -> [(Int, BS.ByteString)]
-linesWithOffsets text = withOffsets 0 (BS.split '\n' text)
-  where
-    withOffsets _ [] = []
-    withOffsets off (line : rest) = (off, line) : withOffsets (off + BS.length line + 1) rest
-
--- | Whether a line opens or closes a fenced code block (``` or @~~~@ after optional indent).
-isFenceLine :: BS.ByteString -> Bool
-isFenceLine line =
-    let trimmed = BS.dropWhile (== ' ') line
-     in BS.pack "```" `BS.isPrefixOf` trimmed || BS.pack "~~~" `BS.isPrefixOf` trimmed

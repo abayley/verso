@@ -37,6 +37,24 @@ spec =
             it "ignores reference-style definitions and reference uses (no '](')" $ do
                 map DocumentLinks.linkTarget (DocumentLinks.pageLinks (bs "[id]: ./x.md\nSee [text][id].\n")) `shouldBe` []
 
+            it "requires the closing paren on the same line" $ do
+                map DocumentLinks.linkTarget (DocumentLinks.pageLinks (bs "[x](./a.md\nmore) [y](./b.md)\n"))
+                    `shouldBe` ["./b.md"]
+
+            it "emits an empty token for a bare '](' and still finds the later link on the line" $ do
+                map DocumentLinks.linkTarget (DocumentLinks.pageLinks (bs "broken ]( then [x](./a.md) after\n"))
+                    `shouldBe` ["", "./a.md"]
+
+            it "skips tilde fences like backtick fences" $ do
+                let text = bs "[real](./a.md)\n~~~\n[code](./b.md)\n~~~\n[also](./c.md)\n"
+                map DocumentLinks.linkTarget (DocumentLinks.pageLinks text) `shouldBe` ["./a.md", "./c.md"]
+
+            it "finds a link on the final line without a trailing newline" $ do
+                map DocumentLinks.linkTarget (DocumentLinks.pageLinks (bs "text\n[x](./a.md)")) `shouldBe` ["./a.md"]
+
+            it "finds nothing in an unterminated fence" $ do
+                map DocumentLinks.linkTarget (DocumentLinks.pageLinks (bs "```\n[x](./a.md)\n")) `shouldBe` []
+
         describe "splitTargetSuffix" $ do
             it "splits a path from its #anchor or ?query" $ do
                 DocumentLinks.splitTargetSuffix "foo.md#sec" `shouldBe` ("foo.md", "#sec")

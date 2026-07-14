@@ -407,3 +407,63 @@ catch-all `try`/`SomeException` at the server boundary. The temporary `try` adde
 `handleClient` during diagnosis should be removed and replaced by `ExceptT` at the
 points that can fail. (The `SIGPIPE` ignore is unrelated -- that is OS-signal handling
 for client disconnects, not exception-as-control-flow.)
+
+## Publish-path parse cost: the memchr scan (2026-07-14)
+
+The remaining per-publish cost was the `pageLinks` parse itself: the per-byte
+`BS.index` walk allocated ~5.6M cells (85MB of transient graph, ~35ms) per 73KB
+page, because every interpreted per-byte step costs ~50-100 cells regardless of
+`String` vs `ByteString` (`make bench-link-parse` measures this; the bench also
+carries the rejected strategies).
+
+Measured strategies on a 76.5KB corpus-shaped page:
+
+| strategy                     | cells/parse | MB/parse | ms/parse |
+| ---------------------------- | ----------- | -------- | -------- |
+| per-byte `BS.index` (old)    | 5,571,526   | 85.0     | ~35      |
+| `BS.split` lines alone       | 1,547,266   | 23.6     | 7.6      |
+| unpack-once `String` walk    | 3,588,632   | 54.8     | 19       |
+| libc `memchr` scan (chosen)  | 993,128     | 15.2     | 7.7      |
+
+The chosen implementation drives the scan with libc `memchr` over one
+marshalled copy: newline hits delimit lines (fence state), `]` hits find the
+`](` candidates, and a bounded `)` search closes each target. The interpreter
+touches only those positions. No custom C is involved -- the only foreign code
+is `string.h memchr` -- and `pageLinks` stays pure (the FFI only reads the
+copied bytes). `updatePage` (parse + index patch) fell 97MB -> 27MB per
+publish.
+
+Why this differs from RFC-0036's rejection of memchr for form decode: decode
+candidates (escapes) were dense -- thousands per body -- so per-candidate FFI
+overhead lost to a straight walk. Link candidates are sparse (~hundreds), so
+skipping the bytes between them wins ~5.6x on cells and ~4.5x on time.
+
+## Search tokenisation cost (2026-07-14, same pass)
+
+`make bench-search-chunk` measures the search indexing pipeline per
+publish-sized page (decode -> chunk -> WordPiece encode of ~90 chunks).
+Baseline: 126.2M cells (1.9GB) and ~790ms per page -- the dominant allocator
+in the whole server, and the driver of the search-enabled GC thrash.
+
+Three behaviour-preserving fixes (all pinned by the existing WordPiece and
+SearchChunks specs):
+
+- The vocabulary became two character tries (word-start and `##`
+  continuation), so the greedy longest-match walks each word once with cheap
+  per-`Char` steps; the old `Map String Int` paid a full string-keyed lookup
+  per candidate length per word. (126M -> 64M cells.)
+- `isPunct` answers ASCII with range tests; mhs's Unicode general-category
+  test costs ~200 cells per character. (64M -> 53M.)
+- `foldAccent` short-circuits ASCII before the accent-table lookup, and the
+  chunker's per-line `acc ++ [l]` appends became cons + reverse.
+
+Result: 53.5M cells (816MB) and ~357ms per page -- 2.4x less allocation.
+A memo of word -> pieces per encode was tried and REJECTED: with the trie the
+lookup is cheaper than maintaining a per-chunk `Map String` (and
+`Data.Map.Strict.fromList` forces values per duplicate key, so the naive memo
+computed every occurrence anyway).
+
+Remaining (measured) structure per page: decode 56MB, chunking ~141MB, encode
+~620MB (trie walk ~30M cells, token-split churn ~10M). The next big step
+would be restructuring `SearchChunks`/`WordPiece` over `ByteString` with the
+memchr technique above -- a larger API change, not attempted in this pass.

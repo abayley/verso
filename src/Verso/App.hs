@@ -62,6 +62,12 @@ limits from the (config-derived) settings. Logging is the outermost middleware.
 -}
 appFromConfig :: Server.Settings -> VConfig.VersoConfig -> IO Server.Application
 appFromConfig settings vc = do
+    -- Create the writable paths' parent directories up front. Without this a missing parent
+    -- (say a fresh checkout with a configured build/ log path) left the server listening but
+    -- failing every request on the access-log append -- a confusing failure mode.
+    mapM_
+        (Directory.createDirectoryIfMissing True . parentDirectory)
+        [VConfig.accessLog vc, VConfig.clientErrorLog vc, VConfig.operationLog vc, VConfig.linkIndex vc]
     accessLogger <- Log.rotatingFileLogfmtLogger (VConfig.logMaxBytes vc) (VConfig.logKeep vc) (VConfig.accessLog vc)
     clientErrorSink <- Log.rotatingAppender (VConfig.logMaxBytes vc) (VConfig.logKeep vc) (VConfig.clientErrorLog vc)
     -- Open the link index at startup in tree mode (RFC-0029): load the persisted index if

@@ -3,14 +3,13 @@
 carried over from 2026-07-13 session (RFC-0036 / ADR-080):
 
 - lance FTS optimize panic (SIGABRT, `InnerBuilder::merge_from` OOB in lance-index 7.0.0);
-  upstream issue, possibly index-state dependent; hasn't recurred since ADR-078
-- publish-path allocation ~85MB per 73KB page: link-index onSave parse in
-  `Verso.DocumentLinks`; candidates: cbits pass or restructuring
-- search chunking/tokenisation allocation (Concordance, String-heavy)
-- consider adding `make test-editor-browser` to `make check`/CI
-  (also: its `waitForServer` poll loop keeps bun alive forever on failure)
-- startup validation for missing log/oplog parent directories (currently the
-  server listens but fails every request with an access-log append error)
+  REPRODUCED 2026-07-14 at ~1/3 storm runs (`scripts/hang-repro.sh`); see
+  docs/design/lance-fts-optimize-panic.md (incl. draft upstream issue text);
+  likely fixed by upgrading vendored lance (lance#7325 area) with the
+  lancedb-c PR work
+- search chunking/tokenisation allocation (Concordance, String-heavy);
+  the memchr-scan technique from `Verso.DocumentLinks.pageLinks` may apply
+  (see docs/design/link-index-performance.md, 2026-07-14 section)
 - lancedb-c PR (RFC-0034 era) still to be raised upstream
 
 backend:
@@ -64,3 +63,9 @@ done:
   slash menu still do)
 - 2026-07-13: code-fence bodies in raw Markdown mode are syntax-highlighted via
   the shared lowlight grammars (codemirror-fence-highlight.ts)
+- 2026-07-14: publish-path link parse rebuilt on libc memchr (85MB -> 15MB,
+  35ms -> 8ms per 73KB page; `make bench-link-parse`)
+- 2026-07-14: startup creates parent dirs for access/client-error/op logs and
+  the link index (was: listen-but-fail-every-request)
+- 2026-07-14: `make check` runs the browser smoke; its startup poll no longer
+  hangs bun on failure

@@ -68,7 +68,7 @@ $(PROC_OBJ): $(CBITS)/microhttp_process.c $(CBITS)/microhttp_process.h
 	mkdir -p $(BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(CBITS)
 
-.PHONY: chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11 all-spikes search-lancedb search-nanoarrow search-model search-shim check clean
+.PHONY: chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder bench-link-parse bench-search-chunk spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11 all-spikes search-lancedb search-nanoarrow search-model search-shim check clean
 
 spike1:
 	mkdir -p $(BUILD)
@@ -214,6 +214,16 @@ bench-html-builder:
 	$(MHS) $(MHSFLAGS) -i$(SRC) -i$(BENCH) $(BENCH)/HtmlBuilderBench.hs -o $(BUILD)/html-builder-bench
 	$(BUILD)/html-builder-bench
 
+bench-link-parse:
+	mkdir -p $(BUILD)
+	$(MHS) $(MHSFLAGS) -i$(SRC) -i$(BENCH) $(BENCH)/LinkParseBench.hs -o $(BUILD)/link-parse-bench
+	$(BUILD)/link-parse-bench
+
+bench-search-chunk:
+	mkdir -p $(BUILD)
+	$(MHS) $(MHSFLAGS) -i$(SRC) -i$(BENCH) $(BENCH)/SearchChunkBench.hs -o $(BUILD)/search-chunk-bench
+	$(BUILD)/search-chunk-bench
+
 bench-iteratee:
 	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash scripts/iteratee-bench.sh
 
@@ -283,7 +293,7 @@ chrome-gates:
 	@if grep -rn 'wa-' src --include='*.hs' --include='*.ts'; then echo "chrome-gates FAILED: Web Awesome reference in src/"; exit 1; fi
 	@echo "chrome-gates OK"
 
-check: docs format-check lint test editor-check chrome-gates
+check: docs format-check lint test editor-check test-editor-browser chrome-gates
 
 clean:
 	rm -rf $(BUILD)

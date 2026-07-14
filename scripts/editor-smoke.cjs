@@ -38,6 +38,9 @@ async function main() {
 
   browser = await chromium.launch();
   const page = await browser.newPage();
+  // Within `make check` the first render competes with mhs builds for the machine; the
+  // default 30s selector timeout proved flaky there, so give page waits more headroom.
+  page.setDefaultTimeout(90000);
   const consoleErrors = [];
 
   page.on("console", (message) => {
@@ -736,37 +739,50 @@ function startServer() {
 
 function waitForServer(server) {
   return new Promise((resolve, reject) => {
+    // Settle exactly once and stop the poll loop with it: a rescheduling poll timer after a
+    // rejection kept the process alive forever, so a failed startup hung the make target.
+    let settled = false;
+    let pollTimer = null;
+
+    const settle = (finish, value) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      clearTimeout(timeout);
+      clearTimeout(pollTimer);
+      finish(value);
+    };
+
     const timeout = setTimeout(() => {
-      reject(
-        new Error(
-          `Timed out waiting for Verso server to start.\n${serverOutput}`,
-        ),
+      settle(
+        reject,
+        new Error(`Timed out waiting for Verso server to start.\n${serverOutput}`),
       );
     }, 30000);
 
     const poll = () => {
+      if (settled) {
+        return;
+      }
       http
         .get(baseUrl, (response) => {
           response.resume();
-          clearTimeout(timeout);
-          resolve();
+          settle(resolve);
         })
         .on("error", () => {
-          setTimeout(poll, 250);
+          pollTimer = setTimeout(poll, 250);
         });
     };
 
     server.on("exit", (code) => {
-      clearTimeout(timeout);
-      reject(
-        new Error(
-          `Verso server exited early with code ${code}.\n${serverOutput}`,
-        ),
+      settle(
+        reject,
+        new Error(`Verso server exited early with code ${code}.\n${serverOutput}`),
       );
     });
     server.on("error", (err) => {
-      clearTimeout(timeout);
-      reject(err);
+      settle(reject, err);
     });
 
     poll();

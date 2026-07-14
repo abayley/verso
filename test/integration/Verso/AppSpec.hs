@@ -9,6 +9,7 @@ import qualified MicroHttp.Server as Server
 import qualified System.Directory as Directory
 import Test.Hspec
 import qualified Verso.App as App
+import qualified Verso.Config as VConfig
 import qualified Verso.Git as Git
 
 spec :: Spec
@@ -23,6 +24,43 @@ spec = do
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
             fmap contentTypeOf outcome `shouldBe` Right (Just (BS.pack "text/css"))
             fmap isSizedFileBody outcome `shouldBe` Right True
+    describe "Verso.App startup preparation" $
+        it "given log and oplog paths under missing directories, when the app is built, then their parents are created" $ do
+            root <- setupTreeFixture
+            _ <- Process.runProcess "rm" ["-rf", "build/appspec-writable"] Nothing Nothing
+            let vc =
+                    VConfig.VersoConfig
+                        { VConfig.documentTreeRoot = root
+                        , VConfig.editorTheme = "paper"
+                        , VConfig.operationLog = "build/appspec-writable/oplog/operation_log"
+                        , VConfig.trashRoot = "build/appspec-writable/trash"
+                        , VConfig.trashRetentionDays = 90
+                        , VConfig.linkIndex = "build/appspec-writable/linkindex"
+                        , VConfig.accessLog = "build/appspec-writable/logs/access.log"
+                        , VConfig.clientErrorLog = "build/appspec-writable/logs/client-errors.log"
+                        , VConfig.logMaxBytes = 1048576
+                        , VConfig.logKeep = 2
+                        , VConfig.staticMounts = []
+                        , VConfig.versioningEnabled = False
+                        , VConfig.linkIndexEnabled = False
+                        , VConfig.draftRoot = "build/appspec-writable/drafts"
+                        , VConfig.identityHeader = "X-Remote-User"
+                        , VConfig.identityDefault = "anonymous"
+                        , VConfig.identityEmailDomain = "verso.local"
+                        , VConfig.searchEnabled = False
+                        , VConfig.searchModel = ""
+                        , VConfig.searchVocab = ""
+                        , VConfig.searchIndexDir = ""
+                        , VConfig.searchModelId = ""
+                        , VConfig.searchPooling = "cls"
+                        , VConfig.searchMaxTokens = 384
+                        , VConfig.searchDims = 384
+                        , VConfig.searchThreads = 1
+                        , VConfig.searchQueryPrefix = ""
+                        }
+            _ <- App.appFromConfig Server.defaultSettings vc
+            Directory.doesDirectoryExist "build/appspec-writable/logs" `shouldReturn` True
+            Directory.doesDirectoryExist "build/appspec-writable/oplog" `shouldReturn` True
     describe "Verso.App document tree" $ do
         it "given an edit request for a tree document, when routing, then the editor page is returned with its content" $ do
             root <- setupTreeFixture

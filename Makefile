@@ -1,5 +1,5 @@
 MHS = mhs
-MHS_PACKAGE_DB = $(HOME)/.mcabal/mhs-0.16.3.0
+MHS_PACKAGE_DB = $(HOME)/.mcabal/mhs-0.16.5.0
 MHSFLAGS = -a$(MHS_PACKAGE_DB)
 GHC = ghc
 HPC = hpc

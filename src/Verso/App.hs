@@ -396,7 +396,7 @@ rebuild is a 500 with the reason; without a store it is a 200 no-op.
 treeRefreshHandler :: WriteLock -> IO (Either String ()) -> Router.Handler
 treeRefreshHandler writeLock refresh _ _ = do
     result <- Iteratee.liftIO (withWriteLock writeLock refresh)
-    pure (either (statusResponse 500 "Internal Server Error" . (++ "\n")) (const (jsonResponse "{\"refreshed\":true}")) result)
+    pure (either (statusResponse 500 "Internal Server Error" . (++ "\n")) (const (jsonResponse (View.jsonObject [("refreshed", View.jsonBool True)]))) result)
 
 {- | The navigation-tree children endpoint (RFC-0026): @GET /tree/*path@ returns
 the immediate children of the folder at the tree-relative path (empty for the
@@ -542,7 +542,7 @@ treeDeleteHandler versioning author writeLock findRelevant maint root logPath tr
                     , OperationLog.opTs = ts
                     , OperationLog.opTrash = Just tid
                     }
-            pure (jsonResponse ("{\"deleted\":" ++ View.jsonString p ++ ",\"trashId\":" ++ View.jsonString tid ++ "}"))
+            pure (jsonResponse (View.jsonObject [("deleted", View.jsonString p), ("trashId", View.jsonString tid)]))
 
 {- | The restore endpoint (RFC-0028): @POST /trash/*id@ moves a trashed entry back to
 its origin (re-adding the listing), appends a @restore@ record, and returns the
@@ -573,7 +573,7 @@ treeRestoreHandler versioning writeLock maint root logPath trashRoot captures re
                     , OperationLog.opTs = ts
                     , OperationLog.opTrash = Just trashId
                     }
-            pure (jsonResponse ("{\"restored\":" ++ View.jsonString path ++ "}"))
+            pure (jsonResponse (View.jsonObject [("restored", View.jsonString path)]))
 
 -- | @"page"@ or @"section"@ for the operation log.
 kindLabel :: Bool -> String
@@ -594,11 +594,12 @@ appendOp logPath op = do
 -- | A refused-delete body: the referrers as @{"refused":true,"referrers":[{"page","link"}]}@.
 referrersJson :: [(String, String)] -> String
 referrersJson referrers =
-    "{\"refused\":true,\"referrers\":["
-        ++ List.intercalate "," (map one referrers)
-        ++ "]}"
+    View.jsonObject
+        [ ("refused", View.jsonBool True)
+        , ("referrers", View.jsonArray (map one referrers))
+        ]
   where
-    one (page, link) = "{\"page\":" ++ View.jsonString page ++ ",\"link\":" ++ View.jsonString link ++ "}"
+    one (page, link) = View.jsonObject [("page", View.jsonString page), ("link", View.jsonString link)]
 
 -- | The operations-list endpoint (RFC-0028): @GET /operations@ returns the log as JSON, for the undo picker.
 treeOperationsHandler :: FilePath -> Router.Handler
@@ -688,7 +689,7 @@ applyInverse findRelevant maint root logPath trashRoot op = case OperationLog.op
                 | TreeMove.planApplied plan -> do
                     onMove maint to from
                     appendInverse (OperationLog.opKind op) OperationLog.OpMove (Just to) (Just from) Nothing
-                    pure (Right ("{\"undo\":\"move\",\"from\":" ++ View.jsonString to ++ ",\"to\":" ++ View.jsonString from ++ "}"))
+                    pure (Right (View.jsonObject [("undo", View.jsonString "move"), ("from", View.jsonString to), ("to", View.jsonString from)]))
                 | otherwise -> pure (Left "inverse move was not applied")
 
     undoDelete = case OperationLog.opTrash op of
@@ -700,7 +701,7 @@ applyInverse findRelevant maint root logPath trashRoot op = case OperationLog.op
                 Right (path, kind) -> do
                     onRestore maint path
                     appendInverse kind OperationLog.OpRestore Nothing (Just path) (Just tid)
-                    pure (Right ("{\"undo\":\"delete\",\"restored\":" ++ View.jsonString path ++ "}"))
+                    pure (Right (View.jsonObject [("undo", View.jsonString "delete"), ("restored", View.jsonString path)]))
 
     undoRestore = do
         seqNo <- logSeq logPath
@@ -712,7 +713,7 @@ applyInverse findRelevant maint root logPath trashRoot op = case OperationLog.op
                 ts <- Log.localTimestamp
                 onDelete maint to
                 appendOp logPath (OperationLog.Operation OperationLog.OpDelete (kindOf to) (Just path) Nothing seqNo ts (Just tid))
-                pure (Right ("{\"undo\":\"restore\",\"deleted\":" ++ View.jsonString path ++ ",\"trashId\":" ++ View.jsonString tid ++ "}"))
+                pure (Right (View.jsonObject [("undo", View.jsonString "restore"), ("deleted", View.jsonString path), ("trashId", View.jsonString tid)]))
 
     -- Appends an inverse record with a fresh seq and timestamp.
     appendInverse kind typ opFrom' opTo' trash = do
@@ -770,7 +771,7 @@ treeTrashDeleteHandler trashRoot captures _ = do
     removed <- Iteratee.liftIO (TreeMove.deleteTrashEntry trashRoot trashId)
     pure
         ( if removed
-            then jsonResponse ("{\"purged\":" ++ View.jsonString trashId ++ "}")
+            then jsonResponse (View.jsonObject [("purged", View.jsonString trashId)])
             else statusResponse 404 "Not Found" "no such trash entry\n"
         )
 
@@ -783,7 +784,7 @@ treeTrashEmptyHandler trashRoot _ _ = do
         entries <- TreeMove.listTrash trashRoot
         outcomes <- mapM (\(entryId, _, _) -> TreeMove.deleteTrashEntry trashRoot entryId) entries
         pure (length (filter id outcomes))
-    pure (jsonResponse ("{\"emptied\":" ++ show emptied ++ "}"))
+    pure (jsonResponse (View.jsonObject [("emptied", show emptied)]))
 
 {- | The trash page (@GET /trashbin@): a full, newest-first listing of every
 restorable item with a per-row Restore, for when the recent-deletes dropdown is
@@ -851,18 +852,15 @@ trashEntriesNewestFirst trashRoot logPath = do
 -- | The enriched trash listing as JSON @[{"id","path","kind","ts"}]@, newest-first.
 trashEntriesJson :: [(String, String, String, String)] -> String
 trashEntriesJson entries =
-    "[" ++ List.intercalate "," (map one entries) ++ "]"
+    View.jsonArray (map one entries)
   where
     one (entryId, path, kind, ts) =
-        "{\"id\":"
-            ++ View.jsonString entryId
-            ++ ",\"path\":"
-            ++ View.jsonString path
-            ++ ",\"kind\":"
-            ++ View.jsonString kind
-            ++ ",\"ts\":"
-            ++ View.jsonString ts
-            ++ "}"
+        View.jsonObject
+            [ ("id", View.jsonString entryId)
+            , ("path", View.jsonString path)
+            , ("kind", View.jsonString kind)
+            , ("ts", View.jsonString ts)
+            ]
 
 -- Replay is an operator action run from the @replay-tool@ CLI (RFC-0028), not a web
 -- endpoint, so it is deliberately not surfaced under the routes; the logic lives in
@@ -1032,7 +1030,7 @@ treeUpload root captures request = do
                 Iteratee.liftIO (Directory.createDirectoryIfMissing True assetsDir)
                 stored <- Iteratee.liftIO (storeAsset assetsDir name bytes)
                 Iteratee.liftIO (recordAssetMetadata root path stored (Attachment.originalUploadFilename request))
-                pure (jsonResponse ("{\"url\":\"assets/" ++ stored ++ "\"}"))
+                pure (jsonResponse (View.jsonObject [("url", View.jsonString ("assets/" ++ stored))]))
 
 {- | Record a freshly stored asset in the page's sidecar metadata (ADR-049): an
 inline image in @images.yaml@ (with the original filename as its initial
@@ -1265,18 +1263,15 @@ orderTreeNodes = List.sortBy compareNodes
 
 -- | The navigation-tree children as a JSON array of @{"name","path","kind","hasChildren"}@ (RFC-0026).
 treeChildrenJson :: [TreeNode] -> String
-treeChildrenJson nodes = "[" ++ List.intercalate "," (map nodeObject nodes) ++ "]"
+treeChildrenJson nodes = View.jsonArray (map nodeObject nodes)
   where
     nodeObject n =
-        "{\"name\":"
-            ++ View.jsonString (nodeName n)
-            ++ ",\"path\":"
-            ++ View.jsonString (nodePath n)
-            ++ ",\"kind\":"
-            ++ View.jsonString (kindString (nodeKind n))
-            ++ ",\"hasChildren\":"
-            ++ (if nodeHasChildren n then "true" else "false")
-            ++ "}"
+        View.jsonObject
+            [ ("name", View.jsonString (nodeName n))
+            , ("path", View.jsonString (nodePath n))
+            , ("kind", View.jsonString (kindString (nodeKind n)))
+            , ("hasChildren", View.jsonBool (nodeHasChildren n))
+            ]
     kindString Section = "section"
     kindString Page = "page"
 
@@ -1361,7 +1356,7 @@ treeSpineFor root path = do
         fps -> fps
     folderEntry fp = do
         nodes <- childrenOf root fp
-        pure ("{\"path\":" ++ View.jsonString fp ++ ",\"children\":" ++ treeChildrenJson nodes ++ "}")
+        pure (View.jsonObject [("path", View.jsonString fp), ("children", treeChildrenJson nodes)])
 
 {- | Creates a new page or section under a parent section (RFC-0026), writing
 seeded frontmatter eagerly, and returns either an error message ('Left', a @400@)
@@ -1448,15 +1443,12 @@ yamlScalar s
 -- | The created-node JSON: the display name, tree path, kind, and the page path to open for editing.
 createdJson :: String -> String -> String -> String -> String
 createdJson name path kind editPath =
-    "{\"name\":"
-        ++ View.jsonString name
-        ++ ",\"path\":"
-        ++ View.jsonString path
-        ++ ",\"kind\":"
-        ++ View.jsonString kind
-        ++ ",\"editPath\":"
-        ++ View.jsonString editPath
-        ++ "}"
+    View.jsonObject
+        [ ("name", View.jsonString name)
+        , ("path", View.jsonString path)
+        , ("kind", View.jsonString kind)
+        , ("editPath", View.jsonString editPath)
+        ]
 
 -- | A @200@ JSON response with the given body.
 jsonResponse :: String -> Http.Response
@@ -1763,7 +1755,7 @@ treeSearchHandler themeDefault search _captures request = do
     case search of
         Nothing ->
             if wantsJson
-                then pure (jsonResponse "{\"enabled\":false}")
+                then pure (jsonResponse (View.jsonObject [("enabled", View.jsonBool False)]))
                 else pure (documentResponse (View.searchPage themeDefault origin query Nothing))
         Just runtime -> do
             outcome <-
@@ -1790,22 +1782,19 @@ one-line excerpt.
 -}
 searchResultsJson :: Int -> [Store.Hit] -> String
 searchResultsJson pending hits =
-    "{\"enabled\":true,\"pending\":"
-        ++ show pending
-        ++ ",\"results\":["
-        ++ List.intercalate "," (map one hits)
-        ++ "]}"
+    View.jsonObject
+        [ ("enabled", View.jsonBool True)
+        , ("pending", show pending)
+        , ("results", View.jsonArray (map one hits))
+        ]
   where
     one hit =
-        "{\"path\":"
-            ++ View.jsonString (Store.hitPage hit)
-            ++ ",\"title\":"
-            ++ View.jsonString (titleOfHit hit)
-            ++ ",\"anchor\":"
-            ++ View.jsonString (Store.hitAnchor hit)
-            ++ ",\"excerpt\":"
-            ++ View.jsonString (View.excerptOf (Store.hitText hit))
-            ++ "}"
+        View.jsonObject
+            [ ("path", View.jsonString (Store.hitPage hit))
+            , ("title", View.jsonString (titleOfHit hit))
+            , ("anchor", View.jsonString (Store.hitAnchor hit))
+            , ("excerpt", View.jsonString (View.excerptOf (Store.hitText hit)))
+            ]
 
 -- | A hit's page title: the context line's first @ > @-separated segment.
 titleOfHit :: Store.Hit -> String

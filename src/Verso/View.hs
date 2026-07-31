@@ -15,6 +15,9 @@ module Verso.View (
     editorThemeBootstrapScript,
     excerptOf,
     historyPage,
+    jsonArray,
+    jsonBool,
+    jsonObject,
     jsonString,
     knownEditorThemes,
     safeEditorTheme,
@@ -451,10 +454,32 @@ objects, embedded on the editor element for the metadata panel (RFC-0019). Strin
 are JSON-escaped; the surrounding HTML attribute is escaped by the renderer.
 -}
 attachmentsJson :: [(String, String)] -> String
-attachmentsJson entries = "[" ++ List.intercalate "," (map attachmentObject entries) ++ "]"
+attachmentsJson entries = jsonArray (map attachmentObject entries)
   where
     attachmentObject (name, localPath) =
-        "{\"name\":" ++ jsonString name ++ ",\"localPath\":" ++ jsonString localPath ++ "}"
+        jsonObject [("name", jsonString name), ("localPath", jsonString localPath)]
+
+{- | A JSON object from @(key, rendered value)@ pairs, in the given order. The
+keys are escaped; each value is emitted verbatim, so the caller picks its
+rendering -- 'jsonString' for text, 'show' for a number, @"true"@\/@"false"@ for
+a boolean, or a nested 'jsonObject' \/ 'jsonArray'. Preferred over writing the
+braces and commas by hand, which is where the escaping and separators get lost.
+-}
+jsonObject :: [(String, String)] -> String
+jsonObject fields = "{" ++ List.intercalate "," (map field fields) ++ "}"
+  where
+    field (key, value) = jsonString key ++ ":" ++ value
+
+{- | A JSON array from already-rendered elements, in the given order (the
+element counterpart of 'jsonObject').
+-}
+jsonArray :: [String] -> String
+jsonArray items = "[" ++ List.intercalate "," items ++ "]"
+
+-- | A JSON boolean literal, for use as a 'jsonObject' value.
+jsonBool :: Bool -> String
+jsonBool True = "true"
+jsonBool False = "false"
 
 -- | A JSON string literal: the value wrapped in quotes with the structural characters escaped.
 jsonString :: String -> String
@@ -472,10 +497,10 @@ data Crumb = Crumb String (Maybe String)
 
 -- | The breadcrumb trail as a JSON array of @{"label","href"}@ (href omitted for the current page).
 breadcrumbsJson :: [Crumb] -> String
-breadcrumbsJson crumbs = "[" ++ List.intercalate "," (map crumbObject crumbs) ++ "]"
+breadcrumbsJson crumbs = jsonArray (map crumbObject crumbs)
   where
     crumbObject (Crumb label href) =
-        "{\"label\":" ++ jsonString label ++ maybe "" (\h -> ",\"href\":" ++ jsonString h) href ++ "}"
+        jsonObject (("label", jsonString label) : maybe [] (\h -> [("href", jsonString h)]) href)
 
 editorPage :: String -> Maybe String -> String -> String -> BS.ByteString -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Html.Html ()
 editorPage docId mode themeDefault pageTitle content versioned editable hasDraft attachments breadcrumbs treeSpine =

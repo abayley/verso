@@ -38,6 +38,7 @@ import qualified Verso.SearchChunksSpec as SearchChunksSpec
 import qualified Verso.SearchQueueSpec as SearchQueueSpec
 import qualified Verso.TrashSpec as TrashSpec
 import qualified Verso.TreeMoveSpec as TreeMoveSpec
+import qualified Verso.ViewSpec as ViewSpec
 
 main :: IO ()
 main = hspec $ do
@@ -77,4 +78,5 @@ main = hspec $ do
     OperationLogSpec.spec
     AppSpec.spec
     ChromeSpec.spec
+    ViewSpec.spec
     VersoConfigSpec.spec

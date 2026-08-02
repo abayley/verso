@@ -14,29 +14,28 @@ export type TocSelectHandler = (index: number) => void;
 
 /**
  * Which entries are being read, by the rule "the section intersects the viewport": an entry's section runs
- * from its own heading down to the next heading of the same or a higher level (to the end of the document
- * for the last one), and the entry is active when that span overlaps the band of the viewport the document
- * actually shows. Measuring the section rather than the heading means the indicator always marks something,
- * however deep inside one long section the reader is -- a heading-only rule goes blank as soon as the
- * heading itself scrolls away.
+ * from its own heading down to the next heading of any level (to the end of the document for the last one),
+ * and the entry is active when that span overlaps the band of the viewport the document actually shows.
  *
- * Nesting is deliberate: a subsection in view also marks its ancestors, whose sections contain it. The
- * active entries are therefore not always one contiguous run (an ancestor stays lit while a sibling
- * subsection above the fold does not), which is why each entry is marked in its own right.
+ * Measuring the section rather than the heading means the indicator stays lit however deep inside a long
+ * section the reader is -- a heading-only rule goes blank as soon as the heading itself scrolls away. Ending
+ * a section at the *next* heading rather than at the next one of the same or a higher level keeps the
+ * marking to what is genuinely on screen: a parent is lit only while its own text is in view, not for the
+ * whole span of its children. The marked entries are therefore always one contiguous run.
  *
- * `tops` are viewport coordinates of each heading, in the same order as the entries; a heading with no
- * measurement (a shorter array, or a NaN from an unrendered view) is never active.
+ * `tops` are viewport coordinates of each heading, in document order; a heading with no measurement (a
+ * shorter array, or a NaN from an unrendered view) is never active.
  */
-export function activeSections(levels: number[], tops: number[], bandTop: number, bandBottom: number): boolean[] {
-    return levels.map((level: number, index: number): boolean => {
-        const start = tops[index];
-
-        if (start === undefined || Number.isNaN(start)) {
+export function activeSections(tops: number[], bandTop: number, bandBottom: number): boolean[] {
+    return tops.map((start: number, index: number): boolean => {
+        if (Number.isNaN(start)) {
             return false;
         }
 
-        const next = levels.findIndex((other: number, at: number): boolean => at > index && other <= level);
-        const end = next === -1 ? Number.POSITIVE_INFINITY : (tops[next] ?? Number.POSITIVE_INFINITY);
+        // An unmeasured next heading is no boundary at all: the section runs on rather than closing at a
+        // coordinate that would fail every comparison it appears in.
+        const next = tops[index + 1];
+        const end = next === undefined || Number.isNaN(next) ? Number.POSITIVE_INFINITY : next;
 
         return start < bandBottom && end > bandTop;
     });
@@ -50,7 +49,6 @@ export function activeSections(levels: number[], tops: number[], bandTop: number
 export class TableOfContentsPanel {
     private readonly panel: HTMLElement;
     private readonly list: HTMLOListElement;
-    private levels: number[] = [];
     /** The last marking applied, so a scroll that changes nothing touches neither the DOM nor the scroller. */
     private active: boolean[] = [];
 
@@ -79,7 +77,6 @@ export class TableOfContentsPanel {
     public setEntries(entries: TocEntry[]): void {
         this.list.replaceChildren();
         this.panel.hidden = entries.length === 0;
-        this.levels = entries.map((entry: TocEntry): number => entry.level);
         this.active = [];
 
         entries.forEach((entry: TocEntry, index: number): void => {
@@ -107,7 +104,7 @@ export class TableOfContentsPanel {
      * than the pane is tall.
      */
     public trackReading(tops: number[], bandTop: number, bandBottom: number): void {
-        const active = activeSections(this.levels, tops, bandTop, bandBottom);
+        const active = activeSections(tops, bandTop, bandBottom);
 
         if (active.length === this.active.length && active.every((on, at): boolean => on === this.active[at])) {
             return;

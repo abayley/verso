@@ -60,33 +60,32 @@ describe("documentHeadings", (): void => {
 describe("activeSections", (): void => {
     // A four-entry document: H1 Title, H2 One, H3 Detail, H2 Two, with the headings 100px apart. The band
     // stands for the visible document: below the sticky top bar, above the fold.
-    const levels = [1, 2, 3, 2];
     const tops = [0, 100, 200, 300];
 
-    it("given the viewport over one section, when marked, then that entry and its ancestors are active", (): void => {
-        expect(activeSections(levels, tops, 210, 290)).toEqual([true, true, true, false]);
+    it("given the viewport over one section, when marked, then only that entry is active", (): void => {
+        expect(activeSections(tops, 210, 290)).toEqual([false, false, true, false]);
     });
 
     it("given a section scrolled past its own heading, when marked, then it stays active", (): void => {
         // Deep inside one long section: nothing on screen but its body, its own heading long scrolled past
         // and the next section still far below.
-        expect(activeSections([1, 2, 2], [0, 100, 5000], 400, 600)).toEqual([true, true, false]);
+        expect(activeSections([0, 100, 5000], 400, 600)).toEqual([false, true, false]);
     });
 
     it("given the viewport spanning a boundary, when marked, then both sections are active", (): void => {
-        expect(activeSections(levels, tops, 250, 350)).toEqual([true, true, true, true]);
+        expect(activeSections(tops, 250, 350)).toEqual([false, false, true, true]);
     });
 
     it("given the viewport above the first heading, when marked, then nothing is active", (): void => {
-        expect(activeSections(levels, tops, -400, -100)).toEqual([false, false, false, false]);
+        expect(activeSections(tops, -400, -100)).toEqual([false, false, false, false]);
     });
 
-    it("given a sibling subsection above the fold, when marked, then it is not active but its parent is", (): void => {
-        expect(activeSections(levels, tops, 210, 290)[1]).toBe(true);
-        expect(activeSections(levels, tops, 210, 290)[3]).toBe(false);
+    it("given a subsection in view, when marked, then its parent section is not also marked", (): void => {
+        // The H1's own text ended where the H2 began, so only what is genuinely on screen is lit.
+        expect(activeSections(tops, 210, 290)[0]).toBe(false);
     });
 
     it("given a heading with no measurement, when marked, then it is not active", (): void => {
-        expect(activeSections(levels, [0, 100], 0, 1000)).toEqual([true, true, false, false]);
+        expect(activeSections([0, 100, Number.NaN], 150, 1000)).toEqual([false, true, false]);
     });
 });

@@ -1325,8 +1325,8 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
 
 /* The entries hang off an indicator rail: a hairline track down the left of the list, with the entries
    whose sections are on screen marking themselves on it (see .markdown-editor__toc-item[data-active]).
-   No gap between the items -- the spacing is the links' own padding -- so consecutive marked entries
-   read as one unbroken segment rather than a dashed run. */
+   No gap between the items -- the spacing is the links' own padding -- so the marked run, which is
+   always contiguous, reads as one unbroken segment rather than a dashed one. */
 .markdown-editor__toc-list {
   display: flex;
   flex-direction: column;

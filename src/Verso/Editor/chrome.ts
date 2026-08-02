@@ -458,9 +458,64 @@ export type DropdownElOptions = {
     ariaLabel?: string;
     /** Suppress the caret icon (compact icon-style triggers). */
     caret?: boolean;
+    /** Lift the menu out of the flow, for a trigger inside a clipping scroll container (see pinPopover). */
+    pinned?: boolean;
     items: { value: string; label: string; disabled?: boolean }[];
     onSelect: (value: string) => void;
 };
+
+/**
+ * Pins a dropdown's menu to fixed viewport coordinates just below its trigger, for a trigger that sits
+ * inside an `overflow` scroll container: positioned normally the menu is clipped at the container's edge,
+ * and -- closed but only visually hidden -- its full height counts towards the container's scrollable
+ * area, which puts a scrollbar on a box that has nothing to scroll.
+ *
+ * `position: fixed` is therefore set once and kept, not applied on open: it is what keeps the closed menu
+ * out of the container's overflow. The coordinates are refreshed whenever Basecoat opens the menu (it only
+ * toggles `aria-hidden`, so these inline styles survive). Synchronous, not rAF: the position is read from
+ * the trigger, which is always laid out, and rAF is throttled to a standstill while the page is hidden.
+ */
+const POPOVER_MARGIN = 4;
+
+/** The floor on a pinned menu's height: below this it is better to overhang than to be a two-item slot. */
+const MIN_POPOVER_HEIGHT = 120;
+
+function pinPopover(popover: HTMLElement, trigger: HTMLElement): void {
+    popover.style.position = "fixed";
+    popover.style.insetInlineStart = "auto";
+    popover.style.insetInlineEnd = "auto";
+    popover.style.bottom = "auto";
+    // Above the editor pane and the delegated tooltip (z 900), below the blocking overlay (z 1000).
+    popover.style.zIndex = "950";
+
+    const reposition = (): void => {
+        if (popover.getAttribute("aria-hidden") !== "false") {
+            return;
+        }
+
+        const rect = trigger.getBoundingClientRect();
+        popover.style.left = `${Math.round(rect.left)}px`;
+        // Measure the menu unconstrained before deciding where it goes.
+        popover.style.maxHeight = "none";
+        const wanted = popover.scrollHeight;
+        const viewport = document.documentElement.clientHeight;
+        const below = viewport - rect.bottom - POPOVER_MARGIN * 2;
+        const above = rect.top - POPOVER_MARGIN * 2;
+        // Below the trigger by default; above it when the menu does not fit below and there is more room
+        // there. Either way the height is capped to the room available and the menu scrolls, so a long
+        // list (the code languages) can always be reached to its end.
+        const placeAbove = wanted > below && above > below;
+        const room = Math.max(placeAbove ? above : below, MIN_POPOVER_HEIGHT);
+        const height = Math.min(wanted, room);
+        popover.style.maxHeight = `${Math.round(room)}px`;
+        popover.style.overflowY = "auto";
+        popover.style.top = placeAbove
+            ? `${Math.round(rect.top - POPOVER_MARGIN - height)}px`
+            : `${Math.round(rect.bottom + POPOVER_MARGIN)}px`;
+    };
+
+    new MutationObserver(reposition).observe(popover, { attributes: true, attributeFilter: ["aria-hidden"] });
+}
 
 /** An imperative Basecoat dropdown menu (see chromeDropdown for the wiring). */
 export function chromeDropdownEl(options: DropdownElOptions): ChromeDropdownElement {
@@ -525,6 +580,10 @@ export function chromeDropdownEl(options: DropdownElOptions): ChromeDropdownElem
     buildItems(options.items);
     popover.append(menu);
     root.append(trigger, popover);
+
+    if (options.pinned === true) {
+        pinPopover(popover, trigger);
+    }
 
     root.setTriggerLabel = (label: string): void => {
         triggerLabel.textContent = label;

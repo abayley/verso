@@ -177,6 +177,9 @@
   --markdown-editor-panel-row-padding: 0.1rem 0.2rem;
   --markdown-editor-panel-row-radius: 0.375rem;
   --markdown-editor-panel-indent: 1.3rem;
+  /* The selected row's fill, a step past the hover fill (--muted) in both schemes: hover and selected
+     were the same colour, which left the open page barely marked in either. */
+  --markdown-editor-panel-row-selected: oklch(0.895 0 0); /* between --muted and --border */
   --markdown-editor-accent: oklch(0.205 0 0); /* --primary */
   --markdown-editor-background: oklch(1 0 0); /* --background */
   --markdown-editor-code-background: oklch(0.97 0 0); /* --muted */
@@ -222,6 +225,7 @@
   --markdown-editor-warning: oklch(0.769 0.188 70.08); /* amber-500 */
   --markdown-editor-danger: oklch(0.704 0.191 22.216); /* --destructive */
   --markdown-editor-emphasis: oklch(0.702 0.183 293.541); /* violet-400 */
+  --markdown-editor-panel-row-selected: oklch(0.371 0 0); /* a step lighter than --muted */
 }
 
 body.markdown-editor-page {
@@ -431,8 +435,10 @@ markdown-editor {
   background: var(--markdown-editor-code-background);
 }
 
+/* The open page: a stronger fill than hover, and the full text colour against the tree's muted grey. */
 .markdown-editor__nav-row[data-active="true"] {
-  background: var(--markdown-editor-code-background);
+  background: var(--markdown-editor-panel-row-selected);
+  color: var(--markdown-editor-text);
   font-weight: 600;
 }
 

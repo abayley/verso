@@ -108,6 +108,10 @@ export class CodeBlockView {
             triggerLabel: PLAIN_LABEL,
             triggerClassName: "markdown-editor__button markdown-editor__code-language-trigger",
             ariaLabel: "Code language",
+            // The picker rides inside the block's <pre>, which scrolls its own overflow: unpinned, the menu
+            // is clipped by the block (badly, on a one-line fence) and its closed height gives the block a
+            // scrollbar over nothing.
+            pinned: true,
             items: [
                 { value: "", label: PLAIN_LABEL },
                 { value: MERMAID_LANGUAGE, label: "Mermaid" },

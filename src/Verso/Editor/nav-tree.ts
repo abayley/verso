@@ -790,6 +790,9 @@ export class NavTreePanel {
             triggerLabel: "",
             triggerClassName: "markdown-editor__nav-op",
             ariaLabel: "Undo a move",
+            // The nav is a narrow scroll container with a low stacking context; pinned, the menu escapes
+            // both (see pinPopover).
+            pinned: true,
             items: [{ value: UNDO_VIEW_ALL, label: "View all moves…" }],
             onSelect: (value: string): void => {
                 if (value === UNDO_VIEW_ALL) {
@@ -807,9 +810,6 @@ export class NavTreePanel {
         const trigger = dropdown.querySelector("#nav-undo-menu-trigger");
         trigger?.append(chromeIconEl("undo"));
         trigger?.setAttribute("data-tooltip", "Undo a move");
-        const popover = dropdown.querySelector<HTMLElement>("#nav-undo-menu-popover");
-        // Pin the popover into the viewport whenever it opens (escapes the nav's clipping/stacking).
-        this.pinNavPopover(popover, trigger as HTMLElement);
         // Refresh the logged moves each time the menu is about to open.
         trigger?.addEventListener("click", (): void => void this.loadUndoItems());
         initBasecoat();
@@ -877,6 +877,8 @@ export class NavTreePanel {
             triggerLabel: "",
             triggerClassName: "markdown-editor__nav-op",
             ariaLabel: "Trash",
+            // As for the undo menu beside it: pinned, so the nav's overflow cannot clip it.
+            pinned: true,
             items: [{ value: TRASH_VIEW_ALL, label: "View all in trash…" }],
             onSelect: (value: string): void => {
                 if (value === TRASH_VIEW_ALL) {
@@ -893,44 +895,11 @@ export class NavTreePanel {
         const trigger = dropdown.querySelector("#nav-trash-menu-trigger");
         trigger?.append(chromeIconEl("trash"));
         trigger?.setAttribute("data-tooltip", "Trash");
-        const popover = dropdown.querySelector<HTMLElement>("#nav-trash-menu-popover");
-        // Pin the popover into the viewport whenever it opens (escapes the nav's clipping/stacking).
-        this.pinNavPopover(popover, trigger as HTMLElement);
         // Refresh the trash entries each time the menu is about to open.
         trigger?.addEventListener("click", (): void => void this.loadTrashItems());
         initBasecoat();
 
         return dropdown;
-    }
-
-    /**
-     * Pins a nav dropdown's popover to fixed viewport coordinates just below its trigger. The nav is a
-     * narrow `overflow: auto` scroll container with a low stacking context, so a CSS-positioned popover is
-     * clipped at the nav's edge (opening right) or runs off-screen (opening left) and paints under the
-     * editor pane. Fixed positioning with a high z-index escapes both -- the same tactic as the delegated
-     * body-level tooltip (RFC-0035). Basecoat only toggles `aria-hidden`, so these inline styles survive.
-     */
-    private pinNavPopover(popover: HTMLElement | null, trigger: HTMLElement): void {
-        if (popover === null) {
-            return;
-        }
-        // Re-pin whenever Basecoat opens the popover (it only toggles aria-hidden). Synchronous, not
-        // rAF: the position is read from the trigger, which is always laid out, and rAF can be throttled.
-        const reposition = (): void => {
-            if (popover.getAttribute("aria-hidden") !== "false") {
-                return;
-            }
-            const rect = trigger.getBoundingClientRect();
-            popover.style.position = "fixed";
-            popover.style.left = `${Math.round(rect.left)}px`;
-            popover.style.top = `${Math.round(rect.bottom + 4)}px`;
-            popover.style.insetInlineStart = "auto";
-            popover.style.insetInlineEnd = "auto";
-            popover.style.bottom = "auto";
-            // Above the editor pane and the delegated tooltip (z 900), below the blocking overlay (z 1000).
-            popover.style.zIndex = "950";
-        };
-        new MutationObserver(reposition).observe(popover, { attributes: true, attributeFilter: ["aria-hidden"] });
     }
 
     /**

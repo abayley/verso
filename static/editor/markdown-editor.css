@@ -344,8 +344,8 @@ markdown-editor {
   box-sizing: border-box;
   color: var(--markdown-editor-text);
   display: flex;
-  /* Wider than shadcn's 16rem --sidebar-width: page names here are longer than menu labels. */
-  flex: 0 0 var(--markdown-editor-nav-width, 18rem);
+  /* Well past shadcn's 16rem --sidebar-width: page names here are far longer than menu labels. */
+  flex: 0 0 var(--markdown-editor-nav-width, 24rem);
   flex-direction: column;
   font: var(--markdown-editor-panel-font-size) var(--markdown-editor-font);
   gap: 0.5rem;
@@ -1211,15 +1211,16 @@ a.markdown-editor__crumb:hover {
   display: none;
 }
 
-/* The document body as a card: page-coloured surface separated by a hairline
-   border with the shadcn radius and shadow-sm (RFC-0035). */
+/* The document body is no longer a card: no border, no radius, no shadow, no inset, and the page's own
+   background rather than a surface of its own -- the prose sits directly on the page, and the workspace's
+   own gutter is the only space around it. */
 .markdown-editor__body {
-  background: var(--markdown-editor-pill-background);
-  border: 1px solid var(--markdown-editor-pill-border);
-  border-radius: 0.625rem;
-  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 5%);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
   margin-block: 0.75rem;
-  padding: 1.5rem 2rem;
+  padding: 0;
 }
 
 /* The editing column (and its peer metadata panel) is centred and width-capped by the chosen preset; the

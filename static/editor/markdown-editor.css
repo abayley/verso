@@ -2427,14 +2427,29 @@ markdown-editor[data-search-open] .markdown-editor__workspace {
 
 @media (max-width: 70rem) {
   .markdown-editor__sidebar-row {
-    display: flex;
-    justify-content: flex-start;
+    display: block;
     padding: 0 0 0.5rem;
   }
 
+  /* Full width, so the chevron rides the trailing edge of the content column and the
+     section label has room to run. */
+  .markdown-editor__sidebar-disclosure {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  /* One line: a long heading is clipped rather than wrapping the control. */
+  .markdown-editor__sidebar-disclosure-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .markdown-editor__sidebar-disclosure .chrome-icon {
+    flex: none;
     height: 0.75rem;
-    margin-left: 0.25rem;
+    margin-left: 0.5rem;
     width: 0.75rem;
   }
 
@@ -2442,8 +2457,11 @@ markdown-editor[data-search-open] .markdown-editor__workspace {
     transform: rotate(180deg);
   }
 
-  /* The pane drops over the editing pane from the top of the workspace rather than
-     sitting beside it, so the prose keeps the full column width. */
+  /* The pane drops from the trigger over the editing pane rather than sitting beside
+     it, so the prose keeps the full column width. Fixed, not absolute: the trigger
+     rides the sticky top bar while the workspace scrolls away under it, so a panel
+     anchored to the workspace sits off-screen above the fold once the page is
+     scrolled. `top`/`left`/`width` are pinned to the trigger by pinSidebarPanel. */
   .markdown-editor__sidebar {
     background: var(--markdown-editor-background);
     border: 1px solid var(--markdown-editor-divider);
@@ -2452,11 +2470,13 @@ markdown-editor[data-search-open] .markdown-editor__workspace {
     box-sizing: border-box;
     display: none;
     flex-basis: auto;
-    inset: 0 0 auto;
     max-height: min(70vh, 32rem);
     overflow-y: auto;
+    left: var(--markdown-editor-sidebar-panel-left, 0);
     padding: 0.75rem 1rem;
-    position: absolute;
+    position: fixed;
+    top: var(--markdown-editor-sidebar-panel-top, var(--markdown-editor-topbar-height, 4.5rem));
+    width: var(--markdown-editor-sidebar-panel-width, auto);
     /* Over the editing pane, under the search dropdown (30) and its backdrop (15). */
     z-index: 8;
   }

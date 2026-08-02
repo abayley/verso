@@ -82,6 +82,12 @@ const bodyWidthStorageKey = "editor-body-width";
 const modeStorageKey = "editor-mode";
 const sidebarCollapsedStorageKey = "editor-sidebar-collapsed";
 
+/** The narrow-viewport disclosure's label above the first heading, where no section is current. */
+const SIDEBAR_DISCLOSURE_FALLBACK = "Contents";
+
+/** How often scrolling may re-read the heading positions to rename the disclosure trigger. */
+const sidebarLabelThrottleMilliseconds = 100;
+
 /** The selectable editing-column widths, in toolbar order; "narrow" is the default. Icons read as
     increasing column width (a portrait, a square, a landscape rectangle). */
 const bodyWidths: { value: BodyWidth; label: string; icon: string }[] = [
@@ -304,8 +310,11 @@ export class MarkdownEditorElement extends HTMLElement {
     private topBarResizeObserver: ResizeObserver | null = null;
     /** The narrow-viewport metadata-panel trigger, and its document-level dismiss handlers. */
     private sidebarDisclosure: HTMLButtonElement | null = null;
+    private sidebarDisclosureLabel: HTMLSpanElement | null = null;
     private dismissSidebarOnClick: ((event: MouseEvent) => void) | null = null;
     private dismissSidebarOnKey: ((event: KeyboardEvent) => void) | null = null;
+    private trackSidebarOnScroll: (() => void) | null = null;
+    private trackSidebarOnResize: (() => void) | null = null;
     private visualEditor: TiptapVisualEditor | null = null;
     private visualEditorChanged = false;
     private wordCount: HTMLSpanElement | null = null;
@@ -365,6 +374,14 @@ export class MarkdownEditorElement extends HTMLElement {
             document.removeEventListener("keydown", this.dismissSidebarOnKey);
             this.dismissSidebarOnKey = null;
         }
+        if (this.trackSidebarOnScroll !== null) {
+            window.removeEventListener("scroll", this.trackSidebarOnScroll, true);
+            this.trackSidebarOnScroll = null;
+        }
+        if (this.trackSidebarOnResize !== null) {
+            window.removeEventListener("resize", this.trackSidebarOnResize);
+            this.trackSidebarOnResize = null;
+        }
     }
 
     /**
@@ -380,11 +397,16 @@ export class MarkdownEditorElement extends HTMLElement {
         const row = document.createElement("div");
         row.className = "markdown-editor__sidebar-row";
 
-        const trigger = chromeButtonEl("outline", "Contents", {
+        const trigger = chromeButtonEl("outline", "", {
             className: "markdown-editor__sidebar-disclosure",
         });
         trigger.setAttribute("aria-expanded", "false");
-        trigger.append(chromeIconEl("chevron-down"));
+        // The label is its own element so the scroll position can rewrite it without
+        // disturbing the chevron, which the row pushes to the trailing edge.
+        this.sidebarDisclosureLabel = document.createElement("span");
+        this.sidebarDisclosureLabel.className = "markdown-editor__sidebar-disclosure-label";
+        this.sidebarDisclosureLabel.textContent = SIDEBAR_DISCLOSURE_FALLBACK;
+        trigger.append(this.sidebarDisclosureLabel, chromeIconEl("chevron-down"));
         trigger.addEventListener("click", (event: MouseEvent): void => {
             // Stop the document handler below from seeing this click as an outside click.
             event.stopPropagation();
@@ -399,6 +421,57 @@ export class MarkdownEditorElement extends HTMLElement {
     private setSidebarDisclosureOpen(open: boolean): void {
         this.toggleAttribute("data-sidebar-open", open);
         this.sidebarDisclosure?.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) {
+            this.pinSidebarPanel();
+        }
+    }
+
+    /**
+     * Pins the metadata panel under its trigger, in fixed viewport coordinates. The trigger rides
+     * the sticky top bar while the workspace scrolls away beneath it, so a panel positioned against
+     * the workspace lands off-screen above the fold as soon as the page is scrolled -- it has to be
+     * anchored to the trigger, not to the document. Matches the trigger's box so the panel spans
+     * the content column.
+     */
+    private pinSidebarPanel(): void {
+        if (this.sidebar === null || this.sidebarDisclosure === null) {
+            return;
+        }
+        // Published as custom properties rather than set on the pane directly: only the
+        // narrow-viewport rules read them, so nothing leaks into the wide layout, where the
+        // pane is a sticky column with its own top and width.
+        const rect = this.sidebarDisclosure.getBoundingClientRect();
+        this.style.setProperty("--markdown-editor-sidebar-panel-top", `${Math.round(rect.bottom + 4)}px`);
+        this.style.setProperty("--markdown-editor-sidebar-panel-left", `${Math.round(rect.left)}px`);
+        this.style.setProperty("--markdown-editor-sidebar-panel-width", `${Math.round(rect.width)}px`);
+    }
+
+    /**
+     * The rendered heading elements of the visual view, in document order. The source view is a
+     * CodeMirror document with no heading elements to measure, so it reports none and the trigger
+     * keeps its fallback label.
+     */
+    private headingElements(): HTMLElement[] {
+        return [
+            ...this.querySelectorAll<HTMLElement>(
+                ".ProseMirror > h1, .ProseMirror > h2, .ProseMirror > h3, .ProseMirror > h4, .ProseMirror > h5, .ProseMirror > h6",
+            ),
+        ];
+    }
+
+    /**
+     * Names the section being read on the collapsed trigger: the last heading to have passed under
+     * the top bar. Above the first heading there is no such section, so the fallback label stands.
+     */
+    private updateSidebarDisclosureLabel(): void {
+        if (this.sidebarDisclosureLabel === null) {
+            return;
+        }
+        const cutoff = (this.sidebarDisclosure?.getBoundingClientRect().bottom ?? 0) + 4;
+        const current = this.headingElements()
+            .filter((heading: HTMLElement): boolean => heading.getBoundingClientRect().top <= cutoff)
+            .pop();
+        this.sidebarDisclosureLabel.textContent = current?.textContent?.trim() || SIDEBAR_DISCLOSURE_FALLBACK;
     }
 
     /** Dismisses the narrow-viewport metadata panel on an outside click or Escape. */
@@ -416,6 +489,30 @@ export class MarkdownEditorElement extends HTMLElement {
         };
         document.addEventListener("click", this.dismissSidebarOnClick);
         document.addEventListener("keydown", this.dismissSidebarOnKey);
+
+        // Scroll only renames the section on the trigger; it never re-pins the panel, because the
+        // trigger rides the sticky top bar and so does not move as the page scrolls. Throttled on a
+        // timestamp rather than requestAnimationFrame, which is throttled to a standstill while the
+        // page is hidden -- the same reason pinNavPopover positions synchronously.
+        let lastLabelUpdate = 0;
+        this.trackSidebarOnScroll = (): void => {
+            const now = Date.now();
+            if (now - lastLabelUpdate < sidebarLabelThrottleMilliseconds) {
+                return;
+            }
+            lastLabelUpdate = now;
+            this.updateSidebarDisclosureLabel();
+        };
+        // Resizing does move the trigger, so an open panel is re-pinned to it.
+        this.trackSidebarOnResize = (): void => {
+            this.updateSidebarDisclosureLabel();
+            if (this.hasAttribute("data-sidebar-open")) {
+                this.pinSidebarPanel();
+            }
+        };
+        window.addEventListener("scroll", this.trackSidebarOnScroll, true);
+        window.addEventListener("resize", this.trackSidebarOnResize);
+        this.updateSidebarDisclosureLabel();
     }
 
     /** Publishes the sticky top bar's height to `--markdown-editor-topbar-height`, tracking it as it wraps. */
@@ -2405,6 +2502,8 @@ export class MarkdownEditorElement extends HTMLElement {
 
         const entries = documentHeadings(this.markdown);
         this.tocPanel.setEntries(entries);
+        // Editing the document can rename or remove the section the trigger is naming.
+        this.updateSidebarDisclosureLabel();
 
         if (this.sidebar) {
             this.sidebar.hidden = false;

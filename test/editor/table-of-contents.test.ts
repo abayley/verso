@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { documentHeadings } from "../../src/Verso/Editor/table-of-contents.js";
+import { activeSections, documentHeadings } from "../../src/Verso/Editor/table-of-contents.js";
 
 describe("documentHeadings", (): void => {
     it("given ATX headings, when parsed, then it returns them in order with levels", (): void => {
@@ -54,5 +54,39 @@ describe("documentHeadings", (): void => {
 
     it("given Markdown with no headings, when parsed, then the list is empty", (): void => {
         expect(documentHeadings("Just a paragraph.\n\nAnother one.")).toEqual([]);
+    });
+});
+
+describe("activeSections", (): void => {
+    // A four-entry document: H1 Title, H2 One, H3 Detail, H2 Two, with the headings 100px apart. The band
+    // stands for the visible document: below the sticky top bar, above the fold.
+    const levels = [1, 2, 3, 2];
+    const tops = [0, 100, 200, 300];
+
+    it("given the viewport over one section, when marked, then that entry and its ancestors are active", (): void => {
+        expect(activeSections(levels, tops, 210, 290)).toEqual([true, true, true, false]);
+    });
+
+    it("given a section scrolled past its own heading, when marked, then it stays active", (): void => {
+        // Deep inside one long section: nothing on screen but its body, its own heading long scrolled past
+        // and the next section still far below.
+        expect(activeSections([1, 2, 2], [0, 100, 5000], 400, 600)).toEqual([true, true, false]);
+    });
+
+    it("given the viewport spanning a boundary, when marked, then both sections are active", (): void => {
+        expect(activeSections(levels, tops, 250, 350)).toEqual([true, true, true, true]);
+    });
+
+    it("given the viewport above the first heading, when marked, then nothing is active", (): void => {
+        expect(activeSections(levels, tops, -400, -100)).toEqual([false, false, false, false]);
+    });
+
+    it("given a sibling subsection above the fold, when marked, then it is not active but its parent is", (): void => {
+        expect(activeSections(levels, tops, 210, 290)[1]).toBe(true);
+        expect(activeSections(levels, tops, 210, 290)[3]).toBe(false);
+    });
+
+    it("given a heading with no measurement, when marked, then it is not active", (): void => {
+        expect(activeSections(levels, [0, 100], 0, 1000)).toEqual([true, true, false, false]);
     });
 });

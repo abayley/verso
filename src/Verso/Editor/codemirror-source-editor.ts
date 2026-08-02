@@ -102,6 +102,23 @@ export class CodeMirrorSourceEditor {
         this.view.focus();
     }
 
+    /**
+     * The viewport top of every heading line, in the same order as the contents entries, for the panel's
+     * reading indicator. Taken from CodeMirror's height map rather than `coordsAtPos`, which is null for
+     * anything outside the rendered window -- most of a long document. Heights outside that window are
+     * estimated, which is accurate enough to say which section is on screen.
+     */
+    public headingViewportTops(): number[] {
+        const doc = this.view.state.doc;
+        const contentTop = this.view.contentDOM.getBoundingClientRect().top;
+
+        return headingLineNumbers(doc.toString()).map((line: number): number => {
+            const position = doc.line(line + 1).from;
+
+            return contentTop + this.view.lineBlockAt(position).top;
+        });
+    }
+
     /** The 1-based line and column of the caret (the selection head), for the status bar. */
     public cursorPosition(): { line: number; column: number } {
         const head = this.view.state.selection.main.head;

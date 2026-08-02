@@ -565,6 +565,30 @@ export class MarkdownEditorElement extends HTMLElement {
         this.sidebarDisclosureLabel.textContent = current?.textContent?.trim() || SIDEBAR_DISCLOSURE_FALLBACK;
     }
 
+    /**
+     * The viewport top of each heading, in contents order. The visual view measures its rendered heading
+     * elements; the source view has none, so CodeMirror's height map answers for it instead.
+     */
+    private headingViewportTops(): number[] {
+        if (this.visualEditor) {
+            return this.headingElements().map((heading: HTMLElement): number => heading.getBoundingClientRect().top);
+        }
+
+        return this.sourceEditor?.headingViewportTops() ?? [];
+    }
+
+    /**
+     * Tells the contents panel which sections are on screen, so it can mark them and keep them in view. The
+     * band is what the reader can actually see of the document: the sticky top bar covers the top of the
+     * viewport, and in split mode the visual pane is the one measured (it is the pane the tops come from).
+     */
+    private trackReadingPosition(): void {
+        const bandTop = this.topBar?.getBoundingClientRect().bottom ?? 0;
+        // clientHeight, not innerHeight: the layout viewport the sticky bar's own coordinates live in,
+        // without the horizontal scrollbar innerHeight counts in.
+        this.tocPanel?.trackReading(this.headingViewportTops(), bandTop, document.documentElement.clientHeight);
+    }
+
     /** Dismisses the narrow-viewport metadata panel on an outside click or Escape. */
     private installSidebarDisclosureDismiss(): void {
         this.dismissSidebarOnClick = (event: MouseEvent): void => {
@@ -607,10 +631,12 @@ export class MarkdownEditorElement extends HTMLElement {
             }
             lastLabelUpdate = now;
             this.updateSidebarDisclosureLabel();
+            this.trackReadingPosition();
         };
         // Resizing does move the trigger, so an open panel is re-pinned to it.
         this.trackSidebarOnResize = (): void => {
             this.updateSidebarDisclosureLabel();
+            this.trackReadingPosition();
             if (this.hasAttribute("data-sidebar-open")) {
                 this.pinSidebarPanel();
             }
@@ -620,6 +646,7 @@ export class MarkdownEditorElement extends HTMLElement {
         window.addEventListener("scroll", this.trackSidebarOnScroll, true);
         window.addEventListener("resize", this.trackSidebarOnResize);
         this.updateSidebarDisclosureLabel();
+        this.trackReadingPosition();
         // The rail may start collapsed from a stored preference, so the trigger is named
         // for the state it will move to before it is ever pressed.
         this.syncNavTriggerState();
@@ -1917,6 +1944,9 @@ export class MarkdownEditorElement extends HTMLElement {
         } finally {
             this.buildingEditors = false;
         }
+        // The panes are measured for the contents panel's reading indicator, and the two views lay the same
+        // document out differently, so switching between them moves every heading.
+        this.trackReadingPosition();
     }
 
     /** (Re)builds the editor panes for the current mode. Wrapped by {@link renderMode}'s dirty-suppression. */
@@ -2622,8 +2652,10 @@ export class MarkdownEditorElement extends HTMLElement {
 
         const entries = documentHeadings(this.markdown);
         this.tocPanel.setEntries(entries);
-        // Editing the document can rename or remove the section the trigger is naming.
+        // Editing the document can rename or remove the section the trigger is naming, and moves the
+        // headings the contents panel's reading indicator is measured against.
         this.updateSidebarDisclosureLabel();
+        this.trackReadingPosition();
 
         if (this.sidebar) {
             this.sidebar.hidden = false;

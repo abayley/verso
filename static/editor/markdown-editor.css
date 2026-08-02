@@ -1323,13 +1323,48 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   display: none;
 }
 
+/* The entries hang off an indicator rail: a hairline track down the left of the list, with the entries
+   whose sections are on screen marking themselves on it (see .markdown-editor__toc-item[data-active]).
+   No gap between the items -- the spacing is the links' own padding -- so consecutive marked entries
+   read as one unbroken segment rather than a dashed run. */
 .markdown-editor__toc-list {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 0 0.75rem;
+  position: relative;
+}
+
+.markdown-editor__toc-list::before {
+  background: var(--markdown-editor-divider);
+  bottom: 0;
+  content: "";
+  left: 1px;
+  position: absolute;
+  top: 0;
+  width: 1px;
+}
+
+.markdown-editor__toc-item {
+  position: relative;
+}
+
+/* The marked segment: thicker and in the text colour, over the track's hairline. */
+.markdown-editor__toc-item[data-active="true"]::before {
+  background: var(--markdown-editor-text);
+  border-radius: 1px;
+  bottom: 0;
+  content: "";
+  left: -0.75rem;
+  position: absolute;
+  top: 0;
+  width: 3px;
+}
+
+/* Reading the section brings the entry forward; the rest sit back in the pane's muted colour. */
+.markdown-editor__toc-item[data-active="true"] .markdown-editor__toc-link {
+  color: var(--markdown-editor-text);
 }
 
 .markdown-editor__toc-item[data-level="2"] .markdown-editor__toc-link {

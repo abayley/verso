@@ -1200,6 +1200,9 @@ a.markdown-editor__crumb:hover {
   flex: 1;
   gap: 1.5rem;
   margin: 0 auto;
+  /* The containing block for the narrow-viewport metadata panel, which drops over
+     the editing pane from the top of the workspace. */
+  position: relative;
   max-width: 74rem;
   /* The content column has no gutter (so the top bar spans it edge to edge), so the
      workspace carries its own so the editing column is not flush to the edges. */
@@ -2402,4 +2405,76 @@ markdown-editor[data-search-open] .markdown-editor__workspace {
     font-size: 0.8rem;
     padding: 0.4rem 0.5rem;
     text-decoration: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Narrow viewports
+   ---------------------------------------------------------------------------
+   The layout sheds chrome as the viewport narrows, widest threshold first.
+
+   1. Metadata pane (70rem / 1120px). Beside the editor the pane costs 240px plus
+      a 72px gap; measured on the demo corpus, keeping it below this width drops
+      the prose measure under ~50 characters (48ch at 1100px, against 78ch with
+      the pane hidden). Below the breakpoint it becomes a panel opened from a
+      trigger in its own top-bar row. The pane is not moved in the DOM, only
+      repositioned, so the contents, attachments, and history panels keep working.
+   --------------------------------------------------------------------------- */
+
+/* The disclosure row is built at every width; only narrow viewports show it. */
+.markdown-editor__sidebar-row {
+  display: none;
+}
+
+@media (max-width: 70rem) {
+  .markdown-editor__sidebar-row {
+    display: flex;
+    justify-content: flex-start;
+    padding: 0 0 0.5rem;
+  }
+
+  .markdown-editor__sidebar-disclosure .chrome-icon {
+    height: 0.75rem;
+    margin-left: 0.25rem;
+    width: 0.75rem;
+  }
+
+  markdown-editor[data-sidebar-open] .markdown-editor__sidebar-disclosure .chrome-icon {
+    transform: rotate(180deg);
+  }
+
+  /* The pane drops over the editing pane from the top of the workspace rather than
+     sitting beside it, so the prose keeps the full column width. */
+  .markdown-editor__sidebar {
+    background: var(--markdown-editor-background);
+    border: 1px solid var(--markdown-editor-divider);
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+    box-sizing: border-box;
+    display: none;
+    flex-basis: auto;
+    inset: 0 0 auto;
+    max-height: min(70vh, 32rem);
+    overflow-y: auto;
+    padding: 0.75rem 1rem;
+    position: absolute;
+    /* Over the editing pane, under the search dropdown (30) and its backdrop (15). */
+    z-index: 8;
+  }
+
+  markdown-editor[data-sidebar-open] .markdown-editor__sidebar {
+    display: flex;
+    gap: 1.25rem;
+  }
+
+  /* The pane's own collapse toggle is redundant here: the disclosure trigger owns
+     open/closed, and the rail-collapse affordance has no meaning as a panel. */
+  .markdown-editor__sidebar-toggle {
+    display: none;
+  }
+
+  /* A collapsed pane is the wide-viewport state; as a panel it is simply closed,
+     so the collapsed rules must not hide the panel's contents. */
+  .markdown-editor__sidebar[data-collapsed="true"] > *:not(.markdown-editor__sidebar-toggle) {
+    display: revert;
+  }
 }

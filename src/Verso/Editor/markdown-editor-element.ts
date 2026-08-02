@@ -302,6 +302,10 @@ export class MarkdownEditorElement extends HTMLElement {
     private topBar: HTMLDivElement | null = null;
     /** Publishes the sticky top bar's height as a CSS variable so the nav/sidebar can sit clear of it. */
     private topBarResizeObserver: ResizeObserver | null = null;
+    /** The narrow-viewport metadata-panel trigger, and its document-level dismiss handlers. */
+    private sidebarDisclosure: HTMLButtonElement | null = null;
+    private dismissSidebarOnClick: ((event: MouseEvent) => void) | null = null;
+    private dismissSidebarOnKey: ((event: KeyboardEvent) => void) | null = null;
     private visualEditor: TiptapVisualEditor | null = null;
     private visualEditorChanged = false;
     private wordCount: HTMLSpanElement | null = null;
@@ -353,6 +357,65 @@ export class MarkdownEditorElement extends HTMLElement {
         this.visualEditor = null;
         this.topBarResizeObserver?.disconnect();
         this.topBarResizeObserver = null;
+        if (this.dismissSidebarOnClick !== null) {
+            document.removeEventListener("click", this.dismissSidebarOnClick);
+            this.dismissSidebarOnClick = null;
+        }
+        if (this.dismissSidebarOnKey !== null) {
+            document.removeEventListener("keydown", this.dismissSidebarOnKey);
+            this.dismissSidebarOnKey = null;
+        }
+    }
+
+    /**
+     * The narrow-viewport disclosure for the metadata pane. Below the sidebar breakpoint the pane
+     * stops being a column beside the editor (it squeezes the prose measure under ~50 characters)
+     * and becomes a panel opened from this trigger, which sits in its own top-bar row under the
+     * breadcrumb and search. The row is created at every width and hidden by CSS above the
+     * breakpoint, so nothing has to be rebuilt on resize -- the pane itself is never moved in the
+     * DOM either, only repositioned, so the contents, attachments, and history panels keep their
+     * live element references.
+     */
+    private createSidebarDisclosure(): HTMLDivElement {
+        const row = document.createElement("div");
+        row.className = "markdown-editor__sidebar-row";
+
+        const trigger = chromeButtonEl("outline", "Contents", {
+            className: "markdown-editor__sidebar-disclosure",
+        });
+        trigger.setAttribute("aria-expanded", "false");
+        trigger.append(chromeIconEl("chevron-down"));
+        trigger.addEventListener("click", (event: MouseEvent): void => {
+            // Stop the document handler below from seeing this click as an outside click.
+            event.stopPropagation();
+            this.setSidebarDisclosureOpen(!this.hasAttribute("data-sidebar-open"));
+        });
+        this.sidebarDisclosure = trigger;
+        row.append(trigger);
+        return row;
+    }
+
+    /** Opens or closes the narrow-viewport metadata panel, keeping the trigger's ARIA state in step. */
+    private setSidebarDisclosureOpen(open: boolean): void {
+        this.toggleAttribute("data-sidebar-open", open);
+        this.sidebarDisclosure?.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+
+    /** Dismisses the narrow-viewport metadata panel on an outside click or Escape. */
+    private installSidebarDisclosureDismiss(): void {
+        this.dismissSidebarOnClick = (event: MouseEvent): void => {
+            const target = event.target as Node;
+            if (this.hasAttribute("data-sidebar-open") && this.sidebar !== null && !this.sidebar.contains(target)) {
+                this.setSidebarDisclosureOpen(false);
+            }
+        };
+        this.dismissSidebarOnKey = (event: KeyboardEvent): void => {
+            if (event.key === "Escape" && this.hasAttribute("data-sidebar-open")) {
+                this.setSidebarDisclosureOpen(false);
+            }
+        };
+        document.addEventListener("click", this.dismissSidebarOnClick);
+        document.addEventListener("keydown", this.dismissSidebarOnKey);
     }
 
     /** Publishes the sticky top bar's height to `--markdown-editor-topbar-height`, tracking it as it wraps. */
@@ -488,7 +551,12 @@ export class MarkdownEditorElement extends HTMLElement {
             this.setSidebarCollapsed(!collapsed);
         });
         this.sidebar.append(sidebarToggle);
-        this.tocPanel = new TableOfContentsPanel((index: number): void => this.scrollToHeading(index));
+        this.tocPanel = new TableOfContentsPanel((index: number): void => {
+            // As a narrow-viewport panel the pane covers the prose it just scrolled to, so
+            // choosing a heading dismisses it. A no-op when the pane is a column.
+            this.setSidebarDisclosureOpen(false);
+            this.scrollToHeading(index);
+        });
         this.sidebar.append(this.tocPanel.element());
         this.attachmentPanel = new AttachmentPanel(
             (attachment: PanelAttachment): void => this.insertAttachmentLink(attachment),
@@ -521,7 +589,7 @@ export class MarkdownEditorElement extends HTMLElement {
         const searchPanel = new SearchPanel();
         topBarRow.append(searchPanel.element());
         void searchPanel.connect();
-        this.topBar.append(this.toolbar, topBarRow);
+        this.topBar.append(this.toolbar, topBarRow, this.createSidebarDisclosure());
 
         // The content column holds the top bar, the editing workspace, and the bottom bars. It is a flex
         // column beside the viewport-pinned nav; the host is a flex row of [nav, content]. The floating
@@ -544,6 +612,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.setSidebarCollapsed(readStoredPreference(sidebarCollapsedStorageKey) === "true");
         initBasecoat();
         this.observeTopBarHeight();
+        this.installSidebarDisclosureDismiss();
         this.renderMode();
         this.updateToolbarState();
         this.updateWordCount();

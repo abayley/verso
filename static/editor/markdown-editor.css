@@ -2622,3 +2622,24 @@ markdown-editor[data-sidebar-open]
     transform: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   3. Breadcrumb (35rem / 560px). The breadcrumb shares its row with the search
+      box, which holds min(20rem, 60vw), so the trail gets whatever is left:
+      308px at 700, 208px at 600 (where it starts truncating), and under 170px
+      below 560 -- a dozen characters, too few to place the page. It goes at
+      35rem, and the search box takes the freed row. The trail is the smallest
+      loss of the three: the page's own title sits above the editing pane, and
+      the navigation panel still reaches every ancestor.
+   --------------------------------------------------------------------------- */
+
+@media (max-width: 35rem) {
+  .markdown-editor__document-name {
+    display: none;
+  }
+
+  /* Alone on its row, the box stops rationing itself to 60vw. */
+  .markdown-editor__search {
+    width: 100%;
+  }
+}

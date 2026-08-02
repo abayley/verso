@@ -298,6 +298,9 @@ markdown-editor {
    toggle. */
 .markdown-editor__nav {
   align-self: flex-start;
+  /* Opaque, not transparent: the search dropdown overhangs the nav column, and a
+     see-through rail let both sets of text show through where they overlapped. */
+  background: var(--markdown-editor-background);
   border-right: 1px solid var(--markdown-editor-divider);
   box-sizing: border-box;
   color: var(--markdown-editor-muted);
@@ -2217,13 +2220,16 @@ markdown-editor[data-readonly] .markdown-image__resize-handle {
 }
 
 /* The search box sits at the right of the breadcrumb row; the dropdown is
-   anchored to it and overlays the page content below the bar. The z-index keeps
-   the box and its dropdown above the click-catcher backdrop in every theme
-   (Workbench flattens the top bar, so the bar's own z-index cannot be relied on). */
+   anchored to it and overlays the page content below the bar. The search layer is
+   the frontmost chrome: above the click-catcher backdrop (15), the nav rail (10),
+   and the sticky top bar (6), so the results never paint under the nav column they
+   overhang. This element's z-index carries its whole subtree, the dropdown
+   included (Workbench flattens the top bar, so the bar's own z-index cannot be
+   relied on). */
 .markdown-editor__search {
     position: relative;
     width: min(20rem, 60vw);
-    z-index: 7;
+    z-index: 20;
 }
 
 /* A proper clear button at the right of the input: a comfortable hit area (the
@@ -2257,14 +2263,16 @@ markdown-editor[data-readonly] .markdown-image__resize-handle {
     color: inherit;
 }
 
-/* Results overlay the content beneath rather than displacing it: absolutely
-   positioned under the input, wider than the box, above the blur backdrop. */
+/* Results overlay the content beneath rather than displacing it. The element is
+   a child of <body>, not of the search box, and is pinned to fixed coordinates
+   under the input by search-panel.ts (`top`/`right` are set inline). It has to
+   live outside the top bar: `position: sticky` always creates a stacking
+   context, so anything inside the bar is trapped below the nav rail (z 10) no
+   matter how high its own z-index -- the dropdown overhangs that rail and used
+   to paint under it. Same escape as the body-level tooltip and the pinned nav
+   popovers. Right-anchored so it grows leftwards and stays on-screen. */
 .markdown-editor__search-results {
-    position: absolute;
-    top: calc(100% + 4px);
-    /* Right-anchored: the box sits towards the right of the controls row, so
-       growing leftwards keeps the dropdown on-screen. */
-    right: 0;
+    position: fixed;
     box-sizing: border-box;
     width: min(52rem, 92vw);
     /* Low enough that a full result set overflows and scrolls -- the always-
@@ -2276,15 +2284,23 @@ markdown-editor[data-readonly] .markdown-image__resize-handle {
     border-radius: 8px;
     padding: 0.35rem;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
-    z-index: 7;
+    /* Frontmost chrome, in the root stacking context: above the click-catcher
+       backdrop (15) and the nav rail (10). */
+    z-index: 30;
+}
+
+.markdown-editor__search-results[hidden] {
+    display: none;
 }
 
 /* A transparent click-catcher: while the dropdown is open a click anywhere on
-   the softened page closes the dropdown rather than acting on the page. */
+   the softened page closes the dropdown rather than acting on the page. It sits
+   above the nav rail (10) as well as the content, because the nav is softened
+   too -- below the nav it used to let rail clicks act on the tree instead. */
 .markdown-editor__search-backdrop {
     position: fixed;
     inset: 0;
-    z-index: 5;
+    z-index: 15;
     background: transparent;
 }
 

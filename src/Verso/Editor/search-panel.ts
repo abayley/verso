@@ -88,7 +88,12 @@ export class SearchPanel {
 
         this.input.addEventListener("input", (): void => this.onInput());
         this.input.addEventListener("keydown", (event: KeyboardEvent): void => this.onKey(event));
-        this.panel.append(this.input, this.clearButton, this.dropdown);
+        this.panel.append(this.input, this.clearButton);
+        // The dropdown is a sibling of the backdrop at <body> level rather than a child of
+        // the panel: the top bar is `position: sticky`, which always creates a stacking
+        // context, so a dropdown inside it can never paint above the nav rail it overhangs.
+        // Its coordinates are pinned to the input in `pinDropdown`.
+        document.body.append(this.dropdown);
 
         document.addEventListener("keydown", (event: KeyboardEvent): void => {
             if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -98,15 +103,32 @@ export class SearchPanel {
             }
         });
         document.addEventListener("click", (event: MouseEvent): void => {
-            if (!this.panel.contains(event.target as Node)) {
+            // The dropdown is no longer inside the panel, so it needs its own containment
+            // check -- without it, clicking a result would close the panel before the row's
+            // own handler ran.
+            const target = event.target as Node;
+            if (!this.panel.contains(target) && !this.dropdown.contains(target)) {
                 this.close();
             }
         });
+        // Keep the pinned dropdown under its input when the viewport changes beneath it.
+        const repin = (): void => {
+            if (!this.dropdown.hidden) {
+                this.pinDropdown();
+            }
+        };
+        window.addEventListener("resize", repin);
+        window.addEventListener("scroll", repin, true);
     }
 
     /** The panel element, for placement in the editor's top bar. */
     public element(): HTMLElement {
         return this.panel;
+    }
+
+    /** The results dropdown, which lives at @body@ level rather than inside the panel. */
+    public dropdownElement(): HTMLElement {
+        return this.dropdown;
     }
 
     /** Probes search availability; the panel stays hidden when disabled. */
@@ -164,10 +186,21 @@ export class SearchPanel {
         this.dropdown.append(message);
     }
 
+    /**
+     * Pins the body-level dropdown just under the input, right-aligned to it so it grows
+     * leftwards (the CSS width is far wider than the box) and stays on-screen.
+     */
+    private pinDropdown(): void {
+        const rect = this.input.getBoundingClientRect();
+        this.dropdown.style.top = `${Math.round(rect.bottom + 4)}px`;
+        this.dropdown.style.right = `${Math.round(window.innerWidth - rect.right)}px`;
+    }
+
     /** Opens the (emptied) dropdown with its backdrop and page-softening attribute. */
     private openDropdown(): void {
         this.dropdown.replaceChildren();
         this.dropdown.hidden = false;
+        this.pinDropdown();
         this.backdrop.hidden = false;
         this.panel.closest("markdown-editor")?.setAttribute("data-search-open", "");
     }

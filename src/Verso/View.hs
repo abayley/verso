@@ -83,13 +83,19 @@ editorThemeBootstrapScript =
         ++ "r.classList.toggle('dark',d);"
         ++ "}catch(e){}})();</script>"
 
-{- | The stylesheet and script tags shared by every full page: the vendored
-Geist font, the Basecoat chrome bundle (RFC-0035), and the app stylesheet.
-Order matters: Basecoat loads before the app stylesheet so un-layered app
-rules win the cascade.
+{- | The head tags shared by every full page: the responsive viewport, the
+vendored Geist font, the Basecoat chrome bundle (RFC-0035), and the app
+stylesheet. Order matters: Basecoat loads before the app stylesheet so
+un-layered app rules win the cascade.
+
+The viewport tag is what makes the narrow layouts reachable at all: without it
+a phone browser lays the page out at a ~980px virtual viewport and scales the
+result down, so the narrow breakpoints never match on a real device (only when
+a desktop window is resized). It lives here so no page shell can omit it.
 -}
 chromeHeadAssets :: Html.Html ()
 chromeHeadAssets = do
+    Html.meta [Html.attr "name" "viewport", Html.attr "content" "width=device-width, initial-scale=1"]
     Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/geist.css\">"
     Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/basecoat.css\">"
     Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/markdown-editor.css\">"

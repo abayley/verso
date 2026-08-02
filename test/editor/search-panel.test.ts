@@ -51,7 +51,7 @@ describe("SearchPanel", (): void => {
 
         expect(fetchMock).toHaveBeenCalledTimes(1);
         expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/search?json&q=failover");
-        const row = panel.element().querySelector(".markdown-editor__search-row") as HTMLElement;
+        const row = panel.dropdownElement().querySelector(".markdown-editor__search-row") as HTMLElement;
         expect(row.querySelector(".markdown-editor__search-title")?.textContent).toBe("Failover Guide");
         expect(row.querySelector(".markdown-editor__search-anchor")?.textContent).toContain("Timeouts");
         expect(row.querySelector(".markdown-editor__search-crumb")?.textContent).toBe("guides");
@@ -69,7 +69,7 @@ describe("SearchPanel", (): void => {
         input.dispatchEvent(new Event("input"));
         await vi.advanceTimersByTimeAsync(300);
 
-        const row = panel.element().querySelector(".markdown-editor__search-row") as HTMLAnchorElement;
+        const row = panel.dropdownElement().querySelector(".markdown-editor__search-row") as HTMLAnchorElement;
         expect(row.tagName).toBe("A");
         expect(row.href).toContain("/documents/guides/failover.md");
 
@@ -95,7 +95,7 @@ describe("SearchPanel", (): void => {
         input.dispatchEvent(new Event("input"));
         await vi.advanceTimersByTimeAsync(300);
 
-        (panel.element().querySelector(".markdown-editor__search-row") as HTMLElement).click();
+        (panel.dropdownElement().querySelector(".markdown-editor__search-row") as HTMLElement).click();
         expect(navigations).toEqual(["guides/failover.md"]);
     });
 
@@ -106,7 +106,7 @@ describe("SearchPanel", (): void => {
         input.value = "failover";
         input.dispatchEvent(new Event("input"));
         await vi.advanceTimersByTimeAsync(300);
-        const dropdown = panel.element().querySelector(".markdown-editor__search-results") as HTMLElement;
+        const dropdown = panel.dropdownElement();
         expect(dropdown.hidden).toBe(false);
 
         input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
@@ -126,7 +126,7 @@ describe("SearchPanel", (): void => {
         input.dispatchEvent(new Event("input"));
         await vi.advanceTimersByTimeAsync(300);
 
-        const dropdown = panel.element().querySelector(".markdown-editor__search-results") as HTMLElement;
+        const dropdown = panel.dropdownElement();
         expect(dropdown.hidden).toBe(false);
         expect(dropdown.querySelector(".markdown-editor__search-error")?.textContent).toBe(
             "Couldn’t reach the server.",
@@ -141,6 +141,6 @@ describe("SearchPanel", (): void => {
         input.dispatchEvent(new Event("input"));
         await vi.advanceTimersByTimeAsync(300);
 
-        expect(panel.element().querySelector(".markdown-editor__search-pending")?.textContent).toContain("42");
+        expect(panel.dropdownElement().querySelector(".markdown-editor__search-pending")?.textContent).toContain("42");
     });
 });

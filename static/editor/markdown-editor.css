@@ -1862,6 +1862,17 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   max-width: 100%;
 }
 
+/* The bar's two wrap groups (see command-bar-element.ts): flex items, so the bar's
+   first break falls between them -- before Badge -- rather than shedding buttons one
+   at a time. They keep wrapping internally at extreme widths, as a last resort. */
+.markdown-editor__command-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  justify-content: center;
+}
+
 .markdown-editor__toolbar--commands {
   align-items: center;
   background: var(--markdown-editor-pill-background);
@@ -2608,16 +2619,17 @@ markdown-editor[data-sidebar-open]
 /* ---------------------------------------------------------------------------
    3. Breadcrumb (35rem / 560px). The breadcrumb shares its row with the search
       box, which holds min(20rem, 60vw), so the trail gets whatever is left:
-      308px at 700 and 208px at 600, where it starts truncating. It goes at
-      44rem (704px): below that the trail is shorter than the page names it has
-      to carry, and the search box takes the freed row. The trail never wraps
-      (see .markdown-editor__document-name), so the row it shares with the
-      search box keeps a fixed height right up to the breakpoint. The trail is the smallest
+      308px at 700 and 208px at 600, where it starts truncating. It goes at the
+      same 70rem as the metadata pane and the presentation controls -- one
+      threshold moves the whole chrome into its narrow arrangement, rather than
+      shedding pieces one at a time -- and the search box takes the freed row.
+      The trail never wraps (see .markdown-editor__document-name), so the row it
+      shares with the search box keeps a fixed height up to the breakpoint. The trail is the smallest
       loss of the three: the page's own title sits above the editing pane, and
       the navigation panel still reaches every ancestor.
    --------------------------------------------------------------------------- */
 
-@media (max-width: 44rem) {
+@media (max-width: 70rem) {
   .markdown-editor__document-name {
     display: none;
   }
@@ -2630,27 +2642,22 @@ markdown-editor[data-sidebar-open]
 
 /* ---------------------------------------------------------------------------
    4. Presentation controls (47rem of toolbar, not of viewport). Mode, width,
-      light/dark and theme need about 755px in a row beside Edit/Publish. That is
-      a property of the content column, not the window: the rail's 272px means the
-      row runs out of room twice as the window narrows -- measured on the demo
-      corpus the slots overlap at 1000px while the rail is a column, then have
-      room again at 820 once the rail is a drawer, and run out once more below
-      about 780. A viewport media query cannot express that, so the toolbar is a
-      container and the query is on its own width.
+      light/dark and theme need about 755px in a row beside Edit/Publish, and
+      below that they overlap the read/edit group -- measured on the demo corpus
+      the slots first collide at about 1026px.
+
+      They fold at the same 70rem as the metadata pane and the breadcrumb: one
+      threshold moves the whole chrome into its narrow arrangement. Strictly the
+      row's capacity is a property of the content column rather than the window
+      (once the rail becomes a drawer at 53rem the row has room again, so the
+      controls stay folded through a band where they would fit), but a single
+      predictable threshold is worth more than reclaiming that band.
 
       The controls are wrapped in .markdown-editor__presentation, which is
       `display: contents` while there is room -- the grid still sees the centre
       and appearance slots as its own items, so the full-width layout is byte for
       byte what it was, and nothing is re-parented as the breakpoint is crossed.
    --------------------------------------------------------------------------- */
-
-/* Scoped to the top bar: the floating command bar shares the __toolbar class, and
-   inline-size containment there stops its width tracking its contents, collapsing
-   it to a sliver that never grows with the viewport. */
-.markdown-editor__toolbar--top {
-  container-name: editor-toolbar;
-  container-type: inline-size;
-}
 
 /* The containing block for the folded presentation panel. */
 .markdown-editor__toolbar--top .markdown-editor__toolbar-controls {
@@ -2666,7 +2673,7 @@ markdown-editor[data-sidebar-open]
   display: none;
 }
 
-@container editor-toolbar (max-width: 47rem) {
+@media (max-width: 70rem) {
   /* Two items left in the row: the read/edit group, and the trigger at the end. */
   .markdown-editor__toolbar-controls {
     display: flex;
@@ -2691,8 +2698,7 @@ markdown-editor[data-sidebar-open]
     padding: 0.75rem;
     /* Positioned against the controls row rather than the viewport: the row is the
        trigger's own box, so `right: 0` lines the panel up with it and no JavaScript
-       pinning is needed. Fixed positioning would be measured from the toolbar
-       anyway, which `container-type` makes a containing block. */
+       pinning is needed. */
     position: absolute;
     right: 0;
     top: calc(100% + 4px);

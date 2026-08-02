@@ -175,7 +175,12 @@ export class CommandBarElement extends LitElement {
     }
 
     protected override render(): unknown {
+        // Two wrap groups rather than one flat row: as flex items they wrap as units, so the
+        // bar's first break always falls between them -- before Badge -- instead of shedding
+        // buttons one at a time as the pane narrows. Wide enough for both, and they sit on one
+        // line exactly as a flat row would.
         return html`
+            <div class="markdown-editor__command-row" role="none">
             ${chromeDropdown({
                 id: "command-bar-style",
                 className: "markdown-editor__style-dropdown",
@@ -217,6 +222,8 @@ export class CommandBarElement extends LitElement {
                     }),
                 )}
             </div>
+            </div>
+            <div class="markdown-editor__command-row" role="none">
             ${chromeDropdown({
                 id: "command-bar-badge",
                 className: "markdown-editor__badge-dropdown",
@@ -278,6 +285,7 @@ export class CommandBarElement extends LitElement {
                 submit: true,
                 disabled: this.saveDisabled,
             })}
+            </div>
         `;
     }
 }

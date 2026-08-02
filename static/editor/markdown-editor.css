@@ -152,6 +152,31 @@
 }
 
 :root {
+  /* One text face and one code face for the whole application: Roboto and Roboto Mono, self-hosted
+     (scripts/build-editor.mjs vendors them; no font CDN, so the server works on a private network). The
+     variable packages register the families under their "... Variable" names, with a locally installed
+     Roboto and then the system stacks behind them.
+
+     Basecoat's own --font-sans/--font-mono are pointed at the same pair. Its bundle sets them in
+     @layer theme, and these unlayered declarations win, so its components stop asking for Geist -- which
+     this application no longer ships. */
+  --markdown-editor-font: "Roboto Variable", Roboto, ui-sans-serif, system-ui, sans-serif;
+  --markdown-editor-font-mono: "Roboto Mono Variable", "Roboto Mono", ui-monospace, SFMono-Regular, Menlo,
+    monospace;
+  --font-sans: var(--markdown-editor-font);
+  --font-mono: var(--markdown-editor-font-mono);
+  --default-font-family: var(--markdown-editor-font);
+  --default-mono-font-family: var(--markdown-editor-font-mono);
+  /* One rhythm for both side panels -- the navigation tree on the left and the metadata pane on the
+     right -- so the two read as the same kind of surface: same text size, same row height and padding,
+     same hover shape, same indent step (the nav's nested lists inset by margin + padding; the contents
+     entries by one step per heading level). Only the widths differ, since the panes hold different
+     things. */
+  --markdown-editor-panel-font-size: 14px;
+  --markdown-editor-panel-row-height: 1.75rem;
+  --markdown-editor-panel-row-padding: 0.1rem 0.2rem;
+  --markdown-editor-panel-row-radius: 0.375rem;
+  --markdown-editor-panel-indent: 1.3rem;
   --markdown-editor-accent: oklch(0.205 0 0); /* --primary */
   --markdown-editor-background: oklch(1 0 0); /* --background */
   --markdown-editor-code-background: oklch(0.97 0 0); /* --muted */
@@ -202,6 +227,9 @@
 body.markdown-editor-page {
   background: var(--markdown-editor-background);
   color: var(--markdown-editor-text);
+  /* The page default, so anything without a font of its own -- including the version pages' plain
+     markup -- still lands on Roboto rather than the browser's default face. */
+  font-family: var(--markdown-editor-font);
   margin: 0;
   min-height: 100vh;
 }
@@ -253,7 +281,7 @@ markdown-editor {
   background: var(--markdown-editor-text);
   border-radius: 0.375rem;
   color: var(--markdown-editor-background);
-  font: 12px/1.4 system-ui, sans-serif;
+  font: 12px/1.4 var(--markdown-editor-font);
   left: 0;
   max-width: 20rem;
   opacity: 0;
@@ -307,7 +335,7 @@ markdown-editor {
   display: flex;
   flex: 0 0 var(--markdown-editor-nav-width, 17rem);
   flex-direction: column;
-  font: 14px system-ui, sans-serif;
+  font: var(--markdown-editor-panel-font-size) var(--markdown-editor-font);
   gap: 0.5rem;
   height: 100vh;
   min-width: 0;
@@ -385,17 +413,18 @@ markdown-editor {
 
 .markdown-editor__nav-list .markdown-editor__nav-list {
   border-left: 1px solid var(--markdown-editor-divider);
+  /* The two together make one indent step, the same step the contents entries use per level. */
   margin-left: 0.8rem;
-  padding-left: 0.5rem;
+  padding-left: calc(var(--markdown-editor-panel-indent) - 0.8rem);
 }
 
 .markdown-editor__nav-row {
   align-items: center;
-  border-radius: 0.375rem;
+  border-radius: var(--markdown-editor-panel-row-radius);
   display: flex;
   gap: 0.1rem;
-  min-height: 1.75rem;
-  padding: 0.1rem 0.2rem;
+  min-height: var(--markdown-editor-panel-row-height);
+  padding: var(--markdown-editor-panel-row-padding);
 }
 
 .markdown-editor__nav-row:hover {
@@ -453,7 +482,7 @@ markdown-editor {
   color: var(--markdown-editor-text, inherit);
   display: flex;
   flex-direction: column;
-  font: 14px system-ui, sans-serif;
+  font: 14px var(--markdown-editor-font);
   gap: 0.75rem;
   padding: 1.25rem 1.75rem;
 }
@@ -626,7 +655,7 @@ markdown-editor {
      the breadcrumb sit at the left edge while the presentation controls sit at the right. Kept slim: a
      small top inset and just a sliver below, since the breadcrumb+search row follows immediately. */
   flex-direction: column;
-  font: 13px system-ui, sans-serif;
+  font: 13px var(--markdown-editor-font);
   gap: 0.4rem;
   letter-spacing: 0.04em;
   /* No inline padding: the top bar's own 0.75rem gutter is the same one the
@@ -710,7 +739,7 @@ markdown-editor {
      the search box, moving everything below it as the window is resized. A long
      trail truncates instead. */
   flex-wrap: nowrap;
-  font: 13px system-ui, sans-serif;
+  font: 13px var(--markdown-editor-font);
   letter-spacing: 0.04em;
   /* Always left-aligned at the page edge (not centred to the medium column);
      the row wrapper owns the vertical spacing. */
@@ -789,14 +818,20 @@ a.markdown-editor__crumb:hover {
   font-style: italic;
 }
 
+/* The same row shape again, so the history entry sits on the panels' shared rhythm. */
 .markdown-editor__history-link {
+  align-items: center;
+  border-radius: var(--markdown-editor-panel-row-radius);
   color: var(--markdown-editor-muted);
+  display: flex;
+  min-height: var(--markdown-editor-panel-row-height);
+  padding: var(--markdown-editor-panel-row-padding);
   text-decoration: none;
 }
 
 .markdown-editor__history-link:hover {
+  background: var(--markdown-editor-code-background);
   color: var(--markdown-editor-text);
-  text-decoration: underline;
 }
 
 /* RFC-0032 revision-history and diff views (standalone pages; share the editor theme). */
@@ -990,7 +1025,7 @@ a.markdown-editor__crumb:hover {
   /* Match the editor's .markdown-editor__button font and the 1.75rem height of the
      scheme buttons beside it, so the trigger aligns with the group (the version toolbar's
      13px would otherwise make it a few px taller with a smaller label). */
-  font: 14px system-ui, sans-serif;
+  font: 14px var(--markdown-editor-font);
   height: 1.75rem;
 }
 
@@ -1070,7 +1105,7 @@ a.markdown-editor__crumb:hover {
 
 .verso-diff {
   overflow-x: auto;
-  font-family: ui-monospace, monospace;
+  font-family: var(--markdown-editor-font-mono);
   font-size: 0.85rem;
   line-height: 1.5;
 }
@@ -1152,7 +1187,7 @@ a.markdown-editor__crumb:hover {
   border: 0;
   box-sizing: border-box;
   color: var(--markdown-editor-text);
-  font-family: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--markdown-editor-font);
   font-size: 1.9rem;
   font-weight: 700;
   line-height: 1.25;
@@ -1316,7 +1351,7 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
 .markdown-editor__metadata-panel,
 .markdown-editor__toc {
   color: var(--markdown-editor-muted);
-  font: 13px system-ui, sans-serif;
+  font: var(--markdown-editor-panel-font-size) var(--markdown-editor-font);
 }
 
 .markdown-editor__toc[hidden] {
@@ -1367,43 +1402,58 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   color: var(--markdown-editor-text);
 }
 
-.markdown-editor__toc-item[data-level="2"] .markdown-editor__toc-link {
-  padding-left: 0.75rem;
+/* One indent step per heading level, the same step the nav's nested lists use. The indent sits on the
+   item, not the link, so the whole row moves with it (as a nested nav row does) and the hover shape
+   lines up under the text -- and so the rail, positioned against the item's border box, stays put. */
+.markdown-editor__toc-item[data-level="2"] {
+  padding-left: var(--markdown-editor-panel-indent);
 }
 
-.markdown-editor__toc-item[data-level="3"] .markdown-editor__toc-link {
-  padding-left: 1.5rem;
+.markdown-editor__toc-item[data-level="3"] {
+  padding-left: calc(2 * var(--markdown-editor-panel-indent));
 }
 
-.markdown-editor__toc-item[data-level="4"] .markdown-editor__toc-link {
-  padding-left: 2.25rem;
+.markdown-editor__toc-item[data-level="4"] {
+  padding-left: calc(3 * var(--markdown-editor-panel-indent));
 }
 
-.markdown-editor__toc-item[data-level="5"] .markdown-editor__toc-link {
-  padding-left: 3rem;
+.markdown-editor__toc-item[data-level="5"] {
+  padding-left: calc(4 * var(--markdown-editor-panel-indent));
 }
 
-.markdown-editor__toc-item[data-level="6"] .markdown-editor__toc-link {
-  padding-left: 3.75rem;
+.markdown-editor__toc-item[data-level="6"] {
+  padding-left: calc(5 * var(--markdown-editor-panel-indent));
 }
 
+/* The nav row's shape: same height, padding, radius and hover fill, so an entry here reads as the same
+   kind of row as a page in the tree. */
 .markdown-editor__toc-link {
+  align-items: center;
   background: transparent;
   border: 0;
+  border-radius: var(--markdown-editor-panel-row-radius);
+  box-sizing: border-box;
   color: inherit;
   cursor: pointer;
-  display: block;
+  display: flex;
   font: inherit;
+  min-height: var(--markdown-editor-panel-row-height);
   overflow: hidden;
-  padding-block: 0.1rem;
+  padding: var(--markdown-editor-panel-row-padding);
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   width: 100%;
 }
 
+/* The label carries the ellipsis, not the button: the button is a flex row, and a flex container
+   cannot clip its own anonymous text. */
+.markdown-editor__toc-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .markdown-editor__toc-link:hover {
-  color: var(--markdown-editor-accent);
+  background: var(--markdown-editor-code-background);
 }
 
 .markdown-editor__metadata-heading {
@@ -1417,18 +1467,25 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
 .markdown-editor__attachment-list {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
+/* The same row shape as the nav tree and the contents entries. */
 .markdown-editor__attachment {
   align-items: center;
+  border-radius: var(--markdown-editor-panel-row-radius);
   cursor: grab;
   display: flex;
   gap: 0.5rem;
   justify-content: space-between;
+  min-height: var(--markdown-editor-panel-row-height);
+  padding: var(--markdown-editor-panel-row-padding);
+}
+
+.markdown-editor__attachment:hover {
+  background: var(--markdown-editor-code-background);
 }
 
 .markdown-editor__attachment-link {
@@ -1457,6 +1514,12 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   display: none;
 }
 
+/* The empty note is not a row, but it starts on the same text edge as one. */
+.markdown-editor__attachment-empty {
+  display: block;
+  padding-inline: 0.2rem;
+}
+
 .markdown-editor__surface,
 .markdown-editor__source,
 .markdown-editor__preview {
@@ -1470,12 +1533,12 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
 
 .markdown-editor__surface,
 .markdown-editor__preview {
-  font: 16px/1.7 "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  font: 16px/1.7 var(--markdown-editor-font);
 }
 
 .markdown-editor__source {
   box-sizing: border-box;
-  font: 15px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 15px/1.7 var(--markdown-editor-font-mono);
   resize: vertical;
   width: 100%;
 }
@@ -1493,6 +1556,14 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
 .markdown-editor__source .cm-editor {
   background: transparent;
   color: var(--markdown-editor-text);
+}
+
+/* CodeMirror's base theme puts `font-family: monospace` on its own scroller, which sits below the pane
+   and so wins over the pane's declaration; name the code face where it can be seen. */
+.markdown-editor__source .cm-scroller,
+.markdown-editor__source .cm-content,
+.markdown-editor__source .cm-gutters {
+  font-family: var(--markdown-editor-font-mono);
 }
 
 .markdown-editor__source .cm-editor .cm-cursor {
@@ -1537,7 +1608,7 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
 
 .markdown-editor__code-language {
   color: var(--markdown-editor-muted);
-  font: 12px system-ui, sans-serif;
+  font: 12px var(--markdown-editor-font);
   letter-spacing: 0.03em;
 }
 
@@ -1578,19 +1649,19 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
 
 .markdown-editor__mermaid--empty {
   color: var(--markdown-editor-muted);
-  font: 13px system-ui, sans-serif;
+  font: 13px var(--markdown-editor-font);
 }
 
 .markdown-editor__mermaid--error {
   color: var(--markdown-editor-error-text);
-  font: 13px ui-monospace, monospace;
+  font: 13px var(--markdown-editor-font-mono);
   justify-content: flex-start;
   white-space: pre-wrap;
 }
 
 .markdown-editor__code-language-trigger::part(base) {
   color: var(--markdown-editor-muted);
-  font: 12px system-ui, sans-serif;
+  font: 12px var(--markdown-editor-font);
 }
 
 /* Syntax highlighting (RFC-0033): lowlight emits highlight.js `hljs-*` token classes inside the code block;
@@ -1814,7 +1885,7 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
    so they survive editing (definitions are invisible markup in standard Markdown output). */
 .markdown-reference-def {
   color: var(--markdown-editor-muted);
-  font: 13px ui-monospace, monospace;
+  font: 13px var(--markdown-editor-font-mono);
   opacity: 0.8;
   padding: 0.15rem 0;
 }
@@ -1949,7 +2020,7 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
 
 .markdown-editor__button {
   cursor: pointer;
-  font: 14px system-ui, sans-serif;
+  font: 14px var(--markdown-editor-font);
 }
 
 .markdown-editor__button[disabled] {
@@ -2010,7 +2081,7 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 .markdown-editor__word-count {
   color: var(--markdown-editor-muted);
   display: block;
-  font: 12px system-ui, sans-serif;
+  font: 12px var(--markdown-editor-font);
   padding: 0.75rem 0.25rem 1rem;
   text-align: right;
 }
@@ -2048,7 +2119,7 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   border: 1px solid var(--markdown-editor-pill-border);
   border-radius: 6px;
   color: var(--markdown-editor-text);
-  font: 14px system-ui, sans-serif;
+  font: 14px var(--markdown-editor-font);
   min-inline-size: 12rem;
   padding: 0.35rem 0.5rem;
 }
@@ -2105,7 +2176,7 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   background: var(--markdown-editor-pill-background);
   border-radius: 4px;
   color: var(--markdown-editor-muted);
-  font: 12px ui-monospace, monospace;
+  font: 12px var(--markdown-editor-font-mono);
   padding: 0 0.25rem;
   white-space: pre-wrap;
 }
@@ -2245,7 +2316,7 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   border-radius: 6px;
   color: var(--markdown-editor-text);
   cursor: pointer;
-  font: 14px system-ui, sans-serif;
+  font: 14px var(--markdown-editor-font);
   padding: 0.35rem 0.6rem;
   text-align: left;
 }

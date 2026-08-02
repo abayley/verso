@@ -87,7 +87,12 @@ export class TableOfContentsPanel {
             const button = document.createElement("button");
             button.type = "button";
             button.className = "markdown-editor__toc-link";
-            button.textContent = entry.text;
+            // The heading sits in a label of its own: the button is a row (matching the navigation tree's
+            // rows), and a flex container cannot clip its own text with an ellipsis.
+            const label = document.createElement("span");
+            label.className = "markdown-editor__toc-label";
+            label.textContent = entry.text;
+            button.append(label);
             // The delegated tooltip shows the full heading on hover (long entries truncate).
             button.setAttribute("data-tooltip", entry.text);
             button.addEventListener("click", (): void => this.onSelect(index));

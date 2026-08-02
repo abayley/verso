@@ -9,7 +9,8 @@
     ],
     "project": ["src/Verso/Editor/**/*.ts", "test/editor/**/*.ts", "scripts/*.cjs", "scripts/*.mjs"],
     "ignoreDependencies": [
-        "@fontsource-variable/geist",
+        "@fontsource-variable/roboto",
+        "@fontsource-variable/roboto-mono",
         "basecoat-css",
         "rehype-stringify",
         "remark-rehype",

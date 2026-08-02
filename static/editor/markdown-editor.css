@@ -2498,3 +2498,67 @@ markdown-editor[data-search-open] .markdown-editor__workspace {
     display: revert;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   2. Navigation rail (53rem / 848px). With the metadata pane already gone, the
+      rail's 272px is what squeezes the prose next: measured on the demo corpus
+      the measure is 56 characters at 900px with the rail against 86 without, so
+      by the same ~50ch rule as the pane the rail goes at 53rem. That also drops
+      portrait tablets (820-834px) into the panel layout rather than leaving them
+      cramped. Collapsing the rail in place was not enough -- it still left a
+      gutter -- so below the breakpoint it leaves the flow entirely and becomes a
+      panel opened from a single button ahead of Edit/Publish, carrying its own
+      Collapse, Undo, Trash, and New controls above the tree.
+   --------------------------------------------------------------------------- */
+
+/* The rail trigger is built at every width; only narrow viewports show it. */
+.markdown-editor__nav-trigger {
+  display: none;
+}
+
+@media (max-width: 53rem) {
+  .markdown-editor__nav-trigger {
+    display: inline-flex;
+  }
+
+  /* Out of the flow entirely, so no gutter is left behind, and pinned under the
+     trigger by pinNavPanel (see the metadata pane for why fixed, not absolute). */
+  .markdown-editor__nav {
+    border: 1px solid var(--markdown-editor-divider);
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+    display: none;
+    flex-basis: auto;
+    height: auto;
+    left: var(--markdown-editor-nav-panel-left, 0);
+    max-height: min(70vh, 32rem);
+    overflow-y: auto;
+    padding: 0 0.75rem 0.75rem;
+    position: fixed;
+    top: var(--markdown-editor-nav-panel-top, var(--markdown-editor-topbar-height, 4.5rem));
+    width: min(20rem, calc(100vw - 2rem));
+    /* Above the content and the metadata panel (8), below the search dropdown (30). */
+    z-index: 12;
+  }
+
+  markdown-editor[data-nav-open] .markdown-editor__nav {
+    display: flex;
+  }
+
+  /* A collapsed rail is the wide-viewport state; as a panel it is simply closed,
+     so the collapsed rules must not strip the panel's header controls or tree. */
+  markdown-editor[data-nav-open] .markdown-editor__nav[data-collapsed="true"] .markdown-editor__nav-list,
+  markdown-editor[data-nav-open] .markdown-editor__nav[data-collapsed="true"] .markdown-editor__nav-op,
+  markdown-editor[data-nav-open] .markdown-editor__nav[data-collapsed="true"] .markdown-editor__nav-root-drop,
+  markdown-editor[data-nav-open]
+    .markdown-editor__nav[data-collapsed="true"]
+    .markdown-editor__nav-header
+    .markdown-editor__nav-create {
+    display: revert;
+  }
+
+  /* The trigger owns open/closed, so the rail's collapse glyph must not also spin. */
+  .markdown-editor__nav[data-collapsed="true"] .markdown-editor__nav-toggle {
+    transform: none;
+  }
+}

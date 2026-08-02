@@ -88,6 +88,9 @@ const SIDEBAR_DISCLOSURE_FALLBACK = "Contents";
 /** How often scrolling may re-read the heading positions to rename the disclosure trigger. */
 const sidebarLabelThrottleMilliseconds = 100;
 
+/** Below this width the navigation tree is a panel, not a column. Kept in step with the stylesheet. */
+const navPanelMediaQuery = "(max-width: 53rem)";
+
 /** The selectable editing-column widths, in toolbar order; "narrow" is the default. Icons read as
     increasing column width (a portrait, a square, a landscape rectangle). */
 const bodyWidths: { value: BodyWidth; label: string; icon: string }[] = [
@@ -311,6 +314,8 @@ export class MarkdownEditorElement extends HTMLElement {
     /** The narrow-viewport metadata-panel trigger, and its document-level dismiss handlers. */
     private sidebarDisclosure: HTMLButtonElement | null = null;
     private sidebarDisclosureLabel: HTMLSpanElement | null = null;
+    private navDisclosure: HTMLButtonElement | null = null;
+    private interceptNavCollapse: ((event: MouseEvent) => void) | null = null;
     private dismissSidebarOnClick: ((event: MouseEvent) => void) | null = null;
     private dismissSidebarOnKey: ((event: KeyboardEvent) => void) | null = null;
     private trackSidebarOnScroll: (() => void) | null = null;
@@ -382,6 +387,10 @@ export class MarkdownEditorElement extends HTMLElement {
             window.removeEventListener("resize", this.trackSidebarOnResize);
             this.trackSidebarOnResize = null;
         }
+        if (this.interceptNavCollapse !== null) {
+            document.removeEventListener("click", this.interceptNavCollapse, true);
+            this.interceptNavCollapse = null;
+        }
     }
 
     /**
@@ -415,6 +424,53 @@ export class MarkdownEditorElement extends HTMLElement {
         this.sidebarDisclosure = trigger;
         row.append(trigger);
         return row;
+    }
+
+    /**
+     * The rail's narrow-viewport trigger. Below the rail breakpoint the navigation tree stops being
+     * a column -- collapsed it still left a gutter beside the content -- and becomes a panel opened
+     * from this button, which carries the rail's own collapse glyph and sits ahead of Edit/Publish.
+     * As with the metadata pane, the tree is never moved in the DOM, only repositioned, so its
+     * lazy-loading, drag-and-drop, and popover wiring all keep working.
+     */
+    private createNavDisclosure(): HTMLButtonElement {
+        const trigger = chromeButtonEl("icon", "", {
+            className: "markdown-editor__nav-trigger",
+            ariaLabel: "Show pages",
+            tooltip: "Show pages",
+        });
+        trigger.setAttribute("aria-expanded", "false");
+        trigger.append(chromeIconEl("panel-left"));
+        trigger.addEventListener("click", (event: MouseEvent): void => {
+            event.stopPropagation();
+            this.setNavDisclosureOpen(!this.hasAttribute("data-nav-open"));
+        });
+        this.navDisclosure = trigger;
+        return trigger;
+    }
+
+    /** Opens or closes the narrow-viewport navigation panel, keeping the trigger's ARIA state in step. */
+    private setNavDisclosureOpen(open: boolean): void {
+        this.toggleAttribute("data-nav-open", open);
+        this.navDisclosure?.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) {
+            this.pinNavPanel();
+        }
+    }
+
+    /** Pins the navigation panel under its trigger, in fixed viewport coordinates (see pinSidebarPanel). */
+    private pinNavPanel(): void {
+        if (this.navDisclosure === null) {
+            return;
+        }
+        const rect = this.navDisclosure.getBoundingClientRect();
+        this.style.setProperty("--markdown-editor-nav-panel-top", `${Math.round(rect.bottom + 4)}px`);
+        this.style.setProperty("--markdown-editor-nav-panel-left", `${Math.round(rect.left)}px`);
+    }
+
+    /** Whether the viewport is below the rail breakpoint, where the tree is a panel rather than a column. */
+    private navIsPanel(): boolean {
+        return window.matchMedia(navPanelMediaQuery).matches;
     }
 
     /** Opens or closes the narrow-viewport metadata panel, keeping the trigger's ARIA state in step. */
@@ -481,12 +537,31 @@ export class MarkdownEditorElement extends HTMLElement {
             if (this.hasAttribute("data-sidebar-open") && this.sidebar !== null && !this.sidebar.contains(target)) {
                 this.setSidebarDisclosureOpen(false);
             }
+            const navPanel = this.navTree?.element() ?? null;
+            if (this.hasAttribute("data-nav-open") && navPanel !== null && !navPanel.contains(target)) {
+                this.setNavDisclosureOpen(false);
+            }
         };
         this.dismissSidebarOnKey = (event: KeyboardEvent): void => {
             if (event.key === "Escape" && this.hasAttribute("data-sidebar-open")) {
                 this.setSidebarDisclosureOpen(false);
             }
+            if (event.key === "Escape" && this.hasAttribute("data-nav-open")) {
+                this.setNavDisclosureOpen(false);
+            }
         };
+        // As a panel, the rail's own collapse control closes it -- collapsing to a gutter is
+        // meaningless here, and letting it run would persist a collapsed rail into the wide
+        // layout. Captured so the tree's own handler never sees the click.
+        this.interceptNavCollapse = (event: MouseEvent): void => {
+            const target = event.target instanceof Element ? event.target : null;
+            if (this.navIsPanel() && target?.closest(".markdown-editor__nav-toggle") !== null) {
+                event.stopPropagation();
+                event.preventDefault();
+                this.setNavDisclosureOpen(false);
+            }
+        };
+        document.addEventListener("click", this.interceptNavCollapse, true);
         document.addEventListener("click", this.dismissSidebarOnClick);
         document.addEventListener("keydown", this.dismissSidebarOnKey);
 
@@ -508,6 +583,9 @@ export class MarkdownEditorElement extends HTMLElement {
             this.updateSidebarDisclosureLabel();
             if (this.hasAttribute("data-sidebar-open")) {
                 this.pinSidebarPanel();
+            }
+            if (this.hasAttribute("data-nav-open")) {
+                this.pinNavPanel();
             }
         };
         window.addEventListener("scroll", this.trackSidebarOnScroll, true);
@@ -902,6 +980,9 @@ export class MarkdownEditorElement extends HTMLElement {
 
         const startSlot = document.createElement("div");
         startSlot.className = "markdown-editor__toolbar-slot markdown-editor__toolbar-slot--start";
+        // Below the rail breakpoint the navigation tree collapses to this one button, which sits
+        // ahead of Edit/Publish. Built at every width and hidden by CSS above the breakpoint.
+        startSlot.append(this.createNavDisclosure());
         const readEditLink = this.createReadEditLink();
         if (readEditLink) {
             startSlot.append(readEditLink);

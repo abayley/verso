@@ -458,13 +458,16 @@ export class MarkdownEditorElement extends HTMLElement {
         }
     }
 
-    /** Pins the navigation panel under its trigger, in fixed viewport coordinates (see pinSidebarPanel). */
+    /**
+     * Lines the navigation panel up with its trigger. Only the horizontal edge is pinned: the
+     * panel runs the full height of the viewport, so it has no top to track (see pinSidebarPanel
+     * for why the coordinates travel as custom properties).
+     */
     private pinNavPanel(): void {
         if (this.navDisclosure === null) {
             return;
         }
         const rect = this.navDisclosure.getBoundingClientRect();
-        this.style.setProperty("--markdown-editor-nav-panel-top", `${Math.round(rect.bottom + 4)}px`);
         this.style.setProperty("--markdown-editor-nav-panel-left", `${Math.round(rect.left)}px`);
     }
 

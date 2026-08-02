@@ -2307,10 +2307,61 @@ markdown-editor[data-readonly] .markdown-image__resize-handle {
     background: transparent;
 }
 
-/* The soft-focus effect: while the dropdown is open the workspace (nav tree,
-   page content, sidebar) blurs and fades so the results stand out. Keyed on
-   the editor element so it works identically across visual themes. */
-markdown-editor[data-search-open] .markdown-editor__workspace {
+/* The soft-focus effect: while an overlay is open, everything except the surface
+   that owns it blurs and fades so the overlay stands out. Keyed on the editor
+   element so it works identically across visual themes.
+
+   The regions are listed one by one rather than blurring a single ancestor: the
+   surface that must stay sharp is nested inside the chrome in every case (the
+   search box sits in the top bar beside the breadcrumb; the metadata panel is a
+   child of the workspace), and a filter on an ancestor would take its descendants
+   with it. Filters also create stacking contexts, so blurring a common ancestor
+   would trap the overlay beneath its own siblings.
+
+   Search: everything goes soft but the search box and its results.  */
+markdown-editor[data-search-open]
+    :is(
+        .markdown-editor__nav,
+        .markdown-editor__workspace,
+        .markdown-editor__toolbar,
+        .markdown-editor__document-name,
+        .markdown-editor__sidebar-row,
+        .markdown-editor__footer,
+        .markdown-editor__word-count
+    ) {
+    filter: blur(3px);
+    opacity: 0.55;
+}
+
+/* Navigation panel: the panel is a sibling of the content column, so the whole
+   column goes soft. The panel is full height and covers its own trigger, so the
+   toolbar can soften with the rest. */
+markdown-editor[data-nav-open]
+    :is(
+        .markdown-editor__workspace,
+        .markdown-editor__toolbar,
+        .markdown-editor__document-name,
+        .markdown-editor__search,
+        .markdown-editor__sidebar-row,
+        .markdown-editor__footer,
+        .markdown-editor__word-count
+    ) {
+    filter: blur(3px);
+    opacity: 0.55;
+}
+
+/* Metadata panel: the panel lives inside the workspace, so the editing pane is
+   softened rather than the workspace, and the panel's own trigger row stays sharp. */
+markdown-editor[data-sidebar-open]
+    :is(
+        .markdown-editor__nav,
+        .markdown-editor__main,
+        .markdown-editor__toolbar,
+        .markdown-editor__document-name,
+        .markdown-editor__search,
+        .markdown-editor__footer,
+        .markdown-editor__word-count
+    ) {
     filter: blur(3px);
     opacity: 0.55;
 }
@@ -2521,22 +2572,32 @@ markdown-editor[data-search-open] .markdown-editor__workspace {
     display: inline-flex;
   }
 
-  /* Out of the flow entirely, so no gutter is left behind, and pinned under the
-     trigger by pinNavPanel (see the metadata pane for why fixed, not absolute). */
+  /* Out of the flow entirely, so no gutter is left behind. Full height, because a
+     tree is a long list and a drop-down clipped to a few hundred pixels wastes the
+     one axis a narrow viewport still has; it is horizontally pinned to its trigger
+     by pinNavPanel (see the metadata pane for why fixed, not absolute). Being full
+     height it covers its own trigger, so it is dismissed by its Collapse control,
+     an outside click, or Escape. */
   .markdown-editor__nav {
     border: 1px solid var(--markdown-editor-divider);
     border-radius: 8px;
+    /* An explicit height, not top/bottom: the rail inherits `align-self: flex-start`
+       from the column layout, which stops a fixed box with both offsets set from
+       stretching. `dvh` so mobile browser chrome does not clip the foot of the tree. */
+    align-self: stretch;
+    bottom: 0;
     box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
     display: none;
     flex-basis: auto;
-    height: auto;
+    height: 100vh;
+    height: 100dvh;
     left: var(--markdown-editor-nav-panel-left, 0);
-    max-height: min(70vh, 32rem);
+    max-height: none;
     overflow-y: auto;
     padding: 0 0.75rem 0.75rem;
     position: fixed;
-    top: var(--markdown-editor-nav-panel-top, var(--markdown-editor-topbar-height, 4.5rem));
-    width: min(20rem, calc(100vw - 2rem));
+    top: 0;
+    width: min(24rem, calc(100vw - 3rem));
     /* Above the content and the metadata panel (8), below the search dropdown (30). */
     z-index: 12;
   }

@@ -1271,11 +1271,17 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   transform: rotate(180deg);
 }
 
-/* Collapsed: a thin rail showing only the toggle (the panels are hidden), so the
-   editing column gains the width -- mirroring the nav's collapse. */
+/* Collapsed: only the toggle remains, and it leaves the flex row rather than
+   standing in it as a thin rail. In the row it still cost its own width plus the
+   workspace gap, so the editing column sat 60px from the right edge against 12px
+   on the left; floated into the workspace's top corner it costs nothing and the
+   two margins match. Out of flow, so the row's gap does not apply either. */
 .markdown-editor__sidebar[data-collapsed="true"] {
   flex-basis: auto;
   gap: 0;
+  position: absolute;
+  right: 0;
+  top: 0;
 }
 
 .markdown-editor__sidebar[data-collapsed="true"] > *:not(.markdown-editor__sidebar-toggle) {
@@ -2504,7 +2510,11 @@ markdown-editor[data-sidebar-open]
      rides the sticky top bar while the workspace scrolls away under it, so a panel
      anchored to the workspace sits off-screen above the fold once the page is
      scrolled. `top`/`left`/`width` are pinned to the trigger by pinSidebarPanel. */
-  .markdown-editor__sidebar {
+  /* The collapsed selector is listed so this rule matches the wide-viewport
+     collapsed rule's specificity and, coming later, wins: as a panel the pane is
+     pinned to the viewport whatever the stored collapsed preference says. */
+  .markdown-editor__sidebar,
+  .markdown-editor__sidebar[data-collapsed="true"] {
     background: var(--markdown-editor-background);
     border: 1px solid var(--markdown-editor-divider);
     border-radius: 8px;
@@ -2634,13 +2644,16 @@ markdown-editor[data-sidebar-open]
       byte what it was, and nothing is re-parented as the breakpoint is crossed.
    --------------------------------------------------------------------------- */
 
-.markdown-editor__toolbar {
+/* Scoped to the top bar: the floating command bar shares the __toolbar class, and
+   inline-size containment there stops its width tracking its contents, collapsing
+   it to a sliver that never grows with the viewport. */
+.markdown-editor__toolbar--top {
   container-name: editor-toolbar;
   container-type: inline-size;
 }
 
 /* The containing block for the folded presentation panel. */
-.markdown-editor__toolbar-controls {
+.markdown-editor__toolbar--top .markdown-editor__toolbar-controls {
   position: relative;
 }
 

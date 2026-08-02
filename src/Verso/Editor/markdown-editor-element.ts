@@ -315,7 +315,6 @@ export class MarkdownEditorElement extends HTMLElement {
     private sidebarDisclosure: HTMLButtonElement | null = null;
     private sidebarDisclosureLabel: HTMLSpanElement | null = null;
     private navDisclosure: HTMLButtonElement | null = null;
-    private interceptNavCollapse: ((event: MouseEvent) => void) | null = null;
     private dismissSidebarOnClick: ((event: MouseEvent) => void) | null = null;
     private dismissSidebarOnKey: ((event: KeyboardEvent) => void) | null = null;
     private trackSidebarOnScroll: (() => void) | null = null;
@@ -387,10 +386,6 @@ export class MarkdownEditorElement extends HTMLElement {
             window.removeEventListener("resize", this.trackSidebarOnResize);
             this.trackSidebarOnResize = null;
         }
-        if (this.interceptNavCollapse !== null) {
-            document.removeEventListener("click", this.interceptNavCollapse, true);
-            this.interceptNavCollapse = null;
-        }
     }
 
     /**
@@ -459,23 +454,7 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Opens or closes the narrow-viewport navigation panel, keeping the trigger's ARIA state in step. */
     private setNavDisclosureOpen(open: boolean): void {
         this.toggleAttribute("data-nav-open", open);
-        if (open) {
-            this.pinNavPanel();
-        }
         this.syncNavTriggerState();
-    }
-
-    /**
-     * Lines the navigation panel up with its trigger. Only the horizontal edge is pinned: the
-     * panel runs the full height of the viewport, so it has no top to track (see pinSidebarPanel
-     * for why the coordinates travel as custom properties).
-     */
-    private pinNavPanel(): void {
-        if (this.navDisclosure === null) {
-            return;
-        }
-        const rect = this.navDisclosure.getBoundingClientRect();
-        this.style.setProperty("--markdown-editor-nav-panel-left", `${Math.round(rect.left)}px`);
     }
 
     /** Whether the viewport is below the rail breakpoint, where the tree is a panel rather than a column. */
@@ -575,18 +554,6 @@ export class MarkdownEditorElement extends HTMLElement {
                 this.setNavDisclosureOpen(false);
             }
         };
-        // As a panel, the rail's own collapse control closes it -- collapsing to a gutter is
-        // meaningless here, and letting it run would persist a collapsed rail into the wide
-        // layout. Captured so the tree's own handler never sees the click.
-        this.interceptNavCollapse = (event: MouseEvent): void => {
-            const target = event.target instanceof Element ? event.target : null;
-            if (this.navIsPanel() && target?.closest(".markdown-editor__nav-toggle") !== null) {
-                event.stopPropagation();
-                event.preventDefault();
-                this.setNavDisclosureOpen(false);
-            }
-        };
-        document.addEventListener("click", this.interceptNavCollapse, true);
         document.addEventListener("click", this.dismissSidebarOnClick);
         document.addEventListener("keydown", this.dismissSidebarOnKey);
 
@@ -608,9 +575,6 @@ export class MarkdownEditorElement extends HTMLElement {
             this.updateSidebarDisclosureLabel();
             if (this.hasAttribute("data-sidebar-open")) {
                 this.pinSidebarPanel();
-            }
-            if (this.hasAttribute("data-nav-open")) {
-                this.pinNavPanel();
             }
             // Crossing the rail breakpoint changes what the trigger drives.
             this.syncNavTriggerState();

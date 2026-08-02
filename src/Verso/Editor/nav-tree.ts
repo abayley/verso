@@ -234,13 +234,9 @@ export class NavTreePanel {
         const header = document.createElement("div");
         header.className = "markdown-editor__nav-header";
 
-        const toggle = document.createElement("button");
-        toggle.type = "button";
-        toggle.className = "markdown-editor__nav-toggle";
-        toggle.setAttribute("aria-label", "Collapse navigation");
-        toggle.append(chromeIconEl("panel-left"));
-        toggle.addEventListener("click", (): void => this.toggleCollapsed());
-
+        // No collapse button here: the editor's toolbar carries the one collapse control, ahead of
+        // Edit/Publish, at every width. A second one beside the heading was redundant, and as a
+        // narrow-viewport panel it had nothing to collapse to.
         const heading = document.createElement("h2");
         heading.className = "markdown-editor__metadata-heading";
         heading.textContent = "Pages";
@@ -255,14 +251,7 @@ export class NavTreePanel {
 
         this.undoDropdown = this.createUndoDropdown();
         this.trashDropdown = this.createTrashDropdown();
-        header.append(
-            toggle,
-            heading,
-            collapseAll,
-            this.undoDropdown,
-            this.trashDropdown,
-            this.createRootCreateButton(),
-        );
+        header.append(heading, collapseAll, this.undoDropdown, this.trashDropdown, this.createRootCreateButton());
 
         // A top-level drop target. Its space is reserved permanently (so it never reflows the list
         // mid-drag -- a box change during dragstart cancels the native drag); the branded box is only

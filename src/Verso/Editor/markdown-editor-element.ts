@@ -106,11 +106,13 @@ function isBodyWidth(value: string | null): value is BodyWidth {
     return value !== null && bodyWidths.some((width) => width.value === value);
 }
 
-/** The selectable visual themes (RFC-0035): the default shadcn look, and Studio,
+/** The selectable visual themes (RFC-0035): Default (the shadcn look), and Studio,
  * which keeps the same look but swaps the persistent command bar for the bubble
- * toolbar and slash menu. */
+ * toolbar and slash menu. The stored value stays "shadcn" -- it is what preferences,
+ * the `editor_theme` config and the page attribute already carry -- and only the
+ * label the reader sees is "Default". */
 const visualThemes: { value: VisualTheme; label: string }[] = [
-    { value: "shadcn", label: "Shadcn" },
+    { value: "shadcn", label: "Default" },
     { value: "studio", label: "Studio" },
 ];
 

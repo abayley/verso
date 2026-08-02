@@ -403,14 +403,6 @@ export class NavTreePanel {
             row.dataset["active"] = "true";
         }
 
-        if (node.kind === "section" && node.hasChildren) {
-            row.append(this.createDisclosure(node));
-        } else {
-            const spacer = document.createElement("span");
-            spacer.className = "markdown-editor__nav-spacer";
-            row.append(spacer);
-        }
-
         // The label is a button of its own inside the row, so the row actions can sit beside it and the
         // hover fill still covers the whole row; the shared truncating label moves into it.
         const label = document.createElement("button");
@@ -425,6 +417,13 @@ export class NavTreePanel {
             row.append(this.createNodeCreateButton(node.path));
         }
         row.append(this.createRowAction("✕", "Delete", node, (): void => void this.deleteNode(node)));
+
+        // The expand/collapse chevron rides the row's trailing edge, as the shadcn sidebar's does. A leaf
+        // needs no spacer opposite it: the nesting itself indents the rows, so the labels still line up.
+        if (node.kind === "section" && node.hasChildren) {
+            row.append(this.createDisclosure(node));
+        }
+
         this.attachDragAndDrop(row, node);
 
         item.append(row);

@@ -348,8 +348,10 @@ versionControls themeDefault =
             Chrome.IconControl
             ([Html.attr "data-scheme" value, Html.attr "role" "radio", Html.attr "aria-checked" "false", Html.attr "aria-label" label] ++ Chrome.tooltipAttrsAt label "bottom" "end")
             (Chrome.chromeIcon icon)
-    visualThemeOptions = [("shadcn", "Shadcn"), ("studio", "Studio")]
-    themeLabelFor t = Maybe.fromMaybe "Shadcn" (lookup t visualThemeOptions)
+    -- The stored value stays @shadcn@ (preferences, the @editor_theme@ config and the
+    -- page attribute all carry it); only the label shown is "Default".
+    visualThemeOptions = [("shadcn", "Default"), ("studio", "Studio")]
+    themeLabelFor t = Maybe.fromMaybe "Default" (lookup t visualThemeOptions)
 
 -- | One history-table row: a select checkbox, the timestamp linking to that revision's read view, author, subject, and a Restore button.
 revisionRow :: String -> Git.Revision -> Html.Html ()
@@ -374,7 +376,7 @@ selected the pane is hidden and the hint is shown.
 historyScript :: String
 historyScript =
     "<script>(function(){var r=document.documentElement;"
-        ++ "var labels={shadcn:'Shadcn',studio:'Studio'};"
+        ++ "var labels={shadcn:'Default',studio:'Studio'};"
         ++ "var trig=document.getElementById('verso-theme-trigger');"
         ++ "var ct=localStorage.getItem('editor-theme')||r.getAttribute('data-editor-theme');"
         ++ "if(trig&&ct&&labels[ct]){trig.textContent=labels[ct];}"

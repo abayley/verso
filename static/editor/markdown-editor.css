@@ -336,16 +336,16 @@ markdown-editor {
    toggle. */
 .markdown-editor__nav {
   align-self: flex-start;
-  /* The shadcn sidebar surface: a tone of its own against the page, not the page's own background, with
-     the sidebar border down its trailing edge. Opaque either way -- the search dropdown overhangs the
-     column, and a see-through rail let both sets of text show through where they overlapped. */
-  background: var(--sidebar, var(--markdown-editor-background));
+  /* The page's own background, not shadcn's distinct sidebar tone: the rail is separated by its border
+     alone. Opaque either way -- the search dropdown overhangs the column, and a see-through rail let
+     both sets of text show through where they overlapped. */
+  background: var(--markdown-editor-background);
   border-right: 1px solid var(--sidebar-border, var(--markdown-editor-divider));
   box-sizing: border-box;
-  color: var(--sidebar-foreground, var(--markdown-editor-text));
+  color: var(--markdown-editor-text);
   display: flex;
-  /* shadcn's --sidebar-width. */
-  flex: 0 0 var(--markdown-editor-nav-width, var(--sidebar-width, 16rem));
+  /* Wider than shadcn's 16rem --sidebar-width: page names here are longer than menu labels. */
+  flex: 0 0 var(--markdown-editor-nav-width, 18rem);
   flex-direction: column;
   font: var(--markdown-editor-panel-font-size) var(--markdown-editor-font);
   gap: 0.5rem;
@@ -381,8 +381,8 @@ markdown-editor {
    so the collapse/undo/trash/create controls are always reachable. */
 .markdown-editor__nav-header {
   align-items: center;
-  /* Matches the rail, not the page: the header pins while the tree scrolls under it. */
-  background: var(--sidebar, var(--markdown-editor-background));
+  /* Opaque, matching the rail: the header pins while the tree scrolls under it. */
+  background: var(--markdown-editor-background);
   display: flex;
   gap: 0.35rem;
   padding-block: 0.5rem 0.25rem;
@@ -502,12 +502,13 @@ markdown-editor {
   font-size: 1.75rem;
 }
 
-.markdown-editor__nav-disclosure,
-.markdown-editor__nav-spacer {
+/* The chevron rides the row's trailing edge (the shadcn sidebar's placement), after the hover actions. */
+.markdown-editor__nav-disclosure {
   align-items: center;
   display: inline-flex;
   flex: 0 0 1.25rem;
   justify-content: center;
+  order: 1;
 }
 
 .markdown-editor__nav-disclosure .chrome-icon {
@@ -1526,6 +1527,8 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   padding-inline: 0.2rem;
 }
 
+/* No top padding: the card's own 1.5rem inset is the space above the first line, and anything here is
+   added to it -- 63px above the first heading, once the heading's own top margin was counted too. */
 .markdown-editor__surface,
 .markdown-editor__source,
 .markdown-editor__preview {
@@ -1533,8 +1536,14 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   border: none;
   color: var(--markdown-editor-text);
   min-height: 16rem;
-  padding: 1rem 0 3rem;
+  padding: 0 0 3rem;
   white-space: pre-wrap;
+}
+
+/* The first block sits against the card's inset; its own top margin would double it. */
+.markdown-editor__surface .ProseMirror > :first-child,
+.markdown-editor__preview > :first-child {
+  margin-top: 0;
 }
 
 .markdown-editor__surface,
@@ -2222,11 +2231,11 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 /* Chrome: a breadcrumb-style top strip; no persistent command bar (the bubble
    toolbar and slash menu replace it); autosave keeps content saved without the
    explicit Save control. */
-/* Studio's separating rule sits below the whole top bar (controls + breadcrumb), so
-   the breadcrumb reads as part of the top bar, above the rule -- not below it. No
-   extra padding above the rule: the bar stays the same height as the other themes
-   (the shared row already carries a small bottom inset). */
-:root[data-editor-theme="studio"] .markdown-editor__topbar {
+/* The separating rule sits below the whole top bar (controls + breadcrumb), so the breadcrumb reads as
+   part of the top bar, above the rule -- not below it. No extra padding above the rule: the bar keeps its
+   height (the shared row already carries a small bottom inset). Every theme has it; it began as Studio's
+   and reads as well under the default one. */
+.markdown-editor__topbar {
   border-bottom: 1px solid var(--markdown-editor-divider);
   margin-bottom: 0.5rem;
 }

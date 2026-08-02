@@ -193,7 +193,11 @@ export class SearchPanel {
     private pinDropdown(): void {
         const rect = this.input.getBoundingClientRect();
         this.dropdown.style.top = `${Math.round(rect.bottom + 4)}px`;
-        this.dropdown.style.right = `${Math.round(window.innerWidth - rect.right)}px`;
+        // documentElement.clientWidth, not window.innerWidth: a fixed element's `right` is
+        // measured from the layout viewport, which excludes a classic scrollbar, while
+        // innerWidth includes it -- using innerWidth pushed the panel a scrollbar's width
+        // (15px here) left of the box it is supposed to line up with.
+        this.dropdown.style.right = `${Math.round(document.documentElement.clientWidth - rect.right)}px`;
     }
 
     /** Opens the (emptied) dropdown with its backdrop and page-softening attribute. */

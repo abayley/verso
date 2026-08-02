@@ -1093,10 +1093,20 @@ export class NavTreePanel {
         void this.hydrate();
     }
 
-    private toggleCollapsed(): void {
+    /**
+     * Shows or hides the rail, persisting the choice. Public because the editor's toolbar carries
+     * the collapse control at every width -- the rail's own header button is unreachable once the
+     * rail is hidden, and below the rail breakpoint the header is inside the overlay panel.
+     */
+    public toggleCollapsed(): void {
         this.collapsed = !this.collapsed;
         this.applyCollapsed();
         this.saveCollapsed();
+    }
+
+    /** Whether the rail is currently hidden. */
+    public isCollapsed(): boolean {
+        return this.collapsed;
     }
 
     private applyCollapsed(): void {

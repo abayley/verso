@@ -330,9 +330,11 @@ markdown-editor {
   display: none;
 }
 
+/* Collapsed means gone, not narrowed: a stub rail still holding its toggle left a
+   gutter beside the content. The toolbar's rail trigger is what brings it back --
+   the rail's own header button is unreachable once the rail is hidden. */
 .markdown-editor__nav[data-collapsed="true"] {
-  flex-basis: auto;
-  padding-right: 0.35rem;
+  display: none;
 }
 
 /* The header pins to the top of the nav panel while the tree scrolls under it,
@@ -2562,16 +2564,13 @@ markdown-editor[data-sidebar-open]
       Collapse, Undo, Trash, and New controls above the tree.
    --------------------------------------------------------------------------- */
 
-/* The rail trigger is built at every width; only narrow viewports show it. */
+/* The rail trigger sits just ahead of Edit/Publish at every width. Above the rail
+   breakpoint it shows and hides the rail itself; below it, the overlay panel. */
 .markdown-editor__nav-trigger {
-  display: none;
+  display: inline-flex;
 }
 
 @media (max-width: 53rem) {
-  .markdown-editor__nav-trigger {
-    display: inline-flex;
-  }
-
   /* Out of the flow entirely, so no gutter is left behind. Full height, because a
      tree is a long list and a drop-down clipped to a few hundred pixels wastes the
      one axis a narrow viewport still has; it is horizontally pinned to its trigger

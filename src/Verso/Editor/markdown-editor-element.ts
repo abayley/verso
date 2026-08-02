@@ -443,7 +443,14 @@ export class MarkdownEditorElement extends HTMLElement {
         trigger.append(chromeIconEl("panel-left"));
         trigger.addEventListener("click", (event: MouseEvent): void => {
             event.stopPropagation();
-            this.setNavDisclosureOpen(!this.hasAttribute("data-nav-open"));
+            if (this.navIsPanel()) {
+                this.setNavDisclosureOpen(!this.hasAttribute("data-nav-open"));
+            } else {
+                // As a column the same button shows and hides the rail itself. Hidden means gone
+                // from the layout, not narrowed to a stub, so no gutter is left beside the content.
+                this.navTree?.toggleCollapsed();
+                this.syncNavTriggerState();
+            }
         });
         this.navDisclosure = trigger;
         return trigger;
@@ -452,10 +459,10 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Opens or closes the narrow-viewport navigation panel, keeping the trigger's ARIA state in step. */
     private setNavDisclosureOpen(open: boolean): void {
         this.toggleAttribute("data-nav-open", open);
-        this.navDisclosure?.setAttribute("aria-expanded", open ? "true" : "false");
         if (open) {
             this.pinNavPanel();
         }
+        this.syncNavTriggerState();
     }
 
     /**
@@ -474,6 +481,21 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Whether the viewport is below the rail breakpoint, where the tree is a panel rather than a column. */
     private navIsPanel(): boolean {
         return window.matchMedia(navPanelMediaQuery).matches;
+    }
+
+    /**
+     * Points the rail trigger at whichever state it currently drives: the overlay panel below the
+     * rail breakpoint, the rail's own visibility above it.
+     */
+    private syncNavTriggerState(): void {
+        if (this.navDisclosure === null) {
+            return;
+        }
+        const shown = this.navIsPanel() ? this.hasAttribute("data-nav-open") : !(this.navTree?.isCollapsed() ?? false);
+        this.navDisclosure.setAttribute("aria-expanded", shown ? "true" : "false");
+        const label = shown ? "Hide pages" : "Show pages";
+        this.navDisclosure.setAttribute("aria-label", label);
+        this.navDisclosure.setAttribute("data-tooltip", label);
     }
 
     /** Opens or closes the narrow-viewport metadata panel, keeping the trigger's ARIA state in step. */
@@ -590,10 +612,15 @@ export class MarkdownEditorElement extends HTMLElement {
             if (this.hasAttribute("data-nav-open")) {
                 this.pinNavPanel();
             }
+            // Crossing the rail breakpoint changes what the trigger drives.
+            this.syncNavTriggerState();
         };
         window.addEventListener("scroll", this.trackSidebarOnScroll, true);
         window.addEventListener("resize", this.trackSidebarOnResize);
         this.updateSidebarDisclosureLabel();
+        // The rail may start collapsed from a stored preference, so the trigger is named
+        // for the state it will move to before it is ever pressed.
+        this.syncNavTriggerState();
     }
 
     /** Publishes the sticky top bar's height to `--markdown-editor-topbar-height`, tracking it as it wraps. */

@@ -315,6 +315,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private sidebarDisclosure: HTMLButtonElement | null = null;
     private sidebarDisclosureLabel: HTMLSpanElement | null = null;
     private navDisclosure: HTMLButtonElement | null = null;
+    private appearanceTrigger: HTMLButtonElement | null = null;
     private dismissSidebarOnClick: ((event: MouseEvent) => void) | null = null;
     private dismissSidebarOnKey: ((event: KeyboardEvent) => void) | null = null;
     private trackSidebarOnScroll: (() => void) | null = null;
@@ -457,6 +458,53 @@ export class MarkdownEditorElement extends HTMLElement {
         this.syncNavTriggerState();
     }
 
+    /**
+     * The trigger that collapses the presentation controls into a panel at the top right. It appears
+     * when the toolbar's own column is too narrow to seat mode, width, light/dark and theme in a row,
+     * which is a property of the content column rather than the viewport -- the rail's 272px means the
+     * row runs out of space twice as the window narrows, once while the rail is a column and again
+     * once it is gone. A container query on the toolbar is what expresses that; the breakpoint lives
+     * in the stylesheet.
+     */
+    private createAppearanceTrigger(): HTMLButtonElement {
+        const trigger = chromeButtonEl("icon", "", {
+            className: "markdown-editor__appearance-trigger",
+            ariaLabel: "Appearance",
+            tooltip: "Appearance",
+        });
+        trigger.setAttribute("aria-expanded", "false");
+        trigger.append(chromeIconEl("sliders-horizontal"));
+        trigger.addEventListener("click", (event: MouseEvent): void => {
+            event.stopPropagation();
+            this.setAppearanceOpen(!this.hasAttribute("data-appearance-open"));
+        });
+        this.appearanceTrigger = trigger;
+        return trigger;
+    }
+
+    /** Opens or closes the presentation panel, pinning it under its trigger while open. */
+    private setAppearanceOpen(open: boolean): void {
+        this.toggleAttribute("data-appearance-open", open);
+        this.appearanceTrigger?.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) {
+            this.pinAppearancePanel();
+        }
+    }
+
+    /** Pins the presentation panel under its trigger, right-aligned to it (see pinSidebarPanel). */
+    private pinAppearancePanel(): void {
+        if (this.appearanceTrigger === null) {
+            return;
+        }
+        const rect = this.appearanceTrigger.getBoundingClientRect();
+        this.style.setProperty("--markdown-editor-appearance-panel-top", `${Math.round(rect.bottom + 4)}px`);
+        // Right-aligned, from the layout viewport's edge so a scrollbar cannot shift it.
+        this.style.setProperty(
+            "--markdown-editor-appearance-panel-right",
+            `${Math.round(document.documentElement.clientWidth - rect.right)}px`,
+        );
+    }
+
     /** Whether the viewport is below the rail breakpoint, where the tree is a panel rather than a column. */
     private navIsPanel(): boolean {
         return window.matchMedia(navPanelMediaQuery).matches;
@@ -545,6 +593,10 @@ export class MarkdownEditorElement extends HTMLElement {
             if (this.hasAttribute("data-nav-open") && navPanel !== null && !navPanel.contains(target)) {
                 this.setNavDisclosureOpen(false);
             }
+            const presentation = this.querySelector(".markdown-editor__presentation");
+            if (this.hasAttribute("data-appearance-open") && presentation !== null && !presentation.contains(target)) {
+                this.setAppearanceOpen(false);
+            }
         };
         this.dismissSidebarOnKey = (event: KeyboardEvent): void => {
             if (event.key === "Escape" && this.hasAttribute("data-sidebar-open")) {
@@ -552,6 +604,9 @@ export class MarkdownEditorElement extends HTMLElement {
             }
             if (event.key === "Escape" && this.hasAttribute("data-nav-open")) {
                 this.setNavDisclosureOpen(false);
+            }
+            if (event.key === "Escape" && this.hasAttribute("data-appearance-open")) {
+                this.setAppearanceOpen(false);
             }
         };
         document.addEventListener("click", this.dismissSidebarOnClick);
@@ -575,6 +630,9 @@ export class MarkdownEditorElement extends HTMLElement {
             this.updateSidebarDisclosureLabel();
             if (this.hasAttribute("data-sidebar-open")) {
                 this.pinSidebarPanel();
+            }
+            if (this.hasAttribute("data-appearance-open")) {
+                this.pinAppearancePanel();
             }
             // Crossing the rail breakpoint changes what the trigger drives.
             this.syncNavTriggerState();
@@ -998,7 +1056,14 @@ export class MarkdownEditorElement extends HTMLElement {
         this.themeGroup = this.createThemeGroup();
         appearance.append(this.themeGroup);
 
-        controls.append(startSlot, centreSlot, appearance);
+        // The presentation controls (mode, width, light/dark, theme) are wrapped so a narrow
+        // toolbar can lift them out as one panel. The wrapper is `display: contents` at full
+        // width, so the grid still sees the centre and appearance slots as its own items and the
+        // wide layout is unchanged -- nothing is re-parented when the breakpoint is crossed.
+        const presentation = document.createElement("div");
+        presentation.className = "markdown-editor__presentation";
+        presentation.append(centreSlot, appearance);
+        controls.append(startSlot, presentation, this.createAppearanceTrigger());
 
         // The document name is a sibling of the controls (not nested), so the layout can place the two
         // independently: stacked below the controls under the default themes (controls, then the name on its

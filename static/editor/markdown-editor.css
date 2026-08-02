@@ -2602,3 +2602,93 @@ markdown-editor[data-sidebar-open]
     width: 100%;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   4. Presentation controls (47rem of toolbar, not of viewport). Mode, width,
+      light/dark and theme need about 755px in a row beside Edit/Publish. That is
+      a property of the content column, not the window: the rail's 272px means the
+      row runs out of room twice as the window narrows -- measured on the demo
+      corpus the slots overlap at 1000px while the rail is a column, then have
+      room again at 820 once the rail is a drawer, and run out once more below
+      about 780. A viewport media query cannot express that, so the toolbar is a
+      container and the query is on its own width.
+
+      The controls are wrapped in .markdown-editor__presentation, which is
+      `display: contents` while there is room -- the grid still sees the centre
+      and appearance slots as its own items, so the full-width layout is byte for
+      byte what it was, and nothing is re-parented as the breakpoint is crossed.
+   --------------------------------------------------------------------------- */
+
+.markdown-editor__toolbar {
+  container-name: editor-toolbar;
+  container-type: inline-size;
+}
+
+.markdown-editor__presentation {
+  display: contents;
+}
+
+/* The trigger only earns its place once the controls have folded away. */
+.markdown-editor__appearance-trigger {
+  display: none;
+}
+
+@container editor-toolbar (max-width: 47rem) {
+  /* Two items left in the row: the read/edit group, and the trigger at the end. */
+  .markdown-editor__toolbar-controls {
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .markdown-editor__appearance-trigger {
+    display: inline-flex;
+  }
+
+  /* The controls become one panel under the trigger, right-aligned to it. The
+     groups stack, each keeping its own segmented-control look. */
+  .markdown-editor__presentation {
+    background: var(--markdown-editor-background);
+    border: 1px solid var(--markdown-editor-divider);
+    border-radius: 8px;
+    box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+    box-sizing: border-box;
+    display: none;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    position: fixed;
+    right: var(--markdown-editor-appearance-panel-right, 0.75rem);
+    top: var(--markdown-editor-appearance-panel-top, var(--markdown-editor-topbar-height, 4.5rem));
+    /* Over the content and the metadata panel (8), below the nav drawer (12). */
+    z-index: 10;
+  }
+
+  markdown-editor[data-appearance-open] .markdown-editor__presentation {
+    display: flex;
+  }
+
+  /* Inside the panel the slots are plain stacked rows, not grid cells. */
+  .markdown-editor__presentation .markdown-editor__toolbar-slot,
+  .markdown-editor__presentation .markdown-editor__appearance {
+    align-items: stretch;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    justify-content: flex-start;
+  }
+}
+
+/* Soft focus behind the presentation panel, as for the other overlays. */
+markdown-editor[data-appearance-open]
+  :is(
+    .markdown-editor__nav,
+    .markdown-editor__workspace,
+    .markdown-editor__document-name,
+    .markdown-editor__search,
+    .markdown-editor__sidebar-row,
+    .markdown-editor__footer,
+    .markdown-editor__word-count
+  ) {
+  filter: blur(3px);
+  opacity: 0.55;
+}

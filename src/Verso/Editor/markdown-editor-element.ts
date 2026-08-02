@@ -486,23 +486,6 @@ export class MarkdownEditorElement extends HTMLElement {
     private setAppearanceOpen(open: boolean): void {
         this.toggleAttribute("data-appearance-open", open);
         this.appearanceTrigger?.setAttribute("aria-expanded", open ? "true" : "false");
-        if (open) {
-            this.pinAppearancePanel();
-        }
-    }
-
-    /** Pins the presentation panel under its trigger, right-aligned to it (see pinSidebarPanel). */
-    private pinAppearancePanel(): void {
-        if (this.appearanceTrigger === null) {
-            return;
-        }
-        const rect = this.appearanceTrigger.getBoundingClientRect();
-        this.style.setProperty("--markdown-editor-appearance-panel-top", `${Math.round(rect.bottom + 4)}px`);
-        // Right-aligned, from the layout viewport's edge so a scrollbar cannot shift it.
-        this.style.setProperty(
-            "--markdown-editor-appearance-panel-right",
-            `${Math.round(document.documentElement.clientWidth - rect.right)}px`,
-        );
     }
 
     /** Whether the viewport is below the rail breakpoint, where the tree is a panel rather than a column. */
@@ -630,9 +613,6 @@ export class MarkdownEditorElement extends HTMLElement {
             this.updateSidebarDisclosureLabel();
             if (this.hasAttribute("data-sidebar-open")) {
                 this.pinSidebarPanel();
-            }
-            if (this.hasAttribute("data-appearance-open")) {
-                this.pinAppearancePanel();
             }
             // Crossing the rail breakpoint changes what the trigger drives.
             this.syncNavTriggerState();

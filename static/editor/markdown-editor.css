@@ -703,15 +703,28 @@ markdown-editor {
   color: var(--markdown-editor-muted);
   column-gap: 0.4rem;
   display: flex;
-  flex-wrap: wrap;
+  /* Never wraps: a second line would change the height of the row it shares with
+     the search box, moving everything below it as the window is resized. A long
+     trail truncates instead. */
+  flex-wrap: nowrap;
   font: 13px system-ui, sans-serif;
   letter-spacing: 0.04em;
   /* Always left-aligned at the page edge (not centred to the medium column);
      the row wrapper owns the vertical spacing. */
   margin: 0;
   padding: 0;
+  overflow: hidden;
   row-gap: 0.1rem;
   width: 100%;
+}
+
+/* With no wrapping, the segments shrink and ellipsis rather than pushing a line. */
+.markdown-editor__document-name > * {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Breadcrumb trail (replacing the filename): each ancestor folder links to its page; the current page is
@@ -2585,14 +2598,16 @@ markdown-editor[data-sidebar-open]
 /* ---------------------------------------------------------------------------
    3. Breadcrumb (35rem / 560px). The breadcrumb shares its row with the search
       box, which holds min(20rem, 60vw), so the trail gets whatever is left:
-      308px at 700, 208px at 600 (where it starts truncating), and under 170px
-      below 560 -- a dozen characters, too few to place the page. It goes at
-      35rem, and the search box takes the freed row. The trail is the smallest
+      308px at 700 and 208px at 600, where it starts truncating. It goes at
+      44rem (704px): below that the trail is shorter than the page names it has
+      to carry, and the search box takes the freed row. The trail never wraps
+      (see .markdown-editor__document-name), so the row it shares with the
+      search box keeps a fixed height right up to the breakpoint. The trail is the smallest
       loss of the three: the page's own title sits above the editing pane, and
       the navigation panel still reaches every ancestor.
    --------------------------------------------------------------------------- */
 
-@media (max-width: 35rem) {
+@media (max-width: 44rem) {
   .markdown-editor__document-name {
     display: none;
   }
@@ -2622,6 +2637,11 @@ markdown-editor[data-sidebar-open]
 .markdown-editor__toolbar {
   container-name: editor-toolbar;
   container-type: inline-size;
+}
+
+/* The containing block for the folded presentation panel. */
+.markdown-editor__toolbar-controls {
+  position: relative;
 }
 
 .markdown-editor__presentation {
@@ -2656,11 +2676,16 @@ markdown-editor[data-sidebar-open]
     flex-direction: column;
     gap: 0.75rem;
     padding: 0.75rem;
-    position: fixed;
-    right: var(--markdown-editor-appearance-panel-right, 0.75rem);
-    top: var(--markdown-editor-appearance-panel-top, var(--markdown-editor-topbar-height, 4.5rem));
-    /* Over the content and the metadata panel (8), below the nav drawer (12). */
-    z-index: 10;
+    /* Positioned against the controls row rather than the viewport: the row is the
+       trigger's own box, so `right: 0` lines the panel up with it and no JavaScript
+       pinning is needed. Fixed positioning would be measured from the toolbar
+       anyway, which `container-type` makes a containing block. */
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    /* Above the search box (20), which shares the sticky top bar's stacking context
+       and would otherwise take the clicks aimed at the mode and width controls. */
+    z-index: 25;
   }
 
   markdown-editor[data-appearance-open] .markdown-editor__presentation {

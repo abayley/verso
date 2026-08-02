@@ -2487,7 +2487,9 @@ markdown-editor[data-sidebar-open]
 @media (max-width: 70rem) {
   .markdown-editor__sidebar-row {
     display: block;
-    padding: 0 0 0.5rem;
+    /* The 0.25rem inline padding matches the toolbar and the breadcrumb/search row,
+       so all three top-bar rows share the same left and right edges. */
+    padding: 0 0.25rem 0.5rem;
   }
 
   /* Full width, so the chevron rides the trailing edge of the content column and the
@@ -2735,4 +2737,53 @@ markdown-editor[data-appearance-open]
   ) {
   filter: blur(3px);
   opacity: 0.55;
+}
+
+/* Below this width the command bar cannot seat its two groups at full size: with
+   36px buttons and a 108px "Paragraph" label the first group alone wants 474px, so
+   it wrapped to a third row. Tightening the bar's padding and gaps, shrinking the
+   buttons, and capping the block-style label keeps it to the two rows it splits
+   into at the Badge. Only the floating bar is touched; the top bar's controls have
+   already folded into their menu by here. */
+@media (max-width: 36rem) {
+  .markdown-editor__toolbar--commands {
+    gap: 0.1rem;
+    padding: 0.25rem 0.4rem;
+  }
+
+  .markdown-editor__toolbar--commands .markdown-editor__command-row {
+    gap: 0.1rem;
+  }
+
+  .markdown-editor__toolbar--commands .markdown-editor__button-group + .markdown-editor__button-group {
+    margin-left: 0.15rem;
+  }
+
+  .markdown-editor__toolbar--commands .markdown-editor__button {
+    font-size: 13px;
+    min-width: 0;
+    padding-inline: 0.2rem;
+  }
+
+  /* Basecoat's icon-sm is a fixed 36px box; the glyph inside is only 16px, so the
+     square can lose a third of its width without crowding the icon. */
+  .markdown-editor__toolbar--commands .markdown-editor__button[data-size="icon-sm"] {
+    height: 1.6rem;
+    padding: 0;
+    width: 1.6rem;
+  }
+
+  /* The label truncates rather than pushing the group onto its own line. Left-aligned
+     so the ellipsis falls at the end -- centred, the button clipped both ends and the
+     word lost its first letter. */
+  .markdown-editor__toolbar--commands .markdown-editor__style-trigger {
+    justify-content: flex-start;
+    max-width: 5rem;
+  }
+
+  .markdown-editor__toolbar--commands .markdown-editor__style-trigger > :first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }

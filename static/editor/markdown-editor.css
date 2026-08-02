@@ -629,7 +629,10 @@ markdown-editor {
   font: 13px system-ui, sans-serif;
   gap: 0.4rem;
   letter-spacing: 0.04em;
-  padding: 0.5rem 0.25rem 0.2rem;
+  /* No inline padding: the top bar's own 0.75rem gutter is the same one the
+     workspace gives the editing column, so the controls line up with the pane
+     below. Any inset here is inset the controls past the pane's edges. */
+  padding: 0.5rem 0 0.2rem;
   /* border-box, so the inline padding insets the controls to the same edges as
      the breadcrumb+search row below (content-box + width:100% would overflow). */
   box-sizing: border-box;
@@ -1271,14 +1274,32 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   transform: rotate(180deg);
 }
 
-/* Collapsed: only the toggle remains, and it leaves the flex row rather than
-   standing in it as a thin rail. In the row it still cost its own width plus the
-   workspace gap, so the editing column sat 60px from the right edge against 12px
-   on the left; floated into the workspace's top corner it costs nothing and the
-   two margins match. Out of flow, so the row's gap does not apply either. */
+/* Collapsed: only the toggle remains, and the column shrinks to nothing rather
+   than standing in the row as a thin rail. At its 15rem basis it cost its own
+   width plus the workspace gap, so the editing column sat 60px from the right
+   edge against 12px on the left; at zero width (with the gap cancelled below)
+   the two margins match and the editing column takes the whole row.
+
+   It stays in flow and stays sticky, so the toggle holds the same place in both
+   states -- the right of the page-title row -- and rides down under the top bar
+   as the page scrolls. Taking it out of flow (position: absolute) instead left
+   it anchored to the workspace, so it scrolled away and the pane could not be
+   restored. The toggle is absolutely placed against the zero-width column's
+   right edge, which is where it sat as the expanded column's flex-end child. */
 .markdown-editor__sidebar[data-collapsed="true"] {
-  flex-basis: auto;
+  flex-basis: 0;
   gap: 0;
+  /* The toggle overhangs the zero-width box; the expanded column's clipping
+     scroller would swallow it. */
+  overflow: visible;
+}
+
+/* Cancel the workspace gap the zero-width column would otherwise still claim. */
+.markdown-editor__workspace:has(> .markdown-editor__sidebar[data-collapsed="true"]) {
+  gap: 0;
+}
+
+.markdown-editor__sidebar[data-collapsed="true"] .markdown-editor__sidebar-toggle {
   position: absolute;
   right: 0;
   top: 0;
@@ -2214,15 +2235,15 @@ markdown-editor[data-readonly] .markdown-image__resize-handle {
 /* --- Interactive search (RFC-0034) --------------------------------- */
 
 /* The top bar's second row: breadcrumb on the left, search box on the right.
-   The 0.25rem inline inset matches the controls row above, so the two rows'
-   left and right edges line up; centring puts the breadcrumb on the search
-   box's midline rather than above it. */
+   No inline inset, matching the controls row above, so all the top-bar rows
+   share the editing pane's left and right edges; centring puts the breadcrumb
+   on the search box's midline rather than above it. */
 .markdown-editor__topbar-row {
     align-items: center;
     display: flex;
     gap: 1rem;
     justify-content: space-between;
-    padding: 0 0.25rem 0.4rem;
+    padding: 0 0 0.4rem;
 }
 
 .markdown-editor__topbar-row .markdown-editor__document-name {
@@ -2487,9 +2508,9 @@ markdown-editor[data-sidebar-open]
 @media (max-width: 70rem) {
   .markdown-editor__sidebar-row {
     display: block;
-    /* The 0.25rem inline padding matches the toolbar and the breadcrumb/search row,
-       so all three top-bar rows share the same left and right edges. */
-    padding: 0 0.25rem 0.5rem;
+    /* No inline padding, matching the toolbar and the breadcrumb/search row, so all
+       three top-bar rows share the same left and right edges as the editing pane. */
+    padding: 0 0 0.5rem;
   }
 
   /* Full width, so the chevron rides the trailing edge of the content column and the

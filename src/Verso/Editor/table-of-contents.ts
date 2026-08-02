@@ -3,6 +3,8 @@
 // the rendered, source, and split views. The entries are in document order; an entry's index is the index of
 // its heading element among the rendered headings, which the editor uses to scroll to it on click.
 
+import { chromePanelHeadingEl, chromePanelRowEl } from "./chrome.js";
+
 /** One contents entry: a heading's level (1-6) and its plain text. */
 export interface TocEntry {
     level: number;
@@ -58,9 +60,7 @@ export class TableOfContentsPanel {
         this.panel.setAttribute("aria-label", "Table of contents");
         this.panel.hidden = true;
 
-        const heading = document.createElement("h2");
-        heading.className = "markdown-editor__metadata-heading";
-        heading.textContent = "Contents";
+        const heading = chromePanelHeadingEl("Contents");
 
         this.list = document.createElement("ol");
         this.list.className = "markdown-editor__toc-list";
@@ -84,15 +84,11 @@ export class TableOfContentsPanel {
             item.className = "markdown-editor__toc-item";
             item.dataset["level"] = String(entry.level);
 
-            const button = document.createElement("button");
-            button.type = "button";
-            button.className = "markdown-editor__toc-link";
-            // The heading sits in a label of its own: the button is a row (matching the navigation tree's
-            // rows), and a flex container cannot clip its own text with an ellipsis.
-            const label = document.createElement("span");
-            label.className = "markdown-editor__toc-label";
-            label.textContent = entry.text;
-            button.append(label);
+            // The shared side-panel row (chrome.ts), as the navigation tree draws its pages.
+            const { root: button } = chromePanelRowEl("button", {
+                className: "markdown-editor__toc-link",
+                label: entry.text,
+            });
             // The delegated tooltip shows the full heading on hover (long entries truncate).
             button.setAttribute("data-tooltip", entry.text);
             button.addEventListener("click", (): void => this.onSelect(index));

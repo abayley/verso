@@ -173,13 +173,19 @@
      entries by one step per heading level). Only the widths differ, since the panes hold different
      things. */
   --markdown-editor-panel-font-size: 14px;
-  --markdown-editor-panel-row-height: 1.75rem;
-  --markdown-editor-panel-row-padding: 0.1rem 0.2rem;
-  --markdown-editor-panel-row-radius: 0.375rem;
-  --markdown-editor-panel-indent: 1.3rem;
-  /* The selected row's fill, a step past the hover fill (--muted) in both schemes: hover and selected
-     were the same colour, which left the open page barely marked in either. */
-  --markdown-editor-panel-row-selected: oklch(0.895 0 0); /* between --muted and --border */
+  /* shadcn's sidebar menu button: a 2rem row, rounded-md, 0.5rem of inline padding, a 0.5rem gap between
+     what sits in it. The block padding is trimmed so the row holds its 2rem rather than growing to
+     0.5rem + line + 0.5rem, which is what shadcn's fixed h-8 does by clipping. */
+  --markdown-editor-panel-row-height: 2rem;
+  --markdown-editor-panel-row-padding: 0.25rem 0.5rem;
+  --markdown-editor-panel-row-gap: 0.5rem;
+  --markdown-editor-panel-row-radius: var(--radius-md, 0.5rem);
+  /* shadcn's sub-menu inset: mx-3.5 + px-2.5 on the nested list. Applied to the start edge only, since
+     these lists nest arbitrarily deep and a symmetric inset would eat the column from both sides. */
+  --markdown-editor-panel-indent: 1.5rem;
+  /* The selected row's fill. shadcn marks the active item with --sidebar-accent, the same colour as
+     hover, which left the open page unreadable here; this is a step past it in both schemes. */
+  --markdown-editor-panel-row-selected: oklch(0.895 0 0); /* between --sidebar-accent and --sidebar-border */
   --markdown-editor-accent: oklch(0.205 0 0); /* --primary */
   --markdown-editor-background: oklch(1 0 0); /* --background */
   --markdown-editor-code-background: oklch(0.97 0 0); /* --muted */
@@ -330,23 +336,25 @@ markdown-editor {
    toggle. */
 .markdown-editor__nav {
   align-self: flex-start;
-  /* Opaque, not transparent: the search dropdown overhangs the nav column, and a
-     see-through rail let both sets of text show through where they overlapped. */
-  background: var(--markdown-editor-background);
-  border-right: 1px solid var(--markdown-editor-divider);
+  /* The shadcn sidebar surface: a tone of its own against the page, not the page's own background, with
+     the sidebar border down its trailing edge. Opaque either way -- the search dropdown overhangs the
+     column, and a see-through rail let both sets of text show through where they overlapped. */
+  background: var(--sidebar, var(--markdown-editor-background));
+  border-right: 1px solid var(--sidebar-border, var(--markdown-editor-divider));
   box-sizing: border-box;
-  color: var(--markdown-editor-muted);
+  color: var(--sidebar-foreground, var(--markdown-editor-text));
   display: flex;
-  flex: 0 0 var(--markdown-editor-nav-width, 17rem);
+  /* shadcn's --sidebar-width. */
+  flex: 0 0 var(--markdown-editor-nav-width, var(--sidebar-width, 16rem));
   flex-direction: column;
   font: var(--markdown-editor-panel-font-size) var(--markdown-editor-font);
   gap: 0.5rem;
   height: 100vh;
   min-width: 0;
   overflow-y: auto;
-  /* No padding-top: the sticky header must be flush to the nav's top edge, or the
-     tree scrolls into the gap above it. The header supplies the top spacing. */
-  padding: 0 0.75rem 0.75rem 1rem;
+  /* shadcn pads the sidebar's header and its groups by 0.5rem each. No padding-top here: the sticky
+     header must be flush to the nav's top edge, or the tree scrolls into the gap above it. */
+  padding: 0 0.5rem 0.5rem;
   position: sticky;
   top: 0;
   /* Above the sticky top bar (z 6), so the nav's dropdown popovers -- pinned to fixed
@@ -373,16 +381,17 @@ markdown-editor {
    so the collapse/undo/trash/create controls are always reachable. */
 .markdown-editor__nav-header {
   align-items: center;
-  background: var(--markdown-editor-background);
+  /* Matches the rail, not the page: the header pins while the tree scrolls under it. */
+  background: var(--sidebar, var(--markdown-editor-background));
   display: flex;
   gap: 0.35rem;
-  padding-block: 0.75rem 0.25rem;
+  padding-block: 0.5rem 0.25rem;
   position: sticky;
   top: 0;
   z-index: 1;
 }
 
-.markdown-editor__nav-header .markdown-editor__metadata-heading {
+.markdown-editor__nav-header .markdown-editor__panel-heading {
   flex: 1;
   margin: 0;
 }
@@ -415,31 +424,27 @@ markdown-editor {
   padding: 0;
 }
 
+/* shadcn's sub-menu: a hairline in the sidebar border colour, nudged a pixel off the parent row's edge,
+   with the list inset from it. The two insets together make one indent step -- the step the contents
+   entries use per heading level. */
 .markdown-editor__nav-list .markdown-editor__nav-list {
-  border-left: 1px solid var(--markdown-editor-divider);
-  /* The two together make one indent step, the same step the contents entries use per level. */
-  margin-left: 0.8rem;
-  padding-left: calc(var(--markdown-editor-panel-indent) - 0.8rem);
+  border-inline-start: 1px solid var(--sidebar-border, var(--markdown-editor-divider));
+  margin-inline-start: 0.875rem;
+  padding-inline-start: calc(var(--markdown-editor-panel-indent) - 0.875rem);
+  translate: 1px 0;
 }
 
+/* The row shape is the shared panel row; the tree adds only its own gap -- a page row seats a chevron,
+   a label and two hover actions, which at the panel gap would leave the label almost no width. */
 .markdown-editor__nav-row {
-  align-items: center;
-  border-radius: var(--markdown-editor-panel-row-radius);
-  display: flex;
   gap: 0.1rem;
-  min-height: var(--markdown-editor-panel-row-height);
-  padding: var(--markdown-editor-panel-row-padding);
-}
-
-.markdown-editor__nav-row:hover {
-  background: var(--markdown-editor-code-background);
 }
 
 /* The open page: a stronger fill than hover, and the full text colour against the tree's muted grey. */
 .markdown-editor__nav-row[data-active="true"] {
   background: var(--markdown-editor-panel-row-selected);
   color: var(--markdown-editor-text);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* Drag-and-drop move: the row, root list, or top-level drop zone currently under the dragged item. */
@@ -513,18 +518,19 @@ markdown-editor {
   transform: rotate(90deg);
 }
 
+/* The clickable label inside the row: the row owns the fill and the padding, so this is a bare button
+   that stretches across whatever the chevron and the actions leave. */
 .markdown-editor__nav-label {
   background: transparent;
   border: 0;
   color: inherit;
   cursor: pointer;
+  display: flex;
   flex: 1;
   font: inherit;
-  overflow: hidden;
-  padding: 0.1rem 0;
+  min-width: 0;
+  padding: 0;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* The "+" stays hidden until the pointer is over its row (or the header), in both
@@ -824,20 +830,9 @@ a.markdown-editor__crumb:hover {
   font-style: italic;
 }
 
-/* The same row shape again, so the history entry sits on the panels' shared rhythm. */
+/* The shape is the shared panel row; only the resting colour differs. */
 .markdown-editor__history-link {
-  align-items: center;
-  border-radius: var(--markdown-editor-panel-row-radius);
   color: var(--markdown-editor-muted);
-  display: flex;
-  min-height: var(--markdown-editor-panel-row-height);
-  padding: var(--markdown-editor-panel-row-padding);
-  text-decoration: none;
-}
-
-.markdown-editor__history-link:hover {
-  background: var(--markdown-editor-code-background);
-  color: var(--markdown-editor-text);
 }
 
 /* RFC-0032 revision-history and diff views (standalone pages; share the editor theme). */
@@ -1431,9 +1426,28 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   padding-left: calc(5 * var(--markdown-editor-panel-indent));
 }
 
-/* The nav row's shape: same height, padding, radius and hover fill, so an entry here reads as the same
-   kind of row as a page in the tree. */
-.markdown-editor__toc-link {
+/* The contents entry is the shared panel row, with nothing to add: the level indent sits on the item
+   and the reading rail is drawn against it. */
+
+/* --- The side-panel component (chrome.ts: chromePanelHeadingEl, chromePanelRowEl) ----------------
+   One row shape and one heading shape for both panels -- the navigation tree on the left, the contents,
+   attachments and history panels on the right -- so the two cannot drift apart. Per-panel rules below
+   add only what differs: the tree's actions, the contents rail, the attachment insert button. */
+
+/* shadcn's sidebar group label: a short row in the panel's own colour at reduced strength. */
+.markdown-editor__panel-heading {
+  align-items: center;
+  display: flex;
+  font-size: 0.75rem;
+  font-weight: 500;
+  height: var(--markdown-editor-panel-row-height);
+  margin: 0;
+  padding-inline: 0.5rem;
+  color: color-mix(in oklab, var(--markdown-editor-text) 70%, transparent);
+}
+
+/* shadcn's sidebar menu button. */
+.markdown-editor__panel-row {
   align-items: center;
   background: transparent;
   border: 0;
@@ -1443,31 +1457,26 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   cursor: pointer;
   display: flex;
   font: inherit;
+  gap: var(--markdown-editor-panel-row-gap);
   min-height: var(--markdown-editor-panel-row-height);
   overflow: hidden;
   padding: var(--markdown-editor-panel-row-padding);
   text-align: left;
+  text-decoration: none;
   width: 100%;
 }
 
-/* The label carries the ellipsis, not the button: the button is a flex row, and a flex container
-   cannot clip its own anonymous text. */
-.markdown-editor__toc-label {
+.markdown-editor__panel-row:hover {
+  background: var(--sidebar-accent, var(--markdown-editor-code-background));
+  color: var(--sidebar-accent-foreground, var(--markdown-editor-text));
+}
+
+/* The label truncates, not the row: the row is a flex container, and a flex container cannot clip its
+   own anonymous text with an ellipsis. */
+.markdown-editor__panel-row-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.markdown-editor__toc-link:hover {
-  background: var(--markdown-editor-code-background);
-}
-
-.markdown-editor__metadata-heading {
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  margin: 0 0 0.75rem;
-  text-transform: uppercase;
 }
 
 .markdown-editor__attachment-list {
@@ -1478,27 +1487,18 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   padding: 0;
 }
 
-/* The same row shape as the nav tree and the contents entries. */
+/* The shared panel row, plus what an attachment adds: it is dragged into the document, and its insert
+   action rides the trailing edge. */
 .markdown-editor__attachment {
-  align-items: center;
-  border-radius: var(--markdown-editor-panel-row-radius);
   cursor: grab;
-  display: flex;
-  gap: 0.5rem;
   justify-content: space-between;
-  min-height: var(--markdown-editor-panel-row-height);
-  padding: var(--markdown-editor-panel-row-padding);
-}
-
-.markdown-editor__attachment:hover {
-  background: var(--markdown-editor-code-background);
 }
 
 .markdown-editor__attachment-link {
   color: var(--markdown-editor-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: flex;
+  min-width: 0;
+  text-decoration: none;
 }
 
 .markdown-editor__attachment-insert {

@@ -3,6 +3,8 @@
 // and surfaces each attachment so the author can open it, insert a link to it, or drag it into the
 // document. Attachments not linked from the body still appear here -- surfacing them is the panel's point.
 
+import { chromePanelHeadingEl, chromePanelRowEl } from "./chrome.js";
+
 /** A page attachment as embedded by the server and shown in the panel. */
 export interface PanelAttachment {
     name: string;
@@ -67,9 +69,7 @@ export class AttachmentPanel {
         this.panel.setAttribute("aria-label", "Page metadata");
         this.panel.dataset["empty"] = "true";
 
-        const heading = document.createElement("h2");
-        heading.className = "markdown-editor__metadata-heading";
-        heading.textContent = "Attachments";
+        const heading = chromePanelHeadingEl("Attachments");
 
         this.list = document.createElement("ul");
         this.list.className = "markdown-editor__attachment-list";
@@ -107,15 +107,18 @@ export class AttachmentPanel {
     }
 
     private createRow(attachment: PanelAttachment): HTMLLIElement {
-        const row = document.createElement("li");
-        row.className = "markdown-editor__attachment";
+        // The shared side-panel row (chrome.ts), as the navigation tree and the contents list use.
+        const { label, root: row } = chromePanelRowEl("li", {
+            className: "markdown-editor__attachment",
+            label: attachment.name,
+        });
 
         const link = document.createElement("a");
         link.className = "markdown-editor__attachment-link";
         link.href = attachment.localPath;
         link.target = "_blank";
         link.rel = "noopener";
-        link.textContent = attachment.name;
+        link.append(label);
         row.append(link);
 
         // In the read view the panel is a plain list of files to open; the insert action and drag-to-insert

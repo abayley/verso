@@ -278,6 +278,55 @@ export interface ChromeAlertHandle {
 }
 
 /**
+ * The heading over a side-panel group -- "Pages" on the navigation tree, "Contents"/"Attachments"/
+ * "History" on the metadata pane. The shadcn sidebar's group label: a short row in the panel's text
+ * colour at reduced strength, not a shouted uppercase caption.
+ */
+export function chromePanelHeadingEl(text: string): HTMLElement {
+    const heading = document.createElement("h2");
+    heading.className = "markdown-editor__panel-heading";
+    heading.textContent = text;
+
+    return heading;
+}
+
+/** A panel row: the element itself, and the label span that truncates inside it. */
+export interface ChromePanelRow<T extends HTMLElement> {
+    root: T;
+    label: HTMLSpanElement;
+}
+
+/**
+ * One row of a side panel -- a page in the navigation tree, a contents entry, an attachment, the
+ * history link. Both panels build their rows here so the shadcn sidebar menu-button shape (height,
+ * padding, radius, gap, hover fill, truncating label) is defined once and cannot drift between them;
+ * callers append their own extras (a disclosure chevron, row actions) around the label.
+ *
+ * The label is a span of its own because the row is a flex container, and a flex container cannot clip
+ * its own anonymous text with an ellipsis.
+ */
+export function chromePanelRowEl<K extends keyof HTMLElementTagNameMap>(
+    tag: K,
+    options: { label: string; className?: string } = { label: "" },
+): ChromePanelRow<HTMLElementTagNameMap[K]> {
+    const root = document.createElement(tag);
+    root.className = options.className
+        ? `markdown-editor__panel-row ${options.className}`
+        : "markdown-editor__panel-row";
+
+    if (root instanceof HTMLButtonElement) {
+        root.type = "button";
+    }
+
+    const label = document.createElement("span");
+    label.className = "markdown-editor__panel-row-label";
+    label.textContent = options.label;
+    root.append(label);
+
+    return { label, root };
+}
+
+/**
  * An imperative notice alert (the shadcn alert look): a message section plus an icon dismiss button
  * pinned to the trailing edge. Created hidden; callers fill the message and unhide.
  */

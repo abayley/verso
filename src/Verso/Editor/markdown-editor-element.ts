@@ -18,6 +18,8 @@ import {
     chromeDropdownEl,
     chromeIconEl,
     chromeLinkEl,
+    chromePanelHeadingEl,
+    chromePanelRowEl,
     chromeSegmentEl,
     initBasecoat,
     NETWORK_ERROR,
@@ -1199,14 +1201,13 @@ export class MarkdownEditorElement extends HTMLElement {
         const panel = document.createElement("aside");
         panel.className = "markdown-editor__metadata-panel markdown-editor__history-panel";
 
-        const heading = document.createElement("h2");
-        heading.className = "markdown-editor__metadata-heading";
-        heading.textContent = "History";
+        const heading = chromePanelHeadingEl("History");
 
-        const link = document.createElement("a");
-        link.className = "markdown-editor__history-link";
+        const { root: link } = chromePanelRowEl("a", {
+            className: "markdown-editor__history-link",
+            label: "Revision history",
+        });
         link.href = `/documents/${documentPath}?history`;
-        link.textContent = "Revision history";
 
         panel.append(heading, link);
         return panel;

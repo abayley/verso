@@ -5,7 +5,15 @@
 // (caching fetched children for the session), navigates on click, and creates new pages/sections.
 
 import { hideBlockingOverlay, showBlockingOverlay } from "./blocking-overlay.js";
-import { type ChromeDropdownElement, chromeDropdownEl, chromeIconEl, initBasecoat, NETWORK_ERROR } from "./chrome.js";
+import {
+    type ChromeDropdownElement,
+    chromeDropdownEl,
+    chromeIconEl,
+    chromePanelHeadingEl,
+    chromePanelRowEl,
+    initBasecoat,
+    NETWORK_ERROR,
+} from "./chrome.js";
 import { themedConfirm } from "./confirm-dialog.js";
 
 /** A navigation-tree node as the server serialises it: a section (folder) or page, with its tree-relative path. */
@@ -237,9 +245,7 @@ export class NavTreePanel {
         // No collapse button here: the editor's toolbar carries the one collapse control, ahead of
         // Edit/Publish, at every width. A second one beside the heading was redundant, and as a
         // narrow-viewport panel it had nothing to collapse to.
-        const heading = document.createElement("h2");
-        heading.className = "markdown-editor__metadata-heading";
-        heading.textContent = "Pages";
+        const heading = chromePanelHeadingEl("Pages");
 
         const collapseAll = document.createElement("button");
         collapseAll.type = "button";
@@ -388,8 +394,11 @@ export class NavTreePanel {
         item.className = "markdown-editor__nav-item";
         item.dataset["kind"] = node.kind;
 
-        const row = document.createElement("div");
-        row.className = "markdown-editor__nav-row";
+        // The shared side-panel row (chrome.ts): the tree and the metadata pane draw the same row.
+        const { label: rowLabel, root: row } = chromePanelRowEl("div", {
+            className: "markdown-editor__nav-row",
+            label: node.name,
+        });
         if (node.path === this.activePath) {
             row.dataset["active"] = "true";
         }
@@ -402,10 +411,12 @@ export class NavTreePanel {
             row.append(spacer);
         }
 
+        // The label is a button of its own inside the row, so the row actions can sit beside it and the
+        // hover fill still covers the whole row; the shared truncating label moves into it.
         const label = document.createElement("button");
         label.type = "button";
         label.className = "markdown-editor__nav-label";
-        label.textContent = node.name;
+        label.append(rowLabel);
         this.options.registerTooltip(label, node.name); // full label on hover, since deep rows truncate
         label.addEventListener("click", (): void => this.openNode(node));
         row.append(label);

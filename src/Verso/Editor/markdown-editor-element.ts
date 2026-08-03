@@ -91,7 +91,17 @@ const SIDEBAR_DISCLOSURE_FALLBACK = "Contents";
 const sidebarLabelThrottleMilliseconds = 100;
 
 /** Below this width the navigation tree is a panel, not a column. Kept in step with the stylesheet. */
-const navPanelMediaQuery = "(max-width: 64rem)";
+const navPanelMediaQuery = "(max-width: 74rem)";
+
+/**
+ * Below these widths the metadata pane is a panel, not a column: the window can no longer seat the rail
+ * (24rem), the narrow measure (48rem) and the pane (18rem) with the gaps between them, so 93rem with the
+ * rail in the row and 69rem without it. Two queries because the answer depends on the rail, which the
+ * reader can collapse by hand at any width, so a media query alone cannot express it; the element sets
+ * `data-pane-panel` from whichever applies and the stylesheet keys the panel rules on that.
+ */
+const panePanelWithRailQuery = "(max-width: 93rem)";
+const panePanelWithoutRailQuery = "(max-width: 69rem)";
 
 /** The selectable editing-column widths, in toolbar order; "narrow" is the default. Icons read as
     increasing column width (a portrait, a square, a landscape rectangle). */
@@ -497,6 +507,21 @@ export class MarkdownEditorElement extends HTMLElement {
         return window.matchMedia(navPanelMediaQuery).matches;
     }
 
+    /** Whether the navigation rail currently stands in the row, taking its 24rem from the window. */
+    private railIsColumn(): boolean {
+        return !this.navIsPanel() && !(this.navTree?.isCollapsed() ?? false);
+    }
+
+    /**
+     * Publishes whether the metadata pane has room for its column, as `data-pane-panel`. Re-read on resize
+     * and whenever the rail is shown or hidden, since the rail's 24rem is what decides which threshold
+     * applies.
+     */
+    private syncPanePanel(): void {
+        const query = this.railIsColumn() ? panePanelWithRailQuery : panePanelWithoutRailQuery;
+        this.toggleAttribute("data-pane-panel", window.matchMedia(query).matches);
+    }
+
     /**
      * Points the rail trigger at whichever state it currently drives: the overlay panel below the
      * rail breakpoint, the rail's own visibility above it.
@@ -506,6 +531,9 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
         const shown = this.navIsPanel() ? this.hasAttribute("data-nav-open") : !(this.navTree?.isCollapsed() ?? false);
+        // Showing or hiding the rail frees or takes 24rem, which can change whether the pane fits beside
+        // the prose.
+        this.syncPanePanel();
         this.navDisclosure.setAttribute("aria-expanded", shown ? "true" : "false");
         const label = shown ? "Hide pages" : "Show pages";
         this.navDisclosure.setAttribute("aria-label", label);
@@ -641,6 +669,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.trackSidebarOnResize = (): void => {
             this.updateSidebarDisclosureLabel();
             this.trackReadingPosition();
+            this.syncPanePanel();
             if (this.hasAttribute("data-sidebar-open")) {
                 this.pinSidebarPanel();
             }
@@ -651,6 +680,7 @@ export class MarkdownEditorElement extends HTMLElement {
         window.addEventListener("resize", this.trackSidebarOnResize);
         this.updateSidebarDisclosureLabel();
         this.trackReadingPosition();
+        this.syncPanePanel();
         // The rail may start collapsed from a stored preference, so the trigger is named
         // for the state it will move to before it is ever pressed.
         this.syncNavTriggerState();

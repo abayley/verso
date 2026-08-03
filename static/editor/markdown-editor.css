@@ -183,6 +183,12 @@
   /* shadcn's sub-menu inset: mx-3.5 + px-2.5 on the nested list. Applied to the start edge only, since
      these lists nest arbitrarily deep and a symmetric inset would eat the column from both sides. */
   --markdown-editor-panel-indent: 1.5rem;
+  /* The editing column's measure for each width preset -- the one definition of "narrow", used by the
+     preset caps and by the breakpoints derived from them below. 48rem is ~96 characters at the measured
+     7.98px per character; medium keeps the 71rem it has always rendered. The 21rem the workspace adds is
+     the metadata pane's 18rem column, the 1.5rem gap before it, and the workspace's own 1.5rem gutter. */
+  --markdown-editor-measure-narrow: 48rem;
+  --markdown-editor-measure-medium: 71rem;
   /* The selected row's fill. shadcn marks the active item with --sidebar-accent, the same colour as
      hover, which left the open page unreadable here; this is a step past it in both schemes. */
   --markdown-editor-panel-row-selected: oklch(0.895 0 0); /* between --sidebar-accent and --sidebar-border */
@@ -1235,22 +1241,33 @@ a.markdown-editor__crumb:hover {
   /* The containing block for the narrow-viewport metadata panel, which drops over
      the editing pane from the top of the workspace. */
   position: relative;
-  max-width: 74rem;
+  /* The default before a preset applies; the presets set both this and the column's own measure below. */
+  max-width: calc(var(--markdown-editor-measure-narrow) + 21rem);
   /* The content column has no gutter (so the top bar spans it edge to edge), so the
      workspace carries its own so the editing column is not flush to the edges. */
   padding-inline: 0.75rem;
   width: 100%;
 }
 
-/* The widths cap the whole workspace row (nav + editing column + metadata panel),
-   so they are wider than the bare editing measure to leave the navigation tree its
-   column (RFC-0026). */
+/* Each width names the editing column's measure, and caps the workspace row at that measure plus the
+   metadata pane's column and the gaps around it. Capping the column and not just the row is what keeps the
+   measure steady: with the row alone capped, hiding the pane handed its 18rem to the prose, so the column
+   was one width beside the pane and another without it -- and the pane's own breakpoint then snapped it
+   back again. The row cap keeps the pane grouped with the prose rather than pushed to the window's edge. */
+markdown-editor[data-body-width="narrow"] .markdown-editor__main {
+  max-width: var(--markdown-editor-measure-narrow);
+}
+
 markdown-editor[data-body-width="narrow"] .markdown-editor__workspace {
-  max-width: 74rem;
+  max-width: calc(var(--markdown-editor-measure-narrow) + 21rem);
+}
+
+markdown-editor[data-body-width="medium"] .markdown-editor__main {
+  max-width: var(--markdown-editor-measure-medium);
 }
 
 markdown-editor[data-body-width="medium"] .markdown-editor__workspace {
-  max-width: 92rem;
+  max-width: calc(var(--markdown-editor-measure-medium) + 21rem);
 }
 
 markdown-editor[data-body-width="full"] .markdown-editor__workspace {
@@ -2601,12 +2618,16 @@ markdown-editor[data-sidebar-open]
    ---------------------------------------------------------------------------
    The layout sheds chrome as the viewport narrows, widest threshold first.
 
-   1. Metadata pane (70rem / 1120px). Beside the editor the pane costs 240px plus
-      a 72px gap; measured on the demo corpus, keeping it below this width drops
-      the prose measure under ~50 characters (48ch at 1100px, against 78ch with
-      the pane hidden). Below the breakpoint it becomes a panel opened from a
-      trigger in its own top-bar row. The pane is not moved in the DOM, only
-      repositioned, so the contents, attachments, and history panels keep working.
+   1. Metadata pane (93rem / 1488px with the rail, 69rem / 1104px without it). The pane gives up its
+      column once the window cannot seat the rail, the narrow measure and the pane together: 24rem +
+      1.5 + 48rem + 1.5 + 18rem = 93rem, or 69rem with the rail out of the row. Two thresholds because
+      the answer depends on the rail, which the reader can also collapse by hand at any width -- so this
+      one is not a media query but a `data-pane-panel` attribute the element sets from both, in step with
+      the rail's state (syncPanePanel).
+
+      Deriving it from the measure is what removes the jumps: the column is the same 48rem either side of
+      the threshold, so the pane's going changes nothing about the prose. The pane is not moved in the
+      DOM, only repositioned, so the contents, attachments, and history panels keep working.
    --------------------------------------------------------------------------- */
 
 /* The disclosure row is built at every width; only narrow viewports show it. */
@@ -2614,101 +2635,97 @@ markdown-editor[data-sidebar-open]
   display: none;
 }
 
-@media (max-width: 70rem) {
-  .markdown-editor__sidebar-row {
-    display: block;
-    /* No inline padding, matching the toolbar and the breadcrumb/search row, so all
-       three top-bar rows share the same left and right edges as the editing pane. */
-    padding: 0 0 0.5rem;
-  }
+markdown-editor[data-pane-panel] .markdown-editor__sidebar-row {
+  display: block;
+  /* No inline padding, matching the toolbar and the breadcrumb/search row, so all
+     three top-bar rows share the same left and right edges as the editing pane. */
+  padding: 0 0 0.5rem;
+}
 
-  /* Full width, so the chevron rides the trailing edge of the content column and the
-     section label has room to run. */
-  .markdown-editor__sidebar-disclosure {
-    display: flex;
-    justify-content: space-between;
-    width: 100%;
-  }
+/* Full width, so the chevron rides the trailing edge of the content column and the
+   section label has room to run. */
+markdown-editor[data-pane-panel] .markdown-editor__sidebar-disclosure {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+}
 
-  /* One line: a long heading is clipped rather than wrapping the control. */
-  .markdown-editor__sidebar-disclosure-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+/* One line: a long heading is clipped rather than wrapping the control. */
+markdown-editor[data-pane-panel] .markdown-editor__sidebar-disclosure-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  .markdown-editor__sidebar-disclosure .chrome-icon {
-    flex: none;
-    height: 0.75rem;
-    margin-left: 0.5rem;
-    width: 0.75rem;
-  }
+markdown-editor[data-pane-panel] .markdown-editor__sidebar-disclosure .chrome-icon {
+  flex: none;
+  height: 0.75rem;
+  margin-left: 0.5rem;
+  width: 0.75rem;
+}
 
-  markdown-editor[data-sidebar-open] .markdown-editor__sidebar-disclosure .chrome-icon {
-    transform: rotate(180deg);
-  }
+markdown-editor[data-pane-panel][data-sidebar-open] .markdown-editor__sidebar-disclosure .chrome-icon {
+  transform: rotate(180deg);
+}
 
-  /* The pane drops from the trigger over the editing pane rather than sitting beside
-     it, so the prose keeps the full column width. Fixed, not absolute: the trigger
-     rides the sticky top bar while the workspace scrolls away under it, so a panel
-     anchored to the workspace sits off-screen above the fold once the page is
-     scrolled. `top`/`left`/`width` are pinned to the trigger by pinSidebarPanel. */
-  /* The collapsed selector is listed so this rule matches the wide-viewport
-     collapsed rule's specificity and, coming later, wins: as a panel the pane is
-     pinned to the viewport whatever the stored collapsed preference says. */
-  .markdown-editor__sidebar,
-  .markdown-editor__sidebar[data-collapsed="true"] {
-    background: var(--markdown-editor-background);
-    border: 1px solid var(--markdown-editor-divider);
-    border-radius: 8px;
-    box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
-    box-sizing: border-box;
-    display: none;
-    flex-basis: auto;
-    max-height: min(70vh, 32rem);
-    overflow-y: auto;
-    left: var(--markdown-editor-sidebar-panel-left, 0);
-    padding: 0.75rem 1rem;
-    position: fixed;
-    top: var(--markdown-editor-sidebar-panel-top, var(--markdown-editor-topbar-height, 4.5rem));
-    width: var(--markdown-editor-sidebar-panel-width, auto);
-    /* Over the editing pane, under the search dropdown (30) and its backdrop (15). */
-    z-index: 8;
-  }
+/* The pane drops from the trigger over the editing pane rather than sitting beside
+   it, so the prose keeps the full column width. Fixed, not absolute: the trigger
+   rides the sticky top bar while the workspace scrolls away under it, so a panel
+   anchored to the workspace sits off-screen above the fold once the page is
+   scrolled. `top`/`left`/`width` are pinned to the trigger by pinSidebarPanel. */
+/* The collapsed selector is listed so this rule matches the wide-viewport
+   collapsed rule's specificity and, coming later, wins: as a panel the pane is
+   pinned to the viewport whatever the stored collapsed preference says. */
+markdown-editor[data-pane-panel] .markdown-editor__sidebar,
+markdown-editor[data-pane-panel] .markdown-editor__sidebar[data-collapsed="true"] {
+  background: var(--markdown-editor-background);
+  border: 1px solid var(--markdown-editor-divider);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 18%);
+  box-sizing: border-box;
+  display: none;
+  flex-basis: auto;
+  max-height: min(70vh, 32rem);
+  overflow-y: auto;
+  left: var(--markdown-editor-sidebar-panel-left, 0);
+  padding: 0.75rem 1rem;
+  position: fixed;
+  top: var(--markdown-editor-sidebar-panel-top, var(--markdown-editor-topbar-height, 4.5rem));
+  width: var(--markdown-editor-sidebar-panel-width, auto);
+  /* Over the editing pane, under the search dropdown (30) and its backdrop (15). */
+  z-index: 8;
+}
 
-  markdown-editor[data-sidebar-open] .markdown-editor__sidebar {
-    display: flex;
-    gap: 1.25rem;
-  }
+markdown-editor[data-pane-panel][data-sidebar-open] .markdown-editor__sidebar {
+  display: flex;
+  gap: 1.25rem;
+}
 
-  /* The pane's own collapse toggle is redundant here: the disclosure trigger owns
-     open/closed, and the rail-collapse affordance has no meaning as a panel. */
-  .markdown-editor__sidebar-toggle {
-    display: none;
-  }
+/* The pane's own collapse toggle is redundant here: the disclosure trigger owns
+   open/closed, and the rail-collapse affordance has no meaning as a panel. */
+markdown-editor[data-pane-panel] .markdown-editor__sidebar-toggle {
+  display: none;
+}
 
-  /* A collapsed pane is the wide-viewport state; as a panel it is simply closed,
-     so the collapsed rules must not hide the panel's contents. */
-  .markdown-editor__sidebar[data-collapsed="true"] > *:not(.markdown-editor__sidebar-toggle) {
-    display: revert;
-  }
+/* A collapsed pane is the wide-viewport state; as a panel it is simply closed,
+   so the collapsed rules must not hide the panel's contents. */
+markdown-editor[data-pane-panel] .markdown-editor__sidebar[data-collapsed="true"] > *:not(.markdown-editor__sidebar-toggle) {
+  display: revert;
 }
 
 /* ---------------------------------------------------------------------------
-   2. Navigation rail (64rem / 1024px). With the metadata pane already gone, the
-      rail is what squeezes the prose next, and at 24rem it does so much earlier
-      than it did at 17rem: measured on the demo corpus (7.98px per character) the
-      measure with the rail is 77 characters at 1024px, 69 at 960 and 55 at 900 --
-      so the rail now goes at 64rem, where the prose is still comfortable, rather
-      than at the old 53rem, by which point the rail took 45% of the window and
-      left the prose 55 characters beside it.
+   2. Navigation rail (74rem / 1184px). Derived from the measure, exactly as the pane's threshold above
+      it: the rail gives up its column once the window cannot seat the rail and the narrow measure
+      together (24rem + 1.5 + 48rem = 73.5rem, rounded to 74rem). That is what makes the whole sequence
+      jump-free in the narrow width -- the column holds 48rem from 93rem all the way down to about 50rem,
+      where the window itself becomes the constraint, and neither the pane's going nor the rail's changes
+      it. At 24rem the rail is what squeezes the prose next once the pane has gone; measured on the demo
+      corpus at 7.98px per character it left only 77 characters at 1024px and 55 at 900, which is why the
+      threshold has climbed from 53rem to 64rem to here.
 
-      That leaves a band from 64rem to 70rem where the rail stands without the
-      metadata pane, which is the best reading measure in the whole range (77-89
-      characters). Below the breakpoint the rail leaves the flow entirely --
-      collapsing it in place still left a gutter -- and becomes a drawer opened
-      from a single button ahead of Edit/Publish, carrying its own Collapse, Undo,
-      Trash, and New controls above the tree.
+      Below the breakpoint the rail leaves the flow entirely -- collapsing it in place still left a
+      gutter -- and becomes a drawer opened from a single button ahead of Edit/Publish, carrying its own
+      Collapse, Undo, Trash, and New controls above the tree.
    --------------------------------------------------------------------------- */
 
 /* The rail trigger sits just ahead of Edit/Publish at every width. Above the rail
@@ -2717,16 +2734,11 @@ markdown-editor[data-sidebar-open]
   display: inline-flex;
 }
 
-@media (max-width: 64rem) {
-  /* With the rail gone and the metadata pane already a panel, nothing is left in the workspace row but
-     the prose, and it took the whole window: 971px at a 995px viewport, 122 characters. The preset caps
-     the workspace, not the column, so at these widths it never bites (Narrow's 74rem needs ~1456px once
-     the rail is counted). Cap the column itself instead and centre it: 42rem is ~84 characters at the
-     measured 7.98px per character, inside the ~50-110 character band the other thresholds work to.
-     Full width is left uncapped -- asking for it is asking for the window. */
-  markdown-editor:not([data-body-width="full"]) .markdown-editor__main {
+@media (max-width: 74rem) {
+  /* Centre what is left: the preset caps the column itself now, so with the rail and the pane both gone
+     the prose keeps its measure instead of running the width of the window. */
+  .markdown-editor__main {
     margin-inline: auto;
-    max-width: 42rem;
   }
 
   /* Out of the flow entirely, so no gutter is left behind. A full-height drawer
@@ -2797,7 +2809,7 @@ markdown-editor[data-sidebar-open]
       They fold at the same 70rem as the metadata pane and the breadcrumb: one
       threshold moves the whole chrome into its narrow arrangement. Strictly the
       row's capacity is a property of the content column rather than the window
-      (once the rail becomes a drawer at 64rem the row has room again, so the
+      (once the rail becomes a drawer at 74rem the row has room again, so the
       controls stay folded through a band where they would fit), but a single
       predictable threshold is worth more than reclaiming that band.
 

@@ -1269,12 +1269,12 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
    blocks. It collapses when empty (no headings and no attachments panel). */
 .markdown-editor__sidebar {
   display: flex;
-  flex: 0 0 15rem;
+  flex: 0 0 var(--markdown-editor-sidebar-width, 18rem);
   flex-direction: column;
   gap: 1.75rem;
-  /* Hold a fixed 15rem regardless of contents: without this, a long contents entry would grow the sidebar
-     past its basis (a flex item's min-width is auto by default) and squash the editing pane. The contents
-     links clip with an ellipsis instead. */
+  /* Hold that basis regardless of contents: without this, a long contents entry would grow the sidebar
+     past it (a flex item's min-width is auto by default) and squash the editing pane. The contents links
+     clip with an ellipsis instead. */
   min-width: 0;
   position: sticky;
   top: calc(var(--markdown-editor-topbar-height, 4.5rem) + 0.5rem);
@@ -1288,11 +1288,13 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   display: none;
 }
 
-/* The collapse toggle sits at the top of the pane, aligned to the right edge
-   (it mirrors the nav toggle, which sits at the left). */
+/* The collapse toggle sits at the top of the pane on its leading edge -- against the editing pane's
+   trailing edge, one workspace gap away. On the leading edge rather than the trailing one because the
+   column stays reserved when the pane collapses (below): the toggle then holds exactly the same place in
+   both states, next to the prose it belongs to, instead of stranding itself at the far right. */
 .markdown-editor__sidebar-toggle {
   align-items: center;
-  align-self: flex-end;
+  align-self: flex-start;
   background: transparent;
   border: 0;
   border-radius: 0.375rem;
@@ -1312,35 +1314,20 @@ markdown-editor[mode="split"] .markdown-editor__width-group {
   transform: rotate(180deg);
 }
 
-/* Collapsed: only the toggle remains, and the column shrinks to nothing rather
-   than standing in the row as a thin rail. At its 15rem basis it cost its own
-   width plus the workspace gap, so the editing column sat 60px from the right
-   edge against 12px on the left; at zero width (with the gap cancelled below)
-   the two margins match and the editing column takes the whole row.
-
-   It stays in flow and stays sticky, so the toggle holds the same place in both
-   states -- the right of the page-title row -- and rides down under the top bar
-   as the page scrolls. Taking it out of flow (position: absolute) instead left
-   it anchored to the workspace, so it scrolled away and the pane could not be
-   restored. The toggle is absolutely placed against the zero-width column's
-   right edge, which is where it sat as the expanded column's flex-end child. */
+/* Collapsed, the column keeps its width: hiding the pane is meant to clear the clutter beside the prose,
+   not to reflow the prose itself, so at the narrow and medium widths the editing column holds still and
+   the pane's column is simply left empty. The pane stays in flow and stays sticky, so the toggle holds
+   the same place in both states and rides down under the top bar as the page scrolls. (Taking it out of
+   flow instead anchored it to the workspace, so it scrolled away and the pane could not be restored.) */
 .markdown-editor__sidebar[data-collapsed="true"] {
-  flex-basis: 0;
-  gap: 0;
-  /* The toggle overhangs the zero-width box; the expanded column's clipping
-     scroller would swallow it. */
-  overflow: visible;
-}
-
-/* Cancel the workspace gap the zero-width column would otherwise still claim. */
-.markdown-editor__workspace:has(> .markdown-editor__sidebar[data-collapsed="true"]) {
   gap: 0;
 }
 
-.markdown-editor__sidebar[data-collapsed="true"] .markdown-editor__sidebar-toggle {
-  position: absolute;
-  right: 0;
-  top: 0;
+/* Full width is the exception: there is no measure to protect, so the editing column takes the freed
+   space. The column keeps a stub of the toggle's own width -- at zero it would overflow its box, and the
+   pane's clipping scroller would swallow the one control that brings it back. */
+markdown-editor[data-body-width="full"] .markdown-editor__sidebar[data-collapsed="true"] {
+  flex-basis: 1.5rem;
 }
 
 .markdown-editor__sidebar[data-collapsed="true"] > *:not(.markdown-editor__sidebar-toggle) {
@@ -2708,15 +2695,20 @@ markdown-editor[data-sidebar-open]
 }
 
 /* ---------------------------------------------------------------------------
-   2. Navigation rail (53rem / 848px). With the metadata pane already gone, the
-      rail's 272px is what squeezes the prose next: measured on the demo corpus
-      the measure is 56 characters at 900px with the rail against 86 without, so
-      by the same ~50ch rule as the pane the rail goes at 53rem. That also drops
-      portrait tablets (820-834px) into the panel layout rather than leaving them
-      cramped. Collapsing the rail in place was not enough -- it still left a
-      gutter -- so below the breakpoint it leaves the flow entirely and becomes a
-      panel opened from a single button ahead of Edit/Publish, carrying its own
-      Collapse, Undo, Trash, and New controls above the tree.
+   2. Navigation rail (64rem / 1024px). With the metadata pane already gone, the
+      rail is what squeezes the prose next, and at 24rem it does so much earlier
+      than it did at 17rem: measured on the demo corpus (7.98px per character) the
+      measure with the rail is 77 characters at 1024px, 69 at 960 and 55 at 900 --
+      so the rail now goes at 64rem, where the prose is still comfortable, rather
+      than at the old 53rem, by which point the rail took 45% of the window and
+      left the prose 55 characters beside it.
+
+      That leaves a band from 64rem to 70rem where the rail stands without the
+      metadata pane, which is the best reading measure in the whole range (77-89
+      characters). Below the breakpoint the rail leaves the flow entirely --
+      collapsing it in place still left a gutter -- and becomes a drawer opened
+      from a single button ahead of Edit/Publish, carrying its own Collapse, Undo,
+      Trash, and New controls above the tree.
    --------------------------------------------------------------------------- */
 
 /* The rail trigger sits just ahead of Edit/Publish at every width. Above the rail
@@ -2725,7 +2717,7 @@ markdown-editor[data-sidebar-open]
   display: inline-flex;
 }
 
-@media (max-width: 53rem) {
+@media (max-width: 64rem) {
   /* Out of the flow entirely, so no gutter is left behind. A full-height drawer
      flush to the viewport's leading edge: a tree is a long list, and clipping it
      to a few hundred pixels wastes the one axis a narrow viewport still has.
@@ -2794,7 +2786,7 @@ markdown-editor[data-sidebar-open]
       They fold at the same 70rem as the metadata pane and the breadcrumb: one
       threshold moves the whole chrome into its narrow arrangement. Strictly the
       row's capacity is a property of the content column rather than the window
-      (once the rail becomes a drawer at 53rem the row has room again, so the
+      (once the rail becomes a drawer at 64rem the row has room again, so the
       controls stay folded through a band where they would fit), but a single
       predictable threshold is worth more than reclaiming that band.
 

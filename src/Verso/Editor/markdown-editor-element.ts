@@ -91,7 +91,7 @@ const SIDEBAR_DISCLOSURE_FALLBACK = "Contents";
 const sidebarLabelThrottleMilliseconds = 100;
 
 /** Below this width the navigation tree is a panel, not a column. Kept in step with the stylesheet. */
-const navPanelMediaQuery = "(max-width: 53rem)";
+const navPanelMediaQuery = "(max-width: 64rem)";
 
 /** The selectable editing-column widths, in toolbar order; "narrow" is the default. Icons read as
     increasing column width (a portrait, a square, a landscape rectangle). */

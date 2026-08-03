@@ -240,6 +240,17 @@
   --markdown-editor-panel-row-selected: oklch(0.371 0 0); /* a step lighter than --muted */
 }
 
+/* The server-rendered Markdown textarea (RFC-0001) is the page's only content until the editor element is
+   upgraded, and the bundle is deferred, so it would paint as raw Markdown for as long as the bundle takes
+   to arrive. Hide it while the definition is pending -- but only where scripting will replace it: the `js`
+   class comes from the pre-paint bootstrap, so without scripting the textarea stands, which is the whole
+   point of rendering it. Keyed on the element's own data-initialised, not on :defined: the definition
+   lands a tick before initialisation, and the raw Markdown showed in that gap. display, not visibility: a
+   reserved textarea-sized box would collapse as the editor took its place. */
+:root.js markdown-editor:not([data-initialised]) .markdown-editor__fallback {
+  display: none;
+}
+
 body.markdown-editor-page {
   background: var(--markdown-editor-background);
   color: var(--markdown-editor-text);

@@ -71,6 +71,10 @@ editorThemeBootstrapScript =
         ++ "var K="
         ++ jsStringArray knownEditorThemes
         ++ ";var r=document.documentElement;"
+        -- Scripting is on, so the stylesheet may hide the server-rendered fallback textarea until the
+        -- editor element is defined. Set here, in the pre-paint script, so it is true before the first
+        -- paint; without scripting the class never appears and the fallback stands, which is its purpose.
+        ++ "r.classList.add('js');"
         ++ "var t=localStorage.getItem('editor-theme');"
         ++ "if(t&&K.indexOf(t)>=0){r.setAttribute('data-editor-theme',t);}"
         ++ "var s=localStorage.getItem('editor-color-scheme');"
@@ -86,7 +90,9 @@ editorThemeBootstrapScript =
 {- | The head tags shared by every full page: the responsive viewport, the
 vendored Roboto and Roboto Mono fonts, the Basecoat chrome bundle (RFC-0035),
 and the app stylesheet. Order matters: Basecoat loads before the app stylesheet
-so un-layered app rules win the cascade.
+so un-layered app rules win the cascade. Both scripts are deferred, so the
+editor bundle now runs after Basecoat's runtime rather than before it, and
+initBasecoat finds the runtime already present.
 
 The viewport tag is what makes the narrow layouts reachable at all: without it
 a phone browser lays the page out at a ~980px virtual viewport and scales the
@@ -126,7 +132,7 @@ versionPageShell themeDefault pageTitle bodyContent =
             Html.rawTrusted editorThemeBootstrapScript
             Html.title [] (Html.text pageTitle)
             chromeHeadAssets
-            Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\"></script>"
+            Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\" defer></script>"
         Html.body [Html.class_ "markdown-editor-page verso-version-page"] $
             Html.main [] bodyContent
 
@@ -519,7 +525,7 @@ editorPage docId mode themeDefault pageTitle content versioned editable hasDraft
             Html.rawTrusted editorThemeBootstrapScript
             Html.title [] (Html.text pageTitle)
             chromeHeadAssets
-            Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\"></script>"
+            Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\" defer></script>"
         Html.body [Html.class_ "markdown-editor-page"] $
             Html.main [] $
                 -- The read view (RFC-0020) has no write path: the element is rendered without the

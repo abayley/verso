@@ -751,6 +751,10 @@ export class MarkdownEditorElement extends HTMLElement {
         this.mode = this.editorMode();
         this.bodyWidth = this.editorBodyWidth();
         this.replaceChildren();
+        // The editor owns the content from here. The stylesheet keys the server-rendered fallback
+        // textarea's visibility on this: `:defined` is not enough, since the definition lands a tick
+        // before initialisation and the raw Markdown shows in the gap.
+        this.setAttribute("data-initialised", "");
 
         // Re-attach the error banner cleared by replaceChildren so it stays present for the rest of
         // initialisation (and visible if a later step here throws).

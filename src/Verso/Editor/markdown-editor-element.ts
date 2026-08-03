@@ -355,11 +355,29 @@ export class MarkdownEditorElement extends HTMLElement {
         window.addEventListener("error", this.handleGlobalError);
         window.addEventListener("unhandledrejection", this.handleUnhandledRejection);
 
-        window.setTimeout((): void => {
-            this.initialise().catch((error: unknown): void => {
-                this.showErrorBanner(error);
-            });
-        }, 0);
+        // Initialise only once the document has been parsed. The page loads this bundle with a plain
+        // <script> in <head>, so `customElements.define` runs before the body is parsed and the element is
+        // upgraded at its own start tag -- before the server-rendered fallback textarea that carries the
+        // Markdown exists. Deferring by a macrotask was not enough: if the parser yields inside the element
+        // (a response split across packets, or a machine busy enough to be preempted) the timer wins the
+        // race, `loadMarkdown` finds no textarea, and the editor initialises from an empty document with no
+        // error to show for it. That was the intermittent `make check` failure.
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", (): void => this.beginInitialise(), { once: true });
+
+            return;
+        }
+
+        // Added after parsing (a dynamically created element): its children are already complete, so a
+        // macrotask is enough to let the caller finish appending them.
+        window.setTimeout((): void => this.beginInitialise(), 0);
+    }
+
+    /** Runs initialisation, surfacing a failure in the error banner rather than leaving a blank editor. */
+    private beginInitialise(): void {
+        this.initialise().catch((error: unknown): void => {
+            this.showErrorBanner(error);
+        });
     }
 
     /** Cleans up editor resources when the element leaves the document. */

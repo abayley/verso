@@ -1,13 +1,59 @@
 const assert = require("node:assert/strict");
-const { spawn } = require("node:child_process");
+const { execFileSync, spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
 const { chromium } = require("playwright");
 
-const baseUrl = "http://127.0.0.1:8125";
-const smokeRoot = "build/smoke-tree";
-const smokeConfig = "build/smoke.conf";
-const persistedDocument = `${smokeRoot}/home.md`;
+const net = require("node:net");
+
+// Everything this run owns is keyed on the port it takes, so two runs at once -- a manual re-run beside a
+// `make check`, which is exactly what a flake invites -- get a server, a tree and an operation log each.
+// Sharing them meant the second run wiped the first run's document mid-test and both then failed on a
+// 90-second selector wait, with nothing in the output to say why.
+const firstPort = 8125;
+let port = firstPort;
+let baseUrl = `http://127.0.0.1:${port}`;
+let smokeRoot = "build/smoke-tree";
+let opsRoot = "build/smoke-ops";
+let smokeConfig = "build/smoke.conf";
+let persistedDocument = `${smokeRoot}/home.md`;
+
+/** Takes the first free port from 8125 up, and names this run's files after it. */
+async function claimPort() {
+  for (let candidate = firstPort; candidate < firstPort + 25; candidate += 1) {
+    if (await portIsFree(candidate)) {
+      port = candidate;
+      baseUrl = `http://127.0.0.1:${port}`;
+      const suffix = candidate === firstPort ? "" : `-${candidate}`;
+      smokeRoot = `build/smoke-tree${suffix}`;
+      opsRoot = `build/smoke-ops${suffix}`;
+      smokeConfig = `build/smoke${suffix}.conf`;
+      persistedDocument = `${smokeRoot}/home.md`;
+
+      return;
+    }
+  }
+
+  throw new Error(`no free port in ${firstPort}..${firstPort + 24} for the smoke server`);
+}
+
+/**
+ * Whether nothing is listening on a port. By connecting, not by binding: the server listens on 0.0.0.0
+ * and BSD lets a more specific 127.0.0.1 bind succeed beside it when either socket carries SO_REUSEADDR,
+ * so a bind probe reported a port that was plainly in use as free.
+ */
+function portIsFree(candidate) {
+  return new Promise((resolve) => {
+    const probe = net.connect({ host: "127.0.0.1", port: candidate });
+    const settle = (free) => {
+      probe.destroy();
+      resolve(free);
+    };
+    probe.once("connect", () => settle(false));
+    probe.once("error", () => settle(true));
+    probe.setTimeout(1000, () => settle(true));
+  });
+}
 
 let browser;
 let serverProcess;
@@ -31,8 +77,8 @@ main()
   });
 
 async function main() {
+  await claimPort();
   prepareSmokeTree();
-  await assertPortFree();
   serverProcess = startServer();
   await waitForServer(serverProcess);
 
@@ -40,7 +86,7 @@ async function main() {
   const page = await browser.newPage();
   // Within `make check` the first render competes with mhs builds for the machine; the
   // default 30s selector timeout proved flaky there, so give page waits more headroom.
-  page.setDefaultTimeout(90000);
+  page.setDefaultTimeout(Number(process.env.SMOKE_TIMEOUT ?? 90000));
   const consoleErrors = [];
 
   page.on("console", (message) => {
@@ -54,7 +100,16 @@ async function main() {
   });
 
   await page.goto(`${baseUrl}/documents/home.md?edit`);
-  await page.waitForSelector(".markdown-editor__surface h1");
+  // The first render is where an overloaded machine shows up (this wait has been the one intermittent
+  // failure in `make check`), and a bare selector timeout says nothing about why. Report what the page
+  // actually reached -- did the bundle load, did the element upgrade, did the editor render, what document
+  // was it given -- along with the memory state, then fail as before.
+  try {
+    await page.waitForSelector(".markdown-editor__surface h1");
+  } catch (err) {
+    throw new Error(`${err.message}\n${await firstRenderDiagnostics(page, consoleErrors)}`);
+  }
+
   assert.equal(await page.locator(".markdown-editor__preview").count(), 0);
   assert.equal(await currentEditorMode(page), "visual");
 
@@ -532,6 +587,7 @@ async function main() {
   assert.deepEqual(consoleErrors, []);
 
   await assertNoScriptFallback();
+  await assertInitialContentSurvivesASplitParse(page);
 }
 
 /** Progressive enhancement (RFC-0001): with JavaScript disabled the edit page is a
@@ -556,11 +612,6 @@ async function assertNoScriptFallback() {
   }
 }
 
-async function assertPortFree() {
-  if (await portIsOpen()) {
-    throw new Error(`${baseUrl} is already in use; stop the existing Verso server before running smoke tests.`);
-  }
-}
 
 async function fillSourceMarkdown(page, rootSelector, markdown) {
   await page.locator(`${rootSelector} .cm-content`).fill(markdown);
@@ -701,23 +752,6 @@ async function selectTextRangeInElement(page, selector, startText, endText) {
   );
 }
 
-function portIsOpen() {
-  return new Promise((resolve) => {
-    const request = http.get(baseUrl, (response) => {
-      response.resume();
-      resolve(true);
-    });
-
-    request.on("error", () => {
-      resolve(false);
-    });
-
-    request.setTimeout(1000, () => {
-      request.destroy();
-      resolve(false);
-    });
-  });
-}
 
 function startServer() {
   const server = spawn("./build/verso", [], {
@@ -823,24 +857,136 @@ function cleanPersistedDocument() {
 }
 
 /** A fresh tree-mode smoke rig: scratch tree, non-versioned, on its own port. */
+/**
+ * The initial document must survive the parser yielding inside the element's own markup. The page loads
+ * the bundle with a plain script in <head>, so `customElements.define` runs before the body is parsed and
+ * the element is upgraded at its start tag -- before the server-rendered fallback textarea that carries the
+ * Markdown exists. Whether that textarea is there by the time the element reads it comes down to whether
+ * the parser finished the element in one go, which an overloaded machine or a response split across
+ * packets decides. When it loses, the editor renders an empty document with no error: this is the
+ * intermittent `make check` failure the 90-second wait on the first heading was reporting.
+ *
+ * Serving the element's markup in two chunks makes that timing deterministic rather than a coin toss.
+ */
+async function assertInitialContentSurvivesASplitParse(page) {
+  const fixtureHost = await startSplitParseFixture();
+
+  try {
+    await page.goto(fixtureHost.url);
+    await page.waitForSelector(".markdown-editor__surface h1", { timeout: 15000 });
+    assert.equal(await page.locator(".markdown-editor__surface h1").innerText(), "Chunked heading");
+    assert.equal(await page.locator(".markdown-editor__surface p").innerText(), "Body that must survive.");
+  } finally {
+    await fixtureHost.close();
+  }
+}
+
+/** Serves one page whose <markdown-editor> start tag and fallback textarea arrive in separate chunks. */
+async function startSplitParseFixture() {
+  const server = http.createServer((request, response) => {
+    response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+    response.write(
+      [
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Split parse</title>",
+        `<link rel="stylesheet" href="${baseUrl}/static/editor/markdown-editor.css">`,
+        `<script src="${baseUrl}/static/editor/markdown-editor.js"></script>`,
+        "</head><body class=\"markdown-editor-page\"><main>",
+        "<markdown-editor name=\"markdown\" data-document=\"home.md\">",
+      ].join(""),
+    );
+    // The yield the racing page only sometimes takes: hold the element open while the browser parses
+    // what it has, so the element is upgraded with no children.
+    setTimeout(() => {
+      response.end(
+        [
+          "<textarea name=\"markdown\" aria-label=\"Markdown source\" class=\"markdown-editor__fallback\">",
+          "# Chunked heading\n\nBody that must survive.",
+          "</textarea></markdown-editor></main></body></html>",
+        ].join(""),
+      );
+    }, 300);
+  });
+
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port: fixturePort } = server.address();
+
+  return {
+    url: `http://127.0.0.1:${fixturePort}/`,
+    close: () => new Promise((resolve) => server.close(resolve)),
+  };
+}
+
+/**
+ * What the page reached when the first render never appeared: enough to tell an overloaded machine (the
+ * editor booted but rendered late) from a broken bundle (never upgraded) from the wrong document being
+ * served (rendered, but not the expected content), without needing to reproduce the failure.
+ */
+async function firstRenderDiagnostics(page, consoleErrors) {
+  const dom = await page
+    .evaluate(() => {
+      const host = document.querySelector("markdown-editor");
+      const surface = document.querySelector(".markdown-editor__surface");
+
+      return {
+        readyState: document.readyState,
+        hostPresent: Boolean(host),
+        customElementDefined: Boolean(window.customElements.get("markdown-editor")),
+        bundleScriptPresent: Boolean(document.querySelector('script[src*="markdown-editor.js"]')),
+        surfaceCount: document.querySelectorAll(".markdown-editor__surface").length,
+        proseMirrorCount: document.querySelectorAll(".ProseMirror").length,
+        surfaceText: surface ? surface.innerText.slice(0, 200) : null,
+        bodyChars: document.body.innerHTML.length,
+      };
+    })
+    .catch((evaluateError) => ({ evaluateFailed: String(evaluateError).split("\n")[0] }));
+
+  return [
+    `port: ${port}`,
+    `dom: ${JSON.stringify(dom)}`,
+    `console errors: ${JSON.stringify(consoleErrors)}`,
+    `document on disk: ${
+      fs.existsSync(persistedDocument) ? JSON.stringify(fs.readFileSync(persistedDocument, "utf8").slice(0, 200)) : "<absent>"
+    }`,
+    `tree: ${JSON.stringify(fs.readdirSync(smokeRoot))}`,
+    `server: ${JSON.stringify(serverOutput.split("\n").slice(-4))}`,
+    `memory: ${memorySnapshot()}`,
+  ].join("\n");
+}
+
+/** A one-line memory reading, since exhausted swap is the leading suspect for a late first render. */
+function memorySnapshot() {
+  try {
+    const swap = execFileSync("sysctl", ["-n", "vm.swapusage"], { encoding: "utf8" }).trim();
+    const free = execFileSync("vm_stat", [], { encoding: "utf8" })
+      .split("\n")
+      .filter((line) => /Pages (free|active|inactive)|occupied by compressor/.test(line))
+      .map((line) => line.trim())
+      .join(" ");
+
+    return `${swap} | ${free}`;
+  } catch {
+    return "<unavailable>";
+  }
+}
+
 function prepareSmokeTree() {
   fs.rmSync(smokeRoot, { force: true, recursive: true });
-  fs.rmSync("build/smoke-ops", { force: true, recursive: true });
+  fs.rmSync(opsRoot, { force: true, recursive: true });
   fs.mkdirSync(smokeRoot, { recursive: true });
-  fs.mkdirSync("build/smoke-ops", { recursive: true });
+  fs.mkdirSync(opsRoot, { recursive: true });
   fs.writeFileSync(`${smokeRoot}/index.md`, "# Smoke Home\n");
   fs.writeFileSync(
     smokeConfig,
     [
-      "port = 8125",
+      `port = ${port}`,
       `document_tree_root = ${smokeRoot}`,
       "versioning_enabled = false",
-      "operation_log = build/smoke-ops/operation_log",
-      "trash_root = build/smoke-ops/trash",
-      "link_index = build/smoke-ops/link_index",
-      "draft_root = build/smoke-ops/drafts",
-      "access_log = build/smoke-ops/access.log",
-      "client_error_log = build/smoke-ops/client-errors.log",
+      `operation_log = ${opsRoot}/operation_log`,
+      `trash_root = ${opsRoot}/trash`,
+      `link_index = ${opsRoot}/link_index`,
+      `draft_root = ${opsRoot}/drafts`,
+      `access_log = ${opsRoot}/access.log`,
+      `client_error_log = ${opsRoot}/client-errors.log`,
       "static_mounts = /static/editor static/editor",
       "",
     ].join("\n"),

@@ -2618,12 +2618,13 @@ markdown-editor[data-sidebar-open]
    ---------------------------------------------------------------------------
    The layout sheds chrome as the viewport narrows, widest threshold first.
 
-   1. Metadata pane (93rem / 1488px with the rail, 69rem / 1104px without it). The pane gives up its
-      column once the window cannot seat the rail, the narrow measure and the pane together: 24rem +
-      1.5 + 48rem + 1.5 + 18rem = 93rem, or 69rem with the rail out of the row. Two thresholds because
-      the answer depends on the rail, which the reader can also collapse by hand at any width -- so this
-      one is not a media query but a `data-pane-panel` attribute the element sets from both, in step with
-      the rail's state (syncPanePanel).
+   1. Metadata pane (93rem / 1488px with the rail in the row; always below the rail's own 74rem). The pane
+      gives up its column once the window cannot seat the rail, the narrow measure and the pane together:
+      24rem + 1.5 + 48rem + 1.5 + 18rem = 93rem. Not a media query but a `data-pane-panel` attribute the
+      element sets (syncPanePanel), because the answer depends on the rail, which the reader can also
+      collapse by hand at any width -- collapsing it restores the pane's column. Below the rail's
+      breakpoint the pane stays a panel whatever the arithmetic says: the rail's folding frees 24rem, and
+      claiming it brought the pane back for one 80px band mid-shrink before taking it away again.
 
       Deriving it from the measure is what removes the jumps: the column is the same 48rem either side of
       the threshold, so the pane's going changes nothing about the prose. The pane is not moved in the

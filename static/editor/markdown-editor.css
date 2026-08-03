@@ -2718,6 +2718,17 @@ markdown-editor[data-sidebar-open]
 }
 
 @media (max-width: 64rem) {
+  /* With the rail gone and the metadata pane already a panel, nothing is left in the workspace row but
+     the prose, and it took the whole window: 971px at a 995px viewport, 122 characters. The preset caps
+     the workspace, not the column, so at these widths it never bites (Narrow's 74rem needs ~1456px once
+     the rail is counted). Cap the column itself instead and centre it: 42rem is ~84 characters at the
+     measured 7.98px per character, inside the ~50-110 character band the other thresholds work to.
+     Full width is left uncapped -- asking for it is asking for the window. */
+  markdown-editor:not([data-body-width="full"]) .markdown-editor__main {
+    margin-inline: auto;
+    max-width: 42rem;
+  }
+
   /* Out of the flow entirely, so no gutter is left behind. A full-height drawer
      flush to the viewport's leading edge: a tree is a long list, and clipping it
      to a few hundred pixels wastes the one axis a narrow viewport still has.

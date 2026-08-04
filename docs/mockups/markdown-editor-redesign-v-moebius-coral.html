@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign V: moebius coral</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<!-- The app's own Roboto, served from the repo: this design uses the production font outright, so
+     the identity has to carry on colour and drawing alone. -->
+<link rel="stylesheet" href="../../static/editor/roboto.css">
+<style>
+:root {
+  --ink: #33222e;            /* aubergine ink, the etcher's line */
+  --coral: #f0d3da;          /* the coral field: blush, densely worked */
+  --coral-deep: #e3b9c6;
+  --path: #f9f7ee;           /* the clean walkway */
+  --teal: #3fa79b;           /* the walkway's water channel */
+  --gold: #e5bf4b;           /* the walkway's kerb */
+  --vermilion: #d3502c;      /* the shell: the one hot colour, spent on active state */
+  --leaf: #8ab98a;
+  --quiet: #94818c;
+  /* Roboto: the app's face, used as the design face. */
+  --sans: "Roboto Variable", "Roboto", ui-sans-serif, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; color: var(--ink); font-family: var(--sans); padding: 34px;
+  background: #e8c7d1; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* The frame is the coral field: dense rings of growth over blush, everything else laid onto it as
+   clean paved surfaces. The walkway trim -- a gold kerb inside a teal channel -- marks every paved
+   edge. */
+main { max-width: 1220px; margin: 0 auto; border: 2px solid var(--ink); border-radius: 10px;
+  overflow: hidden; box-shadow: 0 3px 0 var(--ink);
+  display: grid; grid-template-columns: 218px 1fr; min-height: 660px;
+  background:
+    radial-gradient(circle at 9px 8px, transparent 4px, rgba(51, 34, 46, 0.16) 4.5px 5.5px, transparent 6px),
+    radial-gradient(circle at 26px 22px, transparent 2.5px, rgba(51, 34, 46, 0.13) 3px 4px, transparent 4.5px),
+    radial-gradient(circle at 17px 32px, rgba(227, 185, 198, 0.9) 3px, transparent 3.5px),
+    radial-gradient(circle at 33px 9px, rgba(227, 185, 198, 0.9) 2px, transparent 2.5px),
+    var(--coral); }
+main { background-size: 38px 38px, 38px 38px, 38px 38px, 38px 38px, auto; }
+
+/* The paved-surface recipe: path ground, ink border, and the teal-and-gold walkway trim as a double
+   shadow inside the edge. */
+.paved { background: var(--path); border: 2px solid var(--ink);
+  box-shadow: inset 0 0 0 3px var(--teal), inset 0 0 0 5px var(--gold); }
+
+/* --- page tree rail: a paved terrace in the coral ------------------------------------------------ */
+.rail { border-right: 2px solid var(--ink); display: flex; flex-direction: column; position: relative; }
+.railhead { display: flex; align-items: center; gap: 6px; padding: 12px 12px 11px; z-index: 1; }
+.railhead h2 { flex: 1; margin: 0; font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+  font-weight: 700; }
+.railhead i { font-size: 14px; color: var(--vermilion); width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center; }
+.tree { list-style: none; margin: 8px 0 0; padding: 0 8px; font-size: 13.5px; z-index: 1; }
+.tree ul { list-style: none; margin: 0; padding-left: 15px; }
+/* Rows are paving stones: white slabs on the coral. */
+.row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px;
+  min-height: 30px; background: rgba(249, 247, 238, 0.75); border: 1.5px solid rgba(51, 34, 46, 0.35);
+  margin-bottom: 4px; }
+.row .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .ops { display: flex; gap: 6px; font-size: 11px; color: var(--vermilion); }
+.row .disc { font-size: 13px; }
+/* The active page is the shell: vermilion, with its ornament dotted into it. */
+.row.on { background: var(--vermilion); border: 1.5px solid var(--ink); color: var(--path);
+  background-image: radial-gradient(circle at 8px 6px, rgba(249, 247, 238, 0.35) 1.5px, transparent 2px),
+    radial-gradient(circle at 20px 16px, rgba(249, 247, 238, 0.3) 1px, transparent 1.5px);
+  background-size: 26px 22px, 26px 22px; }
+.row.on .ops { color: var(--path); }
+/* Coral sprigs at the rail's foot. */
+.sprigs { margin-top: auto; }
+.sprigs svg { display: block; width: 100%; height: auto; }
+
+/* --- content column ----------------------------------------------------------------------------- */
+.content { display: flex; flex-direction: column; min-width: 0; }
+
+/* Row one of the top bar: the main walkway runs across the frame. */
+.topbar { border-bottom: 2px solid var(--ink); background: var(--path);
+  box-shadow: inset 0 -3px 0 var(--gold), inset 0 -6px 0 var(--teal); }
+.controls { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
+  padding: 10px 14px 13px; }
+.slot { display: flex; align-items: center; gap: 8px; }
+.slot--end { justify-content: flex-end; }
+.iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  border: 1.5px solid var(--ink); border-radius: 6px; background: var(--path); font-size: 15px;
+  color: var(--ink); cursor: pointer; }
+/* Top-bar labels and the breadcrumb are mixed case with modest tracking, as the app has them. */
+.publish { border: 2px solid var(--ink); border-radius: 7px; background: var(--vermilion);
+  color: var(--path); font-family: var(--sans); font-size: 12.5px; letter-spacing: 0.04em;
+  font-weight: 600; padding: 6px 20px; cursor: pointer; box-shadow: 0 2px 0 var(--ink); }
+.cancel { border: 2px solid var(--ink); border-radius: 7px; background: var(--path); color: var(--ink);
+  font-family: var(--sans); font-size: 12.5px; letter-spacing: 0.04em; padding: 6px 14px;
+  cursor: pointer; }
+.seg { display: flex; border: 2px solid var(--ink); border-radius: 7px; overflow: hidden;
+  background: var(--path); }
+.seg span { display: flex; align-items: center; justify-content: center; padding: 4px 13px;
+  border-right: 2px solid var(--ink); font-size: 12px; letter-spacing: 0.02em; }
+.seg span:last-child { border-right: 0; }
+.seg .on { background: var(--teal); color: var(--path); font-weight: 600; }
+.seg--icons span { width: 32px; padding: 4px 0; font-size: 15px; }
+.themedrop { display: inline-flex; align-items: center; gap: 8px; border: 2px solid var(--ink);
+  border-radius: 7px; background: var(--path); color: var(--ink); font-family: var(--sans);
+  font-size: 12px; letter-spacing: 0.02em; padding: 5px 12px; cursor: pointer; }
+
+/* Row two: the breadcrumb on the coral, and the page search at the end. */
+.toprow { display: flex; align-items: center; gap: 12px; padding: 9px 14px 11px;
+  border-bottom: 2px solid var(--ink); }
+.crumb { flex: 1; min-width: 0; font-size: 12.5px; letter-spacing: 0.02em; }
+.crumb .sep { color: var(--vermilion); padding: 0 6px; }
+.crumb .here { font-weight: 600; }
+.search { display: inline-flex; align-items: center; gap: 8px; width: 244px; border: 2px solid var(--ink);
+  border-radius: 7px; background: var(--path); padding: 5px 11px; color: var(--quiet); }
+.search i { font-size: 14px; }
+.search span { font-size: 12px; letter-spacing: 0.02em; }
+
+/* --- workspace: the page is the clear path through the noise ------------------------------------- */
+.workspace { display: grid; grid-template-columns: 1fr 196px; gap: 26px; padding: 24px 24px 0;
+  flex: 1; min-height: 0; }
+.doc { min-width: 0; max-width: 560px; margin: 0 auto; position: relative; padding: 26px 30px 30px;
+  isolation: isolate; }
+.doc::before { content: ""; position: absolute; inset: 0; z-index: -1; border: 2px solid var(--ink);
+  border-radius: 8px; background: var(--path);
+  box-shadow: inset 0 0 0 3px var(--teal), inset 0 0 0 5px var(--gold), 0 3px 0 var(--ink);
+  filter: url(#wob-frame); }
+.title { font-weight: 700; font-size: 30px; line-height: 1.15; margin: 0 0 4px; }
+.titlerule { width: 150px; border: 0; border-top: 2px solid var(--ink); margin: 0 0 20px; }
+h2 { font-weight: 700; font-size: 18.5px; margin: 22px 0 8px; }
+p { font-size: 15.5px; line-height: 1.7; margin: 0 0 14px; }
+.badge { display: inline-block; border: 1.5px solid var(--ink); border-radius: 6px;
+  background: var(--leaf); color: var(--ink); font-size: 11px; letter-spacing: 0.12em;
+  text-transform: uppercase; padding: 1px 9px; }
+.callout { border: 0; background: none; padding: 13px 16px 12px; margin: 4px 0 16px;
+  position: relative; isolation: isolate; }
+.callout::before { content: ""; position: absolute; inset: 0; z-index: -1; border: 2px solid var(--ink);
+  border-radius: 8px; background: #e7f0e4; filter: url(#wob-frame); }
+.callout .capn { position: absolute; top: -10px; left: 14px; border: 1.5px solid var(--ink);
+  border-radius: 5px; background: var(--teal); color: var(--path); padding: 0 9px; font-size: 10px;
+  letter-spacing: 0.22em; text-transform: uppercase; font-weight: 700; }
+.callout p { margin: 0; font-size: 14.5px; }
+.caret { display: inline-block; width: 2px; height: 18px; background: var(--vermilion);
+  vertical-align: -3px; }
+
+/* --- sidebar: paved landings off the walkway ----------------------------------------------------- */
+.sidebar { font-size: 13px; }
+.panetoggle { display: block; margin: 0 auto 14px 0; width: 24px; height: 24px;
+  border: 1.5px solid var(--ink); border-radius: 5px; background: var(--path); color: var(--ink);
+  font-size: 13px; cursor: pointer; }
+.panel { margin: 0 0 18px; position: relative; isolation: isolate; padding: 10px 12px 12px; }
+.panel::before { content: ""; position: absolute; inset: 0; z-index: -1;
+  border: 1.5px solid var(--ink); border-radius: 8px; background: rgba(249, 247, 238, 0.9);
+  box-shadow: inset 0 0 0 2.5px var(--teal), inset 0 0 0 4px var(--gold); filter: url(#wob-b); }
+.panel h3 { margin: 0 0 8px; font-size: 10px; font-weight: 700; letter-spacing: 0.24em;
+  text-transform: uppercase; color: var(--quiet); }
+.toc { list-style: none; margin: 0; padding: 0 0 0 11px; position: relative; }
+.toc::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 1.5px;
+  background: rgba(51, 34, 46, 0.3); }
+.toc li { position: relative; padding: 5px 6px; color: var(--quiet); }
+.toc li.here { color: var(--ink); }
+.toc li.here::before { content: ""; position: absolute; left: -11px; top: 0; bottom: 0; width: 3px;
+  border-radius: 2px; background: var(--vermilion); }
+.toc .l2 { padding-left: 21px; }
+.panel .quiet { color: var(--quiet); font-style: italic; }
+.panel a { color: #b0432a; font-weight: 600; text-decoration: underline;
+  text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+
+/* --- the floating command bar, and the passive word count ---------------------------------------- */
+.footer { padding: 18px 24px 20px; }
+.cmdbar { margin: 0 auto; width: fit-content; display: flex; align-items: center; gap: 2px;
+  border: 2px solid var(--ink); border-radius: 10px; padding: 8px 14px; background: var(--path);
+  box-shadow: inset 0 0 0 3px var(--teal), inset 0 0 0 5px var(--gold), 0 2px 0 var(--ink); }
+.cmdbar i, .cmdbar .style, .cmdbar .badgebtn { height: 28px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: 15px; border-radius: 6px; }
+.cmdbar i { width: 30px; }
+.cmdbar .style, .cmdbar .badgebtn { gap: 6px; padding: 0 10px; font-size: 12px; font-weight: 600;
+  letter-spacing: 0.02em; }
+.cmdbar .active { border: 1.5px solid var(--ink); background: var(--vermilion); color: var(--path); }
+.cmdbar .div { width: 1.5px; height: 22px; background: var(--ink); margin: 0 7px; opacity: 0.4; }
+.cmdbar .save { display: inline-flex; align-items: center; margin-left: 8px;
+  border: 1.5px solid var(--quiet); border-radius: 6px; background: var(--path); color: var(--quiet);
+  padding: 4px 15px; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  font-weight: 600; }
+.wordcount { display: block; margin-top: 10px; text-align: right; font-size: 11px; color: var(--ink);
+  opacity: 0.65; letter-spacing: 0.12em; text-transform: uppercase; }
+
+/* --- the hand: displacement wobble on the drawn furniture ---------------------------------------- */
+.publish, .badge, .themedrop, .cmdbar { filter: url(#wob-a); }
+.cancel, .search, .row, .seg { filter: url(#wob-b); }
+.iconbtn, .seg--icons, .panetoggle { filter: url(#wob-c); }
+.titlerule { filter: url(#wob-b); }
+
+/* --- the grain: the coral field is worked, the pavings stay clean --------------------------------
+   Ramped along one axis per panel: the rail's field deepens toward its foot, the coral around the
+   walkway deepens toward the bottom of the workspace, and the command bar takes only a thin edge
+   along its bottom and right sides. */
+.rail::before { content: ""; position: absolute; inset: 0; background: #8a4a5e;
+  filter: url(#speckle); opacity: 0.32; pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0 55%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0 55%, #000 100%); }
+.workspace::before { content: ""; position: absolute; inset: 0; background: #8a4a5e;
+  filter: url(#speckle); opacity: 0.24; pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0 58%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0 58%, #000 100%); }
+.workspace { position: relative; }
+.workspace > * { position: relative; }
+.cmdbar { position: relative; }
+.cmdbar::after { content: ""; position: absolute; inset: 0; border-radius: 10px; background: #8a4a5e;
+  filter: url(#speckle); opacity: 0.2; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to top, #000 0 8%, transparent 32%),
+    linear-gradient(to left, #000 0 5%, transparent 24%);
+  mask-image: linear-gradient(to top, #000 0 8%, transparent 32%),
+    linear-gradient(to left, #000 0 5%, transparent 24%);
+  -webkit-mask-composite: source-over; mask-composite: add; }
+</style>
+</head>
+<body>
+<h2 class="sr-only">Mockup V: a Moebius coral maze, after the giant shell painting, laid out as the editor now is. A densely worked blush coral field fills the frame -- rings of growth in aubergine ink, speckled like the etched ground -- and every working surface is a clean paved walkway laid onto it, edged with the painting's teal channel and gold kerb: the top bar, the document, the side panels, and the command bar. Vermilion, the shell's colour, is the one hot accent, spent on the active page and the active mark, with its ornament dotted into the active row. The type is Roboto, the app's own face, used outright: this design tests the identity carried by colour and drawing alone, with the production font.</h2>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="wob-a" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012 0.018" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wob-b" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.014 0.02" numOctaves="2" seed="13" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wob-c" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.016 0.022" numOctaves="2" seed="27" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wob-frame" x="-6%" y="-16%" width="112%" height="132%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.008 0.012" numOctaves="2" seed="5" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="3" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <!-- speckle: fine dots multiplied by a slow cloud of turbulence, so the grain clumps and drifts
+         across a surface instead of sitting statistically flat -->
+    <filter id="speckle" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" seed="5" result="fine"/>
+      <feColorMatrix in="fine" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 22 -12.6" result="dots"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.011 0.016" numOctaves="2" seed="9" result="cloud"/>
+      <feColorMatrix in="cloud" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1.7 -0.42" result="cloud-a"/>
+      <feComposite in="dots" in2="cloud-a" operator="arithmetic" k1="1" k2="0" k3="0" k4="0"
+        result="clumped"/>
+      <feComposite in="SourceGraphic" in2="clumped" operator="in"/>
+    </filter>
+  </defs>
+</svg>
+<main>
+  <nav class="rail">
+    <div class="railhead">
+      <h2>Pages</h2>
+      <i class="ti ti-chevrons-up" title="Collapse all" aria-hidden="true"></i>
+      <i class="ti ti-arrow-back-up" title="Undo a move" aria-hidden="true"></i>
+      <i class="ti ti-trash" title="Trash" aria-hidden="true"></i>
+      <i class="ti ti-plus" title="New top-level page or section" aria-hidden="true"></i>
+    </div>
+    <ul class="tree">
+      <li>
+        <div class="row">
+          <span class="lbl">Guides</span>
+          <span class="ops"><i class="ti ti-plus" title="New page or section here" aria-hidden="true"></i><i class="ti ti-x" title="Delete Guides" aria-hidden="true"></i></span>
+          <i class="ti ti-chevron-down disc" title="Expand or collapse" aria-hidden="true"></i>
+        </div>
+        <ul>
+          <li><div class="row"><span class="lbl">Battery Replacement</span></div></li>
+          <li><div class="row on"><span class="lbl">Failover Guide</span>
+            <span class="ops"><i class="ti ti-x" title="Delete Failover Guide" aria-hidden="true"></i></span></div></li>
+        </ul>
+      </li>
+      <li>
+        <div class="row">
+          <span class="lbl">Projects</span>
+          <i class="ti ti-chevron-right disc" title="Expand or collapse" aria-hidden="true"></i>
+        </div>
+      </li>
+      <li><div class="row"><span class="lbl">Notes</span></div></li>
+      <li><div class="row"><span class="lbl">Archive</span></div></li>
+    </ul>
+    <div class="sprigs" aria-hidden="true">
+      <svg viewBox="0 0 218 110" fill="none" stroke="#33222e" stroke-width="1.5">
+        <path d="M30 108 C28 88 20 84 18 70 M18 70 C12 74 12 82 14 86 M18 70 C24 72 26 80 24 86"
+          stroke="#33222e"/>
+        <path d="M18 70 C16 60 22 54 28 56 C34 50 44 54 42 62 C48 64 46 74 40 74 C38 80 28 80 26 74 Z"
+          fill="#d3502c"/>
+        <path d="M78 108 C80 94 86 90 86 78 M86 78 C80 80 78 86 80 92 M86 78 C92 82 92 88 90 92"/>
+        <path d="M86 78 C84 68 92 62 98 66 C104 62 112 68 108 74 C112 78 108 86 102 84 C98 88 90 86 90 80 Z"
+          fill="#e3b9c6"/>
+        <path d="M150 108 C150 96 146 92 146 82" />
+        <path d="M146 82 C140 74 146 64 154 68 C158 60 170 64 168 72 C174 76 170 86 162 84 C158 90 148 90 146 82 Z"
+          fill="#8ab98a"/>
+        <path d="M190 108 C192 100 196 98 196 90 M196 90 C192 92 190 96 192 100 M196 90 C200 92 202 96 200 100"/>
+        <circle cx="196" cy="86" r="5" fill="#e5bf4b"/>
+      </svg>
+    </div>
+  </nav>
+  <div class="content">
+    <div class="topbar">
+      <div class="controls">
+        <div class="slot">
+          <button class="iconbtn" title="Hide pages"><i class="ti ti-layout-sidebar" aria-hidden="true"></i></button>
+          <button class="publish">Publish</button>
+          <button class="cancel">Cancel</button>
+        </div>
+        <div class="slot">
+          <nav class="seg" aria-label="Editor view mode">
+            <span class="on">Visual</span><span>Markdown</span><span>Split</span>
+          </nav>
+          <nav class="seg seg--icons" aria-label="Editor width">
+            <span class="on" title="Narrow"><i class="ti ti-rectangle-vertical" aria-hidden="true"></i></span>
+            <span title="Medium"><i class="ti ti-square" aria-hidden="true"></i></span>
+            <span title="Full"><i class="ti ti-rectangle" aria-hidden="true"></i></span>
+          </nav>
+        </div>
+        <div class="slot slot--end">
+          <button class="themedrop" title="Visual theme">Coral <i class="ti ti-chevron-down" aria-hidden="true"></i></button>
+          <nav class="seg seg--icons" aria-label="Editor colour theme">
+            <span class="on" title="Light"><i class="ti ti-sun" aria-hidden="true"></i></span>
+            <span title="Dark"><i class="ti ti-moon" aria-hidden="true"></i></span>
+            <span title="Match system"><i class="ti ti-device-desktop" aria-hidden="true"></i></span>
+          </nav>
+        </div>
+      </div>
+      <div class="toprow">
+        <nav class="crumb" aria-label="Breadcrumb">
+          Home <span class="sep">&#8250;</span> Guides <span class="sep">&#8250;</span>
+          <span class="here">Failover</span>
+        </nav>
+        <div class="search"><i class="ti ti-search" aria-hidden="true"></i><span>Search pages&#8230;</span></div>
+      </div>
+    </div>
+    <div class="workspace">
+      <div class="doc">
+        <div class="title">Failover</div>
+        <hr class="titlerule">
+        <p>Edit this Markdown document. <span class="badge">beta</span></p>
+        <div class="callout">
+          <span class="capn">Note</span>
+          <p>The reef grows however it likes; the path through it is swept and straight.</p>
+        </div>
+        <h2>Timeouts</h2>
+        <p>Configure the failover timeouts to thirty seconds.</p>
+        <h2>Fallback routes</h2>
+        <p>Static routes take over when the primary link drops.<span class="caret"></span></p>
+      </div>
+      <aside class="sidebar">
+        <button class="panetoggle" title="Collapse metadata panel"><i class="ti ti-layout-sidebar-right" aria-hidden="true"></i></button>
+        <nav class="panel" aria-label="Table of contents">
+          <h3>Contents</h3>
+          <ul class="toc">
+            <li class="here">Failover</li>
+            <li class="l2 here">Timeouts</li>
+            <li class="l2">Fallback routes</li>
+          </ul>
+        </nav>
+        <section class="panel">
+          <h3>Attachments</h3>
+          <p class="quiet">No attachments yet.</p>
+        </section>
+        <section class="panel">
+          <h3>History</h3>
+          <p><a href="#">Revision history</a></p>
+        </section>
+      </aside>
+    </div>
+    <div class="footer">
+      <div class="cmdbar">
+        <span class="style" title="Block style">Paragraph <i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+        <span class="div"></span>
+        <i class="ti ti-bold active" aria-hidden="true" title="Bold"></i>
+        <i class="ti ti-italic" aria-hidden="true" title="Italic"></i>
+        <i class="ti ti-strikethrough" aria-hidden="true" title="Strike"></i>
+        <i class="ti ti-code" aria-hidden="true" title="Code"></i>
+        <i class="ti ti-link" aria-hidden="true" title="Link"></i>
+        <span class="div"></span>
+        <i class="ti ti-list" aria-hidden="true" title="Bullet list"></i>
+        <i class="ti ti-list-numbers" aria-hidden="true" title="Ordered list"></i>
+        <i class="ti ti-blockquote" aria-hidden="true" title="Blockquote"></i>
+        <i class="ti ti-file-code" aria-hidden="true" title="Code block"></i>
+        <i class="ti ti-minus" aria-hidden="true" title="Horizontal rule"></i>
+        <span class="div"></span>
+        <span class="badgebtn" title="Badge">Badge <i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+        <i class="ti ti-info-circle" aria-hidden="true" title="Insert callout"></i>
+        <span class="div"></span>
+        <i class="ti ti-table" aria-hidden="true" title="Insert table"></i>
+        <i class="ti ti-square-chevron-down" aria-hidden="true" title="Insert collapsible"></i>
+        <span class="div"></span>
+        <i class="ti ti-photo" aria-hidden="true" title="Insert image or file"></i>
+        <span class="save" title="Saved">Save</span>
+      </div>
+      <span class="wordcount">22 words</span>
+    </div>
+  </div>
+</main>
+</body>
+</html>

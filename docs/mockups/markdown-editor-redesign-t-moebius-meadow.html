@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign T: moebius meadow</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<!-- The app's own font, for comparison via the Aa toggle: served from the repo, so this resolves
+     when the file is opened from a checkout. -->
+<link rel="stylesheet" href="../../static/editor/roboto.css">
+<style>
+:root {
+  --ink: #3d4260;            /* slate-navy ink: the clearing's line, never black */
+  --night: #4d5885;          /* the starred sky */
+  --dusk: #98a3c2;           /* the moonlit field: grey-blue, not lavender */
+  --dusk-deep: #7e8aae;
+  --paper: #f3f4f8;          /* pale moonlit panels */
+  --blush: #dfb3b6;          /* the cypress pink: terracotta, not magenta */
+  --blush-deep: #c08a8e;
+  --rose: #9d6168;           /* the cypress trunk: deep enough to read on the dusk ground */
+  --sage: #a9c4ae;           /* the far treeline */
+  --moon: #e2f2e6;
+  --bird: #4d9fd6;           /* the one saturated pop, kept for the active mark */
+  --star: #eef0f6;
+  --quiet: #7f86a4;
+  /* Seravek: a soft humanist sans with open, rounded bowls that sit with the meadow's scalloped
+     forms. Segoe UI is the Windows stand-in, Trebuchet MS the last resort. */
+  --sans: "Seravek", "Segoe UI", "Trebuchet MS", ui-sans-serif, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; color: var(--ink); font-family: var(--sans); padding: 34px;
+  /* the night sky over the meadow, starred in the upper reach, easing into the grey-blue field */
+  background:
+    radial-gradient(1.5px 1.5px at 12% 6%, var(--star) 50%, transparent 51%),
+    radial-gradient(1px 1px at 28% 14%, var(--star) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 46% 4%, var(--star) 50%, transparent 51%),
+    radial-gradient(1px 1px at 61% 11%, var(--star) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 78% 7%, var(--star) 50%, transparent 51%),
+    radial-gradient(1px 1px at 90% 16%, var(--star) 50%, transparent 51%),
+    radial-gradient(1px 1px at 7% 22%, var(--star) 50%, transparent 51%),
+    radial-gradient(1px 1px at 70% 24%, var(--star) 50%, transparent 51%),
+    linear-gradient(180deg, #454f7c 0 22%, #5a6591 22% 48%, var(--dusk-deep) 48% 76%,
+      var(--dusk) 76% 100%); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* The frame: one moonlit field, everything rounded, nothing hard-edged. */
+main { max-width: 1220px; margin: 0 auto; border: 2px solid var(--ink); border-radius: 18px;
+  overflow: hidden; box-shadow: 0 3px 0 var(--ink);
+  display: grid; grid-template-columns: 218px 1fr; min-height: 660px;
+  /* the scrub field: rows of soft tufts, the pattern of the clearing */
+  background:
+    radial-gradient(9px 6px at 12px 10px, rgba(61, 66, 96, 0.16) 60%, transparent 62%),
+    radial-gradient(9px 6px at 44px 26px, rgba(61, 66, 96, 0.12) 60%, transparent 62%),
+    radial-gradient(9px 6px at 30px 44px, rgba(61, 66, 96, 0.14) 60%, transparent 62%),
+    var(--dusk); }
+main { background-size: 64px 56px, 64px 56px, 64px 56px, auto; }
+
+/* --- page tree rail ------------------------------------------------------------------------------ */
+.rail { border-right: 2px solid var(--ink); display: flex; flex-direction: column; position: relative;
+  /* the rail keeps a strip of the starred sky above the field */
+  background:
+    radial-gradient(1.5px 1.5px at 18% 4%, var(--star) 50%, transparent 51%),
+    radial-gradient(1px 1px at 42% 9%, var(--star) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 66% 3%, var(--star) 50%, transparent 51%),
+    radial-gradient(1px 1px at 88% 7%, var(--star) 50%, transparent 51%),
+    radial-gradient(1px 1px at 30% 12%, var(--star) 50%, transparent 51%),
+    linear-gradient(180deg, var(--night) 0 13%, #68739e 13% 21%, var(--dusk) 21% 100%); }
+.moon { position: absolute; right: 20px; top: 44px; width: 34px; height: 34px; border-radius: 50%;
+  border: 1.5px solid var(--ink); background: var(--moon);
+  box-shadow: 0 0 0 7px rgba(226, 242, 230, 0.22), 0 0 26px rgba(226, 242, 230, 0.55); }
+/* The header sits on the night-sky strip, so its label and actions go pale. */
+.railhead { display: flex; align-items: center; gap: 6px; padding: 12px 12px 11px; z-index: 1; }
+.railhead h2 { flex: 1; margin: 0; font-size: 11px; letter-spacing: 0.24em; text-transform: uppercase;
+  font-weight: 600; color: #e7eaf3; }
+.railhead i { font-size: 14px; color: #ddbcbf; width: 18px; height: 18px;
+  display: inline-flex; align-items: center; justify-content: center; }
+.tree { list-style: none; margin: 58px 0 0; padding: 0 8px; font-size: 13.5px; z-index: 1; }
+.tree ul { list-style: none; margin: 0; padding-left: 15px; }
+/* Every row is a soft pill; the active page is the blush of the canopy. */
+.row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px;
+  min-height: 30px; }
+.row .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .ops { display: flex; gap: 6px; font-size: 11px; color: var(--rose); }
+.row .disc { font-size: 13px; }
+.row.on { background: var(--blush); border: 1.5px solid var(--ink); }
+.row.on .ops { color: var(--ink); }
+/* The cloud-trees at the rail's foot: scalloped canopies against the treeline. */
+.grove { margin-top: auto; }
+.grove svg { display: block; width: 100%; height: auto; }
+
+/* --- content column ----------------------------------------------------------------------------- */
+.content { display: flex; flex-direction: column; min-width: 0; }
+
+/* Row one of the top bar: a pale band, like the sky above the treeline. Publish and cancel at the
+   start, the mode and width switches in the middle, the theme and the scheme at the end. */
+.topbar { border-bottom: 2px solid var(--ink);
+  background: linear-gradient(180deg, var(--paper) 0 62%, #e7e6ef 62% 100%); }
+.controls { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
+  padding: 10px 14px; }
+.slot { display: flex; align-items: center; gap: 8px; }
+.slot--end { justify-content: flex-end; }
+.iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  border: 1.5px solid var(--ink); border-radius: 50%; background: var(--paper); font-size: 15px;
+  color: var(--ink); cursor: pointer; }
+/* Top-bar labels and the breadcrumb are mixed case with modest tracking, as the app has them; the
+   spaced capitals stay on the panel headings and the save state. */
+.publish { border: 2px solid var(--ink); border-radius: 999px; background: var(--blush-deep);
+  color: var(--paper); font-family: var(--sans); font-size: 12.5px; letter-spacing: 0.04em;
+  font-weight: 600; padding: 6px 20px; cursor: pointer;
+  box-shadow: 0 2px 0 var(--ink); }
+.cancel { border: 2px solid var(--ink); border-radius: 999px; background: var(--paper); color: var(--ink);
+  font-family: var(--sans); font-size: 12.5px; letter-spacing: 0.04em;
+  padding: 6px 14px; cursor: pointer; }
+/* One joined segmented control, used for the modes, the width, and the colour scheme. */
+.seg { display: flex; border: 2px solid var(--ink); border-radius: 999px; overflow: hidden;
+  background: var(--paper); }
+.seg span { display: flex; align-items: center; justify-content: center; padding: 4px 13px;
+  border-right: 1.5px solid var(--ink); font-size: 12px; letter-spacing: 0.02em; }
+.seg span:last-child { border-right: 0; }
+.seg .on { background: var(--sage); font-weight: 600; }
+.seg--icons span { width: 32px; padding: 4px 0; font-size: 15px; }
+.themedrop { display: inline-flex; align-items: center; gap: 8px; border: 2px solid var(--ink);
+  border-radius: 999px; background: var(--paper); color: var(--ink); font-family: var(--sans);
+  font-size: 12px; letter-spacing: 0.02em; padding: 5px 12px;
+  cursor: pointer; }
+
+/* Row two: the breadcrumb trail, and the page search at the end. */
+.toprow { display: flex; align-items: center; gap: 12px; padding: 9px 14px 11px;
+  border-bottom: 2px solid var(--ink); background: rgba(244, 243, 247, 0.55); }
+.crumb { flex: 1; min-width: 0; font-size: 12.5px; letter-spacing: 0.02em; }
+.crumb .sep { color: var(--blush-deep); padding: 0 6px; }
+.crumb .here { font-weight: 600; }
+.search { display: inline-flex; align-items: center; gap: 8px; width: 244px;
+  border: 1.5px solid var(--ink); border-radius: 999px; background: var(--paper); padding: 5px 11px;
+  color: var(--quiet); }
+.search i { font-size: 14px; }
+.search span { font-size: 12px; letter-spacing: 0.1em; }
+
+/* --- workspace: the clearing -- the page is the patch of bare ground under the big tree ---------- */
+.workspace { display: grid; grid-template-columns: 1fr 196px; gap: 26px; padding: 24px 24px 0;
+  flex: 1; min-height: 0; }
+.doc { min-width: 0; max-width: 560px; margin: 0 auto; position: relative; background: var(--paper);
+  border: 2px solid var(--ink); border-radius: 16px; padding: 26px 30px 30px;
+  box-shadow: 0 2px 0 var(--ink); }
+/* The bird crosses the top of the page: the one saturated thing in the frame. */
+.swallow { position: absolute; top: -14px; right: 34px; }
+.title { font-weight: 600; font-size: 30px; line-height: 1.15; margin: 0 0 4px; }
+.titlerule { width: 130px; border: 0; border-top: 2px solid var(--ink); border-radius: 2px;
+  margin: 0 0 20px; }
+h2 { font-weight: 600; font-size: 19px; margin: 22px 0 8px; }
+p { font-size: 15.5px; line-height: 1.75; margin: 0 0 14px; }
+.badge { display: inline-block; border: 1.5px solid var(--ink); border-radius: 999px;
+  background: var(--blush); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  padding: 1px 10px; }
+/* The callout is a cloud-tree: a scalloped canopy holding the text. */
+.callout { border: 2px solid var(--ink); border-radius: 22px; background: var(--moon);
+  padding: 13px 18px 12px; margin: 4px 0 16px; position: relative; }
+.callout .capn { position: absolute; top: -11px; left: 16px; border: 1.5px solid var(--ink);
+  border-radius: 999px; background: var(--sage); padding: 0 10px; font-size: 10px;
+  letter-spacing: 0.22em; text-transform: uppercase; font-weight: 600; }
+.callout p { margin: 0; font-size: 14.5px; }
+.caret { display: inline-block; width: 2px; height: 18px; background: var(--blush-deep);
+  vertical-align: -3px; }
+
+/* --- sidebar: contents, attachments, history ----------------------------------------------------- */
+.sidebar { font-size: 13px; }
+.panetoggle { display: block; margin: 0 auto 14px 0; width: 24px; height: 24px;
+  border: 1.5px solid var(--ink); border-radius: 50%; background: var(--paper); color: var(--ink);
+  font-size: 13px; cursor: pointer; }
+.panel { margin: 0 0 18px; background: rgba(244, 243, 247, 0.75); border: 1.5px solid var(--ink);
+  border-radius: 14px; padding: 10px 12px 12px; }
+.panel h3 { margin: 0 0 8px; font-size: 10px; font-weight: 600; letter-spacing: 0.24em;
+  text-transform: uppercase; color: var(--quiet); }
+/* The contents entries hang off an indicator rail; the sections on screen mark themselves blush. */
+.toc { list-style: none; margin: 0; padding: 0 0 0 11px; position: relative; }
+.toc::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 1.5px;
+  background: rgba(61, 66, 96, 0.3); }
+.toc li { position: relative; padding: 5px 6px; color: var(--quiet); }
+.toc li.here { color: var(--ink); }
+.toc li.here::before { content: ""; position: absolute; left: -11px; top: 0; bottom: 0; width: 3px;
+  border-radius: 2px; background: var(--blush-deep); }
+.toc .l2 { padding-left: 21px; }
+.panel .quiet { color: var(--quiet); font-style: italic; }
+.panel a { color: var(--rose); font-weight: 600; text-decoration: underline;
+  text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+
+/* --- the floating command bar, and the passive word count ---------------------------------------- */
+.footer { padding: 18px 24px 20px; }
+.cmdbar { margin: 0 auto; width: fit-content; display: flex; align-items: center; gap: 2px;
+  border: 2px solid var(--ink); border-radius: 999px; padding: 6px 14px; background: var(--paper);
+  box-shadow: 0 2px 0 var(--ink); }
+.cmdbar i, .cmdbar .style, .cmdbar .badgebtn { height: 28px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: 15px; border-radius: 999px; }
+.cmdbar i { width: 30px; }
+.cmdbar .style, .cmdbar .badgebtn { gap: 6px; padding: 0 10px; font-size: 12px; font-weight: 600;
+  letter-spacing: 0.08em; }
+/* The active mark takes the bird's blue: the one saturated colour, spent on state. */
+.cmdbar .active { border: 1.5px solid var(--ink); background: var(--bird); color: var(--paper); }
+.cmdbar .div { width: 1.5px; height: 22px; background: var(--ink); margin: 0 7px; opacity: 0.35; }
+.cmdbar .save { display: inline-flex; align-items: center; margin-left: 8px;
+  border: 1.5px solid var(--quiet); border-radius: 999px; background: var(--paper);
+  color: var(--quiet); padding: 4px 15px; font-size: 11px; letter-spacing: 0.16em;
+  text-transform: uppercase; font-weight: 600; }
+.wordcount { display: block; margin-top: 10px; text-align: right; font-size: 11px; color: var(--ink);
+  opacity: 0.6; letter-spacing: 0.12em; text-transform: uppercase; }
+
+/* --- the hand: displacement wobble on the drawn furniture ----------------------------------------
+   Three seeds at scale 2 so neighbouring controls do not bend identically; a longer-wave variant for
+   large frames. Small controls are filtered whole (the labels pick up a hand-lettered waver); the
+   document card, the callout, and the side panels keep their text crisp by carrying their frames on
+   a filtered ::before instead. */
+.publish, .badge, .themedrop, .cmdbar { filter: url(#wob-a); }
+.cancel, .search, .row.on, .seg { filter: url(#wob-b); }
+.iconbtn, .seg--icons, .panetoggle { filter: url(#wob-c); }
+.titlerule { filter: url(#wob-b); }
+.doc { background: none; border: 0; box-shadow: none; isolation: isolate; }
+.doc::before { content: ""; position: absolute; inset: 0; z-index: -1; border: 2px solid var(--ink);
+  border-radius: 16px; background: var(--paper); box-shadow: 0 2px 0 var(--ink);
+  filter: url(#wob-frame); }
+.callout { border: 0; background: none; isolation: isolate; }
+.callout::before { content: ""; position: absolute; inset: 0; z-index: -1; border: 2px solid var(--ink);
+  border-radius: 22px; background: var(--moon); filter: url(#wob-frame); }
+.panel { position: relative; border: 0; background: none; isolation: isolate; }
+.panel::before { content: ""; position: absolute; inset: 0; z-index: -1;
+  border: 1.5px solid var(--ink); border-radius: 14px; background: rgba(244, 243, 247, 0.75);
+  filter: url(#wob-b); }
+
+/* --- the grain: speckle shading, used sparingly -- this design stays soft ------------------------
+   A light ink dust ramping in toward the foot of the rail, under the grove, and a thin edge of it
+   along the command bar's bottom and right sides. Nothing else: the meadow keeps its haze. */
+.rail::before { content: ""; position: absolute; inset: 0; background: var(--ink);
+  filter: url(#speckle); opacity: 0.2; pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0 62%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0 62%, #000 100%); }
+.cmdbar { position: relative; }
+.cmdbar::after { content: ""; position: absolute; inset: 0; border-radius: 999px; background: var(--ink);
+  filter: url(#speckle); opacity: 0.14; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to top, #000 0 8%, transparent 32%),
+    linear-gradient(to left, #000 0 5%, transparent 24%);
+  mask-image: linear-gradient(to top, #000 0 8%, transparent 32%),
+    linear-gradient(to left, #000 0 5%, transparent 24%);
+  -webkit-mask-composite: source-over; mask-composite: add; }
+
+/* --- the font toggle: the design face against the app's Roboto ----------------------------------- */
+body.roboto { --sans: "Roboto Variable", "Roboto", sans-serif; }
+.fontswap { position: fixed; left: 12px; bottom: 12px; z-index: 10; border: 2px solid var(--ink);
+  border-radius: 999px; background: var(--paper); color: var(--ink); font-family: var(--sans);
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; padding: 6px 12px;
+  cursor: pointer; box-shadow: 0 2px 0 var(--ink); }
+</style>
+</head>
+<body>
+<h2 class="sr-only">Mockup T: a Moebius moonlit meadow, laid out as the editor now is. A grey-blue field under a starred slate sky, with a slate-navy ink line instead of black and pink-terracotta for the cypress canopies; the frame is filled with the clearing's pattern of soft scrub tufts, a haloed moon and stars sit over the page tree with scalloped cloud-trees at its foot, every control is a rounded pill, the terracotta pink marks the active page, and one saturated swallow blue is spent only on the active mark. The type is Seravek, falling back to Segoe UI and then Trebuchet MS: a soft humanist sans whose open, rounded bowls sit with the meadow's scalloped forms.</h2>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="wob-a" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012 0.018" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wob-b" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.014 0.02" numOctaves="2" seed="13" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wob-c" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.016 0.022" numOctaves="2" seed="27" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wob-frame" x="-6%" y="-16%" width="112%" height="132%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.008 0.012" numOctaves="2" seed="5" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="3" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <!-- speckle: fine dots multiplied by a slow cloud of turbulence, so the grain clumps and drifts
+         across a surface instead of sitting statistically flat -->
+    <filter id="speckle" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" seed="5" result="fine"/>
+      <feColorMatrix in="fine" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 22 -12.6" result="dots"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.011 0.016" numOctaves="2" seed="9" result="cloud"/>
+      <feColorMatrix in="cloud" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1.7 -0.42" result="cloud-a"/>
+      <feComposite in="dots" in2="cloud-a" operator="arithmetic" k1="1" k2="0" k3="0" k4="0"
+        result="clumped"/>
+      <feComposite in="SourceGraphic" in2="clumped" operator="in"/>
+    </filter>
+  </defs>
+</svg>
+<button class="fontswap" type="button" title="Toggle the app's Roboto"
+  onclick="document.body.classList.toggle('roboto')">Aa Roboto</button>
+<main>
+  <nav class="rail">
+    <div class="moon" aria-hidden="true"></div>
+    <div class="railhead">
+      <h2>Pages</h2>
+      <i class="ti ti-chevrons-up" title="Collapse all" aria-hidden="true"></i>
+      <i class="ti ti-arrow-back-up" title="Undo a move" aria-hidden="true"></i>
+      <i class="ti ti-trash" title="Trash" aria-hidden="true"></i>
+      <i class="ti ti-plus" title="New top-level page or section" aria-hidden="true"></i>
+    </div>
+    <ul class="tree">
+      <li>
+        <div class="row">
+          <span class="lbl">Guides</span>
+          <span class="ops"><i class="ti ti-plus" title="New page or section here" aria-hidden="true"></i><i class="ti ti-x" title="Delete Guides" aria-hidden="true"></i></span>
+          <i class="ti ti-chevron-down disc" title="Expand or collapse" aria-hidden="true"></i>
+        </div>
+        <ul>
+          <li><div class="row"><span class="lbl">Battery Replacement</span></div></li>
+          <li><div class="row on"><span class="lbl">Failover Guide</span>
+            <span class="ops"><i class="ti ti-x" title="Delete Failover Guide" aria-hidden="true"></i></span></div></li>
+        </ul>
+      </li>
+      <li>
+        <div class="row">
+          <span class="lbl">Projects</span>
+          <i class="ti ti-chevron-right disc" title="Expand or collapse" aria-hidden="true"></i>
+        </div>
+      </li>
+      <li><div class="row"><span class="lbl">Notes</span></div></li>
+      <li><div class="row"><span class="lbl">Archive</span></div></li>
+    </ul>
+    <div class="grove" aria-hidden="true">
+      <svg viewBox="0 0 218 130" fill="none" stroke="#3d4260" stroke-width="1.5">
+        <path d="M0 96 C40 88 100 86 150 92 C180 96 200 96 218 92 L218 130 L0 130 Z" fill="#7e8aae"/>
+        <path d="M36 96 C20 96 14 84 22 76 C14 66 26 54 38 58 C42 44 62 44 68 56 C82 52 92 66 84 76 C92 86 82 96 70 96 Z" fill="#dfb3b6"/>
+        <path d="M52 96 L52 112" />
+        <path d="M138 96 C126 96 120 88 126 80 C118 72 128 60 140 64 C146 52 164 54 168 66 C178 66 182 78 174 84 C180 92 170 98 160 96 Z" fill="#a9c4ae"/>
+        <path d="M150 96 L150 114" />
+        <path d="M196 78 C190 78 188 70 194 66 C190 58 200 52 206 58 C214 54 220 64 214 70 C218 76 210 82 204 78 Z" fill="#e2f2e6"/>
+        <path d="M204 80 L204 96" />
+      </svg>
+    </div>
+  </nav>
+  <div class="content">
+    <div class="topbar">
+      <div class="controls">
+        <div class="slot">
+          <button class="iconbtn" title="Hide pages"><i class="ti ti-layout-sidebar" aria-hidden="true"></i></button>
+          <button class="publish">Publish</button>
+          <button class="cancel">Cancel</button>
+        </div>
+        <div class="slot">
+          <nav class="seg" aria-label="Editor view mode">
+            <span class="on">Visual</span><span>Markdown</span><span>Split</span>
+          </nav>
+          <nav class="seg seg--icons" aria-label="Editor width">
+            <span class="on" title="Narrow"><i class="ti ti-rectangle-vertical" aria-hidden="true"></i></span>
+            <span title="Medium"><i class="ti ti-square" aria-hidden="true"></i></span>
+            <span title="Full"><i class="ti ti-rectangle" aria-hidden="true"></i></span>
+          </nav>
+        </div>
+        <div class="slot slot--end">
+          <button class="themedrop" title="Visual theme">Meadow <i class="ti ti-chevron-down" aria-hidden="true"></i></button>
+          <nav class="seg seg--icons" aria-label="Editor colour theme">
+            <span class="on" title="Light"><i class="ti ti-sun" aria-hidden="true"></i></span>
+            <span title="Dark"><i class="ti ti-moon" aria-hidden="true"></i></span>
+            <span title="Match system"><i class="ti ti-device-desktop" aria-hidden="true"></i></span>
+          </nav>
+        </div>
+      </div>
+      <div class="toprow">
+        <nav class="crumb" aria-label="Breadcrumb">
+          Home <span class="sep">&#8250;</span> Guides <span class="sep">&#8250;</span>
+          <span class="here">Failover</span>
+        </nav>
+        <div class="search"><i class="ti ti-search" aria-hidden="true"></i><span>Search pages&#8230;</span></div>
+      </div>
+    </div>
+    <div class="workspace">
+      <div class="doc">
+        <svg class="swallow" width="58" height="34" viewBox="0 0 58 34" fill="none"
+          stroke="#3d4260" stroke-width="1.5" aria-hidden="true">
+          <path d="M6 14 C18 4 30 2 44 8 L38 14 L52 18 L34 20 L40 30 L26 20 C16 20 10 18 6 14 Z" fill="#4d9fd6"/>
+          <path d="M44 8 L50 6" />
+        </svg>
+        <div class="title">Failover</div>
+        <hr class="titlerule">
+        <p>Edit this Markdown document. <span class="badge">beta</span></p>
+        <div class="callout">
+          <span class="capn">Note</span>
+          <p>The meadow keeps its own hours; the moon is patient, and so is the page.</p>
+        </div>
+        <h2>Timeouts</h2>
+        <p>Configure the failover timeouts to thirty seconds.</p>
+        <h2>Fallback routes</h2>
+        <p>Static routes take over when the primary link drops.<span class="caret"></span></p>
+      </div>
+      <aside class="sidebar">
+        <button class="panetoggle" title="Collapse metadata panel"><i class="ti ti-layout-sidebar-right" aria-hidden="true"></i></button>
+        <nav class="panel" aria-label="Table of contents">
+          <h3>Contents</h3>
+          <ul class="toc">
+            <li class="here">Failover</li>
+            <li class="l2 here">Timeouts</li>
+            <li class="l2">Fallback routes</li>
+          </ul>
+        </nav>
+        <section class="panel">
+          <h3>Attachments</h3>
+          <p class="quiet">No attachments yet.</p>
+        </section>
+        <section class="panel">
+          <h3>History</h3>
+          <p><a href="#">Revision history</a></p>
+        </section>
+      </aside>
+    </div>
+    <div class="footer">
+      <div class="cmdbar">
+        <span class="style" title="Block style">Paragraph <i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+        <span class="div"></span>
+        <i class="ti ti-bold active" aria-hidden="true" title="Bold"></i>
+        <i class="ti ti-italic" aria-hidden="true" title="Italic"></i>
+        <i class="ti ti-strikethrough" aria-hidden="true" title="Strike"></i>
+        <i class="ti ti-code" aria-hidden="true" title="Code"></i>
+        <i class="ti ti-link" aria-hidden="true" title="Link"></i>
+        <span class="div"></span>
+        <i class="ti ti-list" aria-hidden="true" title="Bullet list"></i>
+        <i class="ti ti-list-numbers" aria-hidden="true" title="Ordered list"></i>
+        <i class="ti ti-blockquote" aria-hidden="true" title="Blockquote"></i>
+        <i class="ti ti-file-code" aria-hidden="true" title="Code block"></i>
+        <i class="ti ti-minus" aria-hidden="true" title="Horizontal rule"></i>
+        <span class="div"></span>
+        <span class="badgebtn" title="Badge">Badge <i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+        <i class="ti ti-info-circle" aria-hidden="true" title="Insert callout"></i>
+        <span class="div"></span>
+        <i class="ti ti-table" aria-hidden="true" title="Insert table"></i>
+        <i class="ti ti-square-chevron-down" aria-hidden="true" title="Insert collapsible"></i>
+        <span class="div"></span>
+        <i class="ti ti-photo" aria-hidden="true" title="Insert image or file"></i>
+        <span class="save" title="Saved">Save</span>
+      </div>
+      <span class="wordcount">22 words</span>
+    </div>
+  </div>
+</main>
+</body>
+</html>

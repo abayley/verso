@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Markdown editor redesign U: moebius city</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<!-- The app's own Roboto, served from the repo: this design uses the production font outright, so
+     the identity has to carry on colour and drawing alone. -->
+<link rel="stylesheet" href="../../static/editor/roboto.css">
+<style>
+:root {
+  --ink: #3d3028;            /* warm brown ink, the city's contour line */
+  --sky: #86c6e8;            /* cerulean noon */
+  --sky-deep: #64aede;
+  --cloud: #f7eed9;          /* cumulus cream */
+  --sand: #eeda9d;           /* the sandcastle tower */
+  --apricot: #e9a468;
+  --rose: #d78e72;
+  --cream: #f8f1e0;
+  --verdigris: #7fae8e;      /* the shrubbery between the towers */
+  --slate: #a9a4cb;          /* the pyramid behind the city */
+  --quiet: #8f8270;
+  /* Roboto: the app's face, used as the design face. */
+  --sans: "Roboto Variable", "Roboto", ui-sans-serif, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; color: var(--ink); font-family: var(--sans); padding: 34px;
+  background: linear-gradient(180deg, var(--sky-deep) 0 22%, var(--sky) 22% 68%, #a9d5ec 68% 100%); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* The frame: a noon sky, with the city rising along the rail and the page standing in it like the
+   pale tower. */
+main { max-width: 1220px; margin: 0 auto; border: 2px solid var(--ink); border-radius: 10px;
+  overflow: hidden; box-shadow: 0 3px 0 var(--ink);
+  display: grid; grid-template-columns: 218px 1fr; min-height: 660px;
+  background: linear-gradient(180deg, var(--sky) 0 62%, #a5d2ea 62% 100%); }
+
+/* --- page tree rail: the city climbs it ---------------------------------------------------------- */
+.rail { border-right: 2px solid var(--ink); display: flex; flex-direction: column; position: relative; }
+.gulls { position: absolute; right: 14px; top: 46px; }
+.railhead { display: flex; align-items: center; gap: 6px; padding: 12px 12px 11px; z-index: 1; }
+.railhead h2 { flex: 1; margin: 0; font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+  font-weight: 700; }
+.railhead i { font-size: 14px; color: var(--rose); width: 18px; height: 18px; display: inline-flex;
+  align-items: center; justify-content: center; }
+.tree { list-style: none; margin: 34px 0 0; padding: 0 8px; font-size: 13.5px; z-index: 1; }
+.tree ul { list-style: none; margin: 0; padding-left: 15px; }
+.row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px;
+  min-height: 30px; }
+.row .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .ops { display: flex; gap: 6px; font-size: 11px; color: var(--rose); }
+.row .disc { font-size: 13px; }
+.row.on { background: var(--apricot); border: 1.5px solid var(--ink); }
+/* The skyline at the rail's foot: domes, spires, the holed tower, the pyramid behind. */
+.skyline { margin-top: auto; }
+.skyline svg { display: block; width: 100%; height: auto; }
+
+/* --- content column ----------------------------------------------------------------------------- */
+.content { display: flex; flex-direction: column; min-width: 0; }
+
+/* Row one of the top bar: a cream cloud-band across the sky. */
+.topbar { border-bottom: 2px solid var(--ink);
+  background: linear-gradient(180deg, var(--cloud) 0 64%, #efe2c4 64% 100%); }
+.controls { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
+  padding: 10px 14px; }
+.slot { display: flex; align-items: center; gap: 8px; }
+.slot--end { justify-content: flex-end; }
+.iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  border: 1.5px solid var(--ink); border-radius: 6px; background: var(--cream); font-size: 15px;
+  color: var(--ink); cursor: pointer; }
+/* Top-bar labels and the breadcrumb are mixed case with modest tracking, as the app has them. */
+.publish { border: 2px solid var(--ink); border-radius: 7px; background: var(--rose); color: var(--cream);
+  font-family: var(--sans); font-size: 12.5px; letter-spacing: 0.04em; font-weight: 600;
+  padding: 6px 20px; cursor: pointer; box-shadow: 0 2px 0 var(--ink); }
+.cancel { border: 2px solid var(--ink); border-radius: 7px; background: var(--cream); color: var(--ink);
+  font-family: var(--sans); font-size: 12.5px; letter-spacing: 0.04em; padding: 6px 14px;
+  cursor: pointer; }
+.seg { display: flex; border: 2px solid var(--ink); border-radius: 7px; overflow: hidden;
+  background: var(--cream); }
+.seg span { display: flex; align-items: center; justify-content: center; padding: 4px 13px;
+  border-right: 2px solid var(--ink); font-size: 12px; letter-spacing: 0.02em; }
+.seg span:last-child { border-right: 0; }
+.seg .on { background: var(--verdigris); color: var(--cream); font-weight: 600; }
+.seg--icons span { width: 32px; padding: 4px 0; font-size: 15px; }
+.themedrop { display: inline-flex; align-items: center; gap: 8px; border: 2px solid var(--ink);
+  border-radius: 7px; background: var(--cream); color: var(--ink); font-family: var(--sans);
+  font-size: 12px; letter-spacing: 0.02em; padding: 5px 12px; cursor: pointer; }
+
+/* Row two: the breadcrumb trail on the sky, and the page search at the end. */
+.toprow { display: flex; align-items: center; gap: 12px; padding: 9px 14px 11px;
+  border-bottom: 2px solid var(--ink); }
+.crumb { flex: 1; min-width: 0; font-size: 12.5px; letter-spacing: 0.02em; }
+.crumb .sep { color: var(--rose); padding: 0 6px; }
+.crumb .here { font-weight: 600; }
+.search { display: inline-flex; align-items: center; gap: 8px; width: 244px; border: 2px solid var(--ink);
+  border-radius: 7px; background: var(--cream); padding: 5px 11px; color: var(--quiet); }
+.search i { font-size: 14px; }
+.search span { font-size: 12px; letter-spacing: 0.02em; }
+
+/* --- workspace: the pale tower stands in the sky ------------------------------------------------- */
+.workspace { display: grid; grid-template-columns: 1fr 196px; gap: 26px; padding: 24px 24px 0;
+  flex: 1; min-height: 0; position: relative; }
+/* A cumulus drifting behind the page. */
+.bigcloud { position: absolute; right: 150px; top: 30px; z-index: 0; }
+.doc { min-width: 0; max-width: 560px; margin: 0 auto; position: relative; padding: 26px 30px 30px;
+  z-index: 1; }
+.title { font-weight: 700; font-size: 30px; line-height: 1.15; margin: 0 0 4px; }
+.titlerule { width: 150px; border: 0; border-top: 2px solid var(--ink); margin: 0 0 20px; }
+h2 { font-weight: 700; font-size: 18.5px; margin: 22px 0 8px; }
+p { font-size: 15.5px; line-height: 1.7; margin: 0 0 14px; }
+.badge { display: inline-block; border: 1.5px solid var(--ink); border-radius: 6px;
+  background: var(--slate); color: var(--cream); font-size: 11px; letter-spacing: 0.12em;
+  text-transform: uppercase; padding: 1px 9px; }
+.callout { border: 0; background: none; padding: 13px 16px 12px; margin: 4px 0 16px;
+  position: relative; isolation: isolate; }
+.callout::before { content: ""; position: absolute; inset: 0; z-index: -1; border: 2px solid var(--ink);
+  border-radius: 8px; background: #dcedf6; box-shadow: 0 2px 0 var(--ink); filter: url(#wob-frame); }
+.callout .capn { position: absolute; top: -10px; left: 14px; border: 1.5px solid var(--ink);
+  border-radius: 5px; background: var(--verdigris); color: var(--cream); padding: 0 9px;
+  font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; font-weight: 700; }
+.callout p { margin: 0; font-size: 14.5px; }
+.caret { display: inline-block; width: 2px; height: 18px; background: var(--rose); vertical-align: -3px; }
+
+/* --- sidebar: contents, attachments, history ----------------------------------------------------- */
+.sidebar { font-size: 13px; z-index: 1; }
+.panetoggle { display: block; margin: 0 auto 14px 0; width: 24px; height: 24px;
+  border: 1.5px solid var(--ink); border-radius: 5px; background: var(--cream); color: var(--ink);
+  font-size: 13px; cursor: pointer; }
+.panel { margin: 0 0 20px; }
+.panel h3 { display: inline-block; margin: 0 0 8px; border: 1.5px solid var(--ink); border-radius: 5px;
+  background: var(--sand); padding: 1px 9px; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.22em; text-transform: uppercase; }
+.toc { list-style: none; margin: 0; padding: 0 0 0 11px; position: relative; }
+.toc::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 1.5px;
+  background: rgba(61, 48, 40, 0.35); }
+.toc li { position: relative; padding: 5px 6px; color: #5d5449; }
+.toc li.here { color: var(--ink); font-weight: 500; }
+.toc li.here::before { content: ""; position: absolute; left: -11px; top: 0; bottom: 0; width: 3px;
+  border-radius: 2px; background: var(--rose); }
+.toc .l2 { padding-left: 21px; }
+.panel .quiet { color: #5d5449; font-style: italic; }
+.panel a { color: #b0563a; font-weight: 600; text-decoration: underline;
+  text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+
+/* --- the floating command bar, and the passive word count ---------------------------------------- */
+.footer { padding: 18px 24px 20px; }
+.cmdbar { margin: 0 auto; width: fit-content; display: flex; align-items: center; gap: 2px;
+  border: 2px solid var(--ink); border-radius: 10px; padding: 6px 12px; background: var(--cream);
+  box-shadow: 0 2px 0 var(--ink); }
+.cmdbar i, .cmdbar .style, .cmdbar .badgebtn { height: 28px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: 15px; border-radius: 6px; }
+.cmdbar i { width: 30px; }
+.cmdbar .style, .cmdbar .badgebtn { gap: 6px; padding: 0 10px; font-size: 12px; font-weight: 600;
+  letter-spacing: 0.02em; }
+.cmdbar .active { border: 1.5px solid var(--ink); background: var(--rose); color: var(--cream); }
+.cmdbar .div { width: 1.5px; height: 22px; background: var(--ink); margin: 0 7px; opacity: 0.4; }
+.cmdbar .save { display: inline-flex; align-items: center; margin-left: 8px;
+  border: 1.5px solid var(--quiet); border-radius: 6px; background: var(--cream); color: var(--quiet);
+  padding: 4px 15px; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  font-weight: 600; }
+.wordcount { display: block; margin-top: 10px; text-align: right; font-size: 11px; color: var(--ink);
+  opacity: 0.65; letter-spacing: 0.12em; text-transform: uppercase; }
+
+/* --- the hand: displacement wobble on the drawn furniture ---------------------------------------- */
+.publish, .badge, .themedrop, .cmdbar { filter: url(#wob-a); }
+.cancel, .search, .row.on, .seg, .panel h3 { filter: url(#wob-b); }
+.iconbtn, .seg--icons, .panetoggle { filter: url(#wob-c); }
+.titlerule { filter: url(#wob-b); }
+/* The document is the pale tower: a sand-cream slab, its frame on a filtered ::before so the text
+   stays typeset. */
+.doc::before { content: ""; position: absolute; inset: 0; z-index: -1; border: 2px solid var(--ink);
+  border-radius: 8px 8px 4px 4px; background: linear-gradient(180deg, var(--cream) 0 70%, #f0e4c4 100%);
+  box-shadow: 0 3px 0 var(--ink); filter: url(#wob-frame); }
+.doc { isolation: isolate; }
+
+/* --- the grain: sandstone weathering, ramped along each panel -------------------------------------
+   Every surface fades its grain in along one axis: the rail and the tower gather it at the foot, as
+   weathering settles; the cloud band gathers it toward the right; the command bar takes only a thin
+   edge along its bottom and right sides. */
+.rail::before { content: ""; position: absolute; inset: 0; background: var(--ink);
+  filter: url(#speckle); opacity: 0.24; pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0 55%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0 55%, #000 100%); }
+.doc::after { content: ""; position: absolute; inset: 0; background: #9a7d55;
+  filter: url(#speckle); opacity: 0.24; pointer-events: none; border-radius: 8px 8px 4px 4px;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0 58%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0 58%, #000 100%); }
+.topbar { position: relative; }
+.topbar::before { content: ""; position: absolute; inset: 0; background: #b09468;
+  filter: url(#speckle); opacity: 0.2; pointer-events: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0 60%, #000 100%);
+  mask-image: linear-gradient(90deg, transparent 0 60%, #000 100%); }
+.cmdbar { position: relative; }
+.cmdbar::after { content: ""; position: absolute; inset: 0; border-radius: 10px; background: #9a7d55;
+  filter: url(#speckle); opacity: 0.22; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to top, #000 0 8%, transparent 32%),
+    linear-gradient(to left, #000 0 5%, transparent 24%);
+  mask-image: linear-gradient(to top, #000 0 8%, transparent 32%),
+    linear-gradient(to left, #000 0 5%, transparent 24%);
+  -webkit-mask-composite: source-over; mask-composite: add; }
+</style>
+</head>
+<body>
+<h2 class="sr-only">Mockup U: a Moebius sandcastle city under a noon sky, after Norah's Home, laid out as the editor now is. Cerulean sky with cream cumulus, warm brown ink, apricot and rose towers with verdigris shrubbery and a slate pyramid; the page tree rail climbs to a spired skyline at its foot, gulls drift over the pages, the top bar is a cloud band, and the document stands in the sky as the pale sandstone tower, its grain gathering toward its base. The type is Roboto, the app's own face, used outright: this design tests the identity carried by colour and drawing alone, with the production font.</h2>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="wob-a" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012 0.018" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wob-b" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.014 0.02" numOctaves="2" seed="13" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wob-c" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.016 0.022" numOctaves="2" seed="27" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wob-frame" x="-6%" y="-16%" width="112%" height="132%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.008 0.012" numOctaves="2" seed="5" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="3" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <!-- speckle: fine dots multiplied by a slow cloud of turbulence, so the grain clumps and drifts
+         across a surface instead of sitting statistically flat -->
+    <filter id="speckle" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" seed="5" result="fine"/>
+      <feColorMatrix in="fine" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 22 -12.6" result="dots"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.011 0.016" numOctaves="2" seed="9" result="cloud"/>
+      <feColorMatrix in="cloud" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1.7 -0.42" result="cloud-a"/>
+      <feComposite in="dots" in2="cloud-a" operator="arithmetic" k1="1" k2="0" k3="0" k4="0"
+        result="clumped"/>
+      <feComposite in="SourceGraphic" in2="clumped" operator="in"/>
+    </filter>
+  </defs>
+</svg>
+<main>
+  <nav class="rail">
+    <svg class="gulls" width="64" height="26" viewBox="0 0 64 26" fill="none"
+      stroke="#3d3028" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+      <path d="M4 12 Q9 6 14 12 Q19 6 24 12"/>
+      <path d="M36 18 Q40 13 44 18 Q48 13 52 18"/>
+    </svg>
+    <div class="railhead">
+      <h2>Pages</h2>
+      <i class="ti ti-chevrons-up" title="Collapse all" aria-hidden="true"></i>
+      <i class="ti ti-arrow-back-up" title="Undo a move" aria-hidden="true"></i>
+      <i class="ti ti-trash" title="Trash" aria-hidden="true"></i>
+      <i class="ti ti-plus" title="New top-level page or section" aria-hidden="true"></i>
+    </div>
+    <ul class="tree">
+      <li>
+        <div class="row">
+          <span class="lbl">Guides</span>
+          <span class="ops"><i class="ti ti-plus" title="New page or section here" aria-hidden="true"></i><i class="ti ti-x" title="Delete Guides" aria-hidden="true"></i></span>
+          <i class="ti ti-chevron-down disc" title="Expand or collapse" aria-hidden="true"></i>
+        </div>
+        <ul>
+          <li><div class="row"><span class="lbl">Battery Replacement</span></div></li>
+          <li><div class="row on"><span class="lbl">Failover Guide</span>
+            <span class="ops"><i class="ti ti-x" title="Delete Failover Guide" aria-hidden="true"></i></span></div></li>
+        </ul>
+      </li>
+      <li>
+        <div class="row">
+          <span class="lbl">Projects</span>
+          <i class="ti ti-chevron-right disc" title="Expand or collapse" aria-hidden="true"></i>
+        </div>
+      </li>
+      <li><div class="row"><span class="lbl">Notes</span></div></li>
+      <li><div class="row"><span class="lbl">Archive</span></div></li>
+    </ul>
+    <div class="skyline" aria-hidden="true">
+      <svg viewBox="0 0 218 150" fill="none" stroke="#3d3028" stroke-width="1.5">
+        <path d="M150 92 L178 22 L218 92 Z" fill="#a9a4cb"/>
+        <path d="M0 150 L0 96 C10 96 12 88 12 82 L16 82 C16 88 18 96 28 96 L28 150 Z" fill="#d78e72"/>
+        <path d="M40 150 L40 76 C40 62 62 62 62 76 L62 150 Z" fill="#f8f1e0"/>
+        <circle cx="47" cy="86" r="2" fill="#3d3028" stroke="none"/>
+        <circle cx="55" cy="86" r="2" fill="#3d3028" stroke="none"/>
+        <circle cx="51" cy="96" r="2" fill="#3d3028" stroke="none"/>
+        <path d="M72 150 L72 104 C72 92 92 92 92 104 L92 150 Z" fill="#eeda9d"/>
+        <path d="M82 92 L82 80 M78 84 L86 84" />
+        <path d="M104 150 L104 96 L100 96 L110 70 L120 96 L116 96 L116 150 Z" fill="#d78e72"/>
+        <path d="M130 150 L130 108 C130 98 150 98 150 108 L150 150 Z" fill="#f8f1e0"/>
+        <path d="M160 150 L160 100 C160 86 186 86 186 100 L186 150 Z" fill="#eeda9d"/>
+        <path d="M170 108 h6 M178 108 h4 M170 118 h4 M178 118 h6" />
+        <path d="M196 150 L196 116 C196 108 212 108 212 116 L212 150 Z" fill="#d78e72"/>
+        <path d="M0 150 C30 138 60 142 90 146 C130 152 180 144 218 148 L218 150 L0 150 Z" fill="#7fae8e"/>
+      </svg>
+    </div>
+  </nav>
+  <div class="content">
+    <div class="topbar">
+      <div class="controls">
+        <div class="slot">
+          <button class="iconbtn" title="Hide pages"><i class="ti ti-layout-sidebar" aria-hidden="true"></i></button>
+          <button class="publish">Publish</button>
+          <button class="cancel">Cancel</button>
+        </div>
+        <div class="slot">
+          <nav class="seg" aria-label="Editor view mode">
+            <span class="on">Visual</span><span>Markdown</span><span>Split</span>
+          </nav>
+          <nav class="seg seg--icons" aria-label="Editor width">
+            <span class="on" title="Narrow"><i class="ti ti-rectangle-vertical" aria-hidden="true"></i></span>
+            <span title="Medium"><i class="ti ti-square" aria-hidden="true"></i></span>
+            <span title="Full"><i class="ti ti-rectangle" aria-hidden="true"></i></span>
+          </nav>
+        </div>
+        <div class="slot slot--end">
+          <button class="themedrop" title="Visual theme">City <i class="ti ti-chevron-down" aria-hidden="true"></i></button>
+          <nav class="seg seg--icons" aria-label="Editor colour theme">
+            <span class="on" title="Light"><i class="ti ti-sun" aria-hidden="true"></i></span>
+            <span title="Dark"><i class="ti ti-moon" aria-hidden="true"></i></span>
+            <span title="Match system"><i class="ti ti-device-desktop" aria-hidden="true"></i></span>
+          </nav>
+        </div>
+      </div>
+      <div class="toprow">
+        <nav class="crumb" aria-label="Breadcrumb">
+          Home <span class="sep">&#8250;</span> Guides <span class="sep">&#8250;</span>
+          <span class="here">Failover</span>
+        </nav>
+        <div class="search"><i class="ti ti-search" aria-hidden="true"></i><span>Search pages&#8230;</span></div>
+      </div>
+    </div>
+    <div class="workspace">
+      <svg class="bigcloud" width="200" height="110" viewBox="0 0 200 110" fill="none"
+        stroke="#3d3028" stroke-width="1.5" aria-hidden="true">
+        <path d="M30 84 C10 84 8 62 24 56 C20 38 44 28 56 40 C62 22 92 22 100 38 C112 26 136 34 134 50
+          C154 46 166 64 154 76 C162 88 148 98 136 92 C120 104 92 102 84 92 C68 100 44 98 40 88 Z"
+          fill="#f7eed9"/>
+        <path d="M52 74 C60 66 76 66 84 72" stroke-opacity="0.5"/>
+        <path d="M100 60 C110 54 124 56 130 62" stroke-opacity="0.5"/>
+      </svg>
+      <div class="doc">
+        <div class="title">Failover</div>
+        <hr class="titlerule">
+        <p>Edit this Markdown document. <span class="badge">beta</span></p>
+        <div class="callout">
+          <span class="capn">Note</span>
+          <p>The city keeps its towers apart; each page gets its own patch of sky.</p>
+        </div>
+        <h2>Timeouts</h2>
+        <p>Configure the failover timeouts to thirty seconds.</p>
+        <h2>Fallback routes</h2>
+        <p>Static routes take over when the primary link drops.<span class="caret"></span></p>
+      </div>
+      <aside class="sidebar">
+        <button class="panetoggle" title="Collapse metadata panel"><i class="ti ti-layout-sidebar-right" aria-hidden="true"></i></button>
+        <nav class="panel" aria-label="Table of contents">
+          <h3>Contents</h3>
+          <ul class="toc">
+            <li class="here">Failover</li>
+            <li class="l2 here">Timeouts</li>
+            <li class="l2">Fallback routes</li>
+          </ul>
+        </nav>
+        <section class="panel">
+          <h3>Attachments</h3>
+          <p class="quiet">No attachments yet.</p>
+        </section>
+        <section class="panel">
+          <h3>History</h3>
+          <p><a href="#">Revision history</a></p>
+        </section>
+      </aside>
+    </div>
+    <div class="footer">
+      <div class="cmdbar">
+        <span class="style" title="Block style">Paragraph <i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+        <span class="div"></span>
+        <i class="ti ti-bold active" aria-hidden="true" title="Bold"></i>
+        <i class="ti ti-italic" aria-hidden="true" title="Italic"></i>
+        <i class="ti ti-strikethrough" aria-hidden="true" title="Strike"></i>
+        <i class="ti ti-code" aria-hidden="true" title="Code"></i>
+        <i class="ti ti-link" aria-hidden="true" title="Link"></i>
+        <span class="div"></span>
+        <i class="ti ti-list" aria-hidden="true" title="Bullet list"></i>
+        <i class="ti ti-list-numbers" aria-hidden="true" title="Ordered list"></i>
+        <i class="ti ti-blockquote" aria-hidden="true" title="Blockquote"></i>
+        <i class="ti ti-file-code" aria-hidden="true" title="Code block"></i>
+        <i class="ti ti-minus" aria-hidden="true" title="Horizontal rule"></i>
+        <span class="div"></span>
+        <span class="badgebtn" title="Badge">Badge <i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+        <i class="ti ti-info-circle" aria-hidden="true" title="Insert callout"></i>
+        <span class="div"></span>
+        <i class="ti ti-table" aria-hidden="true" title="Insert table"></i>
+        <i class="ti ti-square-chevron-down" aria-hidden="true" title="Insert collapsible"></i>
+        <span class="div"></span>
+        <i class="ti ti-photo" aria-hidden="true" title="Insert image or file"></i>
+        <span class="save" title="Saved">Save</span>
+      </div>
+      <span class="wordcount">22 words</span>
+    </div>
+  </div>
+</main>
+</body>
+</html>

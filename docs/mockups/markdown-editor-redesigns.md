@@ -7,19 +7,23 @@ practical directions, E to H deliberately extreme style explorations. A second
 round (designs I to M) was added on 2026-06-15 -- five further directions, each
 distinct from the others and from the first round. A third round (designs N to
 R) was added on 2026-07-03, alongside a refresh of design L to match the
-editor as it now is. They are design references only; they are not served by
-Verso and are not part of the editor build.
+editor as it now is. Designs L, P, and R were relaid out on 2026-08-03 against
+the editor's current control layout (see below). A fourth round (designs S
+and T) and a fifth (designs U and V) were added on 2026-08-04 -- four further
+Moebius directions, each distinct from R and from each other, drawn from the
+reference art in `images/`. They are design references only; they are not
+served by Verso and are not part of the editor build.
 
 Rounds one and two mock the editor functionality of their time: view modes,
 block styles, inline marks, structure controls, save state, and theme
-switching. The refreshed design L and round three mock the current editor
-surface: draft editing with Publish and Cancel, the Visual/Markdown/Split
-modes, Narrow/Medium/Full width, visual theme and light/dark/system scheme
-switching, the page navigation tree (create, move-undo, trash, per-page add
-and delete), the Contents/Attachments/History sidebar, and the floating
-command bar (block style, inline marks, lists, quote, code block, rule,
-badges, callouts, tables, collapsibles, image and file upload, and draft
-save state). Only the visual treatment and control placement change.
+switching. Design L and round three mock the current editor surface: draft
+editing with Publish and Cancel, the Visual/Markdown/Split modes,
+Narrow/Medium/Full width, visual theme and light/dark/system scheme switching,
+the page navigation tree (create, move-undo, trash, per-page add and delete),
+the Contents/Attachments/History sidebar, and the floating command bar (block
+style, inline marks, lists, quote, code block, rule, badges, callouts, tables,
+collapsibles, image and file upload, and draft save state). Only the visual
+treatment and control placement change.
 
 The mockup files use the Tabler icon webfont from a CDN, so icons need network
 access to render. Open the files directly in a browser.
@@ -34,6 +38,36 @@ address this by demoting view-mode and theme switching out of the primary
 formatting row. The production editor has since adopted several of these
 ideas: a floating command bar, a sticky top bar for mode/width/theme/scheme
 switching, a document sidebar, and passive save state.
+
+## Markdown Editor Current Control Layout
+
+Designs L, P, and R were relaid out on 2026-08-03 to the arrangement the
+editor now uses. Anything below that describes the earlier two-row header --
+a full-width header band with the file name and mode switches above a second
+bar carrying Publish, Cancel, and the width and theme pills -- is out of date
+for those three; N, O, and Q still show it.
+
+The current arrangement:
+
+- The page tree is a full-height rail from the top edge of the frame. The top
+  bar belongs to the content column beside it, not above it.
+- Top bar, row one, in three slots: the rail's hide toggle, Publish, and
+  Cancel at the start; the Visual/Markdown/Split modes and the
+  Narrow/Medium/Full width switch (three rectangle glyphs, not labels) in the
+  middle; the named visual-theme dropdown and the light/dark/system scheme
+  switch at the end.
+- Top bar, row two: the breadcrumb trail, and the page search at the end.
+- The rail's header carries collapse-all, move-undo, trash, and new-top-level.
+  A tree row is a label, its hover actions, and a trailing disclosure chevron;
+  nested pages indent one step.
+- The document column holds the page title as its own field above the body.
+- The sidebar holds a collapse toggle, then Contents, Attachments, and
+  History. The contents entries hang off an indicator rail, with the sections
+  on screen marking themselves on it as a single unbroken segment.
+- The command bar floats at the foot of the content column: block style, then
+  inline marks, then structure, then the badge dropdown, the callout
+  dropdown, table and collapsible, image or file, and the passive save state.
+  The word count sits below it, at the end.
 
 ## Markdown Editor Redesign A: Quiet Paper
 
@@ -227,22 +261,33 @@ A constructivist composition. Primary red, blue, and yellow with black on warm
 off-white, a circle/triangle/square mark, a red triangle wedge motif, and a
 strict asymmetric grid.
 
-Refreshed on 2026-07-03 to match the current editor surface: Publish is a
-black slab with a yellow disc beside a bordered Cancel, the ruled header
-carries mode, width, theme, and scheme switches, the page tree is a left rail
-with geometric bullets, Contents/Attachments/History form a right rail, and
-the command bar is a strip of colour-coded tiles with the draft save state as
-a black tile with a yellow dot. The refresh also borrows from Mondrian's
-neoplasticism: black rules of deliberately unequal weight between regions, a
-small Mondrian composition filling the dead space at the foot of the page
-tree, and a Broadway Boogie Woogie segmented strip as the frame's bottom
-edge.
+Refreshed on 2026-07-03 to match the editor surface: Publish is a black slab
+with a yellow disc beside a bordered Cancel, the ruled header carries mode,
+width, theme, and scheme switches, the page tree is a left rail with geometric
+bullets, Contents/Attachments/History form a right rail, and the command bar
+is a strip of colour-coded tiles with the draft save state as a black tile
+with a yellow dot. The refresh also borrows from Mondrian's neoplasticism:
+black rules of deliberately unequal weight between regions, a small Mondrian
+composition filling the dead space at the foot of the page tree, and a
+Broadway Boogie Woogie segmented strip as the frame's bottom edge.
+
+Relaid out on 2026-08-03 to the current control layout. The tree rail now runs
+the full height of the frame with the Mondrian panel at its foot, and the
+ruled slabs carry the three top-bar slots: hide-pages, Publish and Cancel;
+modes and width; theme swatch and scheme. The breadcrumb and the page search
+form the ruled row beneath, and the boogie strip stays the frame's bottom edge
+below both columns. The contents rail marks the sections on screen in blue.
+
+Font: Futura, falling back to Century Gothic and then Avenir Next. The
+school's own geometric sans, and the design depends on it -- the display
+capitals lose their character in an ordinary grotesque. Futura ships on macOS;
+Century Gothic is the Windows stand-in.
 
 Trade-offs and effort: a timeless design-school identity, distinct from the
 web-brutalist Bold Press -- refined rather than loud. The colour-coded tiles aid
 learnability the way Candy Pop's do but read as serious. It abandons the Web
 Awesome contract for heavy custom styling, and the geometric display type needs
-a real geometric font (Futura and similar) to land.
+a real geometric font to land.
 
 ## Markdown Editor Redesign M: Herbarium
 
@@ -312,6 +357,19 @@ and active states are diagonal hatching, the page tree hangs from drawn
 connector lines, the callout label sits in a gap in its own outline, Publish
 is a double-ruled pill, and the command bar is a single outlined pill.
 
+Relaid out on 2026-08-03 to the current control layout. The tree is a
+full-height rail, with the mark that used to sit in the header now standing at
+its top; the segmented mode, width, and scheme switches are outlined pills in
+the top bar, the search is a pill on the breadcrumb row, and the contents rail
+marks the sections on screen with a solid ink segment over its hairline
+track.
+
+Font: Avenir Next, falling back to Segoe UI and then Helvetica. An even
+geometric sans with almost no contrast in the stroke, so the letterforms carry
+the same weight as the drawn line; the title is set at 300 to match the
+hairline. Any low-contrast geometric sans would serve -- this is the only one
+of the three whose font is a preference rather than a dependency.
+
 Trade-offs and effort: the cheapest of the round by far -- it is almost
 entirely borders and one hatch pattern, and Tabler's stroke icons already
 match the line weight. Distinct from Blueprint (cyan on navy) and Inkpress
@@ -348,9 +406,231 @@ floating crystals over the document, and terracotta and turquoise picking out
 the active controls. Letter-spaced capitals stand in for BD hand-lettering,
 and the callout label sits in a small caption plaque.
 
+Relaid out on 2026-08-03 to the current control layout. The tree rail runs the
+full height of the frame and takes the sky with it: the banded sun and the
+birds now drift above the pages, the dunes still close the rail's foot, and
+the airbrushed bands are kept for the top bar behind the three control slots.
+The contents rail marks the sections on screen in terracotta.
+
+Font: Gill Sans, falling back to Avenir Next and then Trebuchet MS. A humanist
+sans with calligraphic bones, which is what lets the letter-spaced capitals
+read as BD hand-lettering rather than as a user-interface label; a geometric
+sans in its place turns the same capitals into signage. Gill Sans ships on
+macOS but not on Windows, where the fallback is a real change of voice.
+
 Trade-offs and effort: the calmest of the illustrated identities -- vast,
 airy, and closer to a usable daily surface than the other costumes because
 the document plane itself stays plain cream with fine rules. The banded
 palette needs care in dark scheme, the decorative SVGs (sun, dunes, crystals)
 are fixed art that must be drawn per breakpoint, and the sepia-on-cream
 contrast sits close to accessibility limits for small text.
+
+## Fourth Round (2026-08-04)
+
+Two further Moebius directions, deliberately different from design R's warm
+daylight desert and from each other, drawn from the reference art collected
+in [images/](images/): a starlit crystal night and a moonlit pastel meadow.
+Both use the current control layout. Where R is daylight, S is its night; and
+where both deserts are hard-edged and banded, T is soft, rounded, and hazy.
+
+### Moebius Hand-Drawn Texture Pass
+
+All three Moebius mockups (R, S, T) carry a hand-drawn texture pass, applied
+on 2026-08-04 with two SVG filters used from CSS:
+
+- The not-quite-straight line: `feTurbulence` plus `feDisplacementMap` at
+  scale 2, in three seeds so neighbouring controls do not bend identically,
+  with a longer-wave scale-3 variant for large frames. Small controls are
+  filtered whole, so their labels pick up a hand-lettered waver; the document
+  card, callouts, and side panels keep their text crisp by carrying their
+  frames on a filtered `::before` instead.
+- The speckle that shows form: the same turbulence thresholded to sparse
+  ink-coloured dots (a steep `feColorMatrix` alpha ramp), then multiplied by
+  a second, gentler low-frequency turbulence so the grain varies slightly
+  rather than sitting statistically flat.
+- The grain is **directional**, and that is what carries the shading. Each
+  overlay is masked with a plain linear ramp along one axis of its panel: a
+  panel that stands up (the page tree rail, the editing field) gathers grain
+  at its foot and is clear at the top; a panel that lies across (the top bar)
+  gathers it at the right-hand end. The command bar takes only a thin edge of
+  grain along its bottom and right sides, where a drawn object would carry
+  its shadow -- two ramps added together with `mask-composite`, so the
+  bottom-right corner is densest. An earlier version used soft radial masks
+  and heavier clumping, which read as random scatter rather than as light.
+
+Each of the three also carries an `Aa Roboto` toggle (bottom left) that swaps
+the design face for the app's own Roboto, loaded from
+`static/editor/roboto.css` in the repo, to judge how the identity survives
+the production font.
+
+## Markdown Editor Redesign S: Moebius Night
+
+Mockup: [markdown-editor-redesign-s-moebius-night.html](markdown-editor-redesign-s-moebius-night.html)
+
+A Moebius crystal night, after the starlit ultramarine paintings (the crystal
+outcrop, the girl on the bench, the blue face carving). The chrome is deep
+ultramarine under a stippled starfield, with indigo ink lines instead of
+black; the control bar is the red-rock overhang; and the editing field is the
+deep night sky's own `#1d2150`, boxless, with the firelight reaching it only
+through the ember accents. A haloed
+moon and a scatter of stars hang over the page tree -- the night's answer to
+design R's sun and drifting birds -- with lit crystals standing at its foot,
+the active page and the active
+controls hold the campfire's ember orange (with a soft glow), crystal blue
+picks out the switch states, and the contents rail marks the on-screen
+sections as an ember segment. This is the darkest design in the set: chrome
+and reading surface both go to night, and the only lit things are the
+crystals, the moon, and the ember accents. (Revised on 2026-08-04: the page
+was first a fire-lit parchment card floating in the dark, which made a
+handsome figure-ground statement but a bright one; the deep sky reads better
+as a surface to work on after dark.)
+
+Font: Optima, falling back to Candara and then Gill Sans. A glyphic humanist
+with flared strokes, so the letter-spaced capitals read as cut and lit like
+the crystals rather than typeset. Optima ships on macOS; Candara is the
+Windows stand-in.
+
+Trade-offs and effort: the most restful of the set to work in after dark, and
+the one that doubles as a real dark scheme rather than a costume -- the deep
+sky field is quiet, and the ember accents are the only things that ask for
+attention. The glows, the starfield, and the grain are cheap CSS. Against it:
+the frame is committed to darkness, so the light scheme needs a separate
+answer (design R is the obvious daylight partner, and the day-and-night
+pairing below wires the two together), the muted lavender-on-night panel text
+needs contrast care, and the design gave up its old party trick when the page
+went dark -- the lit-parchment-in-a-dark-room figure-ground statement now
+lives only in the design's history.
+
+## Markdown Editor Redesign T: Moebius Meadow
+
+Mockup: [markdown-editor-redesign-t-moebius-meadow.html](markdown-editor-redesign-t-moebius-meadow.html)
+
+A Moebius moonlit meadow, after the night clearing and the pink-birds forest.
+A grey-blue field under a starred slate sky, with a slate-navy ink line
+instead of black -- the softest line in the set -- and pink-terracotta for
+the cypress canopies. The frame is filled with the clearing's pattern of soft
+scrub tufts, a haloed moon and a strip of starred sky sit over the page tree
+with scalloped cloud-trees at its foot, and every control is a rounded pill.
+The terracotta pink marks the active page and the contents rail's on-screen
+segment; one saturated swallow blue -- the bird crossing the top of the
+document -- is spent only on the active mark in the command bar; the callout
+is a scalloped cloud holding its text. (Retuned on 2026-08-04: the first cut
+sat too lavender; the palette now follows the clearing painting's greys,
+blues, and pink terracotta, and the sky gained its stars.)
+
+Font: Seravek, falling back to Segoe UI and then Trebuchet MS. A soft
+humanist sans whose open, rounded bowls sit with the meadow's scalloped
+forms. Seravek ships on macOS; Segoe UI is the Windows stand-in.
+
+Trade-offs and effort: the gentlest identity in the set -- where every other
+design asserts, this one recedes, and the single saturated accent gives
+active state more pop than a louder palette would. The tuft pattern and
+scallops are plain CSS and small SVGs. Against it: a mid-tone ground makes
+contrast the design's central risk (the slate line is softer than black
+everywhere, and anything sitting on the sky strip has to go pale), the dusk
+framing sits oddly beside a bright-white system light scheme, and the charm
+depends on restraint -- one more colour and it tips into Candy Pop.
+
+## Fifth Round (2026-08-04)
+
+Two more Moebius directions, again distinct from R, S, T, and each other,
+from the new reference art: a sandcastle city under a noon sky, and a coral
+maze with a paved walkway. Both set the type in Roboto -- the app's own face,
+loaded from `static/editor/roboto.css` -- outright rather than behind a
+toggle, so these two test whether a Moebius identity carries on colour and
+drawing alone with the production font. Both carry the hand-drawn texture
+pass (wobble and clumped speckle) from the start.
+
+## Markdown Editor Redesign U: Moebius City
+
+Mockup: [markdown-editor-redesign-u-moebius-city.html](markdown-editor-redesign-u-moebius-city.html)
+
+A Moebius sandcastle city under a noon sky, after Norah's Home. Cerulean sky
+with cream cumulus, warm brown ink, apricot and rose towers, verdigris
+shrubbery, and a slate pyramid. The page tree rail climbs down to a spired
+skyline at its foot -- domes, a holed tower, the pyramid behind -- with gulls
+over the pages; the top bar is a cloud band across the sky; and the document
+stands in the sky as the pale sandstone tower, its speckle grain gathering
+toward its base like weathering. A cumulus drifts behind the page. Rose marks
+the active page and mark, verdigris the switch states.
+
+Font: Roboto, the app's own face, used outright.
+
+Trade-offs and effort: the friendliest of the Moebius set -- bright, open,
+and the tower-in-the-sky conceit gives the document a physical presence
+without darkening anything. The skyline and clouds are two small SVGs.
+Against it: a saturated blue surround is the boldest chrome colour of any
+design and may tire over a working day, the sky reads as a light scheme only,
+and the cream-on-blue control band needs its ink borders to hold structure.
+
+## Markdown Editor Redesign V: Moebius Coral
+
+Mockup: [markdown-editor-redesign-v-moebius-coral.html](markdown-editor-redesign-v-moebius-coral.html)
+
+A Moebius coral maze, after the giant shell painting. A densely worked blush
+coral field fills the whole frame -- rings of growth stamped in aubergine
+ink, with the clumped speckle working the ground like the etcher's stipple --
+and every working surface is a clean paved walkway laid onto it, edged with
+the painting's teal channel and gold kerb: the top bar, the document, the
+side panels, the command bar, and the tree rows as paving stones. Vermilion,
+the shell's colour, is the one hot accent, spent on the active page and the
+active mark, with the shell's ornament dotted into the active row. Coral
+sprigs and flowers close the rail's foot.
+
+Font: Roboto, the app's own face, used outright.
+
+Trade-offs and effort: the strongest ground-figure idea after S's fire-lit
+page -- "the page is the swept path through the noise" says what an editor
+is for, and the teal-and-gold trim gives every interactive surface a
+consistent, learnable edge. The coral pattern is tiled CSS gradients.
+Against it: the busiest chrome in the set (the field competes with small
+text near panel edges), the trim costs vertical pixels on every surface,
+and pink-heavy chrome is the most taste-dependent choice of the five Moebius
+designs.
+
+## Moebius Desert Day And Night Scheme Pairing
+
+Prototype: [markdown-editor-moebius-desert-day-night.html](markdown-editor-moebius-desert-day-night.html)
+
+This one shipped. The editor implements it as the **Moebius** visual theme
+(pick it from the theme dropdown; the light/dark switch beside it chooses the
+hour). See ADR-081 for how it is built -- tokens twice over, scenery and grain
+as inline SVG data URIs, and the wobble filters injected only for this theme.
+The mockups below stay as the design record.
+
+The Moebius designs each depict a scene, and a scene has an hour of day baked
+into it -- which does not fit the editor's model, where a visual theme and a
+light/dark scheme are orthogonal. This prototype, built on 2026-08-04,
+resolves that for designs R and S: they are not two themes but **one theme at
+two hours**, and the light/dark switch in the top bar is wired up and works.
+
+The four rules it is built on, which a real theme would have to keep:
+
+1. Every colour is a role token, defined twice -- once under
+   `[data-scheme="light"]`, once under `[data-scheme="dark"]`. No rule below
+   those two blocks names a literal colour.
+2. The scene swaps with the hour. The sun, the birds, and the dunes belong to
+   the day; the moon, the stars, and the lit crystals belong to the night.
+   Both sets sit in the DOM and each scheme hides the other's.
+3. The page goes dark with the world, and it is the whole editing field
+   rather than a card sitting in one. The content column itself carries the
+   page colour -- a cream sheet by day, the night sky's own `#1d2150` after
+   dark -- so the document has no box around it, as the editor itself has
+   none. (Two earlier drafts are superseded here: the page was first a lit
+   parchment at both hours, as design S still is, and then a dark card. The
+   dark, boxless field is the call.)
+4. The drawn hand -- the wobble filters and the clumped speckle -- is
+   scheme-independent. Only the grain's colour changes: ink by day, a deeper
+   dark by night, so the grain always shades by deepening.
+
+The switch is a real three-way control: light, dark, and match-system, the
+last of which follows `prefers-color-scheme` and keeps following it while
+selected. Surfaces transition over about a third of a second, so the change
+reads as dusk falling on one scene rather than two pages swapping.
+
+Where this leaves the other designs: T is already a night scene, so it wants
+a daylight meadow as its light half rather than a dark variant; U wants a
+night city (Norah's Home under stars); V is the one case where re-lighting
+the same scene works, since the coral field re-tints plausibly to deep water.
+The type here is Roboto, the production font, because the prototype is aimed
+at the real theme system rather than at the illustration.

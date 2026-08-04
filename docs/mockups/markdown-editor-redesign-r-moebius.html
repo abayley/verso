@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <title>Markdown editor redesign R: moebius</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<!-- The app's own font, for comparison via the Aa toggle: served from the repo, so this resolves
+     when the file is opened from a checkout. -->
+<link rel="stylesheet" href="../../static/editor/roboto.css">
 <style>
 :root {
   --ink: #4a3428;            /* fine sepia line, never black */
@@ -15,6 +18,9 @@
   --sky-hi: #cfe7e2;
   --sky-lo: #efe0bd;
   --crystal: #9d86b5;
+  --quiet: #8d7c66;
+  /* Gill Sans: a humanist sans with calligraphic bones, so the letter-spaced capitals read as BD
+     hand-lettering rather than as a UI label. Avenir Next and Trebuchet MS are the stand-ins. */
   --sans: "Gill Sans", "Avenir Next", "Trebuchet MS", ui-sans-serif, sans-serif;
 }
 * { box-sizing: border-box; }
@@ -24,213 +30,382 @@ body { margin: 0; min-height: 100vh; color: var(--ink); font-family: var(--sans)
     var(--sky-hi) 0 14%, #d7e7da 14% 30%, #e3e5c9 30% 46%, var(--sky-lo) 46% 62%,
     var(--sand) 62% 80%, var(--dune) 80% 100%); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-main { max-width: 1200px; margin: 0 auto; border: 2px solid var(--ink); border-radius: 10px;
-  background: var(--paper); overflow: hidden; box-shadow: 0 2px 0 var(--ink); }
-.head { position: relative; display: flex; align-items: stretch; border-bottom: 2px solid var(--ink);
-  background: linear-gradient(180deg, var(--sky-hi) 0 34%, #dde8d2 34% 58%, var(--sky-lo) 58% 100%); }
-.sun { position: absolute; left: 190px; top: 8px; width: 44px; height: 44px; border-radius: 50%;
+
+/* The two columns run the full height of the frame: the page tree is a rail from the top edge, and the
+   top bar belongs to the content column beside it, as in the editor. */
+main { max-width: 1220px; margin: 0 auto; border: 2px solid var(--ink); border-radius: 10px;
+  background: var(--paper); overflow: hidden; box-shadow: 0 2px 0 var(--ink);
+  display: grid; grid-template-columns: 218px 1fr; min-height: 660px; }
+
+/* --- page tree rail ------------------------------------------------------------------------------ */
+.rail { border-right: 2px solid var(--ink); display: flex; flex-direction: column; position: relative;
+  background: linear-gradient(180deg, var(--sky-hi) 0 12%, #dde8d2 12% 24%, var(--paper) 24% 62%,
+    var(--sand) 62% 84%, var(--dune) 84% 100%); }
+.sun { position: absolute; right: 18px; top: 48px; width: 40px; height: 40px; border-radius: 50%;
   border: 2px solid var(--ink);
   background: radial-gradient(circle, #f4e9c8 0 34%, #edc96a 34% 58%, var(--terra) 58% 100%); }
-.birds { position: absolute; left: 260px; top: 14px; }
-.title { display: flex; align-items: center; gap: 12px; padding: 15px 18px; font-size: 18px;
-  font-weight: 600; letter-spacing: 0.24em; text-transform: uppercase; z-index: 1; }
-.modes { display: flex; margin-left: auto; z-index: 1; }
-.modes span { display: flex; align-items: center; padding: 0 18px; border-left: 2px solid var(--ink);
-  font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; }
-.modes .on { background: var(--terra); color: var(--paper); }
-.scheme { display: flex; z-index: 1; }
-.scheme span { display: flex; align-items: center; justify-content: center; width: 46px;
-  border-left: 2px solid var(--ink); font-size: 16px; }
-.scheme .on { background: var(--turq); color: var(--paper); }
-.bar { display: flex; align-items: center; gap: 12px; padding: 12px 18px;
-  border-bottom: 2px solid var(--ink); background: var(--paper); }
-.publish { border: 2px solid var(--ink); border-radius: 7px; background: var(--terra); color: var(--paper);
-  font-family: var(--sans); font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase;
-  font-weight: 600; padding: 8px 24px; cursor: pointer; box-shadow: 0 2px 0 var(--ink); }
-.cancel { border: 2px solid var(--ink); border-radius: 7px; background: var(--paper); color: var(--ink);
-  font-family: var(--sans); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
-  padding: 8px 16px; cursor: pointer; }
-.crumb { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; }
-.crumb .sep { color: var(--terra); padding: 0 6px; }
-.grp { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 11px;
-  letter-spacing: 0.16em; text-transform: uppercase; }
-.pill { display: flex; border: 2px solid var(--ink); border-radius: 7px; overflow: hidden; }
-.pill span { padding: 5px 12px; border-right: 2px solid var(--ink); }
-.pill span:last-child { border-right: 0; }
-.pill .on { background: var(--turq); color: var(--paper); font-weight: 600; }
-.body { display: grid; grid-template-columns: 195px 1fr 185px; }
-.nav { border-right: 2px solid var(--ink); display: flex; flex-direction: column;
-  background: linear-gradient(180deg, var(--paper) 0 55%, var(--sand) 55% 82%, var(--dune) 82% 100%); }
-.navhead { display: flex; align-items: center; gap: 8px; padding: 11px 14px;
-  border-bottom: 2px solid var(--ink); font-size: 11px; letter-spacing: 0.22em;
-  text-transform: uppercase; font-weight: 600; }
-.navhead i { margin-left: auto; font-size: 14px; color: var(--terra); }
-.navhead i + i { margin-left: 2px; }
-.tree { list-style: none; margin: 0; padding: 12px 0; font-size: 14px; }
-.tree li { display: flex; align-items: center; gap: 10px; padding: 8px 14px; }
-.tree li::before { content: ""; width: 8px; height: 8px; border: 1.5px solid var(--ink); flex: none;
-  transform: rotate(45deg); background: var(--paper); }
-.tree .on { background: var(--turq); color: var(--paper); border-top: 1.5px solid var(--ink);
-  border-bottom: 1.5px solid var(--ink); }
-.tree .on::before { background: var(--crystal); }
-.tree .ops { margin-left: auto; display: flex; gap: 7px; font-size: 11px; }
-.dunes { margin-top: auto; padding: 0; }
+.birds { position: absolute; left: 16px; top: 62px; }
+.railhead { display: flex; align-items: center; gap: 6px; padding: 12px 12px 11px; z-index: 1; }
+.railhead h2 { flex: 1; margin: 0; font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+  font-weight: 600; }
+.railhead i { font-size: 14px; color: var(--terra); width: 18px; height: 18px; display: inline-flex;
+  align-items: center; justify-content: center; }
+.tree { list-style: none; margin: 66px 0 0; padding: 0 8px; font-size: 13.5px; z-index: 1; }
+.tree ul { list-style: none; margin: 0; padding-left: 15px; }
+.row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px;
+  min-height: 30px; }
+.row .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .ops { display: flex; gap: 6px; font-size: 11px; color: var(--terra); }
+.row .disc { font-size: 13px; }
+.row.on { background: var(--turq); color: var(--paper); border: 1.5px solid var(--ink); }
+.row.on .ops { color: var(--paper); }
+.dunes { margin-top: auto; }
 .dunes svg { display: block; width: 100%; height: auto; }
-.doc { padding: 40px 40px 30px; display: flex; flex-direction: column; min-width: 0; position: relative;
-  background: var(--paper); }
-.crystals { position: absolute; top: 34px; right: 34px; }
-h1 { font-weight: 600; font-size: 36px; line-height: 1.05; margin: 0 0 8px; letter-spacing: 0.12em;
-  text-transform: uppercase; }
-.h1line { width: 210px; border: 0; border-top: 2px solid var(--ink); margin: 0 0 24px; position: relative; }
-p { font-size: 16.5px; line-height: 1.75; margin: 0 0 14px; max-width: 88%; }
+
+/* --- content column ----------------------------------------------------------------------------- */
+.content { display: flex; flex-direction: column; min-width: 0; }
+
+/* Row one of the top bar: publish and cancel at the start, the mode and width switches in the middle,
+   the visual theme and the colour scheme at the end. */
+.topbar { border-bottom: 2px solid var(--ink);
+  background: linear-gradient(180deg, var(--sky-hi) 0 46%, var(--sky-lo) 46% 100%); }
+.controls { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
+  padding: 10px 14px; }
+.slot { display: flex; align-items: center; gap: 8px; }
+.slot--end { justify-content: flex-end; }
+.iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  border: 1.5px solid var(--ink); border-radius: 6px; background: var(--paper); font-size: 15px;
+  color: var(--ink); cursor: pointer; }
+/* Top-bar labels and the breadcrumb are mixed case with modest tracking, as the app has them; the
+   spaced capitals stay on the panel chips, the title, and the save state. */
+.publish { border: 2px solid var(--ink); border-radius: 7px; background: var(--terra); color: var(--paper);
+  font-family: var(--sans); font-size: 12.5px; letter-spacing: 0.04em;
+  font-weight: 600; padding: 6px 20px; cursor: pointer; box-shadow: 0 2px 0 var(--ink); }
+.cancel { border: 2px solid var(--ink); border-radius: 7px; background: var(--paper); color: var(--ink);
+  font-family: var(--sans); font-size: 12.5px; letter-spacing: 0.04em;
+  padding: 6px 14px; cursor: pointer; }
+/* One joined segmented control, used for the modes, the width, and the colour scheme. */
+.seg { display: flex; border: 2px solid var(--ink); border-radius: 7px; overflow: hidden; }
+.seg span { display: flex; align-items: center; justify-content: center; padding: 4px 13px;
+  border-right: 2px solid var(--ink); font-size: 12px; letter-spacing: 0.02em; }
+.seg span:last-child { border-right: 0; }
+.seg .on { background: var(--turq); color: var(--paper); font-weight: 600; }
+.seg--icons span { width: 32px; padding: 4px 0; font-size: 15px; }
+.themedrop { display: inline-flex; align-items: center; gap: 8px; border: 2px solid var(--ink);
+  border-radius: 7px; background: var(--paper); font-family: var(--sans); font-size: 12px;
+  letter-spacing: 0.02em; padding: 5px 12px; cursor: pointer; }
+
+/* Row two: the breadcrumb trail, and the page search at the end. */
+.toprow { display: flex; align-items: center; gap: 12px; padding: 9px 14px 11px;
+  border-bottom: 2px solid var(--ink); }
+.crumb { flex: 1; min-width: 0; font-size: 12.5px; letter-spacing: 0.02em; }
+.crumb .sep { color: var(--terra); padding: 0 6px; }
+.crumb .here { font-weight: 600; }
+.search { display: inline-flex; align-items: center; gap: 8px; width: 244px; border: 2px solid var(--ink);
+  border-radius: 7px; background: var(--paper); padding: 5px 11px; color: var(--quiet); }
+.search i { font-size: 14px; }
+.search span { font-size: 12px; letter-spacing: 0.1em; }
+
+/* --- workspace: the editing column, and the sidebar beside it ------------------------------------ */
+.workspace { display: grid; grid-template-columns: 1fr 196px; gap: 26px; padding: 24px 24px 0;
+  flex: 1; min-height: 0; }
+.doc { min-width: 0; max-width: 560px; margin: 0 auto; position: relative; }
+.crystals { position: absolute; top: -6px; right: -44px; }
+.title { font-weight: 600; font-size: 32px; line-height: 1.1; letter-spacing: 0.1em;
+  text-transform: uppercase; padding-bottom: 6px; border-bottom: 2px solid var(--ink);
+  margin: 0 0 20px; }
+h2 { font-weight: 600; font-size: 19px; letter-spacing: 0.12em; text-transform: uppercase;
+  margin: 22px 0 8px; }
+p { font-size: 16px; line-height: 1.7; margin: 0 0 14px; }
 .badge { display: inline-block; border: 1.5px solid var(--ink); border-radius: 6px; background: var(--crystal);
   color: var(--paper); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; padding: 1px 9px; }
-.callout { border: 2px solid var(--ink); border-radius: 8px; background: var(--sky-hi); max-width: 88%;
+.callout { border: 2px solid var(--ink); border-radius: 8px; background: var(--sky-hi);
   padding: 13px 16px 12px; margin: 4px 0 16px; position: relative; box-shadow: 0 2px 0 var(--ink); }
 .callout .capn { position: absolute; top: -10px; left: 14px; border: 1.5px solid var(--ink);
   border-radius: 5px; background: var(--turq); color: var(--paper); padding: 0 9px; font-size: 10px;
   letter-spacing: 0.22em; text-transform: uppercase; font-weight: 600; }
-.callout p { margin: 0; font-size: 15px; max-width: none; }
+.callout p { margin: 0; font-size: 15px; }
 .caret { display: inline-block; width: 2px; height: 19px; background: var(--terra); vertical-align: -3px; }
-.cmdbar { margin-top: auto; width: fit-content; display: flex; align-items: center; gap: 2px;
-  border: 2px solid var(--ink); border-radius: 10px; padding: 6px 12px; background: var(--paper);
-  box-shadow: 0 2px 0 var(--ink); }
-.cmdbar i, .cmdbar .style { width: 32px; height: 32px; display: inline-flex; align-items: center;
-  justify-content: center; font-size: 15px; border-radius: 6px; }
-.cmdbar .style { width: auto; padding: 0 8px; font-size: 13px; font-weight: 600; }
-.cmdbar .active { border: 1.5px solid var(--ink); background: var(--terra); color: var(--paper); }
-.cmdbar .div { width: 1.5px; height: 24px; background: var(--ink); margin: 0 7px; opacity: 0.5; }
-.cmdbar .save { display: inline-flex; align-items: center; gap: 8px; margin-left: 8px;
-  border: 1.5px solid var(--ink); border-radius: 6px; background: var(--turq); color: var(--paper);
-  padding: 5px 13px; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; }
-.cmdbar .save .dot { width: 8px; height: 8px; border: 1.5px solid var(--ink); background: var(--paper);
-  transform: rotate(45deg); }
-.side { border-left: 2px solid var(--ink); font-size: 13px; background: var(--paper); }
-.side section { border-bottom: 2px solid var(--ink); padding: 16px 14px 14px; position: relative; }
-.side section:last-child { border-bottom: 0; }
-.side h3 { display: inline-block; margin: 0 0 10px; border: 1.5px solid var(--ink); border-radius: 5px;
+
+/* --- sidebar: contents, attachments, history ----------------------------------------------------- */
+.sidebar { font-size: 13px; }
+.panetoggle { display: block; margin: 0 auto 14px 0; width: 24px; height: 24px; border: 1.5px solid var(--ink);
+  border-radius: 5px; background: var(--paper); color: var(--ink); font-size: 13px; cursor: pointer; }
+.panel { margin: 0 0 20px; }
+.panel h3 { display: inline-block; margin: 0 0 8px; border: 1.5px solid var(--ink); border-radius: 5px;
   background: var(--sand); padding: 1px 9px; font-size: 10px; font-weight: 600; letter-spacing: 0.22em;
   text-transform: uppercase; }
-.side ul { list-style: none; margin: 0; padding: 0; }
-.side li { padding: 3px 0; }
-.side .sub { padding-left: 14px; }
-.side .quiet { color: #8d7c66; font-style: italic; }
-.side a { color: var(--terra); font-weight: 600; text-decoration: underline;
+/* The contents entries hang off an indicator rail; the sections on screen mark themselves on it. */
+.toc { list-style: none; margin: 0; padding: 0 0 0 11px; position: relative; }
+.toc::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 1.5px;
+  background: rgba(74, 52, 40, 0.35); }
+.toc li { position: relative; padding: 5px 6px; color: var(--quiet); }
+.toc li.here { color: var(--ink); }
+.toc li.here::before { content: ""; position: absolute; left: -11px; top: 0; bottom: 0; width: 3px;
+  border-radius: 2px; background: var(--terra); }
+.toc .l2 { padding-left: 21px; }
+.panel .quiet { color: var(--quiet); font-style: italic; }
+.panel a { color: var(--terra); font-weight: 600; text-decoration: underline;
   text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+
+/* --- the floating command bar, and the passive word count ---------------------------------------- */
+.footer { padding: 18px 24px 20px; }
+.cmdbar { margin: 0 auto; width: fit-content; display: flex; align-items: center; gap: 2px;
+  border: 2px solid var(--ink); border-radius: 10px; padding: 6px 12px; background: var(--paper);
+  box-shadow: 0 2px 0 var(--ink); }
+.cmdbar i, .cmdbar .style, .cmdbar .badgebtn { height: 28px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: 15px; border-radius: 6px; }
+.cmdbar i { width: 30px; }
+.cmdbar .style, .cmdbar .badgebtn { gap: 6px; padding: 0 10px; font-size: 12px; font-weight: 600;
+  letter-spacing: 0.08em; }
+.cmdbar .active { border: 1.5px solid var(--ink); background: var(--terra); color: var(--paper); }
+.cmdbar .div { width: 1.5px; height: 22px; background: var(--ink); margin: 0 7px; opacity: 0.5; }
+.cmdbar .save { display: inline-flex; align-items: center; margin-left: 8px;
+  border: 1.5px solid var(--ink); border-radius: 6px; background: var(--paper); color: var(--quiet);
+  padding: 4px 15px; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 600; }
+.wordcount { display: block; margin-top: 10px; text-align: right; font-size: 11px; color: var(--quiet);
+  letter-spacing: 0.12em; text-transform: uppercase; }
+
+/* --- the hand: displacement wobble on the drawn furniture ----------------------------------------
+   Three seeds at scale 2 so neighbouring controls do not bend identically; a longer-wave variant for
+   large frames. Small controls are filtered whole (the labels pick up a hand-lettered waver); the
+   callout keeps its text crisp by carrying its frame on a filtered ::before instead. */
+.publish, .badge, .themedrop, .cmdbar { filter: url(#wob-a); }
+.cancel, .search, .row.on, .seg, .panel h3 { filter: url(#wob-b); }
+.iconbtn, .seg--icons, .panetoggle { filter: url(#wob-c); }
+.title { filter: url(#wob-a); }
+.callout { border: 0; background: none; box-shadow: none; isolation: isolate; }
+.callout::before { content: ""; position: absolute; inset: 0; z-index: -1; border: 2px solid var(--ink);
+  border-radius: 8px; background: var(--sky-hi); box-shadow: 0 2px 0 var(--ink);
+  filter: url(#wob-frame); }
+
+/* --- the grain: directional shading, not scatter -------------------------------------------------
+   Ink-coloured turbulence dots, ramped along one axis of each panel so a surface reads as lit at one
+   end and shaded at the other: the rail gathers grain at its foot among the dunes, the sky band
+   gathers it toward the right, the page toward its foot, and the command bar takes only a thin edge
+   along its bottom and right sides. Drawn on ::before so the grain sits under the controls. */
+.rail::before { content: ""; position: absolute; inset: 0; background: var(--ink);
+  filter: url(#speckle); opacity: 0.3; pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0 55%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0 55%, #000 100%); }
+.topbar { position: relative; }
+.topbar::before { content: ""; position: absolute; inset: 0; background: var(--ink);
+  filter: url(#speckle); opacity: 0.18; pointer-events: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0 60%, #000 100%);
+  mask-image: linear-gradient(90deg, transparent 0 60%, #000 100%); }
+.doc::after { content: ""; position: absolute; inset: 0; background: var(--ink);
+  filter: url(#speckle); opacity: 0.12; pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0 58%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0 58%, #000 100%); }
+.cmdbar { position: relative; }
+.cmdbar::after { content: ""; position: absolute; inset: 0; border-radius: 10px; background: var(--ink);
+  filter: url(#speckle); opacity: 0.16; pointer-events: none;
+  -webkit-mask-image: linear-gradient(to top, #000 0 8%, transparent 32%),
+    linear-gradient(to left, #000 0 5%, transparent 24%);
+  mask-image: linear-gradient(to top, #000 0 8%, transparent 32%),
+    linear-gradient(to left, #000 0 5%, transparent 24%);
+  -webkit-mask-composite: source-over; mask-composite: add; }
+
+/* --- the font toggle: the design face against the app's Roboto ----------------------------------- */
+body.roboto { --sans: "Roboto Variable", "Roboto", sans-serif; }
+.fontswap { position: fixed; left: 12px; bottom: 12px; z-index: 10; border: 2px solid var(--ink);
+  border-radius: 7px; background: var(--paper); color: var(--ink); font-family: var(--sans);
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; padding: 6px 12px;
+  cursor: pointer; box-shadow: 0 2px 0 var(--ink); }
 </style>
 </head>
 <body>
-<h2 class="sr-only">Mockup R: a Jean Giraud / Moebius desert. Fine sepia contour lines instead of black, flat colour in hard airbrushed sky bands, a banded sun and drifting birds in the header, dunes at the foot of the page tree, floating crystals over the document, and terracotta and turquoise picking out the active controls.</h2>
+<h2 class="sr-only">Mockup R: a Jean Giraud / Moebius desert, laid out as the editor now is. Fine sepia contour lines instead of black, flat colour in hard airbrushed sky bands, a banded sun and drifting birds over the full-height page tree, dunes at its foot, floating crystals over the document, and terracotta and turquoise picking out the active controls. The type is Gill Sans, falling back to Avenir Next and then Trebuchet MS: a humanist sans with calligraphic bones, so its letter-spaced capitals read as BD hand-lettering rather than as a user-interface label.</h2>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="wob-a" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012 0.018" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wob-b" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.014 0.02" numOctaves="2" seed="13" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wob-c" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.016 0.022" numOctaves="2" seed="27" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wob-frame" x="-6%" y="-16%" width="112%" height="132%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.008 0.012" numOctaves="2" seed="5" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="3" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <!-- speckle: fine dots multiplied by a slow cloud of turbulence, so the grain clumps and drifts
+         across a surface instead of sitting statistically flat -->
+    <filter id="speckle" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" seed="5" result="fine"/>
+      <feColorMatrix in="fine" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 22 -12.6" result="dots"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.011 0.016" numOctaves="2" seed="9" result="cloud"/>
+      <feColorMatrix in="cloud" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1.7 -0.42" result="cloud-a"/>
+      <feComposite in="dots" in2="cloud-a" operator="arithmetic" k1="1" k2="0" k3="0" k4="0"
+        result="clumped"/>
+      <feComposite in="SourceGraphic" in2="clumped" operator="in"/>
+    </filter>
+  </defs>
+</svg>
+<button class="fontswap" type="button" title="Toggle the app's Roboto"
+  onclick="document.body.classList.toggle('roboto')">Aa Roboto</button>
 <main>
-  <div class="head">
+  <nav class="rail">
     <div class="sun" aria-hidden="true"></div>
-    <svg class="birds" width="70" height="24" viewBox="0 0 70 24" fill="none"
+    <svg class="birds" width="62" height="20" viewBox="0 0 62 20" fill="none"
       stroke="#4a3428" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
-      <path d="M4 12 Q9 7 14 12 Q19 7 24 12"/>
-      <path d="M36 8 Q40 4 44 8 Q48 4 52 8"/>
-      <path d="M54 18 Q57 15 60 18 Q63 15 66 18"/>
+      <path d="M4 10 Q9 5 14 10 Q19 5 24 10"/>
+      <path d="M32 6 Q36 2 40 6 Q44 2 48 6"/>
+      <path d="M44 16 Q47 13 50 16 Q53 13 56 16"/>
     </svg>
-    <div class="title">home.md</div>
-    <div class="modes"><span class="on">Visual</span><span>Markdown</span><span>Split</span></div>
-    <div class="scheme">
-      <span class="on" title="Light"><i class="ti ti-sun" aria-hidden="true"></i></span>
-      <span title="Dark"><i class="ti ti-moon" aria-hidden="true"></i></span>
-      <span title="Match system"><i class="ti ti-device-desktop" aria-hidden="true"></i></span>
+    <div class="railhead">
+      <h2>Pages</h2>
+      <i class="ti ti-chevrons-up" title="Collapse all" aria-hidden="true"></i>
+      <i class="ti ti-arrow-back-up" title="Undo a move" aria-hidden="true"></i>
+      <i class="ti ti-trash" title="Trash" aria-hidden="true"></i>
+      <i class="ti ti-plus" title="New top-level page or section" aria-hidden="true"></i>
     </div>
-  </div>
-  <div class="bar">
-    <button class="publish">Publish</button>
-    <button class="cancel">Cancel</button>
-    <div class="crumb">Pages <span class="sep">&#8250;</span> Home</div>
-    <div class="grp">
-      Width
-      <span class="pill"><span class="on">Narrow</span><span>Medium</span><span>Full</span></span>
-      Theme
-      <span class="pill"><span class="on">Paper &#9662;</span></span>
-    </div>
-  </div>
-  <div class="body">
-    <nav class="nav">
-      <div class="navhead">Pages
-        <i class="ti ti-plus" title="New top-level page" aria-hidden="true"></i>
-        <i class="ti ti-arrow-back-up" title="Undo a move" aria-hidden="true"></i>
-        <i class="ti ti-trash" title="Trash" aria-hidden="true"></i>
-      </div>
-      <ul class="tree">
-        <li class="on">Home
-          <span class="ops"><i class="ti ti-plus" title="New page here" aria-hidden="true"></i><i class="ti ti-x" title="Delete" aria-hidden="true"></i></span></li>
-        <li>Guides</li>
-        <li>Projects</li>
-        <li>Notes</li>
-        <li>Archive</li>
-      </ul>
-      <div class="dunes" aria-hidden="true">
-        <svg viewBox="0 0 195 90" fill="none">
-          <path d="M0 62 C30 42 60 40 90 54 C120 68 150 66 195 48 L195 90 L0 90 Z"
-            fill="#d9b57e" stroke="#4a3428" stroke-width="1.5"/>
-          <path d="M0 78 C40 62 90 64 130 74 C155 80 175 80 195 74 L195 90 L0 90 Z"
-            fill="#c4694a" stroke="#4a3428" stroke-width="1.5"/>
-          <path d="M58 50 L58 30 M58 30 L50 38 M58 30 L66 38" stroke="#4a3428" stroke-width="1.5"/>
-        </svg>
-      </div>
-    </nav>
-    <div class="doc">
-      <svg class="crystals" width="72" height="84" viewBox="0 0 72 84" fill="none"
-        stroke="#4a3428" stroke-width="1.5" aria-hidden="true">
-        <path d="M26 6 L40 18 L26 34 L12 18 Z" fill="#9d86b5"/>
-        <path d="M26 6 L26 34" stroke-opacity="0.6"/>
-        <path d="M54 34 L64 43 L54 55 L44 43 Z" fill="#cfe7e2"/>
-        <path d="M18 54 L25 60 L18 69 L11 60 Z" fill="#e9d3a8"/>
+    <ul class="tree">
+      <li>
+        <div class="row">
+          <span class="lbl">Guides</span>
+          <span class="ops"><i class="ti ti-plus" title="New page or section here" aria-hidden="true"></i><i class="ti ti-x" title="Delete Guides" aria-hidden="true"></i></span>
+          <i class="ti ti-chevron-down disc" title="Expand or collapse" aria-hidden="true"></i>
+        </div>
+        <ul>
+          <li><div class="row"><span class="lbl">Battery Replacement</span></div></li>
+          <li><div class="row on"><span class="lbl">Failover Guide</span>
+            <span class="ops"><i class="ti ti-x" title="Delete Failover Guide" aria-hidden="true"></i></span></div></li>
+        </ul>
+      </li>
+      <li>
+        <div class="row">
+          <span class="lbl">Projects</span>
+          <i class="ti ti-chevron-right disc" title="Expand or collapse" aria-hidden="true"></i>
+        </div>
+      </li>
+      <li><div class="row"><span class="lbl">Notes</span></div></li>
+      <li><div class="row"><span class="lbl">Archive</span></div></li>
+    </ul>
+    <div class="dunes" aria-hidden="true">
+      <svg viewBox="0 0 218 96" fill="none">
+        <path d="M0 66 C34 44 68 42 102 57 C136 72 170 70 218 51 L218 96 L0 96 Z"
+          fill="#d9b57e" stroke="#4a3428" stroke-width="1.5"/>
+        <path d="M0 82 C45 65 100 67 145 78 C173 85 195 85 218 79 L218 96 L0 96 Z"
+          fill="#c4694a" stroke="#4a3428" stroke-width="1.5"/>
+        <!-- A saguaro on the near dune: trunk, one arm up each side. -->
+        <path d="M64 56 L64 24" stroke="#4a3428" stroke-width="3" stroke-linecap="round"/>
+        <path d="M64 44 L56 44 Q52 44 52 40 L52 34" stroke="#4a3428" stroke-width="2.5"
+          stroke-linecap="round" fill="none"/>
+        <path d="M64 39 L72 39 Q76 39 76 35 L76 30" stroke="#4a3428" stroke-width="2.5"
+          stroke-linecap="round" fill="none"/>
       </svg>
-      <h1>Hello from MicroHttp</h1>
-      <hr class="h1line">
-      <p>Edit this Markdown document. <span class="badge">beta</span></p>
-      <div class="callout">
-        <span class="capn">Note</span>
-        <p>The desert is quiet; the line is fine and certain, and the page drifts on it.</p>
+    </div>
+  </nav>
+  <div class="content">
+    <div class="topbar">
+      <div class="controls">
+        <div class="slot">
+          <button class="iconbtn" title="Hide pages"><i class="ti ti-layout-sidebar" aria-hidden="true"></i></button>
+          <button class="publish">Publish</button>
+          <button class="cancel">Cancel</button>
+        </div>
+        <div class="slot">
+          <nav class="seg" aria-label="Editor view mode">
+            <span class="on">Visual</span><span>Markdown</span><span>Split</span>
+          </nav>
+          <nav class="seg seg--icons" aria-label="Editor width">
+            <span class="on" title="Narrow"><i class="ti ti-rectangle-vertical" aria-hidden="true"></i></span>
+            <span title="Medium"><i class="ti ti-square" aria-hidden="true"></i></span>
+            <span title="Full"><i class="ti ti-rectangle" aria-hidden="true"></i></span>
+          </nav>
+        </div>
+        <div class="slot slot--end">
+          <button class="themedrop" title="Visual theme">Paper <i class="ti ti-chevron-down" aria-hidden="true"></i></button>
+          <nav class="seg seg--icons" aria-label="Editor colour theme">
+            <span class="on" title="Light"><i class="ti ti-sun" aria-hidden="true"></i></span>
+            <span title="Dark"><i class="ti ti-moon" aria-hidden="true"></i></span>
+            <span title="Match system"><i class="ti ti-device-desktop" aria-hidden="true"></i></span>
+          </nav>
+        </div>
       </div>
-      <p>Drafts hang in the still air until you publish them.<span class="caret"></span></p>
+      <div class="toprow">
+        <nav class="crumb" aria-label="Breadcrumb">
+          Home <span class="sep">&#8250;</span> Guides <span class="sep">&#8250;</span>
+          <span class="here">Failover</span>
+        </nav>
+        <div class="search"><i class="ti ti-search" aria-hidden="true"></i><span>Search pages&#8230;</span></div>
+      </div>
+    </div>
+    <div class="workspace">
+      <div class="doc">
+        <svg class="crystals" width="66" height="76" viewBox="0 0 66 76" fill="none"
+          stroke="#4a3428" stroke-width="1.5" aria-hidden="true">
+          <path d="M24 6 L37 17 L24 32 L11 17 Z" fill="#9d86b5"/>
+          <path d="M24 6 L24 32" stroke-opacity="0.6"/>
+          <path d="M50 32 L59 40 L50 51 L41 40 Z" fill="#cfe7e2"/>
+          <path d="M17 50 L24 56 L17 64 L10 56 Z" fill="#e9d3a8"/>
+        </svg>
+        <div class="title">Failover</div>
+        <p>Edit this Markdown document. <span class="badge">beta</span></p>
+        <div class="callout">
+          <span class="capn">Note</span>
+          <p>The desert is quiet; the line is fine and certain, and the page drifts on it.</p>
+        </div>
+        <h2>Timeouts</h2>
+        <p>Configure the failover timeouts to thirty seconds.</p>
+        <h2>Fallback routes</h2>
+        <p>Static routes take over when the primary link drops.<span class="caret"></span></p>
+      </div>
+      <aside class="sidebar">
+        <button class="panetoggle" title="Collapse metadata panel"><i class="ti ti-layout-sidebar-right" aria-hidden="true"></i></button>
+        <nav class="panel" aria-label="Table of contents">
+          <h3>Contents</h3>
+          <ul class="toc">
+            <li class="here">Failover</li>
+            <li class="l2 here">Timeouts</li>
+            <li class="l2">Fallback routes</li>
+          </ul>
+        </nav>
+        <section class="panel">
+          <h3>Attachments</h3>
+          <p class="quiet">No attachments yet.</p>
+        </section>
+        <section class="panel">
+          <h3>History</h3>
+          <p><a href="#">Revision history</a></p>
+        </section>
+      </aside>
+    </div>
+    <div class="footer">
       <div class="cmdbar">
-        <span class="style" title="Block style">Aa</span>
+        <span class="style" title="Block style">Paragraph <i class="ti ti-chevron-down" aria-hidden="true"></i></span>
         <span class="div"></span>
         <i class="ti ti-bold active" aria-hidden="true" title="Bold"></i>
         <i class="ti ti-italic" aria-hidden="true" title="Italic"></i>
-        <i class="ti ti-strikethrough" aria-hidden="true" title="Strikethrough"></i>
+        <i class="ti ti-strikethrough" aria-hidden="true" title="Strike"></i>
         <i class="ti ti-code" aria-hidden="true" title="Code"></i>
         <i class="ti ti-link" aria-hidden="true" title="Link"></i>
         <span class="div"></span>
         <i class="ti ti-list" aria-hidden="true" title="Bullet list"></i>
-        <i class="ti ti-list-numbers" aria-hidden="true" title="Numbered list"></i>
-        <i class="ti ti-blockquote" aria-hidden="true" title="Quote"></i>
-        <i class="ti ti-code-dots" aria-hidden="true" title="Code block"></i>
-        <i class="ti ti-separator" aria-hidden="true" title="Rule"></i>
+        <i class="ti ti-list-numbers" aria-hidden="true" title="Ordered list"></i>
+        <i class="ti ti-blockquote" aria-hidden="true" title="Blockquote"></i>
+        <i class="ti ti-file-code" aria-hidden="true" title="Code block"></i>
+        <i class="ti ti-minus" aria-hidden="true" title="Horizontal rule"></i>
         <span class="div"></span>
-        <i class="ti ti-tag" aria-hidden="true" title="Badge"></i>
-        <i class="ti ti-info-circle" aria-hidden="true" title="Callout"></i>
-        <i class="ti ti-table" aria-hidden="true" title="Table"></i>
-        <i class="ti ti-chevron-down" aria-hidden="true" title="Collapsible"></i>
-        <i class="ti ti-photo" aria-hidden="true" title="Image or file"></i>
-        <span class="save" title="Save draft"><span class="dot"></span>Save</span>
+        <span class="badgebtn" title="Badge">Badge <i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+        <i class="ti ti-info-circle" aria-hidden="true" title="Insert callout"></i>
+        <span class="div"></span>
+        <i class="ti ti-table" aria-hidden="true" title="Insert table"></i>
+        <i class="ti ti-square-chevron-down" aria-hidden="true" title="Insert collapsible"></i>
+        <span class="div"></span>
+        <i class="ti ti-photo" aria-hidden="true" title="Insert image or file"></i>
+        <span class="save" title="Saved">Save</span>
       </div>
+      <span class="wordcount">22 words</span>
     </div>
-    <aside class="side">
-      <section>
-        <h3>Contents</h3>
-        <ul>
-          <li>Hello from MicroHttp</li>
-          <li class="sub">The desert</li>
-          <li class="sub">The line</li>
-        </ul>
-      </section>
-      <section>
-        <h3>Attachments</h3>
-        <ul><li class="quiet">No attachments yet.</li></ul>
-      </section>
-      <section>
-        <h3>History</h3>
-        <ul><li><a href="#">Revision history</a></li></ul>
-      </section>
-    </aside>
   </div>
 </main>
 </body>

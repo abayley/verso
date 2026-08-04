@@ -177,7 +177,11 @@
      what sits in it. The block padding is trimmed so the row holds its 2rem rather than growing to
      0.5rem + line + 0.5rem, which is what shadcn's fixed h-8 does by clipping. */
   --markdown-editor-panel-row-height: 2rem;
-  --markdown-editor-panel-row-padding: 0.25rem 0.5rem;
+  /* The inline inset is named on its own because it is the panels' text edge: anything that is not a
+     row but has to start on that edge (the attachments empty note) derives from it rather than
+     carrying its own guess, which is how the note came to sit 0.3rem to the left of the rows. */
+  --markdown-editor-panel-row-padding-inline: 0.5rem;
+  --markdown-editor-panel-row-padding: 0.25rem var(--markdown-editor-panel-row-padding-inline);
   --markdown-editor-panel-row-gap: 0.5rem;
   --markdown-editor-panel-row-radius: var(--radius-md, 0.5rem);
   /* shadcn's sub-menu inset: mx-3.5 + px-2.5 on the nested list. Applied to the start edge only, since
@@ -359,7 +363,11 @@ markdown-editor {
   background: var(--markdown-editor-background);
   border-right: 1px solid var(--sidebar-border, var(--markdown-editor-divider));
   box-sizing: border-box;
-  color: var(--markdown-editor-text);
+  /* The same strength as the metadata panels opposite (.markdown-editor__toc and
+     .markdown-editor__metadata-panel): both side panels are one component, so a page name reads
+     like a contents entry, and only the open page steps up to the full text colour. At full
+     strength the tree shouted across the workspace at the pane it is meant to match. */
+  color: var(--markdown-editor-muted);
   display: flex;
   /* Well past shadcn's 16rem --sidebar-width: page names here are far longer than menu labels. */
   flex: 0 0 var(--markdown-editor-nav-width, 24rem);
@@ -457,11 +465,12 @@ markdown-editor {
   gap: 0.1rem;
 }
 
-/* The open page: a stronger fill than hover, and the full text colour against the tree's muted grey. */
+/* The open page: a stronger fill than hover, and the full text colour against the tree's muted grey --
+   the same two steps the contents rail marks its on-screen sections with. No weight change: the fill
+   already carries the row, and the entry opposite does it on colour alone. */
 .markdown-editor__nav-row[data-active="true"] {
   background: var(--markdown-editor-panel-row-selected);
   color: var(--markdown-editor-text);
-  font-weight: 500;
 }
 
 /* Drag-and-drop move: the row, root list, or top-level drop zone currently under the dragged item. */
@@ -1537,10 +1546,11 @@ markdown-editor[data-body-width="full"] .markdown-editor__sidebar[data-collapsed
   display: none;
 }
 
-/* The empty note is not a row, but it starts on the same text edge as one. */
+/* The empty note is not a row, but it starts on the same text edge as one -- so it takes the rows'
+   own inline inset rather than an approximation of it. */
 .markdown-editor__attachment-empty {
   display: block;
-  padding-inline: 0.2rem;
+  padding-inline: var(--markdown-editor-panel-row-padding-inline);
 }
 
 /* No top padding: the card's own 1.5rem inset is the space above the first line, and anything here is
@@ -2035,13 +2045,16 @@ markdown-editor[data-body-width="full"] .markdown-editor__sidebar[data-collapsed
   align-items: center;
   background: var(--markdown-editor-pill-background);
   border: 1px solid var(--markdown-editor-pill-border);
-  border-radius: 999px;
+  /* A rounded rectangle rather than a full pill: the semicircular ends needed inline padding just to
+     keep the first and last control clear of the curve, so squaring them off reads as deliberate and
+     gives the row back that width. One step above the panel rows' radius, for a taller surface. */
+  border-radius: 0.75rem;
   display: flex;
   flex-wrap: wrap;
   gap: 0.2rem;
   justify-content: center;
   max-width: 100%;
-  padding: 0.3rem 0.9rem;
+  padding: 0.3rem 0.6rem;
   width: fit-content;
 }
 
@@ -2909,20 +2922,38 @@ markdown-editor[data-appearance-open]
   opacity: 0.55;
 }
 
-/* Below this width the command bar cannot seat its two groups at full size: with
-   36px buttons and a 108px "Paragraph" label the first group alone wants 474px, so
-   it wrapped to a third row. Tightening the bar's padding and gaps, shrinking the
-   buttons, and capping the block-style label keeps it to the two rows it splits
-   into at the Badge. Only the floating bar is touched; the top bar's controls have
-   already folded into their menu by here. */
-@media (max-width: 36rem) {
+/* Below this width the command bar cannot seat its two groups at full size: its widest
+   row measures 483px and the bar's own border and padding add 21px, so a third row
+   appears once the available width drops under 504px. Tightening the bar's padding and
+   gaps, shrinking the buttons, and capping the block-style label keeps it to the two
+   rows it splits into at the Badge. Only the floating bar is touched; the top bar's
+   controls have already folded into their menu by here.
+
+   Measured, not guessed: the widest row is 483px and the bar's padding and border add
+   23px, so the untightened bar needs about 507px of *content* width. The threshold has to
+   allow for the scrollbar on top of that: a media query matches the viewport width, which
+   counts the classic scrollbar, while the bar only gets the ~15px narrower client width.
+   Sized to the content figure alone (32rem), a real browser wrapped to three rows between
+   513 and 518 -- the window was wide enough for the query to stay off and too narrow for
+   the row to fit. 33rem leaves room for a 20px scrollbar and still tightens later than the
+   36rem it started at, which used to leave obvious slack at both ends of the bar. (The
+   automated preview has overlay scrollbars, so it cannot reproduce the gap: there, client
+   width equals viewport width.) */
+@media (max-width: 33rem) {
+  /* The two groups stack explicitly rather than by wrapping. Wrapped, the bar's
+     fit-content width resolves to the space available (its max-content is both groups
+     side by side), so the bar spanned the viewport with each group centred in it --
+     which is the whitespace that used to sit at both ends. Stacked, fit-content is the
+     wider group, so the bar hugs its contents at every width in this range. */
   .markdown-editor__toolbar--commands {
-    gap: 0.1rem;
-    padding: 0.25rem 0.4rem;
+    align-items: center;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.25rem 0.45rem;
   }
 
   .markdown-editor__toolbar--commands .markdown-editor__command-row {
-    gap: 0.1rem;
+    gap: 0.15rem;
   }
 
   .markdown-editor__toolbar--commands .markdown-editor__button-group + .markdown-editor__button-group {
@@ -2932,15 +2963,18 @@ markdown-editor[data-appearance-open]
   .markdown-editor__toolbar--commands .markdown-editor__button {
     font-size: 13px;
     min-width: 0;
-    padding-inline: 0.2rem;
+    padding-inline: 0.3rem;
   }
 
-  /* Basecoat's icon-sm is a fixed 36px box; the glyph inside is only 16px, so the
-     square can lose a third of its width without crowding the icon. */
+  /* Basecoat's icon-sm is a fixed 36px box; the glyph inside is only 16px, so the square
+     can lose a quarter of its width without crowding the icon. Not the third it lost
+     before: with the bar hugging its contents there is nothing to gain from shrinking
+     past what the narrowest viewport needs, and the controls stayed needlessly small
+     across the whole range. */
   .markdown-editor__toolbar--commands .markdown-editor__button[data-size="icon-sm"] {
-    height: 1.6rem;
+    height: 1.75rem;
     padding: 0;
-    width: 1.6rem;
+    width: 1.75rem;
   }
 
   /* The label truncates rather than pushing the group onto its own line. Left-aligned
@@ -2948,7 +2982,7 @@ markdown-editor[data-appearance-open]
      word lost its first letter. */
   .markdown-editor__toolbar--commands .markdown-editor__style-trigger {
     justify-content: flex-start;
-    max-width: 5rem;
+    max-width: 5.5rem;
   }
 
   .markdown-editor__toolbar--commands .markdown-editor__style-trigger > :first-child {
@@ -2956,4 +2990,399 @@ markdown-editor[data-appearance-open]
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+}
+
+/* ===================================================================
+   The Moebius theme (day and night).
+
+   A Jean Giraud desert as a full re-skin: the same scene at two hours,
+   with the colour-scheme switch choosing the hour. Designs R and S in
+   docs/mockups are its light and dark halves, and
+   markdown-editor-moebius-desert-day-night.html is the pairing this
+   implements.
+
+   It is built in three layers:
+
+   1. Tokens. Both Basecoat's names (--background, --border, --accent
+      and the rest, which the chrome components read) and the
+      --markdown-editor-* names are redefined, twice: once for the day,
+      once under .dark for the night. Nothing below the token blocks
+      names a literal colour except the scenery, which is drawn art.
+   2. Scenery, as background layers on the rail: sun, birds, dunes and a
+      saguaro by day; moon, stars and lit crystals by night. Each is an
+      inline SVG data URI, so there is no extra request and no external
+      reference to resolve.
+   3. Texture. The speckle is an SVG data URI too -- feTurbulence
+      thresholded to sparse dots and ramped by a gradient inside the same
+      SVG -- so the grain needs no filter reference. It gathers at the
+      foot of upright panels and the right-hand end of horizontal ones,
+      as light would settle. The hand-drawn wobble does need live
+      filters; the editor element injects those defs when this theme is
+      chosen (moebiusFilterDefs in markdown-editor-element.ts), and the
+      wobble is applied only to controls that hold no popover, since a
+      filter makes an element a containing block and would re-anchor one.
+   =================================================================== */
+
+/* --- the day ------------------------------------------------------- */
+:root[data-editor-theme="moebius"] {
+  /* Basecoat's chrome tokens. */
+  --background: #faf4e6;
+  --foreground: #4a3428;
+  --card: #faf4e6;
+  --card-foreground: #4a3428;
+  --popover: #f7efdd;
+  --popover-foreground: #4a3428;
+  --primary: #c4694a;
+  --primary-foreground: #f7efdd;
+  --secondary: #efe0bd;
+  --secondary-foreground: #4a3428;
+  --muted: #f1e6cd;
+  --muted-foreground: #8d7c66;
+  --accent: #ecdcbb;
+  --accent-foreground: #4a3428;
+  --destructive: #b0402a;
+  --border: #4a3428;
+  --input: #4a3428;
+  --ring: #6fb3ab;
+  --sidebar-border: #4a3428;
+
+  /* The editor's own tokens. */
+  --markdown-editor-accent: #c4694a;
+  --markdown-editor-background: #faf4e6;
+  --markdown-editor-code-background: #f1e6cd;
+  --markdown-editor-code-border: #d8c49a;
+  --markdown-editor-divider: #c3ac86;
+  --markdown-editor-muted: #8d7c66;
+  --markdown-editor-pill-background: #f7efdd;
+  --markdown-editor-pill-border: #4a3428;
+  --markdown-editor-quote-border: #d9b57e;
+  --markdown-editor-text: #4a3428;
+  --markdown-editor-panel-row-selected: #e3caa0;
+  --markdown-editor-info: #4a7fa8;
+  --markdown-editor-success: #5c8f6a;
+  --markdown-editor-warning: #c08a2e;
+  --markdown-editor-danger: #b0402a;
+  --markdown-editor-emphasis: #9d86b5;
+
+  /* Theme-private roles: the two accents that mark state, and the grain. */
+  --moebius-switch: #6fb3ab;
+  --moebius-switch-text: #f7efdd;
+  --moebius-bar-hi: #cfe7e2;
+  --moebius-bar-lo: #efe0bd;
+  /* Quiet chrome controls are ghost buttons -- transparent, so the sky band and the
+     rock showed straight through them. Under this theme every control is a drawn
+     object with its own face, as the mockups have them. */
+  --moebius-face: #f7efdd;
+  --moebius-chip: #e9d3a8;
+  --moebius-line-width: 2px;
+  /* Both side panels hover on --sidebar-accent; unset, they fell back to Basecoat's
+     neutral grey, which read as a smudge across the sand. */
+  --sidebar-accent: #ecdcbb;
+  --sidebar-accent-foreground: #4a3428;
+  --moebius-speck-bar: 0.18;
+  --moebius-speck-field: 0.12;
+  --moebius-speck-tool: 0.16;
+}
+
+/* --- the night ----------------------------------------------------- */
+:root[data-editor-theme="moebius"].dark {
+  --background: #12142f;
+  --foreground: #dfe3f5;
+  --card: #12142f;
+  --card-foreground: #dfe3f5;
+  --popover: #2a3068;
+  --popover-foreground: #e6e9f8;
+  --primary: #dd7038;
+  --primary-foreground: #1a1130;
+  --secondary: #2a3068;
+  --secondary-foreground: #e6e9f8;
+  --muted: #262c5e;
+  --muted-foreground: #98a0d0;
+  --accent: #313877;
+  --accent-foreground: #f4f2ff;
+  --destructive: #e0684a;
+  --border: #7e86c2;
+  --input: #7e86c2;
+  --ring: #6f9fd0;
+  --sidebar-border: #7e86c2;
+
+  --markdown-editor-accent: #dd7038;
+  --markdown-editor-background: #12142f;
+  --markdown-editor-code-background: #262c5e;
+  --markdown-editor-code-border: #454d95;
+  --markdown-editor-divider: #454d95;
+  --markdown-editor-muted: #98a0d0;
+  --markdown-editor-pill-background: #262c5e;
+  --markdown-editor-pill-border: #7e86c2;
+  --markdown-editor-quote-border: #545da8;
+  --markdown-editor-text: #dfe3f5;
+  --markdown-editor-panel-row-selected: #3a4290;
+  --markdown-editor-info: #6f9fd0;
+  --markdown-editor-success: #7fb08c;
+  --markdown-editor-warning: #d8a04e;
+  --markdown-editor-danger: #e0684a;
+  --markdown-editor-emphasis: #a58fc4;
+
+  --moebius-switch: #6f9fd0;
+  --moebius-switch-text: #0f1230;
+  --moebius-bar-hi: #6d2f1e;
+  --moebius-bar-lo: #52210f;
+  --moebius-face: #2a3068;
+  --moebius-chip: #313877;
+  --moebius-line-width: 2px;
+  --sidebar-accent: #313877;
+  --sidebar-accent-foreground: #e6e9f8;
+  --moebius-speck-bar: 0.55;
+  --moebius-speck-field: 0.4;
+  --moebius-speck-tool: 0.45;
+}
+
+/* The active page and the on-state of the segmented controls take the theme's
+   two accents directly, rather than Basecoat's neutral --accent, which the rest
+   of the chrome still uses for hover. */
+/* --- the scenery: the tree carries the hour -------------------------- */
+/* Sun, birds and a strip of banded sky above the first page; dunes and a saguaro
+   below the last. Both are backgrounds on the root list, so they scroll with the
+   tree and no page name ever sits over them, and both are drawn at the rail's own
+   width and used at natural size -- scaled to the column they would tower over it.
+   The night swaps in a haloed moon, stars, and the lit crystal outcrop. */
+:root[data-editor-theme="moebius"] .markdown-editor__nav > .markdown-editor__nav-list {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='384' height='120' viewBox='0 0 384 120'%3E%3Cpath d='M0 78 C60 52 120 50 180 68 C240 86 300 84 384 60 L384 120 L0 120 Z' fill='%23d9b57e' stroke='%234a3428' stroke-width='1.5'/%3E%3Cpath d='M0 100 C80 78 176 80 256 94 C305 103 344 103 384 96 L384 120 L0 120 Z' fill='%23c4694a' stroke='%234a3428' stroke-width='1.5'/%3E%3Cpath d='M112 74 L112 34' stroke='%234a3428' stroke-width='3.5' stroke-linecap='round'/%3E%3Cpath d='M112 58 L100 58 Q94 58 94 52 L94 44' stroke='%234a3428' stroke-width='3' stroke-linecap='round' fill='none'/%3E%3Cpath d='M112 52 L124 52 Q130 52 130 46 L130 38' stroke='%234a3428' stroke-width='3' stroke-linecap='round' fill='none'/%3E%3C/svg%3E")
+      bottom left no-repeat;
+  padding-bottom: 7.5rem;
+}
+
+:root[data-editor-theme="moebius"].dark .markdown-editor__nav > .markdown-editor__nav-list {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='384' height='120' viewBox='0 0 384 120'%3E%3Cg stroke='%237e86c2' stroke-width='1.5'%3E%3Cpath d='M0 104 C70 92 158 88 246 96 C300 101 345 101 384 94 L384 120 L0 120 Z' fill='%23141833'/%3E%3Cpath d='M148 100 L128 40 L114 100 Z' fill='%23b9dcf2'/%3E%3Cpath d='M182 102 L170 16 L150 100 Z' fill='%23dcecf8'/%3E%3Cpath d='M214 102 L204 50 L182 102 Z' fill='%238fb8dd'/%3E%3Cpath d='M244 100 L238 66 L220 102 Z' fill='%23b9dcf2'/%3E%3C/g%3E%3C/svg%3E")
+      bottom left no-repeat;
+}
+
+/* The head art sits in the top-level drop target. That band is already reserved for the
+   whole session -- the base chrome only toggles its visibility, so the box never resizes
+   during a drag -- so it was empty space the scene can have. It has to stay visible to
+   paint, so its own dashed border and label go transparent until a drag activates it. */
+:root[data-editor-theme="moebius"] .markdown-editor__nav-root-drop {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='384' height='88' viewBox='0 0 384 88'%3E%3Cdefs%3E%3ClinearGradient id='s' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23cfe7e2'/%3E%3Cstop offset='0.42' stop-color='%23dde8d2'/%3E%3Cstop offset='0.62' stop-color='%23efe9d6'/%3E%3Cstop offset='1' stop-color='%23f7efdd'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='384' height='88' fill='url(%23s)'/%3E%3Ccircle cx='320' cy='40' r='19' fill='%23edc96a' stroke='%234a3428' stroke-width='2'/%3E%3Ccircle cx='320' cy='40' r='11' fill='%23f4e9c8'/%3E%3Cg fill='none' stroke='%234a3428' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M28 44 Q33 39 38 44 Q43 39 48 44'/%3E%3Cpath d='M62 34 Q66 30 70 34 Q74 30 78 34'/%3E%3C/g%3E%3C/svg%3E") top left no-repeat;
+  border-color: transparent;
+  color: transparent;
+  min-height: 5.5rem;
+  visibility: visible;
+}
+
+:root[data-editor-theme="moebius"].dark .markdown-editor__nav-root-drop {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='384' height='88' viewBox='0 0 384 88'%3E%3Cdefs%3E%3ClinearGradient id='s' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23131637'/%3E%3Cstop offset='0.55' stop-color='%231a1e46'/%3E%3Cstop offset='1' stop-color='%2312142f'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='384' height='88' fill='url(%23s)'/%3E%3Ccircle cx='320' cy='40' r='19' fill='%23e8ecfb' stroke='%237e86c2' stroke-width='2'/%3E%3Cg fill='none' stroke='%234a5282' stroke-width='1.2' stroke-opacity='0.45'%3E%3Ccircle cx='314' cy='46' r='4'/%3E%3Ccircle cx='327' cy='35' r='2'/%3E%3C/g%3E%3Cg fill='%23f2f0ff'%3E%3Cpath d='M36 20 L37.6 26.4 L44 28 L37.6 29.6 L36 36 L34.4 29.6 L28 28 L34.4 26.4 Z'/%3E%3Cpath d='M74 38 L75.2 42.8 L80 44 L75.2 45.2 L74 50 L72.8 45.2 L68 44 L72.8 42.8 Z'/%3E%3Ccircle cx='56' cy='56' r='1.4'/%3E%3Ccircle cx='104' cy='24' r='1.6'/%3E%3Ccircle cx='150' cy='50' r='1.2'/%3E%3C/g%3E%3C/svg%3E") top left no-repeat;
+}
+
+/* Dragging restores the target's own chrome over the art. */
+:root[data-editor-theme="moebius"] .markdown-editor__nav-root-drop[data-active="true"] {
+  border-color: var(--markdown-editor-divider);
+  color: var(--markdown-editor-muted);
+}
+
+/* --- the texture: grain that gathers where the light falls away ----- */
+/* The speckle is a self-contained SVG: turbulence thresholded to sparse dots,
+   ramped by a gradient and strength-set by a group opacity, all inside the same
+   document -- so it resolves nothing externally and can be a plain background
+   layer. Backgrounds, not overlays, on purpose: an overlay needs its host to be a
+   positioned element, and overriding `position` on this chrome breaks it (the top
+   bar and the footer are sticky, and a stray `position: relative` unpinned the top
+   bar). A background layer needs no positioning at all, and clips itself to the
+   element's own border radius.
+
+   Upright panels gather grain at the foot; the top bar gathers it at the right-hand
+   end; the command bar takes a thin edge along its bottom and right sides. */
+:root[data-editor-theme="moebius"] .markdown-editor__nav {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='1000' viewBox='0 0 5 1000' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%234a3428' stroke-linecap='round'%3E%3Cpath d='M2.5 0 C2.0 120 3.0 240 2.4 360 C1.9 480 3.0 560 2.6 640' stroke-width='1.7'/%3E%3Cpath d='M2.6 646 C2.2 690 2.9 740 2.5 780' stroke-width='1.35'/%3E%3Cpath d='M2.5 784 C2.1 820 2.9 860 2.6 900' stroke-width='1.95'/%3E%3Cpath d='M2.6 906 C2.3 940 2.8 975 2.5 1000' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") right top / 5px 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.55' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.3'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    var(--markdown-editor-background);
+}
+
+:root[data-editor-theme="moebius"].dark .markdown-editor__nav {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='1000' viewBox='0 0 5 1000' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%237e86c2' stroke-linecap='round'%3E%3Cpath d='M2.5 0 C2.0 120 3.0 240 2.4 360 C1.9 480 3.0 560 2.6 640' stroke-width='1.7'/%3E%3Cpath d='M2.6 646 C2.2 690 2.9 740 2.5 780' stroke-width='1.35'/%3E%3Cpath d='M2.5 784 C2.1 820 2.9 860 2.6 900' stroke-width='1.95'/%3E%3Cpath d='M2.6 906 C2.3 940 2.8 975 2.5 1000' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") right top / 5px 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.55' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.5'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    var(--markdown-editor-background);
+}
+
+/* The bar's two bands are the two rows themselves, so the colour steps exactly where
+   they meet. Split by a percentage it landed mid-row in one scheme and cut the search
+   box in half. */
+:root[data-editor-theme="moebius"] .markdown-editor__topbar {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='5' viewBox='0 0 1200 5' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%234a3428' stroke-linecap='round'%3E%3Cpath d='M0 2.5 C150 2.0 300 3.0 450 2.4 C600 1.9 700 3.0 760 2.6' stroke-width='1.7'/%3E%3Cpath d='M767 2.6 C820 2.2 890 2.9 940 2.5' stroke-width='1.35'/%3E%3Cpath d='M945 2.5 C990 2.1 1040 2.9 1090 2.6' stroke-width='1.95'/%3E%3Cpath d='M1096 2.6 C1130 2.3 1170 2.8 1200 2.5' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") left bottom / 100% 5px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='90' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.6' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.18'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    var(--moebius-bar-lo);
+}
+
+:root[data-editor-theme="moebius"].dark .markdown-editor__topbar {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='5' viewBox='0 0 1200 5' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%237e86c2' stroke-linecap='round'%3E%3Cpath d='M0 2.5 C150 2.0 300 3.0 450 2.4 C600 1.9 700 3.0 760 2.6' stroke-width='1.7'/%3E%3Cpath d='M767 2.6 C820 2.2 890 2.9 940 2.5' stroke-width='1.35'/%3E%3Cpath d='M945 2.5 C990 2.1 1040 2.9 1090 2.6' stroke-width='1.95'/%3E%3Cpath d='M1096 2.6 C1130 2.3 1170 2.8 1200 2.5' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") left bottom / 100% 5px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='90' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.6' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.55'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    var(--moebius-bar-lo);
+}
+
+/* Full-bleed: the top bar insets its rows by its own inline padding, so a background on
+   the row stopped short at both ends and the lower colour bookended it. The negative
+   margin cancels exactly that padding and the row re-applies it, so the colour reaches
+   the panel edges while the controls stay put.
+
+   Scoped to the editor's own top bar. The version pages (history, search, trash) reuse
+   this toolbar class without a .markdown-editor__topbar around it, so the band was
+   painting there too -- on a centred, narrow page, where it reached neither edge. Those
+   pages take the theme's colours and control faces, and no rock. */
+:root[data-editor-theme="moebius"] .markdown-editor__topbar .markdown-editor__toolbar--top {
+  background: var(--moebius-bar-hi);
+  margin-inline: -0.75rem;
+  padding-inline: 0.75rem;
+  /* The row carries an explicit width, so the negative margins alone could not stretch
+     it -- it kept the content width and fell 24px short at the right-hand end. */
+  width: calc(100% + 1.5rem);
+}
+
+/* The editing field's grain belongs to the surface the reader is looking at, not to
+   the document's length: attached to the viewport, so it neither stretches into
+   streaks down a long page (the SVG carries preserveAspectRatio="none", and over a
+   46,000px column that smeared the dots) nor scrolls away from the light. */
+:root[data-editor-theme="moebius"] .markdown-editor__content {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1000' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.58' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.12'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat fixed;
+}
+
+:root[data-editor-theme="moebius"].dark .markdown-editor__content {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1000' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.58' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.4'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat fixed;
+}
+
+:root[data-editor-theme="moebius"] .markdown-editor__toolbar--commands {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='60' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.68' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3ClinearGradient id='e' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.76' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23b)'/%3E%3Crect width='100%25' height='100%25' fill='url(%23e)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.16'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    var(--markdown-editor-pill-background);
+}
+
+:root[data-editor-theme="moebius"].dark .markdown-editor__toolbar--commands {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='60' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.68' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3ClinearGradient id='e' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.76' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23b)'/%3E%3Crect width='100%25' height='100%25' fill='url(%23e)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.45'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    var(--markdown-editor-pill-background);
+}
+
+/* --- drawn controls: a face of their own, and a line thick enough to waver ---
+   At 1px the wobble was invisible: the displacement is there, but a hairline gives
+   it nothing to show with. Every control that reads as drawn gets the theme's line
+   weight and an opaque face. */
+:root[data-editor-theme="moebius"] .markdown-editor__toolbar--top .btn,
+:root[data-editor-theme="moebius"] .markdown-editor__nav-trigger,
+:root[data-editor-theme="moebius"] .markdown-editor__sidebar-toggle,
+:root[data-editor-theme="moebius"] .markdown-editor__search-input,
+:root[data-editor-theme="moebius"] .chrome-segment-joined .btn {
+  background-color: var(--moebius-face);
+  border-color: var(--border);
+  border-style: solid;
+  border-width: var(--moebius-line-width);
+  color: var(--foreground);
+}
+
+/* The command bar takes the line weight only: its background is the grain layer above,
+   which already carries the pill colour under the dots. Listed among the faces, its
+   background-color had to be undone here -- and the undo won, so the bar went
+   transparent and the page showed straight through it in the light scheme. */
+:root[data-editor-theme="moebius"] .markdown-editor__toolbar--commands {
+  border-color: var(--border);
+  border-style: solid;
+  border-width: var(--moebius-line-width);
+}
+
+/* The two accents beat the shared face: they are state, not furniture. Written at the
+   same depth as the face rule so they win on order rather than by accident. */
+:root[data-editor-theme="moebius"] .markdown-editor__toolbar--top .markdown-editor__publish,
+:root[data-editor-theme="moebius"] .markdown-editor__nav-row[data-active="true"] {
+  background-color: var(--markdown-editor-accent);
+  color: var(--primary-foreground);
+}
+
+:root[data-editor-theme="moebius"] .chrome-segment-joined .btn[aria-checked="true"],
+:root[data-editor-theme="moebius"] .chrome-segment-joined .btn[aria-selected="true"] {
+  background-color: var(--moebius-switch);
+  color: var(--moebius-switch-text);
+}
+
+/* --- the metadata panel headings as lozenges -------------------------------
+   Contents, Attachments and History are small bordered plaques, as in the mockups.
+   The rail's own "Pages" heading shares this class and stays a plain label, so the
+   rule is scoped to the sidebar. */
+:root[data-editor-theme="moebius"] .markdown-editor__sidebar .markdown-editor__panel-heading {
+  background: var(--moebius-chip);
+  border: 1.5px solid var(--border);
+  border-radius: 5px;
+  color: var(--foreground);
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 700;
+  height: auto;
+  letter-spacing: 0.22em;
+  margin-bottom: 0.4rem;
+  padding: 1px 9px;
+  text-transform: uppercase;
+  width: fit-content;
+}
+
+/* --- the drawn edges ------------------------------------------------
+   The rail's right-hand border and the top bar's lower border are the theme's two longest
+   lines, and being plain CSS borders they stayed ruler-straight while every control around
+   them wavered. The wobble filter cannot help: both elements are sticky or scroll
+   containers, so filtering them would break the pinning and cost a full-height raster.
+   The line is drawn instead -- a tileable wave laid along the edge as the first background
+   layer, with the border itself made transparent. Kept shallow -- about half a pixel off
+   true -- because a regular ripple at anything like the stroke's own width reads as a
+   decorative squiggle rather than a drawn line.
+
+   Drawn as four separate segments of slightly different weight (1.35 to 1.95), so the line
+   thickens and thins the way a nib does, with three breaks between them. The segments sit
+   in the last third of the run, so the breaks gather toward the end of the stroke -- the
+   bottom of the rail, the right of the bar -- as they tend to in the reference art. The
+   image stretches to the edge rather than tiling (100% along the run, no-repeat): tiled,
+   the break pattern recurred every 240px, which is a texture rather than a drawn line, and
+   the count could not be pinned. Stretching runs along one axis only, so the stroke weights
+   and the wander stay true; only the gaps scale with the panel, which over the range these
+   edges take is a pixel or two. */
+:root[data-editor-theme="moebius"] .markdown-editor__nav {
+  border-right-color: transparent;
+}
+
+:root[data-editor-theme="moebius"] .markdown-editor__topbar {
+  border-bottom-color: transparent;
+}
+
+/* --- the contents rail marks the reading position in the accent ------
+   The chrome marks the on-screen sections in the text colour; here the marker is
+   the theme's warm accent, terracotta by day and ember after dark, as the mockups
+   have it -- with a glow at night, where the ember is the only lit thing. */
+:root[data-editor-theme="moebius"] .markdown-editor__toc-item[data-active="true"]::before {
+  background: var(--markdown-editor-accent);
+}
+
+:root[data-editor-theme="moebius"].dark .markdown-editor__toc-item[data-active="true"]::before {
+  box-shadow: 0 0 8px rgb(221 112 56 / 70%);
+}
+
+/* --- the hand: wobble on the drawn furniture ------------------------ */
+/* Only on elements that hold no popover with an outside containing block: a filter
+   makes an element a containing block, so it would re-anchor a `fixed` menu, and an
+   `absolute` one whose nearest positioned ancestor sits outside the filtered box.
+   The command bar is filtered: each of its dropdowns is absolutely positioned inside
+   its own relative wrapper, which stays inside the bar, so the anchor is unchanged
+   (verified by measuring every menu against its trigger). The nav's own operations
+   open `fixed` popovers and the search results are a body-level `fixed` overlay, so
+   the rail's header and the search field stay straight. */
+:root[data-editor-theme="moebius"] .markdown-editor__view-toggle,
+:root[data-editor-theme="moebius"] .markdown-editor__nav-row[data-active="true"],
+:root[data-editor-theme="moebius"] .markdown-editor__panel-heading,
+:root[data-editor-theme="moebius"] .markdown-editor__toolbar--commands {
+  filter: url(#moebius-wobble-a);
+}
+
+:root[data-editor-theme="moebius"] .chrome-segment-joined,
+:root[data-editor-theme="moebius"] .markdown-editor__sidebar-toggle,
+:root[data-editor-theme="moebius"] .markdown-editor__nav-trigger {
+  filter: url(#moebius-wobble-b);
+}
+
+/* The drawn object's shadow: a hard offset in the ink colour, not a blur -- the
+   floating bar sits on the page the way the mockups' does. */
+:root[data-editor-theme="moebius"] .markdown-editor__toolbar--commands {
+  box-shadow: 0 2px 0 var(--border);
 }

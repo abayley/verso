@@ -1343,6 +1343,37 @@ describe("MarkdownEditorElement visual themes", (): void => {
         expect(document.documentElement.getAttribute("data-editor-theme")).toBe("studio");
     });
 
+    it("given the Moebius theme, when selected, then it is applied and its wobble filters are injected once", async (): Promise<void> => {
+        const editor = document.createElement(elementName);
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        selectVisualTheme(editor, "moebius");
+
+        expect(document.documentElement.getAttribute("data-editor-theme")).toBe("moebius");
+        // The scenery and grain are self-contained data URIs in the stylesheet, but the hand-drawn wobble
+        // is a live filter, so the defs have to exist in the document for the CSS to resolve them.
+        const defs = document.getElementById("moebius-filter-defs");
+        expect(defs).not.toBeNull();
+        expect(defs?.querySelector("#moebius-wobble-a")).not.toBeNull();
+        expect(defs?.querySelector("#moebius-wobble-b")).not.toBeNull();
+
+        selectVisualTheme(editor, "shadcn");
+        selectVisualTheme(editor, "moebius");
+
+        expect(document.querySelectorAll("#moebius-filter-defs")).toHaveLength(1);
+    });
+
+    it("given a theme other than Moebius, when the editor initialises, then no wobble filters are injected", async (): Promise<void> => {
+        const editor = document.createElement(elementName);
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        selectVisualTheme(editor, "studio");
+
+        expect(document.getElementById("moebius-filter-defs")).toBeNull();
+    });
+
     it("given an invalid stored theme, when the editor initialises, then it falls back to shadcn", async (): Promise<void> => {
         window.localStorage.setItem("editor-theme", "not-a-theme");
 

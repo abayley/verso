@@ -37,13 +37,15 @@ import qualified Verso.Chrome as Chrome
 import qualified Verso.Git as Git
 
 {- | The visual themes the editor implements (RFC-0035): the default shadcn
-look, and Studio, which keeps the same look but swaps the persistent command
-bar for the bubble toolbar and slash menu. The page default and the pre-paint
-bootstrap validate against this set, so an unknown configured or stored value
-(including retired theme names) falls back to the default.
+look; Studio, which keeps the same look but swaps the persistent command bar
+for the bubble toolbar and slash menu; and Moebius, a full re-skin of the same
+chrome as a Jean Giraud desert, whose light and dark schemes are the same
+scene at noon and at night. The page default and the pre-paint bootstrap
+validate against this set, so an unknown configured or stored value (including
+retired theme names) falls back to the default.
 -}
 knownEditorThemes :: [String]
-knownEditorThemes = ["shadcn", "studio"]
+knownEditorThemes = ["shadcn", "studio", "moebius"]
 
 -- | Validates a configured default theme name, falling back to @shadcn@.
 safeEditorTheme :: String -> String
@@ -356,7 +358,7 @@ versionControls themeDefault =
             (Chrome.chromeIcon icon)
     -- The stored value stays @shadcn@ (preferences, the @editor_theme@ config and the
     -- page attribute all carry it); only the label shown is "Default".
-    visualThemeOptions = [("shadcn", "Default"), ("studio", "Studio")]
+    visualThemeOptions = [("shadcn", "Default"), ("studio", "Studio"), ("moebius", "Moebius")]
     themeLabelFor t = Maybe.fromMaybe "Default" (lookup t visualThemeOptions)
 
 -- | One history-table row: a select checkbox, the timestamp linking to that revision's read view, author, subject, and a Restore button.
@@ -382,7 +384,7 @@ selected the pane is hidden and the hint is shown.
 historyScript :: String
 historyScript =
     "<script>(function(){var r=document.documentElement;"
-        ++ "var labels={shadcn:'Default',studio:'Studio'};"
+        ++ "var labels={shadcn:'Default',studio:'Studio',moebius:'Moebius'};"
         ++ "var trig=document.getElementById('verso-theme-trigger');"
         ++ "var ct=localStorage.getItem('editor-theme')||r.getAttribute('data-editor-theme');"
         ++ "if(trig&&ct&&labels[ct]){trig.textContent=labels[ct];}"

@@ -75,7 +75,7 @@ import {
 type EditorMode = "visual" | "source" | "split";
 type EditorTheme = "light" | "dark" | "match-system";
 type BodyWidth = "narrow" | "medium" | "full";
-type VisualTheme = "shadcn" | "studio";
+type VisualTheme = "shadcn" | "studio" | "moebius";
 type ActivePane = "source" | "visual";
 
 const visualThemeStorageKey = "editor-theme";
@@ -115,14 +115,16 @@ function isBodyWidth(value: string | null): value is BodyWidth {
     return value !== null && bodyWidths.some((width) => width.value === value);
 }
 
-/** The selectable visual themes (RFC-0035): Default (the shadcn look), and Studio,
+/** The selectable visual themes (RFC-0035): Default (the shadcn look); Studio,
  * which keeps the same look but swaps the persistent command bar for the bubble
- * toolbar and slash menu. The stored value stays "shadcn" -- it is what preferences,
- * the `editor_theme` config and the page attribute already carry -- and only the
- * label the reader sees is "Default". */
+ * toolbar and slash menu; and Moebius, a full re-skin whose light and dark schemes
+ * are the same desert at noon and at night. The stored value stays "shadcn" -- it is
+ * what preferences, the `editor_theme` config and the page attribute already carry --
+ * and only the label the reader sees is "Default". */
 const visualThemes: { value: VisualTheme; label: string }[] = [
     { value: "shadcn", label: "Default" },
     { value: "studio", label: "Studio" },
+    { value: "moebius", label: "Moebius" },
 ];
 
 /** Narrows an arbitrary string to a known visual theme. */
@@ -149,6 +151,39 @@ function themeLabel(theme: VisualTheme): string {
 /** Whether a theme replaces the persistent command bar with the bubble toolbar and slash menu. */
 function themeUsesStudioSurfaces(theme: VisualTheme): boolean {
     return theme === "studio";
+}
+
+/** The id of the hidden SVG holding the Moebius theme's filters. */
+const moebiusFilterDefsId = "moebius-filter-defs";
+
+/**
+ * The Moebius theme's hand-drawn wobble: turbulence displacing an element's own pixels, in two seeds so
+ * that neighbouring controls do not bend identically. The stylesheet's scenery and grain are self-contained
+ * SVG data URIs, but a filter applied to live DOM has to resolve against a document node, so these defs are
+ * injected when the theme is chosen and left in place afterwards (they cost nothing once unreferenced).
+ */
+function ensureMoebiusFilterDefs(): void {
+    if (document.getElementById(moebiusFilterDefsId)) {
+        return;
+    }
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.id = moebiusFilterDefsId;
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("width", "0");
+    svg.setAttribute("height", "0");
+    svg.style.position = "absolute";
+    svg.innerHTML = [
+        '<filter id="moebius-wobble-a" x="-10%" y="-10%" width="120%" height="120%">',
+        '<feTurbulence type="fractalNoise" baseFrequency="0.012 0.018" numOctaves="2" seed="7" result="n"/>',
+        '<feDisplacementMap in="SourceGraphic" in2="n" scale="2.5" xChannelSelector="R" yChannelSelector="G"/>',
+        "</filter>",
+        '<filter id="moebius-wobble-b" x="-10%" y="-10%" width="120%" height="120%">',
+        '<feTurbulence type="fractalNoise" baseFrequency="0.014 0.02" numOctaves="2" seed="13" result="n"/>',
+        '<feDisplacementMap in="SourceGraphic" in2="n" scale="2.5" xChannelSelector="R" yChannelSelector="G"/>',
+        "</filter>",
+    ].join("");
+    document.body.append(svg);
 }
 
 /** Reads a stored preference, tolerating an unavailable or throwing localStorage. */
@@ -1554,6 +1589,11 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Sets the document's visual-theme attribute and reflects Studio's chrome. */
     private applyVisualTheme(): void {
         document.documentElement.setAttribute("data-editor-theme", this.visualTheme);
+
+        if (this.visualTheme === "moebius") {
+            ensureMoebiusFilterDefs();
+        }
+
         // The bubble toolbar and slash menu are visual-pane only, so the command
         // bar is suppressed only in visual mode; source and split keep it usable.
         const surfacesActive = themeUsesStudioSurfaces(this.visualTheme) && this.mode === "visual";

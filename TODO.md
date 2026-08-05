@@ -6,6 +6,7 @@ carried over from 2026-07-13 session (RFC-0036 / ADR-080):
   now also carries the lance 8.0.0 dep bump (branch `lance-upgrade-7325`) that
   fixed the FTS optimize panic -- fold it into the PR, and consider reporting
   the 7.0.0 panic upstream (draft text in docs/design/lance-fts-optimize-panic.md)
+- raise fault report against haskell time lib
 
 backend:
 
@@ -16,24 +17,28 @@ backend:
   <https://givemeyourdata.org/>
   <https://mysysinfo.com/>
 
+- refactor src/Verso/App.hs
+  some functions have very large parameter lists: treeRoutes, treePostDispatch, treeDelete, treeDeleteHandler
 - automatic tag classification - create set of canonical tags
 - generate image descriptions - gemma4?
+- test with ghc
 - load testing - simulate actual users fetching and saving pages
 - would like to notify user when page they are viewing or editing has been modified by someone else; how?
   needs to handle when other users update too - what is the notification mechanism? websockets?
 - high-level design doc, with example usage
 - hot reload
-- raise fault report against haskell time lib
 - replace mtl with heftia? what effect libraries will work with microhs?
 - database libs: postgres, sqlite, odbc?
 - what would it take to support long-polling and websocket applications? e.g. <https://asgi.readthedocs.io/en/latest/specs/www.html>
 - middleware functions: auth, security, error reporting, rate lmiting, cors handling, session management
 - Html.hs:
   - type alias for attr result: type Attr = (String, String)
+- option to emit static site? probably not worth it; renderer would need to match editor.
 
 frontend:
 
-- implement new themes (currently two: shadcn, studio — View.hs:42)
+- make speckle dots larger
+- resizing in edit mode is noticeably slower
 - test pasting in tables from word or excel
 - review code structure
 - can we bundle as desktop app?

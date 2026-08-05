@@ -9,6 +9,8 @@ static/editor/webawesome.css
 dist-newstyle/
 spike/editor-studio/bundle.js
 spike/editor-lit/bundle.js
+# copyrighted artwork
+docs/mockups/images/
 
 # RFC-0034 search: third-party builds and spike artefacts
 vendor/

@@ -737,9 +737,7 @@ data behind both the recent-deletes dropdown and the trash page.
 -}
 treeTrashListHandler :: Int -> FilePath -> FilePath -> Router.Handler
 treeTrashListHandler retentionDays trashRoot logPath _ _ = do
-    entries <- Iteratee.liftIO $ do
-        purgeExpiredTrash retentionDays trashRoot logPath
-        trashEntriesNewestFirst trashRoot logPath
+    entries <- Iteratee.liftIO (purgeExpiredTrash retentionDays trashRoot logPath)
     pure (jsonResponse (trashEntriesJson entries))
 
 {- | Permanently removes trash entries older than the retention period, in days
@@ -749,16 +747,20 @@ the operation log's delete timestamps; an entry with no logged timestamp is
 never auto-purged. Timestamps compare on their sortable date-time prefix (the
 zone suffix is ignored), which is exact to well under a day -- ample here.
 -}
-purgeExpiredTrash :: Int -> FilePath -> FilePath -> IO ()
+purgeExpiredTrash :: Int -> FilePath -> FilePath -> IO [(String, String, String, String)]
 purgeExpiredTrash retentionDays trashRoot logPath
-    | retentionDays <= 0 = pure ()
+    | retentionDays <= 0 = trashEntriesNewestFirst trashRoot logPath
     | otherwise = do
         now <- TimeMilli.getTimeMilli
         cutoff <- Log.localTimestampAtMillis (now - retentionDays * 86400000)
         entries <- trashEntriesNewestFirst trashRoot logPath
-        Monad.forM_ entries $ \(entryId, _, _, ts) ->
-            Monad.when (not (null ts) && take 19 ts < take 19 cutoff) $
-                Monad.void (TreeMove.deleteTrashEntry trashRoot entryId)
+        fmap Maybe.catMaybes $
+            Monad.forM entries $ \entry@(entryId, _, _, ts) ->
+                if not (null ts) && take 19 ts < take 19 cutoff
+                    then do
+                        removed <- TreeMove.deleteTrashEntry trashRoot entryId
+                        pure (if removed then Nothing else Just entry)
+                    else pure (Just entry)
 
 {- | Permanently deletes one trash entry (@DELETE /trash/\<id\>@, RFC-0028 as
 amended): the entry's files are removed for good. Nothing is logged -- the op
@@ -792,9 +794,7 @@ too small. Complements the dropdown; both restore through @POST /trash/\<id\>@.
 -}
 treeTrashPageHandler :: String -> Int -> FilePath -> FilePath -> Router.Handler
 treeTrashPageHandler themeDefault retentionDays trashRoot logPath _ request = do
-    entries <- Iteratee.liftIO $ do
-        purgeExpiredTrash retentionDays trashRoot logPath
-        trashEntriesNewestFirst trashRoot logPath
+    entries <- Iteratee.liftIO (purgeExpiredTrash retentionDays trashRoot logPath)
     -- The page that opened the trash view, so "back" returns there rather than the root (RFC-0028).
     pure (documentResponse (View.trashPage themeDefault (originFromReferer request) retentionDays entries))
 

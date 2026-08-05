@@ -374,30 +374,15 @@ revisionRow path rev =
                 Html.input [Html.attr "type" "hidden", Html.attr "name" "rev", Html.attr "value" (Git.revHash rev)]
                 Chrome.chromeSubmitButton Chrome.OutlineControl [Html.class_ "verso-rollback-button"] (Html.text "Restore")
 
-{- | The history page's client script: wires the Basecoat theme menu and the
-scheme button group to the editor's @localStorage@ keys (menuitem clicks on
-the dropdown, button clicks on the group), limits revision selection to two,
-and as soon as two are selected fetches the side-by-side diff fragment of the
-pair (older as @from@, newer as @to@) into the diff pane; with fewer than two
-selected the pane is hidden and the hint is shown.
+{- | The history page's client script limits revision selection to two and, as
+soon as two are selected, fetches the side-by-side diff fragment of the pair
+(older as @from@, newer as @to@) into the diff pane. With fewer than two
+selected the pane is hidden and the hint is shown. The shared editor bundle
+wires the appearance controls on every version page.
 -}
 historyScript :: String
 historyScript =
-    "<script>(function(){var r=document.documentElement;"
-        ++ "var labels={shadcn:'Default',studio:'Studio',moebius:'Moebius'};"
-        ++ "var trig=document.getElementById('verso-theme-trigger');"
-        ++ "var ct=localStorage.getItem('editor-theme')||r.getAttribute('data-editor-theme');"
-        ++ "if(trig&&ct&&labels[ct]){trig.textContent=labels[ct];}"
-        ++ "[].forEach.call(document.querySelectorAll('#verso-theme-menu [role=menuitem]'),function(it){"
-        ++ "it.addEventListener('click',function(){var v=it.getAttribute('data-value');"
-        ++ "if(v&&labels[v]){localStorage.setItem('editor-theme',v);r.setAttribute('data-editor-theme',v);if(trig){trig.textContent=labels[v];}}});});"
-        ++ "var sg=document.getElementById('verso-scheme-group');"
-        ++ "function applyScheme(s){var d=s==='dark'||(s!=='light'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);r.classList.toggle('dark',d);}"
-        ++ "function reflectScheme(v){if(!sg){return;}[].forEach.call(sg.querySelectorAll('[data-scheme]'),function(b){b.setAttribute('aria-checked',b.getAttribute('data-scheme')===v?'true':'false');});}"
-        ++ "if(sg){var cs=localStorage.getItem('editor-color-scheme')||'match-system';reflectScheme(cs);"
-        ++ "[].forEach.call(sg.querySelectorAll('[data-scheme]'),function(b){b.addEventListener('click',function(){"
-        ++ "var v=b.getAttribute('data-scheme');localStorage.setItem('editor-color-scheme',v);applyScheme(v);reflectScheme(v);});});}"
-        ++ "var boxes=[].slice.call(document.querySelectorAll('.verso-pick'));"
+    "<script>(function(){var boxes=[].slice.call(document.querySelectorAll('.verso-pick'));"
         ++ "var pane=document.getElementById('verso-diff-pane');var hint=document.getElementById('verso-diff-hint');"
         ++ "var p=pane?pane.getAttribute('data-path'):'';"
         ++ "function picked(){return boxes.filter(function(b){return b.checked;});}"

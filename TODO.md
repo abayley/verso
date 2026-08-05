@@ -17,6 +17,8 @@ backend:
   <https://givemeyourdata.org/>
   <https://mysysinfo.com/>
 
+- add trash index so it loads faster
+- reorganise project docs to match standard in aria-evals
 - refactor src/Verso/App.hs
   some functions have very large parameter lists: treeRoutes, treePostDispatch, treeDelete, treeDeleteHandler
 - automatic tag classification - create set of canonical tags

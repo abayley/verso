@@ -4,8 +4,12 @@ import { EditorState, Prec } from "@codemirror/state";
 import { tags } from "@lezer/highlight";
 import { basicSetup, EditorView } from "codemirror";
 import { fenceHighlighting } from "./codemirror-fence-highlight.js";
+import type { EditingCommand, EditingSurface, VisualBlockStyle } from "./editing-surface.js";
 import { headingLineNumbers } from "./table-of-contents.js";
-import type { VisualBlockStyle } from "./tiptap-visual-editor.js";
+
+type InlineEditingCommand = Extract<EditingCommand, { kind: "toggle-inline-style" }>;
+type StructureEditingCommand = Extract<EditingCommand, { kind: "toggle-structure" }>;
+type InsertStructureCommand = Extract<EditingCommand, { kind: "insert-structure" }>;
 
 // Syntax highlighting driven by the editor's palette CSS variables, so the Markdown source reads correctly
 // in both light and dark mode (the variables flip under :root.dark). It overrides CodeMirror's default
@@ -36,7 +40,7 @@ export interface CodeMirrorSourceSelection {
 }
 
 /** Markdown source editor adapter around CodeMirror. */
-export class CodeMirrorSourceEditor {
+export class CodeMirrorSourceEditor implements EditingSurface {
     private readonly root: HTMLDivElement;
     private readonly view: EditorView;
     private readonly onLinkShortcut: CodeMirrorLinkShortcutHandler;
@@ -138,6 +142,67 @@ export class CodeMirrorSourceEditor {
         });
     }
 
+    /** Applies a semantic editing command using CodeMirror transactions. */
+    public applyCommand(command: EditingCommand): boolean {
+        switch (command.kind) {
+            case "apply-block-style":
+                return this.applyBlockStyle(command.style);
+            case "toggle-inline-style":
+                return this.toggleInlineCommand(command.style, command.href);
+            case "toggle-structure":
+                return this.toggleStructureCommand(command.style);
+            case "apply-badge":
+                return this.applyBadge(command.colour);
+            case "remove-badge":
+            case "remove-link":
+                return false;
+            case "insert-structure":
+                return this.insertMarkdown(sourceStructureMarkdown(command));
+            case "insert-mermaid":
+                return this.insertMarkdown("```mermaid\ngraph TD\n    A --> B\n```\n");
+            case "insert-attachment":
+                return this.insertMarkdown(
+                    command.image ? `![${command.text}](${command.url})` : `[${command.text}](${command.url})`,
+                );
+            case "set-link":
+                return command.selection
+                    ? this.toggleLinkAt(command.selection, command.href)
+                    : this.toggleLink(command.href);
+        }
+    }
+
+    /** Routes an inline command to its CodeMirror implementation. */
+    private toggleInlineCommand(style: InlineEditingCommand["style"], href?: string): boolean {
+        switch (style) {
+            case "strong":
+                return this.toggleStrong();
+            case "emphasis":
+                return this.toggleEmphasis();
+            case "code":
+                return this.toggleCode();
+            case "strikethrough":
+                return this.toggleStrikethrough();
+            case "link":
+                return href ? this.toggleLink(href) : false;
+        }
+    }
+
+    /** Routes a structure command to its CodeMirror implementation. */
+    private toggleStructureCommand(style: StructureEditingCommand["style"]): boolean {
+        switch (style) {
+            case "bullet-list":
+                return this.toggleBulletList();
+            case "ordered-list":
+                return this.toggleOrderedList();
+            case "blockquote":
+                return this.toggleBlockquote();
+            case "code-block":
+                return this.insertCodeBlock();
+            case "thematic-break":
+                return this.insertThematicBreak();
+        }
+    }
+
     /** Applies a block style to the source line containing the cursor. */
     public applyBlockStyle(style: VisualBlockStyle): boolean {
         const selection = this.currentSourceSelection();
@@ -199,6 +264,17 @@ export class CodeMirrorSourceEditor {
     /** Returns the current source selection as CodeMirror document offsets. */
     public currentSelection(): CodeMirrorSourceSelection | null {
         return this.currentSourceSelection();
+    }
+
+    /** Selects a source range and focuses CodeMirror. */
+    public select(from: number, to: number): void {
+        this.view.dispatch({ selection: { anchor: from, head: to }, scrollIntoView: true });
+        this.view.focus();
+    }
+
+    /** Places the source caret at a document position. */
+    public caretAt(position: number): void {
+        this.select(position, position);
     }
 
     /** Toggles Markdown link markers around a previously captured source selection. */
@@ -456,6 +532,19 @@ export class CodeMirrorSourceEditor {
             to: Math.max(anchor, focus),
         };
     }
+}
+
+/** Serialises a semantic block insertion into its source-mode Markdown form. */
+function sourceStructureMarkdown(command: InsertStructureCommand): string {
+    if (command.structure === "table") {
+        return "| Column | Column |\n| --- | --- |\n| Cell | Cell |\n";
+    }
+
+    if (command.structure === "admonition") {
+        return `> [!${(command.admonitionKind ?? "note").toUpperCase()}]\n> Text\n`;
+    }
+
+    return `??? ${command.collapsibleKind ?? "note"} "Title"\n    Text\n`;
 }
 
 /** Converts a `heading-N` toolbar style identifier into its Markdown heading prefix. */

@@ -16,6 +16,17 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import StarterKit from "@tiptap/starter-kit";
 import { type AdmonitionKind, matchAlertMarker } from "./admonition-extension.js";
 import { type CollapsibleKind, matchCollapsibleMarker } from "./collapsible-extension.js";
+import type {
+    EditingCommand,
+    EditingSelection,
+    EditingSurface,
+    VisualBlockStyle,
+    VisualInlineStyle,
+    VisualStructureStyle,
+} from "./editing-surface.js";
+
+export type { VisualBlockStyle, VisualInlineStyle, VisualStructureStyle } from "./editing-surface.js";
+
 import { widthFromAttributes } from "./image-extension.js";
 import { isAllowedLinkUri } from "./link-uri.js";
 import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
@@ -35,22 +46,6 @@ export type TiptapChangeHandler = () => void;
 
 /** Callback fired when the visual editor requests link target input. */
 export type TiptapLinkShortcutHandler = () => void;
-
-/** Supported visual block styles exposed by the editor toolbar. */
-export type VisualBlockStyle =
-    | "paragraph"
-    | "heading-1"
-    | "heading-2"
-    | "heading-3"
-    | "heading-4"
-    | "heading-5"
-    | "heading-6";
-
-/** Supported visual inline styles exposed by the editor toolbar. */
-export type VisualInlineStyle = "strong" | "emphasis" | "code" | "strikethrough" | "link";
-
-/** Supported visual structure commands exposed by the editor toolbar. */
-export type VisualStructureStyle = "bullet-list" | "ordered-list" | "blockquote" | "code-block" | "thematic-break";
 
 /** Supported table-editing commands exposed when the selection is inside a table. */
 export type VisualTableCommand = "row-after" | "row-delete" | "column-after" | "column-delete" | "delete";
@@ -373,7 +368,7 @@ const SlashHint = Extension.create({
 });
 
 /** Markdown-in/Markdown-out adapter around Tiptap's visual editor. */
-export class TiptapVisualEditor {
+export class TiptapVisualEditor implements EditingSurface {
     private readonly editor: Editor;
     private normalisingSoftBreaks = false;
     private readonly onLinkShortcut: TiptapLinkShortcutHandler;
@@ -493,6 +488,15 @@ export class TiptapVisualEditor {
         headings[index]?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
 
+    /** Returns the viewport top of each top-level heading. */
+    public headingViewportTops(): readonly number[] {
+        const headings = this.root.querySelectorAll(
+            ".ProseMirror > h1, .ProseMirror > h2, .ProseMirror > h3, .ProseMirror > h4, .ProseMirror > h5, .ProseMirror > h6",
+        );
+
+        return Array.from(headings, (heading: Element): number => heading.getBoundingClientRect().top);
+    }
+
     /** Serialises the current Tiptap document to Markdown. */
     public toMarkdown(): string {
         const markdown = documentToMarkdown(documentFromElements(editorContentElements(this.editor.view.dom)));
@@ -526,6 +530,64 @@ export class TiptapVisualEditor {
         this.loadFootnotes(footnotes.definitions);
         this.loadReferenceLinks(references.definitions);
         this.collapseSoftBreaks();
+    }
+
+    /** Applies a semantic editing command using Tiptap commands. */
+    public applyCommand(command: EditingCommand): boolean {
+        switch (command.kind) {
+            case "apply-block-style":
+                return this.applyBlockStyle(command.style);
+            case "toggle-inline-style":
+                return this.toggleInlineStyle(command.style, command.href);
+            case "toggle-structure":
+                return this.toggleStructure(command.style);
+            case "apply-badge":
+                return this.applyBadge(command.colour);
+            case "remove-badge":
+                return this.removeBadge();
+            case "insert-structure":
+                return this.insertStructureCommand(command);
+            case "insert-mermaid":
+                return this.insertMermaid();
+            case "insert-attachment":
+                return command.image
+                    ? this.insertImage(command.url, command.text)
+                    : this.insertFileLink(command.url, command.text);
+            case "set-link":
+                return command.selection
+                    ? this.setLinkAt(command.selection, command.href)
+                    : this.toggleInlineStyle("link", command.href);
+            case "remove-link":
+                return this.unsetLinkAt(command.selection);
+        }
+    }
+
+    /** Routes a semantic block insertion to its Tiptap command. */
+    private insertStructureCommand(command: Extract<EditingCommand, { kind: "insert-structure" }>): boolean {
+        if (command.structure === "table") {
+            return this.insertTable();
+        }
+
+        if (command.structure === "admonition") {
+            return this.insertAdmonition(command.admonitionKind ?? "note");
+        }
+
+        return this.insertCollapsible(command.collapsibleKind ?? "note");
+    }
+
+    /** Returns the current non-empty selection when it belongs to the visual surface. */
+    public currentSelection(): EditingSelection | null {
+        return this.currentVisualSelection();
+    }
+
+    /** Selects a visual document range and focuses Tiptap. */
+    public select(from: number, to: number): void {
+        this.editor.chain().focus().setTextSelection({ from, to }).run();
+    }
+
+    /** Places the visual caret at a document position. */
+    public caretAt(position: number): void {
+        this.editor.chain().focus().setTextSelection(position).run();
     }
 
     /** Pre-extracts raw HTML (sentinels for marked) when preservation is on; a no-op passthrough otherwise. */
@@ -1503,14 +1565,14 @@ export class TiptapVisualEditor {
     }
 
     /** Updates the link target at a previously resolved visual link range. */
-    public setLinkAt(selection: VisualLinkSelection, href: string): boolean {
+    public setLinkAt(selection: EditingSelection, href: string): boolean {
         return this.withCurrentSelection(selection, (editor: Editor): boolean =>
             editor.chain().focus().setLink({ href }).run(),
         );
     }
 
     /** Removes the link mark at a previously resolved visual link range. */
-    public unsetLinkAt(selection: VisualLinkSelection): boolean {
+    public unsetLinkAt(selection: EditingSelection): boolean {
         return this.withCurrentSelection(selection, (editor: Editor): boolean =>
             editor.chain().focus().unsetLink().run(),
         );

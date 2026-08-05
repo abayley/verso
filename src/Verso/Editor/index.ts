@@ -3,6 +3,7 @@ import { installSearchPage } from "./search-page.js";
 import { installTooltips } from "./toolbar-tooltip-controller.js";
 import { installTrashPurge, installTrashRestore } from "./trash-page.js";
 import { installUndoApply } from "./undo-page.js";
+import { installVersionAppearance } from "./version-appearance.js";
 
 if (!customElements.get("markdown-editor")) {
     customElements.define("markdown-editor", MarkdownEditorElement);
@@ -19,3 +20,4 @@ installTrashPurge();
 installUndoApply();
 // The search page's instant results (likewise a delegated no-op elsewhere).
 installSearchPage();
+installVersionAppearance();

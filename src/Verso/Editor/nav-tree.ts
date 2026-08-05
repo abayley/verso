@@ -212,10 +212,14 @@ export class NavTreePanel {
     private creatingUnder: string | null = null;
     private createTitle = "";
     private createKind: "page" | "section" = "page";
-    /** The trash entries backing the trash dropdown (newest first), loaded when it opens. */
+    /** The trash entries backing the trash dropdown (newest first). */
     private trashEntries: TrashEntry[] = [];
-    /** The logged moves backing the undo dropdown (most recent first), loaded when it opens. */
+    /** A shared in-flight trash listing, so opening the menu cannot duplicate its preload. */
+    private trashLoading: Promise<void> | null = null;
+    /** The logged moves backing the undo dropdown (most recent first). */
     private moves: MoveOp[] = [];
+    /** A shared in-flight move listing, so opening the menu cannot duplicate its preload. */
+    private movesLoading: Promise<void> | null = null;
     /** The undo dropdown (a Basecoat menu anchored to its header button). */
     private readonly undoDropdown: ChromeDropdownElement;
     /** The trash dropdown: recent deletions with quick-restore, plus a link to the full trash page. */
@@ -314,6 +318,10 @@ export class NavTreePanel {
         // The spine only seeds the open page's ancestors; any other persisted-expanded folder has no cached
         // children yet, so fetch those and re-render -- otherwise it would show expanded (arrow down) but empty.
         void this.hydrate().then((): void => this.revealActive(false));
+        // Start the expensive trash listing while the page settles, rather than exposing its cold cost on
+        // the first menu click. The click handler still refreshes it so long-lived pages do not go stale.
+        void this.loadTrashItems();
+        void this.loadUndoItems();
     }
 
     /** Fetches children for persisted-expanded folders not covered by the spine, then re-renders. */
@@ -402,6 +410,11 @@ export class NavTreePanel {
         if (node.path === this.activePath) {
             row.dataset["active"] = "true";
         }
+        row.addEventListener("click", (event: MouseEvent): void => {
+            if (event.target === row) {
+                this.openNode(node);
+            }
+        });
 
         // The label is a button of its own inside the row, so the row actions can sit beside it and the
         // hover fill still covers the whole row; the shared truncating label moves into it.
@@ -787,7 +800,7 @@ export class NavTreePanel {
 
     /**
      * Builds the undo dropdown: a Basecoat menu whose trigger is the header's undo button and whose
-     * items are the logged moves (most recent first), loaded each time it opens. Choosing an item
+     * items are the logged moves (most recent first), refreshed each time it opens. Choosing an item
      * applies that move's inverse. A floating menu, rather than an inline panel, so it does not push
      * the tree down and reads as a normal dropdown.
      */
@@ -831,7 +844,26 @@ export class NavTreePanel {
      * Loads the logged moves and renders them as menu items (most recent first), or the fetch-failure
      * item, always followed by the link to the full undo page.
      */
-    private async loadUndoItems(): Promise<void> {
+    private loadUndoItems(): Promise<void> {
+        if (this.movesLoading !== null) {
+            return this.movesLoading;
+        }
+
+        const loading = this.refreshUndoItems();
+        this.movesLoading = loading;
+        void loading.then(
+            (): void => {
+                this.movesLoading = null;
+            },
+            (): void => {
+                this.movesLoading = null;
+            },
+        );
+
+        return loading;
+    }
+
+    private async refreshUndoItems(): Promise<void> {
         const moves = await this.options.listMoves();
         this.moves = [...(moves ?? [])].reverse(); // most recent first
         const moveItems =
@@ -916,7 +948,26 @@ export class NavTreePanel {
      * Loads the recent trash entries (newest first, server-ordered) as menu items, capped, plus the
      * "view all" link; a fetch failure renders as the error item instead of a false "empty".
      */
-    private async loadTrashItems(): Promise<void> {
+    private loadTrashItems(): Promise<void> {
+        if (this.trashLoading !== null) {
+            return this.trashLoading;
+        }
+
+        const loading = this.refreshTrashItems();
+        this.trashLoading = loading;
+        void loading.then(
+            (): void => {
+                this.trashLoading = null;
+            },
+            (): void => {
+                this.trashLoading = null;
+            },
+        );
+
+        return loading;
+    }
+
+    private async refreshTrashItems(): Promise<void> {
         const entries = await this.options.listTrash();
         this.trashEntries = entries ?? [];
         const recent = this.trashEntries.slice(0, TRASH_DROPDOWN_LIMIT);

@@ -2016,6 +2016,7 @@ markdown-editor[data-body-width="full"] .markdown-editor__sidebar[data-collapsed
 .markdown-editor__footer {
   align-items: center;
   bottom: 1.25rem;
+  container: editor-footer / inline-size;
   display: flex;
   flex-direction: column;
   position: sticky;
@@ -2772,6 +2773,7 @@ markdown-editor[data-pane-panel] .markdown-editor__sidebar[data-collapsed="true"
      Being full height it covers its own trigger, so it is dismissed by an outside
      click or Escape. */
   .markdown-editor__nav {
+    --markdown-editor-nav-border-left: calc(min(24rem, calc(100vw - 3rem)) - 8px);
     border: 1px solid var(--markdown-editor-divider);
     border-left: 0;
     border-radius: 0 8px 8px 0;
@@ -2799,6 +2801,7 @@ markdown-editor[data-pane-panel] .markdown-editor__sidebar[data-collapsed="true"
   markdown-editor[data-nav-open] .markdown-editor__nav {
     display: flex;
   }
+
 }
 
 /* ---------------------------------------------------------------------------
@@ -2920,6 +2923,43 @@ markdown-editor[data-appearance-open]
   ) {
   filter: blur(3px);
   opacity: 0.55;
+}
+
+/* The navigation rail changes the editing column independently of the viewport, so command-bar fit is a
+   property of the footer rather than the window. In the short band where the rail leaves roughly 800px,
+   compact controls keep the bar on one row. Once the footer is too narrow for that row, the two command
+   groups stack explicitly and the bar hugs the wider group instead of filling the available width. */
+@container editor-footer (max-width: 52rem) and (min-width: 44.01rem) {
+  .markdown-editor__toolbar--commands {
+    gap: 0.1rem;
+    padding-inline: 0.4rem;
+  }
+
+  .markdown-editor__toolbar--commands .markdown-editor__command-row {
+    gap: 0.1rem;
+  }
+
+  .markdown-editor__toolbar--commands .markdown-editor__button-group + .markdown-editor__button-group {
+    margin-left: 0.1rem;
+  }
+
+  .markdown-editor__toolbar--commands .markdown-editor__button {
+    min-width: 0;
+    padding-inline: 0.3rem;
+  }
+
+  .markdown-editor__toolbar--commands .markdown-editor__button[data-size="icon-sm"] {
+    height: 1.75rem;
+    padding: 0;
+    width: 1.75rem;
+  }
+}
+
+@container editor-footer (max-width: 44rem) {
+  .markdown-editor__toolbar--commands {
+    align-items: center;
+    flex-direction: column;
+  }
 }
 
 /* Below this width the command bar cannot seat its two groups at full size: its widest
@@ -3141,6 +3181,18 @@ markdown-editor[data-appearance-open]
    two accents directly, rather than Basecoat's neutral --accent, which the rest
    of the chrome still uses for hover. */
 /* --- the scenery: the tree carries the hour -------------------------- */
+/* The base rail owns an 8px inline inset for its controls. Let the two scenery
+   hosts cross that inset so their art reaches the rail edges, then restore the
+   inset inside the list so its rows do not move. */
+:root[data-editor-theme="moebius"] .markdown-editor__nav-root-drop,
+:root[data-editor-theme="moebius"] .markdown-editor__nav > .markdown-editor__nav-list {
+  margin-inline: -0.5rem;
+}
+
+:root[data-editor-theme="moebius"] .markdown-editor__nav > .markdown-editor__nav-list {
+  padding-inline: 0.5rem;
+}
+
 /* Sun, birds and a strip of banded sky above the first page; dunes and a saguaro
    below the last. Both are backgrounds on the root list, so they scroll with the
    tree and no page name ever sits over them, and both are drawn at the rail's own
@@ -3211,21 +3263,33 @@ markdown-editor[data-appearance-open]
    stays banked against the edge. Start offsets rise with how thin the surface is -- the
    command bar, being shallow, needs the tightest (0.82 up its height, 0.87 across). */
 :root[data-editor-theme="moebius"] .markdown-editor__nav {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='1000' viewBox='0 0 8 1000' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%234a3428' stroke-linecap='round'%3E%3Cpath d='M6.3 0 C7.0 35 7.07 95 6.3 130 C5.6 175 5.53 260 6.37 310 C6.79 350 6.86 415 6.3 455 C5.67 500 5.53 595 6.37 640' stroke-width='1.7'/%3E%3Cpath d='M6.37 643.5 C7.07 680 6.93 740 6.23 780' stroke-width='1.35'/%3E%3Cpath d='M6.23 782.5 C5.53 815 5.6 865 6.37 900' stroke-width='1.95'/%3E%3Cpath d='M6.37 903.5 C7.07 930 6.93 975 6.3 1000' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") right top / 8px 100% no-repeat,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.74' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.89' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.3'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.74' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.89' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.3'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
     var(--markdown-editor-background);
-  /* As on the top bar: the drawn edge has to reach the panel's own right edge, past the
-     transparent 1px border-right it replaces. */
-  background-origin: border-box, padding-box, padding-box;
+  background-origin: padding-box, padding-box;
 }
 
 :root[data-editor-theme="moebius"].dark .markdown-editor__nav {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='1000' viewBox='0 0 8 1000' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%237e86c2' stroke-linecap='round'%3E%3Cpath d='M6.3 0 C7.0 35 7.07 95 6.3 130 C5.6 175 5.53 260 6.37 310 C6.79 350 6.86 415 6.3 455 C5.67 500 5.53 595 6.37 640' stroke-width='1.7'/%3E%3Cpath d='M6.37 643.5 C7.07 680 6.93 740 6.23 780' stroke-width='1.35'/%3E%3Cpath d='M6.23 782.5 C5.53 815 5.6 865 6.37 900' stroke-width='1.95'/%3E%3Cpath d='M6.37 903.5 C7.07 930 6.93 975 6.3 1000' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") right top / 8px 100% no-repeat,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.74' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.89' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.5'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.74' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.89' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.5'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
     var(--markdown-editor-background);
-  /* As on the top bar: the drawn edge has to reach the panel's own right edge, past the
-     transparent 1px border-right it replaces. */
-  background-origin: border-box, padding-box, padding-box;
+  background-origin: padding-box, padding-box;
+}
+
+/* Child scenery paints above the rail background, so the drawn right edge has its own
+   transparent overlay. It reaches over the 1px border and remains above both scenery hosts.
+   Fixed positioning keeps the edge pinned to the viewport while its nav parent scrolls. */
+:root[data-editor-theme="moebius"] .markdown-editor__nav::after {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='1000' viewBox='0 0 8 1000' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%234a3428' stroke-linecap='round'%3E%3Cpath d='M6.3 0 C7.0 35 7.07 95 6.3 130 C5.6 175 5.53 260 6.37 310 C6.79 350 6.86 415 6.3 455 C5.67 500 5.53 595 6.37 640' stroke-width='1.7'/%3E%3Cpath d='M6.37 643.5 C7.07 680 6.93 740 6.23 780' stroke-width='1.35'/%3E%3Cpath d='M6.23 782.5 C5.53 815 5.6 865 6.37 900' stroke-width='1.95'/%3E%3Cpath d='M6.37 903.5 C7.07 930 6.93 975 6.3 1000' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") right top / 8px 100% no-repeat;
+  content: "";
+  inset: 0 auto 0
+    var(--markdown-editor-nav-border-left, calc(var(--markdown-editor-nav-width, 24rem) - 8px));
+  pointer-events: none;
+  position: fixed;
+  width: 8px;
+  z-index: 2;
+}
+
+:root[data-editor-theme="moebius"].dark .markdown-editor__nav::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='1000' viewBox='0 0 8 1000' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%237e86c2' stroke-linecap='round'%3E%3Cpath d='M6.3 0 C7.0 35 7.07 95 6.3 130 C5.6 175 5.53 260 6.37 310 C6.79 350 6.86 415 6.3 455 C5.67 500 5.53 595 6.37 640' stroke-width='1.7'/%3E%3Cpath d='M6.37 643.5 C7.07 680 6.93 740 6.23 780' stroke-width='1.35'/%3E%3Cpath d='M6.23 782.5 C5.53 815 5.6 865 6.37 900' stroke-width='1.95'/%3E%3Cpath d='M6.37 903.5 C7.07 930 6.93 975 6.3 1000' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E");
 }
 
 /* The bar's two bands are the two rows themselves, so the colour steps exactly where

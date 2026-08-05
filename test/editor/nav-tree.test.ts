@@ -102,6 +102,15 @@ describe("NavTreePanel navigation (RFC-0026)", () => {
         expect(expandedPaths()).toContain("guide");
     });
 
+    it("given a tree row, when its padding is clicked, then the browser navigates to the node", () => {
+        const { panel, navigateCalls } = mountNav();
+        const row = navLabel(panel, "Guide").closest(".markdown-editor__nav-row");
+
+        row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+        expect(navigateCalls).toEqual(["guide/index.md"]);
+    });
+
     it("given other branches expanded, when Collapse all is clicked, then only the open page's spine stays", () => {
         window.localStorage.setItem("editor-nav-expanded", JSON.stringify(["guide"]));
         const { panel } = mountNav();
@@ -139,6 +148,74 @@ describe("NavTreePanel navigation (RFC-0026)", () => {
         );
         expect(labels).toContain("Couldn’t reach the server.");
         expect(labels).toContain("View all in trash…");
+    });
+
+    it("given a new navigation tree, when mounted, then it starts loading trash before the menu is opened", () => {
+        let listCalls = 0;
+
+        mountNav({
+            listTrash: async (): Promise<unknown[]> => {
+                listCalls += 1;
+                return [];
+            },
+        });
+
+        expect(listCalls).toBe(1);
+    });
+
+    it("given a new navigation tree, when mounted, then it starts loading moves before the menu is opened", () => {
+        let listCalls = 0;
+
+        mountNav({
+            listMoves: async (): Promise<unknown[]> => {
+                listCalls += 1;
+                return [];
+            },
+        });
+
+        expect(listCalls).toBe(1);
+    });
+
+    it("given trash is still preloading, when the trash dropdown opens, then it reuses the pending request", async () => {
+        let listCalls = 0;
+        let finishListing: (entries: unknown[]) => void = (): void => {};
+        const listing = new Promise<unknown[]>((resolve): void => {
+            finishListing = resolve;
+        });
+        const { panel } = mountNav({
+            listTrash: (): Promise<unknown[]> => {
+                listCalls += 1;
+                return listing;
+            },
+        });
+
+        const trigger = panel.querySelector("#nav-trash-menu-trigger") as HTMLElement;
+        trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+        expect(listCalls).toBe(1);
+        finishListing([]);
+        await listing;
+    });
+
+    it("given moves are still preloading, when the undo dropdown opens, then it reuses the pending request", async () => {
+        let listCalls = 0;
+        let finishListing: (moves: unknown[]) => void = (): void => {};
+        const listing = new Promise<unknown[]>((resolve): void => {
+            finishListing = resolve;
+        });
+        const { panel } = mountNav({
+            listMoves: (): Promise<unknown[]> => {
+                listCalls += 1;
+                return listing;
+            },
+        });
+
+        const trigger = panel.querySelector("#nav-undo-menu-trigger") as HTMLElement;
+        trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+
+        expect(listCalls).toBe(1);
+        finishListing([]);
+        await listing;
     });
 
     it("given logged moves, when the undo dropdown opens, then a view-all item linking the undo page is last", async () => {

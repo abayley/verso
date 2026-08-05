@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Architecture review — micro-http editor frontend</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 4 4; }
+      .deep-box { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .hand-arrow { stroke: #64748b; stroke-width: 1.5; fill: none; marker-end: url(#arr); }
+      .hand-arrow-red { stroke: #dc2626; stroke-width: 1.5; fill: none; marker-end: url(#arr-red); }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+
+      <header class="space-y-3">
+        <h1 class="font-serif text-3xl">Architecture review — the editor frontend</h1>
+        <p class="text-sm text-slate-600">
+          <span class="font-mono">src/Verso/Editor/</span> (60 modules, ~14,100 lines) plus
+          <span class="font-mono">static/editor/markdown-editor.css</span> (hand-written source, 123 commits in 3 months — the hottest file in the codebase)
+          &middot; 2026-08-05 &middot; main @ c51cc67
+        </p>
+        <div class="flex flex-wrap gap-4 text-xs text-slate-500 pt-1">
+          <span><span class="inline-block w-3 h-3 border border-slate-400 bg-white align-middle mr-1"></span>module</span>
+          <span><span class="inline-block w-4 border-t border-dashed border-slate-500 align-middle mr-1" style="height:1px"></span>seam</span>
+          <span><span class="inline-block w-4 border-t-2 border-red-600 align-middle mr-1" style="height:2px"></span>leakage</span>
+          <span><span class="inline-block w-3 h-3 deep-box align-middle mr-1"></span>deep module</span>
+        </div>
+        <div class="border-l-4 border-indigo-400 bg-indigo-50 px-4 py-3 text-sm text-slate-700">
+          The coverage gap tracks the seams exactly: <em>every module with an injected port has a test;
+          every module that reaches for <span class="font-mono">document</span>/<span class="font-mono">window</span>/<span class="font-mono">fetch</span> directly has none.</em>
+          33 of 59 modules have no test file, and the one door into the real content pipeline is a 2,279-line
+          test file that boots the whole editor shell per assertion. Most candidates below are that observation, cashed out.
+        </div>
+      </header>
+
+      <section id="candidates" class="space-y-10">
+
+        <!-- ============================================================ C1 -->
+        <article id="c1" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">1 &middot; One editing-surface interface for the two panes</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-emerald-100 text-emerald-800 rounded-full px-3 py-1">Strong</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">local-substitutable</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">markdown-editor-element.ts &middot; codemirror-source-editor.ts &middot; tiptap-visual-editor.ts</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before</p>
+              <pre class="mermaid">
+flowchart TB
+  H["host — 14 sites of<br/>if shouldUseSourceCommands()"]
+  H -->|"toggleStrong()"| S["markdown view<br/>(CodeMirror)"]
+  H -->|"toggleInlineStyle('strong')"| V["visual view<br/>(Tiptap)"]
+  H -->|"toggleLink(href)"| S
+  H -->|"setLinkAt(sel, href)"| V
+  H -->|"insertMarkdown(md)"| S
+  H -->|"insertFileLink(url, text)"| V
+  R1["rule A: commands"] -.-> H
+  R2["rule B: serialise"] -.-> H
+  R3["rule C: contents panel"] -.-> H
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class R1,R2,R3 leak
+              </pre>
+              <p class="text-xs text-slate-500 mt-2">Three incompatible definitions of &ldquo;which surface is live&rdquo; in split view — none named.</p>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After</p>
+              <div class="relative h-64">
+                <div class="absolute top-0 left-1/2 -translate-x-1/2 w-48 border border-slate-300 bg-white rounded px-3 py-2 text-center">
+                  <span class="text-xs uppercase tracking-wider">host</span>
+                  <p class="text-xs text-slate-500 font-mono">activeSurface()</p>
+                </div>
+                <div class="absolute top-20 left-0 right-0 border-t border-dashed border-slate-500"></div>
+                <p class="absolute top-14 right-0 text-[10px] uppercase tracking-wider text-slate-400">seam: EditingSurface</p>
+                <div class="absolute top-24 left-0 right-0 grid grid-cols-2 gap-3 px-1">
+                  <div class="deep-box text-white rounded px-3 py-2">
+                    <span class="text-xs uppercase tracking-wider">source adapter</span>
+                    <p class="text-[10px] text-slate-300 font-mono mt-1">toMarkdown / setMarkdown<br/>applyCommand(cmd)<br/>select(from,to) / caretAt(pos)<br/>headingTops / scrollToHeading</p>
+                  </div>
+                  <div class="deep-box text-white rounded px-3 py-2">
+                    <span class="text-xs uppercase tracking-wider">visual adapter</span>
+                    <p class="text-[10px] text-slate-300 font-mono mt-1">same interface —<br/>host indifferent;<br/>inactive surface follows<br/>the active one</p>
+                  </div>
+                </div>
+                <div class="absolute bottom-2 left-0 right-0 text-center text-xs text-slate-500">two adapters justify the seam — real, not hypothetical</div>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem</span> — the two surfaces present different interfaces and the host absorbs the difference: ~14 <span class="font-mono text-xs">if&nbsp;(shouldUseSourceCommands())</span> branch sites (<span class="font-mono text-xs">:1352, :1373, :1730, :2238, :2255, :2311, :2320, :2420, :2439&hellip;</span>), each re-dispatching to a differently-named method per side, and three incompatible precedence rules for split view (commands <span class="font-mono text-xs">:2495</span>, serialisation <span class="font-mono text-xs">:2194</span>, contents panel <span class="font-mono text-xs">:665</span>).</p>
+          <p class="text-sm"><span class="font-semibold">Solution</span> — one <span class="font-mono text-xs">EditingSurface</span> interface both editors implement, one <span class="font-mono text-xs">activeSurface()</span> on the host; sync becomes &ldquo;the inactive surface follows the active one&rdquo;.</p>
+          <ul class="text-sm text-slate-700 grid md:grid-cols-2 gap-x-6 gap-y-1 list-disc list-inside">
+            <li>leverage: one interface, 14 call sites</li>
+            <li>three precedence rules become one</li>
+            <li>~130 lines of test selection-arrangement collapse</li>
+            <li>visual view gains a direct test seam</li>
+            <li>command routing testable without a DOM</li>
+            <li>locality: split-view sync in one place</li>
+          </ul>
+          <p class="text-xs text-slate-500">Two agents converged on this seam independently (host review and panels review). The first step — constructing <span class="font-mono">TiptapVisualEditor</span> without the host — is also the precondition for candidate 2's round-trip tests.</p>
+        </article>
+
+        <!-- ============================================================ C2 -->
+        <article id="c2" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">2 &middot; A protected-fragment pass on the pipeline that ships</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-emerald-100 text-emerald-800 rounded-full px-3 py-1">Strong</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">in-process</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">tiptap-visual-editor.ts (:166&ndash;189, :465&ndash;529, :546&ndash;1185)</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — five hand-rolled strip/load pairs, order in comments</p>
+              <div class="space-y-1">
+                <div class="h-9 border-l-4 border-red-400 bg-red-50 px-3 flex items-center text-xs font-mono">stripFencedCode &rarr; sentinel \u{E000}</div>
+                <div class="h-9 border-l-4 border-red-400 bg-red-50 px-3 flex items-center text-xs font-mono">extractFootnoteDefinitions &rarr; \u{E001}</div>
+                <div class="h-9 border-l-4 border-red-400 bg-red-50 px-3 flex items-center text-xs font-mono">extractReferenceDefinitions &rarr; \u{E002}</div>
+                <div class="h-9 border-l-4 border-red-400 bg-red-50 px-3 flex items-center text-xs font-mono">extractRawHtml &rarr; \u{E003}</div>
+                <div class="h-9 border-l-4 border-red-400 bg-red-50 px-3 flex items-center text-xs font-mono">extractBadges &rarr; \u{E004}</div>
+                <div class="text-[11px] text-slate-500 pt-1">&hellip;then an 11-step load sequence, written out twice (constructor :465&ndash;478 and setMarkdown :516&ndash;528), same ordering comment pasted into both.</div>
+              </div>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After — one pass, features contribute one value</p>
+              <div class="deep-box text-white rounded p-4">
+                <span class="text-xs uppercase tracking-wider">protected-fragment pass</span>
+                <p class="text-[11px] text-slate-300 font-mono mt-2">owns: sentinel allocation &middot; strip order &middot; restore order</p>
+                <div class="mt-3 grid grid-cols-2 gap-1 opacity-60">
+                  <div class="text-[10px] font-mono border border-slate-600 rounded px-2 py-1">fence {find, restore}</div>
+                  <div class="text-[10px] font-mono border border-slate-600 rounded px-2 py-1">footnote {find, restore}</div>
+                  <div class="text-[10px] font-mono border border-slate-600 rounded px-2 py-1">reference {find, restore}</div>
+                  <div class="text-[10px] font-mono border border-slate-600 rounded px-2 py-1">raw-html {find, restore}</div>
+                  <div class="text-[10px] font-mono border border-slate-600 rounded px-2 py-1">badge {find, restore}</div>
+                  <div class="text-[10px] font-mono border border-dashed border-slate-500 rounded px-2 py-1 text-slate-400">next feature&hellip;</div>
+                </div>
+              </div>
+              <p class="text-[11px] text-slate-500 pt-2">Load sequence encoded once; order is a structure, not a comment.</p>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem</span> — per ADR-051 the remark path is test-only, so the pipeline production actually runs (marked &rarr; ProseMirror DOM) has <em>no extension seam at all</em>: ~470 lines of the visual view are a compatibility layer over marked's gaps, five constructs each get an independently-written sentinel strip/load pair, and every content feature is implemented twice — with only the dead copy unit-tested.</p>
+          <p class="text-sm"><span class="font-semibold">Solution</span> — one interface for the sentinel round-trip: an ordered list of <span class="font-mono text-xs">{find, restore}</span> pairs owned by a single pass; each feature contributes one pair.</p>
+          <ul class="text-sm text-slate-700 grid md:grid-cols-2 gap-x-6 gap-y-1 list-disc list-inside">
+            <li>locality: one place owns strip/restore order</li>
+            <li>five hand-written pairs become five values</li>
+            <li>two duplicated 11-step sequences become one</li>
+            <li>with c1: round-trip testable as one function</li>
+          </ul>
+          <div class="border-l-4 border-amber-400 bg-amber-50 px-4 py-2 text-sm text-slate-700">
+            Respects ADR-051 (round-trip stability by offline trust) and ADR-041 — this doesn't reinstate the validation gate, it names the seam ADR-041's registry promised but only delivered on the test-only path. Mermaid (ADR-071) is the proof the target shape works: one feature, three files, no registry entry.
+          </div>
+        </article>
+
+        <!-- ============================================================ C3 -->
+        <article id="c3" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">3 &middot; Name the server client</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-emerald-100 text-emerald-800 rounded-full px-3 py-1">Strong</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">ports &amp; adapters</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">markdown-editor-element.ts (:974&ndash;1110, :2938) &middot; nav-tree.ts &middot; search-{page,panel}.ts &middot; trash-page.ts &middot; undo-page.ts &middot; attachment-upload.ts</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — 21 fetch sites, four idioms</p>
+              <pre class="mermaid">
+flowchart LR
+  subgraph idioms [" "]
+    A["host: 130-line inline<br/>closure literal &rarr; NavTreePanel"]
+    B["opRequest — the right shape,<br/>used by 2 of 12 host calls"]
+    C["fetch inline, themed banner:<br/>search-panel, search-page,<br/>attachment-upload"]
+    D["fetch inline, window.alert:<br/>trash-page, undo-page"]
+  end
+  A --> S[("server<br/>ADR-079 verbs")]
+  B --> S
+  C --> S
+  D --> S
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class D leak
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After — one adapter at a real seam</p>
+              <pre class="mermaid">
+flowchart LR
+  N["nav tree"] --> CL
+  P["pages: search,<br/>trash, undo"] --> CL
+  U["upload"] --> CL
+  T["tests"] -.->|"in-memory fake"| CL
+  CL["server client<br/>ADR-079 verbs as named fns<br/>normalised results &middot; validators<br/>one NETWORK_ERROR rule"]
+  CL --> S[("server")]
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a;
+  class CL deep
+              </pre>
+              <p class="text-[11px] text-slate-500 pt-1">Two adapters — HTTP in prod, fake in tests — make the seam real.</p>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem</span> — there is no server-communication module: 21 fetch sites across 7 files in four idioms; <span class="font-mono text-xs">opRequest</span> (the correct normalising shape) is used by 2 of the host's 12 calls while its siblings re-implement it inline; <span class="font-mono text-xs">listTrash</span> casts unvalidated JSON; failures surface as <span class="font-mono text-xs">window.alert</span> on two pages and themed banners elsewhere; restore/undo policy and confirmation copy are duplicated verbatim between the nav dropdowns and the standalone pages; search is the same feature written twice (page and panel — same endpoint, same constants, same cards).</p>
+          <p class="text-sm"><span class="font-semibold">Solution</span> — one module exposing the ADR-079 verbs as named functions returning a normalised result, with the JSON validators alongside; panels and pages take the client (or a fake) instead of a fetch each. <span class="font-mono text-xs">NavTreeOptions</span> shrinks from 13 members to the tree's own verbs plus chrome.</p>
+          <ul class="text-sm text-slate-700 grid md:grid-cols-2 gap-x-6 gap-y-1 list-disc list-inside">
+            <li>leverage: one adapter, 7 consumers</li>
+            <li>error UX becomes one rule</li>
+            <li>wire protocol testable without the host</li>
+            <li>restore/undo policy stated once</li>
+            <li>the client's view of the API in one file</li>
+            <li>nav-tree interface narrows: 13 &rarr; ~6</li>
+          </ul>
+        </article>
+
+        <!-- ============================================================ C4 -->
+        <article id="c4" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">4 &middot; One floating-surfaces module</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-amber-100 text-amber-800 rounded-full px-3 py-1">Worth exploring</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">in-process</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">slash-menu-element.ts &middot; bubble-toolbar-element.ts &middot; table-controls-element.ts &middot; markdown-editor-element.ts (:290&ndash;320, :1761&ndash;2038, :2293)</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — interface as wide as the implementation</p>
+              <div class="flex items-end gap-4 h-56 justify-center">
+                <div class="text-center">
+                  <div class="w-24 bg-amber-200 border border-amber-400" style="height:72px"></div>
+                  <div class="w-24 bg-slate-200 border border-slate-300" style="height:73px"></div>
+                  <p class="text-[10px] uppercase tracking-wider mt-1">slash menu<br/>73 lines</p>
+                </div>
+                <div class="text-center">
+                  <div class="w-24 bg-amber-200 border border-amber-400" style="height:64px"></div>
+                  <div class="w-24 bg-slate-200 border border-slate-300" style="height:85px"></div>
+                  <p class="text-[10px] uppercase tracking-wider mt-1">bubble toolbar<br/>171 lines</p>
+                </div>
+                <div class="text-center">
+                  <div class="w-28 bg-red-100 border border-red-300" style="height:40px"></div>
+                  <div class="w-28 bg-slate-300 border border-slate-400" style="height:150px"></div>
+                  <p class="text-[10px] uppercase tracking-wider mt-1">host absorbs<br/>~450 lines + 4 fields</p>
+                </div>
+              </div>
+              <p class="text-[11px] text-slate-500 pt-1">Amber = interface (props + events + <span class="font-mono">flush()</span>); grey = implementation. The elements render; the behaviour lives in the host.</p>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After</p>
+              <div class="flex items-end gap-4 h-56 justify-center">
+                <div class="text-center">
+                  <div class="w-40 bg-amber-200 border border-amber-400" style="height:26px"></div>
+                  <div class="w-40 deep-box" style="height:170px">
+                    <p class="text-[10px] text-slate-300 font-mono pt-2 px-2 text-left opacity-70">keyboard nav &middot; submenu stack<br/>highlight &middot; visibility rules<br/>positionOverlay (own seam)<br/>renders + positions in one call</p>
+                  </div>
+                  <p class="text-[10px] uppercase tracking-wider mt-1">floating surfaces<br/><span class="font-mono normal-case">showAt(anchor, state) / hide()</span></p>
+                </div>
+              </div>
+              <p class="text-[11px] text-slate-500 pt-1">No <span class="font-mono">flush()</span>: the two-step &ldquo;set props, then flush, then position&rdquo; protocol disappears from the interface.</p>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem</span> — three shallow render-only elements against ~450 lines of host-side behaviour; all three leak Lit's async batching as a public <span class="font-mono text-xs">flush()</span> the host must remember to call before positioning; <span class="font-mono text-xs">positionOverlay</span> — the one reusable overlay decision — is a private host method lent to four surfaces as a callback.</p>
+          <p class="text-sm"><span class="font-semibold">Solution</span> — one module owning state, keyboard, visibility, and positioning for the floating surfaces, with a synchronous <span class="font-mono text-xs">showAt/hide</span> interface; the three elements become its internal views.</p>
+          <ul class="text-sm text-slate-700 grid md:grid-cols-2 gap-x-6 gap-y-1 list-disc list-inside">
+            <li>interface shrinks; implementation absorbs the host code</li>
+            <li>framework detail stops crossing the seam</li>
+            <li>positionOverlay becomes the module's own seam</li>
+            <li>host loses ~450 lines and 4 state fields</li>
+          </ul>
+        </article>
+
+        <!-- ============================================================ C5 -->
+        <article id="c5" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">5 &middot; A theme descriptor as the single registration point</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-amber-100 text-amber-800 rounded-full px-3 py-1">Worth exploring</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">in-process</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">View.hs (:48, :361, :387) &middot; markdown-editor-element.ts (:124&ndash;128, :152, :165&ndash;187, :1590&ndash;1645) &middot; markdown-editor.css (:3027, :3088)</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — five registration sites, two by hand</p>
+              <div class="space-y-2 text-xs font-mono">
+                <div class="border border-slate-300 rounded px-3 py-2 bg-white">View.hs:48 &middot; knownEditorThemes <span class="text-slate-400">(allowlist)</span></div>
+                <div class="border border-slate-300 rounded px-3 py-2 bg-white">View.hs:361 &middot; visualThemeOptions <span class="text-slate-400">(labels)</span></div>
+                <div class="border-2 border-red-400 rounded px-3 py-2 bg-red-50">View.hs:387 &middot; historyScript label map <span class="text-red-500">(hand-copied — drift)</span></div>
+                <div class="border border-slate-300 rounded px-3 py-2 bg-white">markdown-editor-element.ts:124 &middot; visualThemes</div>
+                <div class="border border-slate-300 rounded px-3 py-2 bg-white">markdown-editor.css:3027/3088 &middot; token blocks</div>
+                <div class="border-2 border-red-400 rounded px-3 py-2 bg-red-50">host string-compares "studio" / "moebius" <span class="text-red-500">(:152, :1594)</span></div>
+              </div>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After</p>
+              <pre class="mermaid">
+flowchart TB
+  D["theme descriptor<br/>{ id, label, usesStudioSurfaces, filterDefs? }"]
+  D --> A["editor dropdown"]
+  D --> B["host behaviour<br/>(no theme names in it)"]
+  D -->|generated| C["server allowlist +<br/>version-page labels"]
+  E["CSS token blocks"] -.-> D
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a;
+  class D deep
+              </pre>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem</span> — ADR-036 promised three registration points; there are now five, and the two extra are hand-copied: the version pages' script re-duplicates the label map and re-implements scheme resolution, so adding a theme half-works (editor right, version-page trigger label wrong). The host also special-cases two theme names in TypeScript, against ADR-081's &ldquo;a theme changes the whole look without touching a component&rdquo;.</p>
+          <p class="text-sm"><span class="font-semibold">Solution</span> — one descriptor record per theme as the single registration point; dropdown, host behaviour, and (via generation) the server allowlist and version-page labels all read it.</p>
+          <ul class="text-sm text-slate-700 grid md:grid-cols-2 gap-x-6 gap-y-1 list-disc list-inside">
+            <li>closes a live drift, not a hypothetical</li>
+            <li>host contains zero theme names</li>
+            <li>adding a theme is one record + one CSS block</li>
+          </ul>
+          <div class="border-l-4 border-amber-400 bg-amber-50 px-4 py-2 text-sm text-slate-700">
+            Doesn't reopen ADR-036/077/081 — the drift is <em>past</em> the ADRs, and this restores their stated contract.
+          </div>
+        </article>
+
+        <!-- ============================================================ C6 -->
+        <article id="c6" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">6 &middot; Layout as a pure function over one breakpoint table</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-amber-100 text-amber-800 rounded-full px-3 py-1">Worth exploring</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">in-process</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">markdown-editor-element.ts (:94&ndash;103, :558&ndash;589, :751) &middot; markdown-editor.css (:2640&ndash;2994)</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — the arithmetic has two homes</p>
+              <div class="relative h-48">
+                <div class="absolute top-2 left-2 w-44 border border-slate-300 rounded px-3 py-2 bg-white">
+                  <p class="text-[10px] uppercase tracking-wider">TS constants</p>
+                  <p class="text-[10px] font-mono text-slate-500">"(max-width: 74rem)"<br/>syncPanePanel() computes<br/>the pane threshold</p>
+                </div>
+                <div class="absolute top-2 right-2 w-44 border border-slate-300 rounded px-3 py-2 bg-white">
+                  <p class="text-[10px] uppercase tracking-wider">CSS media queries</p>
+                  <p class="text-[10px] font-mono text-slate-500">@media (max-width: 74rem)<br/>[data-pane-panel] rules<br/>20-line prose rationale</p>
+                </div>
+                <svg class="absolute inset-0 w-full h-full" aria-hidden="true">
+                  <defs>
+                    <marker id="arr-red" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#dc2626"/></marker>
+                  </defs>
+                  <line x1="190" y1="60" x2="330" y2="60" class="hand-arrow-red seam"></line>
+                  <line x1="330" y1="72" x2="190" y2="72" class="hand-arrow-red seam"></line>
+                </svg>
+                <p class="absolute top-24 left-1/2 -translate-x-1/2 text-[10px] text-red-600 uppercase tracking-wider">&ldquo;kept in step&rdquo; — by hand</p>
+                <p class="absolute bottom-2 left-2 right-2 text-[11px] text-slate-500">6 of the last 37 commits touched these thresholds. <span class="font-mono">matchMedia</span> appears 0 times in the tests — every one validated by eye.</p>
+              </div>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After</p>
+              <pre class="mermaid">
+flowchart TB
+  T["breakpoint table<br/>measure &middot; rail width &middot; pane width"]
+  T --> F["layout(viewportWidth, railCollapsed)<br/>&rarr; { navIsPanel, panePanel }<br/>pure — table-driven tests"]
+  T -->|generates| G["CSS custom properties +<br/>TS media-query strings"]
+  F --> H["host: matchMedia<br/>subscription only"]
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a;
+  class T,F deep
+              </pre>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem</span> — the hottest-changing behaviour in the file is the least verifiable: threshold constants are duplicated between TS and CSS with comments admitting the hand-sync, the pane threshold is computed imperatively and published as a data-attribute, and none of it is testable because <span class="font-mono text-xs">matchMedia</span> is called directly.</p>
+          <p class="text-sm"><span class="font-semibold">Solution</span> — one breakpoint table generating both sides, with the layout decision a pure function of <span class="font-mono text-xs">(viewportWidth, railCollapsed)</span>; the host keeps only the subscription.</p>
+          <ul class="text-sm text-slate-700 grid md:grid-cols-2 gap-x-6 gap-y-1 list-disc list-inside">
+            <li>locality: the narrow measure has one home</li>
+            <li>the CSS prose rationale becomes a test table</li>
+            <li>six-commits-by-eye becomes assertable</li>
+          </ul>
+        </article>
+
+        <!-- ============================================================ C7 -->
+        <article id="c7" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">7 &middot; A liveness gate for chrome class names</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-emerald-100 text-emerald-800 rounded-full px-3 py-1">Strong</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">in-process</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">markdown-editor.css &middot; the 20 files producing markdown-editor__* names &middot; Makefile (chrome-gates)</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — renames drift silently, in both directions</p>
+              <div class="space-y-2 text-xs font-mono">
+                <div class="flex items-center gap-2">
+                  <span class="border border-slate-300 rounded px-2 py-1 bg-white">CSS :600 .markdown-editor__nav-trash</span>
+                  <span class="text-red-600">&rarr; produced by nothing</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="border border-slate-300 rounded px-2 py-1 bg-white">CSS :608 __nav-trash-heading</span>
+                  <span class="text-red-600">&rarr; dead</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="border border-slate-300 rounded px-2 py-1 bg-white">CSS :612 __nav-trash-row</span>
+                  <span class="text-red-600">&rarr; dead</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="border border-slate-300 rounded px-2 py-1 bg-white">CSS :1191 __theme-option</span>
+                  <span class="text-red-600">&rarr; dead</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="border border-slate-300 rounded px-2 py-1 bg-white">CSS :1195 __button-icon</span>
+                  <span class="text-red-600">&rarr; dead</span>
+                </div>
+              </div>
+              <p class="text-[11px] text-slate-500 pt-2">The other direction is worse: a themed rule that stops matching is a visual regression only that theme's users see. The Moebius block names 40 chrome classes; tests pin ~30 more.</p>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After</p>
+              <div class="deep-box text-white rounded p-4 h-full flex flex-col justify-center">
+                <span class="text-xs uppercase tracking-wider">build-time liveness check</span>
+                <p class="text-[11px] text-slate-300 font-mono mt-2">every markdown-editor__* selector in the CSS<br/>must be produced somewhere in src/</p>
+                <p class="text-[11px] text-slate-400 mt-3">One grep in the existing chrome-gates target. Would have caught all five dead rules. Converts an invisible hazard into a failing build.</p>
+              </div>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem</span> — no test, type, or build step ties a TS-produced class name to a CSS selector; a chrome rename is a 3&ndash;4 place edit (producer, base CSS, theme block, tests) and the base chrome has already leaked five dead selectors — the exact hazard ADR-081 accepted with greppability as the only control.</p>
+          <p class="text-sm"><span class="font-semibold">Solution</span> — a chrome-gates check asserting every <span class="font-mono text-xs">markdown-editor__*</span> selector in the CSS is produced in <span class="font-mono text-xs">src/</span>; optionally grow it into a declared themable-regions vocabulary later.</p>
+          <ul class="text-sm text-slate-700 grid md:grid-cols-2 gap-x-6 gap-y-1 list-disc list-inside">
+            <li>cheapest candidate on this list</li>
+            <li>already caught five real dead rules</li>
+            <li>protects every future theme, not just Moebius</li>
+          </ul>
+          <div class="border-l-4 border-amber-400 bg-amber-50 px-4 py-2 text-sm text-slate-700">
+            ADR-081 knowingly accepted the rename cost with contiguity + greppability as the mitigation. This doesn't contradict the ADR — it adds the control the evidence shows was missing.
+          </div>
+        </article>
+
+        <!-- ============================================================ C8 -->
+        <article id="c8" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">8 &middot; Deepen the content-extension registry</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-amber-100 text-amber-800 rounded-full px-3 py-1">Worth exploring</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">in-process</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">content-extension.ts &middot; register-extensions.ts &middot; editor-model.ts &middot; admonition/collapsible extensions &middot; markdown-parse{,-local}.ts &middot; markdown-serialise.ts</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — a registry accumulated by side effects</p>
+              <div class="space-y-1 text-xs font-mono">
+                <div class="border-l-4 border-slate-300 bg-slate-50 px-3 py-1.5">register-extensions.ts — 7 imports for side effect</div>
+                <div class="border-l-4 border-red-400 bg-red-50 px-3 py-1.5">initialise() :781 — badge + raw-html, imperative, &ldquo;opt-in&rdquo; = call timing</div>
+                <div class="border-l-4 border-slate-300 bg-slate-50 px-3 py-1.5">tests — a third path, honest only via Vitest module isolation</div>
+                <div class="border-l-4 border-red-400 bg-red-50 px-3 py-1.5">every extension: <span class="whitespace-nowrap">block.data as XData</span> — the unchecked cast, 7&times;</div>
+                <div class="border-l-4 border-slate-300 bg-slate-50 px-3 py-1.5">admonition &harr; collapsible: kinds tuple, title-caser, class round-trip, quoted-line emission — duplicated</div>
+                <div class="border-l-4 border-slate-300 bg-slate-50 px-3 py-1.5">markdown-parse.ts / -serialise.ts / -parse-local.ts — 249 lines of shells + a third grammar, all test-only</div>
+              </div>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After</p>
+              <pre class="mermaid">
+flowchart TB
+  P["pipeline = build(extensions, mode)<br/>a constructed value — both the production set<br/>and each test's set named in one place"]
+  P --> K["typed payload map:<br/>blockToMarkdown hands each extension<br/>its already-narrowed data"]
+  P --> C["one callout module —<br/>admonition + collapsible configure it"]
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a;
+  class P deep
+              </pre>
+              <p class="text-[11px] text-slate-500 pt-1">And delete the shells: they fail the deletion test — removing them moves nothing.</p>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem</span> — the registry is global mutable module state filled by import side effects along two registration paths that don't know about each other; &ldquo;opt-in&rdquo; is expressed by <em>when</em> you call rather than in the interface; the <span class="font-mono text-xs">data: unknown</span> escape hatch forces a guard-and-cast preamble in seven extensions with the promised validation done by none; and admonition/collapsible are the same feature sharing nothing.</p>
+          <p class="text-sm"><span class="font-semibold">Solution</span> — the registry becomes an explicitly constructed value (extension list + mode); the custom payload becomes a registry-keyed typed map; the callout family becomes one module two features configure. Delete the pass-through shells and the third grammar.</p>
+          <ul class="text-sm text-slate-700 grid md:grid-cols-2 gap-x-6 gap-y-1 list-disc list-inside">
+            <li>silent-omission hazard closed</li>
+            <li>seven guard-and-cast preambles deleted</li>
+            <li>naming stops misleading about the pipeline</li>
+          </ul>
+        </article>
+
+      </section>
+
+      <!-- ============================================================ TOP -->
+      <section id="top-recommendation" class="rounded-xl border-2 border-emerald-600 bg-emerald-50 p-8 space-y-3">
+        <p class="text-xs uppercase tracking-wider text-emerald-700 font-semibold">Top recommendation</p>
+        <h2 class="font-serif text-2xl"><a href="#c1" class="underline decoration-emerald-400 underline-offset-4">1 &middot; One editing-surface interface</a></h2>
+        <p class="text-sm text-slate-700 max-w-3xl">
+          Two agents converged on this seam from opposite directions, it owns the sharpest friction found
+          (three unnamed, incompatible definitions of &ldquo;which surface is live&rdquo;), and its first concrete step —
+          constructing <span class="font-mono text-xs">TiptapVisualEditor</span> without the host — is also the seam
+          candidate 2 needs to put round-trip stability tests on the pipeline that ships. Start there;
+          candidates 2 and 4 then peel off the host naturally. Candidate 7 is independent and an afternoon:
+          do it whenever.
+        </p>
+      </section>
+
+      <footer class="text-xs text-slate-400 pt-4 border-t border-slate-200">
+        Method: three parallel read-only explorations (host + chrome/theme seam &middot; content pipeline &middot; panels/pages/surfaces),
+        primed with the codebase-design vocabulary, CONTEXT.md, and ADR-036/041/051/059/071/077/079/081.
+        Scope: frontend only — <span class="font-mono">src/Verso/Editor/</span> + <span class="font-mono">markdown-editor.css</span>.
+        The backend is a separate review.
+      </footer>
+
+    </main>
+  </body>
+</html>

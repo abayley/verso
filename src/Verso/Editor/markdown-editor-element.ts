@@ -2,11 +2,10 @@ import { ADMONITION_KINDS, type AdmonitionKind, admonitionTitle } from "./admoni
 import {
     ATTACHMENT_DRAG_TYPE,
     AttachmentPanel,
-    attachmentLinkMarkdown,
     type PanelAttachment,
     parseEmbeddedAttachments,
 } from "./attachment-panel.js";
-import { attachmentMarkdown, isInlineImage, uploadAttachment } from "./attachment-upload.js";
+import { isInlineImage, uploadAttachment } from "./attachment-upload.js";
 import { badgeExtension } from "./badge-extension.js";
 import { type Breadcrumb, parseBreadcrumbs } from "./breadcrumbs.js";
 import { BubbleToolbarElement } from "./bubble-toolbar-element.js";
@@ -38,6 +37,7 @@ import {
 } from "./command-bar-element.js";
 import { themedConfirm } from "./confirm-dialog.js";
 import { registerExtension } from "./content-extension.js";
+import type { EditingCommand, EditingSurface } from "./editing-surface.js";
 import { INLINE_COMMANDS } from "./editor-toolbar-shared.js";
 import { frontmatterName, joinFrontmatter, setFrontmatterName, splitFrontmatter } from "./frontmatter.js";
 import { imageShortTitles } from "./image-metadata.js";
@@ -663,11 +663,7 @@ export class MarkdownEditorElement extends HTMLElement {
      * elements; the source view has none, so CodeMirror's height map answers for it instead.
      */
     private headingViewportTops(): number[] {
-        if (this.visualEditor) {
-            return this.headingElements().map((heading: HTMLElement): number => heading.getBoundingClientRect().top);
-        }
-
-        return this.sourceEditor?.headingViewportTops() ?? [];
+        return [...(this.activeSurface()?.headingViewportTops() ?? [])];
     }
 
     /**
@@ -1349,19 +1345,9 @@ export class MarkdownEditorElement extends HTMLElement {
      * (removal is visual-only, since stripping the source form is ambiguous).
      */
     private applyBadge(value: string): void {
-        if (this.shouldUseSourceCommands()) {
-            if (value !== "remove" && this.sourceEditor?.applyBadge(value)) {
-                this.handleSourceInput();
-            }
-
-            return;
-        }
-
-        const applied = value === "remove" ? this.visualEditor?.removeBadge() : this.visualEditor?.applyBadge(value);
-
-        if (applied) {
-            this.handleVisualInput();
-        }
+        this.applyEditingCommand(
+            value === "remove" ? { kind: "remove-badge" } : { kind: "apply-badge", colour: value },
+        );
     }
 
     /**
@@ -1370,25 +1356,11 @@ export class MarkdownEditorElement extends HTMLElement {
      * `> [!NOTE]` alert, or an mkdocs `??? note` collapsible) at the caret.
      */
     private insertStructure(kind: InsertStructureKind, admonitionKind?: string): void {
-        if (this.shouldUseSourceCommands()) {
-            if (this.sourceEditor?.insertMarkdown(structureMarkdown(kind, admonitionKind))) {
-                this.handleSourceInput();
-            }
-
-            return;
-        }
-
-        const callout = (admonitionKind ?? "note") as AdmonitionKind;
-        const inserted =
-            kind === "table"
-                ? this.visualEditor?.insertTable()
-                : kind === "admonition"
-                  ? this.visualEditor?.insertAdmonition(callout)
-                  : this.visualEditor?.insertCollapsible("note");
-
-        if (inserted) {
-            this.handleVisualInput();
-        }
+        this.applyEditingCommand({
+            kind: "insert-structure",
+            structure: kind,
+            ...(kind === "admonition" ? { admonitionKind: (admonitionKind ?? "note") as AdmonitionKind } : {}),
+        });
     }
 
     /** Creates the document name label shown in the editor top bar. */
@@ -1699,7 +1671,7 @@ export class MarkdownEditorElement extends HTMLElement {
                 this.activeEditPaneRect() ??
                 this.body?.getBoundingClientRect() ??
                 this.getBoundingClientRect(),
-            usingSource: (): boolean => this.shouldUseSourceCommands(),
+            usingSource: (): boolean => this.activeSurface() === this.sourceEditor,
             captureSourceSelection: (): CodeMirrorSourceSelection | null =>
                 this.sourceEditor?.currentSelection() ?? null,
             applyLink: (
@@ -1727,34 +1699,13 @@ export class MarkdownEditorElement extends HTMLElement {
         sourceSelection: CodeMirrorSourceSelection | null,
         visualSelection: VisualLinkSelection | null,
     ): void {
-        if (this.shouldUseSourceCommands()) {
-            if (sourceSelection) {
-                this.sourceEditor?.toggleLinkAt(sourceSelection, href);
-            } else {
-                this.sourceEditor?.toggleLink(href);
-            }
-
-            return;
-        }
-
-        if (visualSelection) {
-            if (this.visualEditor?.setLinkAt(visualSelection, href)) {
-                this.handleVisualInput();
-            }
-
-            return;
-        }
-
-        if (this.visualEditor?.toggleInlineStyle("link", href)) {
-            this.handleVisualInput();
-        }
+        const selection = this.activeSurface() === this.sourceEditor ? sourceSelection : visualSelection;
+        this.applyEditingCommand({ kind: "set-link", href, ...(selection ? { selection } : {}) });
     }
 
     /** Removes the link mark at a resolved visual selection (the link controller's remove host). */
     private removeVisualLink(selection: VisualLinkSelection): void {
-        if (this.visualEditor?.unsetLinkAt(selection)) {
-            this.handleVisualInput();
-        }
+        this.applyEditingCommand({ kind: "remove-link", selection });
     }
 
     /** Creates the Studio selection bubble toolbar and routes its command events to the active editor. */
@@ -1912,11 +1863,12 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
-        const rect = this.shouldUseSourceCommands()
-            ? null
-            : this.visualEditor?.isInTable()
-              ? this.visualEditor.tableRect()
-              : null;
+        const rect =
+            this.activeSurface() === this.sourceEditor
+                ? null
+                : this.visualEditor?.isInTable()
+                  ? this.visualEditor.tableRect()
+                  : null;
 
         if (!rect) {
             this.tableControls.hidden = true;
@@ -1930,7 +1882,7 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Runs a table-editing command through the visual editor and refreshes the controls. */
     private runTableCommand(command: VisualTableCommand): void {
         if (this.visualEditor?.runTableCommand(command)) {
-            this.handleVisualInput();
+            this.handleEditingSurfaceInput(this.visualEditor);
             this.updateTableControls();
         }
     }
@@ -1938,7 +1890,7 @@ export class MarkdownEditorElement extends HTMLElement {
     /** Sets the GFM column alignment on the selected table cells. */
     private alignTableColumn(align: "left" | "center" | "right"): void {
         if (this.visualEditor?.setColumnAlignment(align)) {
-            this.handleVisualInput();
+            this.handleEditingSurfaceInput(this.visualEditor);
         }
     }
 
@@ -2069,7 +2021,7 @@ export class MarkdownEditorElement extends HTMLElement {
         if (this.mode === "source" || this.mode === "split") {
             this.sourceEditor = new CodeMirrorSourceEditor(
                 this.markdown,
-                (): void => this.handleSourceInput(),
+                (): void => this.handleEditingSurfaceInput(this.sourceEditor),
                 (): void => this.handleSourceLinkShortcut(),
                 { editable: !this.isReadonly() },
             );
@@ -2081,7 +2033,7 @@ export class MarkdownEditorElement extends HTMLElement {
         if (this.mode === "visual" || this.mode === "split") {
             this.visualEditor = new TiptapVisualEditor(
                 this.markdown,
-                (): void => this.handleVisualInput(),
+                (): void => this.handleEditingSurfaceInput(this.visualEditor),
                 (): void => this.handleVisualLinkShortcut(),
                 { preserveRawHtml: true, editable: !this.isReadonly() },
             );
@@ -2193,19 +2145,16 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Serialises the current editor value to Markdown. */
     public toMarkdown(): string {
-        if (this.sourceEditor) {
-            return this.sourceEditor.toMarkdown();
-        }
-
-        if (!this.visualEditor) {
+        const surface = this.activeSurface();
+        if (!surface) {
             return this.markdown;
         }
 
-        if (!this.visualEditorChanged) {
+        if (surface === this.visualEditor && !this.visualEditorChanged) {
             return this.markdown;
         }
 
-        return this.visualEditor.toMarkdown();
+        return surface.toMarkdown();
     }
 
     /** The full document to persist: the editor body with the preserved frontmatter re-attached. */
@@ -2235,14 +2184,7 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
-        if (this.shouldUseSourceCommands()) {
-            this.sourceEditor?.applyBlockStyle(style);
-            return;
-        }
-
-        if (this.visualEditor?.applyBlockStyle(style)) {
-            this.handleVisualInput();
-        }
+        this.applyEditingCommand({ kind: "apply-block-style", style });
     }
 
     /** Toggles an inline style through the active visual editor. */
@@ -2252,29 +2194,7 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
-        if (this.shouldUseSourceCommands()) {
-            if (style === "strong") {
-                this.sourceEditor?.toggleStrong();
-            }
-
-            if (style === "emphasis") {
-                this.sourceEditor?.toggleEmphasis();
-            }
-
-            if (style === "code") {
-                this.sourceEditor?.toggleCode();
-            }
-
-            if (style === "strikethrough") {
-                this.sourceEditor?.toggleStrikethrough();
-            }
-
-            return;
-        }
-
-        if (this.visualEditor?.toggleInlineStyle(style)) {
-            this.handleVisualInput();
-        }
+        this.applyEditingCommand({ kind: "toggle-inline-style", style });
     }
 
     /** Opens link editing from a source-pane keyboard shortcut. */
@@ -2308,70 +2228,32 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Returns the active edit pane rectangle for overlay anchoring. */
     private activeEditPaneRect(): DOMRect | null {
-        if (this.shouldUseSourceCommands()) {
-            return this.sourceEditor?.element().getBoundingClientRect() ?? null;
-        }
-
-        return this.visualEditor?.element().getBoundingClientRect() ?? null;
+        return this.activeSurface()?.element().getBoundingClientRect() ?? null;
     }
 
     /** Toggles a structural style through the active editor. */
     private toggleStructure(style: VisualStructureStyle): void {
-        if (this.shouldUseSourceCommands()) {
-            if (style === "bullet-list") {
-                this.sourceEditor?.toggleBulletList();
-            }
-
-            if (style === "ordered-list") {
-                this.sourceEditor?.toggleOrderedList();
-            }
-
-            if (style === "blockquote") {
-                this.sourceEditor?.toggleBlockquote();
-            }
-
-            if (style === "code-block") {
-                this.sourceEditor?.insertCodeBlock();
-            }
-
-            if (style === "thematic-break") {
-                this.sourceEditor?.insertThematicBreak();
-            }
-
-            return;
-        }
-
-        if (this.visualEditor?.toggleStructure(style)) {
-            this.handleVisualInput();
-        }
+        this.applyEditingCommand({ kind: "toggle-structure", style });
     }
 
     /** Inserts an admonition callout of the given kind at the current visual selection. */
     private insertAdmonition(kind: AdmonitionKind): void {
-        if (this.visualEditor?.insertAdmonition(kind)) {
-            this.handleVisualInput();
-        }
+        this.applyEditingCommand({ kind: "insert-structure", structure: "admonition", admonitionKind: kind });
     }
 
     /** Inserts a collapsible callout of the given type at the current visual selection. */
     private insertCollapsible(kind: CollapsibleKind): void {
-        if (this.visualEditor?.insertCollapsible(kind)) {
-            this.handleVisualInput();
-        }
+        this.applyEditingCommand({ kind: "insert-structure", structure: "collapsible", collapsibleKind: kind });
     }
 
     /** Inserts a table at the current visual selection. */
     private insertTable(): void {
-        if (this.visualEditor?.insertTable()) {
-            this.handleVisualInput();
-        }
+        this.applyEditingCommand({ kind: "insert-structure", structure: "table" });
     }
 
     /** Inserts a Mermaid diagram code block at the current visual selection (RFC-0033). */
     private insertMermaid(): void {
-        if (this.visualEditor?.insertMermaid()) {
-            this.handleVisualInput();
-        }
+        this.applyEditingCommand({ kind: "insert-mermaid" });
     }
 
     /** Opens the native file picker, limiting it to inline image types when an image was requested. */
@@ -2417,36 +2299,17 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Inserts an uploaded file's Markdown at the caret: an inline image, or a download link otherwise. */
     private insertUpload(file: File, url: string): void {
-        if (this.shouldUseSourceCommands()) {
-            if (this.sourceEditor?.insertMarkdown(attachmentMarkdown(file, url))) {
-                this.handleSourceInput();
-            }
-
-            return;
-        }
-
-        const inserted = isInlineImage(file)
-            ? this.visualEditor?.insertImage(url, file.name)
-            : this.visualEditor?.insertFileLink(url, file.name);
-
-        if (inserted) {
-            this.handleVisualInput();
-        }
+        this.applyEditingCommand({ kind: "insert-attachment", image: isInlineImage(file), text: file.name, url });
     }
 
     /** Inserts a Markdown link to an attachment (from the metadata panel) at the caret, in either pane. */
     private insertAttachmentLink(attachment: PanelAttachment): void {
-        if (this.shouldUseSourceCommands()) {
-            if (this.sourceEditor?.insertMarkdown(attachmentLinkMarkdown(attachment))) {
-                this.handleSourceInput();
-            }
-
-            return;
-        }
-
-        if (this.visualEditor?.insertFileLink(attachment.localPath, attachment.name)) {
-            this.handleVisualInput();
-        }
+        this.applyEditingCommand({
+            kind: "insert-attachment",
+            image: false,
+            text: attachment.name,
+            url: attachment.localPath,
+        });
     }
 
     /** Accepts attachments dragged from the metadata panel onto the editor body, inserting a link at the caret. */
@@ -2491,9 +2354,18 @@ export class MarkdownEditorElement extends HTMLElement {
         this.uploadNotice.hidden = true;
     }
 
-    /** Checks whether toolbar commands should target the source editor. */
-    private shouldUseSourceCommands(): boolean {
-        return Boolean(this.sourceEditor && (!this.visualEditor || this.activePane === "source"));
+    /** Returns the one surface which currently owns commands, serialisation, and heading navigation. */
+    private activeSurface(): EditingSurface | null {
+        if (this.sourceEditor && (!this.visualEditor || this.activePane === "source")) {
+            return this.sourceEditor;
+        }
+
+        return this.visualEditor;
+    }
+
+    /** Applies a semantic command to the active editing surface. */
+    private applyEditingCommand(command: EditingCommand): void {
+        this.activeSurface()?.applyCommand(command);
     }
 
     /** Switches the active editor mode, carrying the current Markdown across. */
@@ -2509,30 +2381,35 @@ export class MarkdownEditorElement extends HTMLElement {
         this.updateCursorPosition();
     }
 
-    /** Handles source editor edits and synchronises any visual split pane. */
-    private handleSourceInput(): void {
-        if (this.syncingEditors || this.buildingEditors) {
+    /** Handles a surface edit and makes the inactive split pane follow it. */
+    private handleEditingSurfaceInput(surface: EditingSurface | null): void {
+        if (!surface || this.syncingEditors || this.buildingEditors) {
             return;
         }
 
-        const markdown = this.toMarkdown();
+        const markdown = surface.toMarkdown();
 
-        this.syncVisualEditor(markdown);
+        if (surface === this.visualEditor) {
+            this.visualEditorChanged = true;
+        }
+
+        this.syncInactiveSurface(surface, markdown);
         this.dispatchMarkdownChange(markdown);
+        if (surface === this.visualEditor) {
+            this.updateTableControls();
+        }
     }
 
-    /** Handles visual editor edits and synchronises any source split pane. */
-    private handleVisualInput(): void {
-        if (this.syncingEditors || this.buildingEditors) {
+    /** Replaces the inactive split surface while suppressing its change callback. */
+    private syncInactiveSurface(active: EditingSurface, markdown: string): void {
+        const inactive = active === this.sourceEditor ? this.visualEditor : this.sourceEditor;
+        if (!inactive || inactive.toMarkdown() === markdown) {
             return;
         }
 
-        const markdown = this.visualEditor?.toMarkdown() ?? this.markdown;
-
-        this.visualEditorChanged = true;
-        this.syncSourceEditor(markdown);
-        this.dispatchMarkdownChange(markdown);
-        this.updateTableControls();
+        this.syncingEditors = true;
+        inactive.setMarkdown(markdown);
+        this.syncingEditors = false;
     }
 
     /** Records a valid Markdown change and notifies autosave and chrome listeners. */
@@ -2551,28 +2428,6 @@ export class MarkdownEditorElement extends HTMLElement {
                 },
             }),
         );
-    }
-
-    /** Synchronises the source editor from visual Markdown without echoing input. */
-    private syncSourceEditor(markdown: string): void {
-        if (!this.sourceEditor || this.sourceEditor.toMarkdown() === markdown) {
-            return;
-        }
-
-        this.syncingEditors = true;
-        this.sourceEditor.setMarkdown(markdown);
-        this.syncingEditors = false;
-    }
-
-    /** Synchronises the visual editor from source Markdown without echoing input. */
-    private syncVisualEditor(markdown: string): void {
-        if (!this.visualEditor || this.visualEditor.toMarkdown() === markdown) {
-            return;
-        }
-
-        this.syncingEditors = true;
-        this.visualEditor.setMarkdown(markdown);
-        this.syncingEditors = false;
     }
 
     /**
@@ -2999,17 +2854,4 @@ function wordCountLabel(markdown: string): string {
 /** Counts Markdown source words: whitespace-separated tokens containing a letter or digit. */
 function countDocumentWords(markdown: string): number {
     return markdown.split(/\s+/u).filter((token: string): boolean => /[\p{L}\p{N}]/u.test(token)).length;
-}
-
-/** The Markdown a block-insert command writes in source mode: a GFM table, a GFM alert, or an mkdocs collapsible. */
-function structureMarkdown(kind: InsertStructureKind, admonitionKind?: string): string {
-    if (kind === "table") {
-        return "| Column | Column |\n| --- | --- |\n| Cell | Cell |\n";
-    }
-
-    if (kind === "admonition") {
-        return `> [!${(admonitionKind ?? "note").toUpperCase()}]\n> Text\n`;
-    }
-
-    return '??? note "Title"\n    Text\n';
 }

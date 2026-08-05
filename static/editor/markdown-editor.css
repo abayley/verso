@@ -86,58 +86,49 @@
    drops list markers and heading scale globally, so the document surfaces
    set their typography deliberately (they previously leaned on UA defaults).
    Values match the UA scale the content rendered with before RFC-0035. */
-.markdown-editor__preview h1,
 .markdown-editor__surface h1 {
   font-size: 2em;
   font-weight: 700;
   margin: 0.67em 0;
 }
 
-.markdown-editor__preview h2,
 .markdown-editor__surface h2 {
   font-size: 1.5em;
   font-weight: 700;
   margin: 0.83em 0;
 }
 
-.markdown-editor__preview h3,
 .markdown-editor__surface h3 {
   font-size: 1.17em;
   font-weight: 700;
   margin: 1em 0;
 }
 
-.markdown-editor__preview h4,
 .markdown-editor__surface h4 {
   font-weight: 700;
   margin: 1.33em 0;
 }
 
-.markdown-editor__preview p,
 .markdown-editor__surface p {
   margin: 1em 0;
 }
 
-.markdown-editor__preview ul,
 .markdown-editor__surface ul {
   list-style: disc;
   margin: 1em 0;
   padding-left: 2em;
 }
 
-.markdown-editor__preview ol,
 .markdown-editor__surface ol {
   list-style: decimal;
   margin: 1em 0;
   padding-left: 2em;
 }
 
-.markdown-editor__preview blockquote,
 .markdown-editor__surface blockquote {
   margin: 1em 0;
 }
 
-.markdown-editor__preview pre,
 .markdown-editor__surface pre {
   margin: 1em 0;
 }
@@ -589,31 +580,6 @@ markdown-editor {
 /* Header operation buttons (undo/trash/replay) stay visible. */
 .markdown-editor__nav-op {
   font-size: 1rem;
-}
-
-/* The Trash view, shown between the header and the tree when open. The display:flex below would
-   otherwise override the [hidden] attribute, leaving an empty box (and flex gaps) when closed. */
-.markdown-editor__nav-trash[hidden] {
-  display: none;
-}
-
-.markdown-editor__nav-trash {
-  border-bottom: 1px solid var(--markdown-editor-code-background);
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: 0.35rem 0.2rem 0.5rem;
-}
-
-.markdown-editor__nav-trash-heading {
-  font-weight: 600;
-}
-
-.markdown-editor__nav-trash-row {
-  align-items: center;
-  display: flex;
-  gap: 0.4rem;
-  justify-content: space-between;
 }
 
 /* The inline new-page/new-section form, shown under the chosen parent. */
@@ -1188,14 +1154,6 @@ a.markdown-editor__crumb:hover {
   inline-size: auto;
 }
 
-.markdown-editor__theme-option {
-  text-align: center;
-}
-
-.markdown-editor__button-icon {
-  font-size: 1rem;
-}
-
 .markdown-editor__body {
   flex: 1;
   min-width: 0;
@@ -1556,8 +1514,7 @@ markdown-editor[data-body-width="full"] .markdown-editor__sidebar[data-collapsed
 /* No top padding: the card's own 1.5rem inset is the space above the first line, and anything here is
    added to it -- 63px above the first heading, once the heading's own top margin was counted too. */
 .markdown-editor__surface,
-.markdown-editor__source,
-.markdown-editor__preview {
+.markdown-editor__source {
   background: transparent;
   border: none;
   color: var(--markdown-editor-text);
@@ -1567,13 +1524,11 @@ markdown-editor[data-body-width="full"] .markdown-editor__sidebar[data-collapsed
 }
 
 /* The first block sits against the card's inset; its own top margin would double it. */
-.markdown-editor__surface .ProseMirror > :first-child,
-.markdown-editor__preview > :first-child {
+.markdown-editor__surface .ProseMirror > :first-child {
   margin-top: 0;
 }
 
-.markdown-editor__surface,
-.markdown-editor__preview {
+.markdown-editor__surface {
   font: 16px/1.7 var(--markdown-editor-font);
 }
 
@@ -1589,8 +1544,7 @@ markdown-editor[data-body-width="full"] .markdown-editor__sidebar[data-collapsed
   outline: none;
 }
 
-.markdown-editor__surface a,
-.markdown-editor__preview a {
+.markdown-editor__surface a {
   color: var(--markdown-editor-accent);
 }
 
@@ -1626,8 +1580,7 @@ markdown-editor[data-body-width="full"] .markdown-editor__sidebar[data-collapsed
   color: var(--markdown-editor-text);
 }
 
-.markdown-editor__surface pre,
-.markdown-editor__preview pre {
+.markdown-editor__surface pre {
   background: var(--markdown-editor-code-background);
   border: 1px solid var(--markdown-editor-code-border);
   border-radius: 6px;
@@ -1761,16 +1714,14 @@ markdown-editor[data-body-width="full"] .markdown-editor__sidebar[data-collapsed
   text-decoration: underline;
 }
 
-.markdown-editor__surface blockquote,
-.markdown-editor__preview blockquote {
+.markdown-editor__surface blockquote {
   border-left: 3px solid var(--markdown-editor-quote-border);
   color: var(--markdown-editor-muted);
   margin-left: 0;
   padding-left: 1rem;
 }
 
-.markdown-editor__surface .markdown-alert,
-.markdown-editor__preview .markdown-alert {
+.markdown-editor__surface .markdown-alert {
   background: color-mix(in srgb, var(--markdown-alert-accent, var(--markdown-editor-quote-border)) 8%, transparent);
   border-inline-start: 3px solid var(--markdown-alert-accent, var(--markdown-editor-quote-border));
   border-radius: 6px;
@@ -1819,8 +1770,7 @@ markdown-editor[data-body-width="full"] .markdown-editor__sidebar[data-collapsed
  * classes so the DOM serialise seams do not collide. The title bar toggles the open state; a collapsed
  * callout hides its body.
  */
-.markdown-editor__surface .markdown-collapsible,
-.markdown-editor__preview .markdown-collapsible {
+.markdown-editor__surface .markdown-collapsible {
   background: color-mix(in srgb, var(--markdown-collapsible-accent, var(--markdown-editor-quote-border)) 8%, transparent);
   border-inline-start: 3px solid var(--markdown-collapsible-accent, var(--markdown-editor-quote-border));
   border-radius: 6px;
@@ -1931,56 +1881,39 @@ markdown-editor[data-body-width="full"] .markdown-editor__sidebar[data-collapsed
   padding: 0.15rem 0;
 }
 
-.markdown-editor__surface table,
-.markdown-editor__preview table {
+.markdown-editor__surface table {
   border-collapse: collapse;
   margin: 0;
 }
 
-/* Wide tables stay inside the pane and scroll horizontally rather than overflowing it. The visual surface
-   wraps tables in .tableWrapper (Tiptap); the preview renders a bare table, so it scrolls as a block. */
+/* Wide tables stay inside the pane and scroll horizontally rather than overflowing it. Tiptap wraps
+   tables in .tableWrapper, which provides the scrolling block. */
 .markdown-editor__surface .tableWrapper {
   max-width: 100%;
   overflow-x: auto;
 }
 
-.markdown-editor__preview table {
-  display: block;
-  max-width: 100%;
-  overflow-x: auto;
-  width: max-content;
-}
-
 .markdown-editor__surface th,
-.markdown-editor__surface td,
-.markdown-editor__preview th,
-.markdown-editor__preview td {
+.markdown-editor__surface td {
   border: 1px solid var(--markdown-editor-divider);
   padding: 0.4rem 0.7rem;
   text-align: left;
   vertical-align: top;
 }
 
-.markdown-editor__surface th,
-.markdown-editor__preview th {
+.markdown-editor__surface th {
   background: color-mix(in srgb, var(--markdown-editor-accent) 8%, transparent);
   font-weight: 600;
 }
 
 .markdown-editor__surface th > *,
-.markdown-editor__surface td > *,
-.markdown-editor__preview th > *,
-.markdown-editor__preview td > * {
+.markdown-editor__surface td > * {
   margin: 0;
 }
 
 .markdown-editor__split {
   display: grid;
   gap: 2.5rem;
-}
-
-.markdown-editor__split .markdown-editor__preview {
-  margin-top: 0;
 }
 
 @media (min-width: 48rem) {
@@ -2189,10 +2122,8 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
   max-width: 100%;
 }
 
-/* Constrain any image (resize node view or rendered preview) to the editor width, scaling height to keep
-   the aspect ratio, so a large image or an over-wide {width=N} never overflows the editing surface. */
-.markdown-editor__surface img,
-.markdown-editor__preview img {
+/* Constrain every image to the editor width and scale its height to keep the aspect ratio. */
+.markdown-editor__surface img {
   height: auto;
   max-width: 100%;
 }

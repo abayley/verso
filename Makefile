@@ -291,6 +291,15 @@ chrome-gates:
 	@if grep -rn 'data-variant' src --include='*.hs' --include='*.ts' | grep -v 'src/Verso/Chrome.hs:\|src/Verso/Editor/chrome.ts:'; then echo "chrome-gates FAILED: data-variant outside the chrome modules"; exit 1; fi
 	@if grep -nE 'Html\.(el|custom|div|button_?|input|attr|class_|form_|span|nav|section|header) ' src/Verso/App.hs; then echo "chrome-gates FAILED: markup construction in App.hs"; exit 1; fi
 	@if grep -rn 'wa-' src --include='*.hs' --include='*.ts'; then echo "chrome-gates FAILED: Web Awesome reference in src/"; exit 1; fi
+	@dead_classes=$$( \
+		grep -oE '\.markdown-editor__[[:alnum:]_-]+' static/editor/markdown-editor.css \
+		| cut -c 2- \
+		| sort -u \
+		| while IFS= read -r class_name; do \
+			if ! grep -rFq "$$class_name" src --include='*.hs' --include='*.ts'; then echo "$$class_name"; fi; \
+		done \
+	); \
+		if [ -n "$$dead_classes" ]; then echo "chrome-gates FAILED: CSS classes without a source producer:"; echo "$$dead_classes"; exit 1; fi
 	@echo "chrome-gates OK"
 
 check: docs format-check lint test editor-check test-editor-browser chrome-gates

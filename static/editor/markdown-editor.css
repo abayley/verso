@@ -3191,33 +3191,64 @@ markdown-editor[data-appearance-open]
    bar). A background layer needs no positioning at all, and clips itself to the
    element's own border radius.
 
+   baseFrequency sets the dot size and is the knob to reach for when the grain reads as
+   too faint. It was first cut at 0.65, where the median dot was a single pixel -- most of
+   the grain was antialiasing rather than a dot, so no amount of opacity made it read.
+   Dropping it to 0.4 doubles the mean dot area (1.8 to 3.6 square px, measured by counting
+   connected components off a canvas) while coverage stays at ~21%, so the dots become
+   legible without the surface getting darker. Below about 0.3 the count falls far enough
+   that it stops reading as grain and starts reading as gravel.
+
    Upright panels gather grain at the foot; the top bar gathers it at the right-hand
-   end; the command bar takes a thin edge along its bottom and right sides. */
+   end; the command bar takes a thin edge along its bottom and right sides.
+
+   The ramp is what decides how far in from that edge the grain reaches, and it is three
+   stops rather than two on purpose. A plain two-stop gradient is linear, so a ramp that
+   reaches full strength at the edge is already at half strength halfway up the run: begun
+   at 0.55, the rail's grain was still legible level with the middle of the document and
+   read as haze over the page rather than as light falling off a panel. The mid stop holds
+   the ramp at 0.28 most of the way and puts the climb in the last tenth, so the grain
+   stays banked against the edge. Start offsets rise with how thin the surface is -- the
+   command bar, being shallow, needs the tightest (0.82 up its height, 0.87 across). */
 :root[data-editor-theme="moebius"] .markdown-editor__nav {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='1000' viewBox='0 0 5 1000' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%234a3428' stroke-linecap='round'%3E%3Cpath d='M2.5 0 C2.0 120 3.0 240 2.4 360 C1.9 480 3.0 560 2.6 640' stroke-width='1.7'/%3E%3Cpath d='M2.6 646 C2.2 690 2.9 740 2.5 780' stroke-width='1.35'/%3E%3Cpath d='M2.5 784 C2.1 820 2.9 860 2.6 900' stroke-width='1.95'/%3E%3Cpath d='M2.6 906 C2.3 940 2.8 975 2.5 1000' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") right top / 5px 100% no-repeat,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.55' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.3'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='1000' viewBox='0 0 8 1000' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%234a3428' stroke-linecap='round'%3E%3Cpath d='M6.3 0 C7.0 35 7.07 95 6.3 130 C5.6 175 5.53 260 6.37 310 C6.79 350 6.86 415 6.3 455 C5.67 500 5.53 595 6.37 640' stroke-width='1.7'/%3E%3Cpath d='M6.37 643.5 C7.07 680 6.93 740 6.23 780' stroke-width='1.35'/%3E%3Cpath d='M6.23 782.5 C5.53 815 5.6 865 6.37 900' stroke-width='1.95'/%3E%3Cpath d='M6.37 903.5 C7.07 930 6.93 975 6.3 1000' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") right top / 8px 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.74' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.89' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.3'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
     var(--markdown-editor-background);
+  /* As on the top bar: the drawn edge has to reach the panel's own right edge, past the
+     transparent 1px border-right it replaces. */
+  background-origin: border-box, padding-box, padding-box;
 }
 
 :root[data-editor-theme="moebius"].dark .markdown-editor__nav {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='5' height='1000' viewBox='0 0 5 1000' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%237e86c2' stroke-linecap='round'%3E%3Cpath d='M2.5 0 C2.0 120 3.0 240 2.4 360 C1.9 480 3.0 560 2.6 640' stroke-width='1.7'/%3E%3Cpath d='M2.6 646 C2.2 690 2.9 740 2.5 780' stroke-width='1.35'/%3E%3Cpath d='M2.5 784 C2.1 820 2.9 860 2.6 900' stroke-width='1.95'/%3E%3Cpath d='M2.6 906 C2.3 940 2.8 975 2.5 1000' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") right top / 5px 100% no-repeat,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.55' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.5'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='1000' viewBox='0 0 8 1000' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%237e86c2' stroke-linecap='round'%3E%3Cpath d='M6.3 0 C7.0 35 7.07 95 6.3 130 C5.6 175 5.53 260 6.37 310 C6.79 350 6.86 415 6.3 455 C5.67 500 5.53 595 6.37 640' stroke-width='1.7'/%3E%3Cpath d='M6.37 643.5 C7.07 680 6.93 740 6.23 780' stroke-width='1.35'/%3E%3Cpath d='M6.23 782.5 C5.53 815 5.6 865 6.37 900' stroke-width='1.95'/%3E%3Cpath d='M6.37 903.5 C7.07 930 6.93 975 6.3 1000' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") right top / 8px 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.74' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.89' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.5'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
     var(--markdown-editor-background);
+  /* As on the top bar: the drawn edge has to reach the panel's own right edge, past the
+     transparent 1px border-right it replaces. */
+  background-origin: border-box, padding-box, padding-box;
 }
 
 /* The bar's two bands are the two rows themselves, so the colour steps exactly where
    they meet. Split by a percentage it landed mid-row in one scheme and cut the search
    box in half. */
 :root[data-editor-theme="moebius"] .markdown-editor__topbar {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='5' viewBox='0 0 1200 5' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%234a3428' stroke-linecap='round'%3E%3Cpath d='M0 2.5 C150 2.0 300 3.0 450 2.4 C600 1.9 700 3.0 760 2.6' stroke-width='1.7'/%3E%3Cpath d='M767 2.6 C820 2.2 890 2.9 940 2.5' stroke-width='1.35'/%3E%3Cpath d='M945 2.5 C990 2.1 1040 2.9 1090 2.6' stroke-width='1.95'/%3E%3Cpath d='M1096 2.6 C1130 2.3 1170 2.8 1200 2.5' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") left bottom / 100% 5px no-repeat,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='90' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.6' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.18'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='8' viewBox='0 0 1200 8' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%234a3428' stroke-linecap='round'%3E%3Cpath d='M0 6.3 C40 7.0 110 7.07 155 6.3 C200 5.6 280 5.53 330 6.37 C380 6.79 440 6.86 490 6.3 C545 5.67 630 5.53 690 6.37 C710 6.65 735 6.72 760 6.37' stroke-width='1.7'/%3E%3Cpath d='M763.5 6.37 C800 5.6 880 5.53 940 6.3' stroke-width='1.35'/%3E%3Cpath d='M942.5 6.3 C990 7.07 1040 7.0 1090 6.37' stroke-width='1.95'/%3E%3Cpath d='M1093 6.37 C1130 5.6 1170 5.67 1200 6.3' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") left bottom / 100% 8px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='90' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.76' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.9' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.18'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
     var(--moebius-bar-lo);
+  /* The drawn edge has to reach the element's own bottom, and backgrounds default to the
+     padding box -- which stops short of the transparent 1px border-bottom this line
+     replaces. Set per layer, and after the shorthand, which resets it. */
+  background-origin: border-box, padding-box, padding-box;
 }
 
 :root[data-editor-theme="moebius"].dark .markdown-editor__topbar {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='5' viewBox='0 0 1200 5' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%237e86c2' stroke-linecap='round'%3E%3Cpath d='M0 2.5 C150 2.0 300 3.0 450 2.4 C600 1.9 700 3.0 760 2.6' stroke-width='1.7'/%3E%3Cpath d='M767 2.6 C820 2.2 890 2.9 940 2.5' stroke-width='1.35'/%3E%3Cpath d='M945 2.5 C990 2.1 1040 2.9 1090 2.6' stroke-width='1.95'/%3E%3Cpath d='M1096 2.6 C1130 2.3 1170 2.8 1200 2.5' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") left bottom / 100% 5px no-repeat,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='90' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.6' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.55'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='8' viewBox='0 0 1200 8' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%237e86c2' stroke-linecap='round'%3E%3Cpath d='M0 6.3 C40 7.0 110 7.07 155 6.3 C200 5.6 280 5.53 330 6.37 C380 6.79 440 6.86 490 6.3 C545 5.67 630 5.53 690 6.37 C710 6.65 735 6.72 760 6.37' stroke-width='1.7'/%3E%3Cpath d='M763.5 6.37 C800 5.6 880 5.53 940 6.3' stroke-width='1.35'/%3E%3Cpath d='M942.5 6.3 C990 7.07 1040 7.0 1090 6.37' stroke-width='1.95'/%3E%3Cpath d='M1093 6.37 C1130 5.6 1170 5.67 1200 6.3' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") left bottom / 100% 8px no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='90' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.76' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.9' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.55'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
     var(--moebius-bar-lo);
+  /* The drawn edge has to reach the element's own bottom, and backgrounds default to the
+     padding box -- which stops short of the transparent 1px border-bottom this line
+     replaces. Set per layer, and after the shorthand, which resets it. */
+  background-origin: border-box, padding-box, padding-box;
 }
 
 /* Full-bleed: the top bar insets its rows by its own inline padding, so a background on
@@ -3243,20 +3274,20 @@ markdown-editor[data-appearance-open]
    streaks down a long page (the SVG carries preserveAspectRatio="none", and over a
    46,000px column that smeared the dots) nor scrolls away from the light. */
 :root[data-editor-theme="moebius"] .markdown-editor__content {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1000' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.58' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.12'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat fixed;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1000' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.78' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.91' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.12'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat fixed;
 }
 
 :root[data-editor-theme="moebius"].dark .markdown-editor__content {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1000' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.58' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.4'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat fixed;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1000' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.78' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.91' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.4'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat fixed;
 }
 
 :root[data-editor-theme="moebius"] .markdown-editor__toolbar--commands {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='60' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.68' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3ClinearGradient id='e' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.76' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23b)'/%3E%3Crect width='100%25' height='100%25' fill='url(%23e)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.16'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='60' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.82' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.93' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3ClinearGradient id='e' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.87' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.95' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23b)'/%3E%3Crect width='100%25' height='100%25' fill='url(%23e)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.16'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
     var(--markdown-editor-pill-background);
 }
 
 :root[data-editor-theme="moebius"].dark .markdown-editor__toolbar--commands {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='60' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.68' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3ClinearGradient id='e' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.76' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23b)'/%3E%3Crect width='100%25' height='100%25' fill='url(%23e)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.45'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='60' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.82' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.93' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3ClinearGradient id='e' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.87' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.95' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23b)'/%3E%3Crect width='100%25' height='100%25' fill='url(%23e)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.45'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
     var(--markdown-editor-pill-background);
 }
 
@@ -3326,9 +3357,30 @@ markdown-editor[data-appearance-open]
    them wavered. The wobble filter cannot help: both elements are sticky or scroll
    containers, so filtering them would break the pinning and cost a full-height raster.
    The line is drawn instead -- a tileable wave laid along the edge as the first background
-   layer, with the border itself made transparent. Kept shallow -- about half a pixel off
-   true -- because a regular ripple at anything like the stroke's own width reads as a
-   decorative squiggle rather than a drawn line.
+   layer, with the border itself made transparent. It wanders about 1.1px peak to peak --
+   two thirds of the stroke's own width, arrived at by trying 1.6px and finding it too
+   wavy. What keeps it from reading as a decorative ripple is that the wavelength is
+   irregular, not that the amplitude is small; the first cut kept the amplitude down
+   instead and simply read as straight.
+
+   Both bands are 8 units across with the line set late in them, at 6.3, which leaves it
+   1.7px in from the element's own edge -- as close as it can go, since the ink (centre plus
+   half of the widest 1.95 stroke) then ends 0.17px short of the band, and any later would
+   shave the stroke flat along its length. The band is wider than the line needs for exactly
+   that reason: the room has to be beyond the line, not around it. Drawn down the middle of
+   a 5-unit band instead, as both were first cut, the line sits 2.5px in and reads as a rule
+   floating inside the panel rather than as its edge.
+
+   The amplitude is a property of the CURVE, not of the control points, and the two are
+   easy to confuse here. A cubic's midpoint is (P0 + 3*P1 + 3*P2 + P3) / 8, so a segment
+   whose two controls sit on opposite sides of the line averages back to the centre however
+   far out they are placed. Both the first cut and the first attempt at widening it did
+   exactly that: control points ranging over a full unit either side produced a measured
+   wander of 0.42px peak to peak, which below one device pixel is a straight line with
+   antialiasing on it. Each segment now bulges one way, with the direction alternating
+   between segments, which is what actually puts amplitude on the curve. Measure with
+   getPointAtLength rather than reading the `d` attribute -- and keep the ink (centre plus
+   half the stroke) inside the 5-unit band, or the wander clips against the edge.
 
    Drawn as four separate segments of slightly different weight (1.35 to 1.95), so the line
    thickens and thins the way a nib does, with three breaks between them. The segments sit
@@ -3338,7 +3390,21 @@ markdown-editor[data-appearance-open]
    the break pattern recurred every 240px, which is a texture rather than a drawn line, and
    the count could not be pinned. Stretching runs along one axis only, so the stroke weights
    and the wander stay true; only the gaps scale with the panel, which over the range these
-   edges take is a pixel or two. */
+   edges take is a pixel or two.
+
+   Two consequences of that one-axis stretch, both worth knowing before adjusting the gaps:
+
+   - The gaps are in user units along the stretched axis, and both viewBoxes are close to
+     1:1 with the element they cover (1000 units over a full-height rail, 1200 over a bar
+     that is typically ~1200px), so a gap reads on screen at very nearly its literal number,
+     less about 1.5px swallowed by the round caps. They were first cut at 6/4/6 and 7/5/6,
+     which at 100% was a visible dashed line rather than a nib lifting; 3.5/2.5/3.5 and
+     3.5/2.5/3 leave a break of a pixel or two.
+   - Under browser zoom the gaps do not grow while the stroke does. The element's length in
+     CSS px shrinks by exactly the zoom factor, so the stretch factor shrinks with it and the
+     gap holds the same size in device pixels; stroke-width is on the unstretched axis and
+     scales normally. It looks like a bug and is not one -- correcting it would mean giving
+     up the stretch, and with it the pinned break count. */
 :root[data-editor-theme="moebius"] .markdown-editor__nav {
   border-right-color: transparent;
 }

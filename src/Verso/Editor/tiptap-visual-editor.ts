@@ -30,6 +30,13 @@ export type { VisualBlockStyle, VisualInlineStyle, VisualStructureStyle } from "
 import { widthFromAttributes } from "./image-extension.js";
 import { isAllowedLinkUri } from "./link-uri.js";
 import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
+import {
+    type ProtectedFragmentFeature,
+    type ProtectedFragmentMarker,
+    type ProtectedMarkdown,
+    protectedFragmentFeature,
+    protectMarkdown,
+} from "./protected-fragment-pass.js";
 import { badgeSpans, rawHtmlSpans } from "./remark-adapter.js";
 import { Admonition } from "./tiptap-admonition-node.js";
 import { Badge } from "./tiptap-badge-mark.js";
@@ -156,32 +163,17 @@ function normaliseReferenceLabel(label: string): string {
     return label.trim().replace(/\s+/gu, " ").toLowerCase();
 }
 
-// Private-use sentinels marking where a raw-HTML fragment was extracted, so marked passes them through as
-// plain text; {@link TiptapVisualEditor.loadRawHtml} swaps them for raw-html nodes after the content loads.
-const RAW_HTML_SENTINEL = /\u{E000}(\d+)\u{E001}/gu;
-
 /** A raw-HTML fragment pulled out before marked: the verbatim HTML and whether it was block-level. */
 interface RawHtmlFragment {
     html: string;
     block: boolean;
 }
 
-// Private-use sentinels marking where a badge lozenge was extracted (distinct from the raw-HTML pair), so
-// marked passes them through as plain text; {@link TiptapVisualEditor.loadBadges} swaps each for its text
-// carrying the badge mark.
-const BADGE_SENTINEL = /\u{E002}(\d+)\u{E003}/gu;
-
 /** A badge lozenge pulled out before marked: its literal text and colour. */
 interface BadgeFragment {
     text: string;
     colour: string;
 }
-
-// Private-use sentinels (\u{E004}..\u{E005}, distinct from the raw-HTML and badge pairs) mark where a fenced
-// code block was extracted. @tiptap/markdown mangles a fenced code block inside a list item whose content
-// has a blank line (it truncates at the blank line -- marked tokenises it correctly, the bug is the
-// token->ProseMirror conversion), so the fence is pulled out before loading and
-// {@link TiptapVisualEditor.loadFencedCode} swaps the sentinel paragraph back for a code-block node (RFC-0025).
 
 /** A fenced code block pulled out before marked: its language (info string) and verbatim content. */
 interface FencedCodeFragment {
@@ -196,7 +188,10 @@ interface FencedCodeFragment {
  * Content is de-indented by the opening fence's indent, as CommonMark fenced code is. An unclosed fence is
  * left untouched (not a code block).
  */
-function stripFencedCode(markdown: string): { stripped: string; fragments: FencedCodeFragment[] } {
+function stripFencedCode(
+    markdown: string,
+    marker: ProtectedFragmentMarker,
+): { stripped: string; fragments: FencedCodeFragment[] } {
     const lines = markdown.split("\n");
     const fragments: FencedCodeFragment[] = [];
     const output: string[] = [];
@@ -240,7 +235,7 @@ function stripFencedCode(markdown: string): { stripped: string; fragments: Fence
             output.push("");
         }
 
-        output.push(`${indent}\u{E004}${fragments.length}\u{E005}`);
+        output.push(`${indent}${marker.mark(fragments.length)}`);
 
         const next = lines[scan + 1];
         if (next !== undefined && next.trim() !== "") {
@@ -270,7 +265,10 @@ function stripLeadingSpaces(line: string, count: number): string {
  * it (marked would split the code span from its attribute list), returning the stripped Markdown and the
  * fragments by index. Spans are replaced last-to-first so earlier source offsets stay valid.
  */
-function stripBadges(markdown: string): { stripped: string; fragments: BadgeFragment[] } {
+function stripBadges(
+    markdown: string,
+    marker: ProtectedFragmentMarker,
+): { stripped: string; fragments: BadgeFragment[] } {
     const spans = badgeSpans(markdown).sort((a, b): number => a.start - b.start);
 
     if (spans.length === 0) {
@@ -284,7 +282,7 @@ function stripBadges(markdown: string): { stripped: string; fragments: BadgeFrag
         const span = spans[index];
 
         if (span) {
-            stripped = `${stripped.slice(0, span.start)}\u{E002}${index}\u{E003}${stripped.slice(span.end)}`;
+            stripped = `${stripped.slice(0, span.start)}${marker.mark(index)}${stripped.slice(span.end)}`;
         }
     }
 
@@ -299,7 +297,10 @@ function stripBadges(markdown: string): { stripped: string; fragments: BadgeFrag
  * image would be merged onto the image's line ({@link TiptapVisualEditor.loadRawHtml} then promotes such a
  * sentinel paragraph to a block node).
  */
-function stripRawHtml(markdown: string): { stripped: string; fragments: RawHtmlFragment[] } {
+function stripRawHtml(
+    markdown: string,
+    marker: ProtectedFragmentMarker,
+): { stripped: string; fragments: RawHtmlFragment[] } {
     const spans = rawHtmlSpans(markdown).sort((a, b): number => a.start - b.start);
 
     if (spans.length === 0) {
@@ -313,7 +314,7 @@ function stripRawHtml(markdown: string): { stripped: string; fragments: RawHtmlF
         const span = spans[index];
 
         if (span) {
-            const sentinel = `\u{E000}${index}\u{E001}`;
+            const sentinel = marker.mark(index);
             const replacement = span.block ? `\n\n${sentinel}\n\n` : sentinel;
             stripped = `${stripped.slice(0, span.start)}${replacement}${stripped.slice(span.end)}`;
         }
@@ -387,15 +388,11 @@ export class TiptapVisualEditor implements EditingSurface {
         this.onLinkShortcut = onLinkShortcut;
         this.preserveRawHtml = options.preserveRawHtml ?? false;
 
-        const fences = stripFencedCode(markdown);
-        const footnotes = extractFootnoteDefinitions(fences.stripped);
-        const references = extractReferenceDefinitions(footnotes.stripped);
-        const raw = this.extractRawHtml(references.stripped);
-        const badges = this.extractBadges(raw.stripped);
+        const protectedMarkdown = this.protectFragments(markdown);
         const editable = options.editable ?? true;
 
         this.editor = new Editor({
-            content: badges.stripped,
+            content: protectedMarkdown.stripped,
             contentType: "markdown",
             editable,
             element: this.root,
@@ -457,21 +454,7 @@ export class TiptapVisualEditor implements EditingSurface {
                 onChange();
             },
         });
-        // Wrap bare top-level images first: a standalone image loads as a schema-invalid document, and the
-        // upgrade passes below dispatch transactions that throw "Called contentMatchAt on a node with invalid
-        // content" over such a document (see wrapBareImages). Validity must be restored before any transaction.
-        this.wrapBareImages();
-        this.upgradeAlertBlockquotes();
-        this.upgradeCollapsibles();
-        // After upgradeCollapsibles: a fence inside a collapsible rides through the body re-parse as a
-        // sentinel paragraph, so this one pass restores fences both top-level and inside collapsibles.
-        this.loadFencedCode(fences.fragments);
-        this.loadImageWidths();
-        this.loadRawHtml(raw.fragments);
-        this.loadBadges(badges.fragments);
-        this.loadFootnotes(footnotes.definitions);
-        this.loadReferenceLinks(references.definitions);
-        this.collapseSoftBreaks();
+        this.finishMarkdownLoad(protectedMarkdown);
     }
 
     /** Returns the root element that hosts the Tiptap editor. */
@@ -511,24 +494,21 @@ export class TiptapVisualEditor implements EditingSurface {
             emitUpdate: false,
         };
 
-        const fences = stripFencedCode(markdown);
-        const footnotes = extractFootnoteDefinitions(fences.stripped);
-        const references = extractReferenceDefinitions(footnotes.stripped);
-        const raw = this.extractRawHtml(references.stripped);
-        const badges = this.extractBadges(raw.stripped);
-        this.editor.commands.setContent(badges.stripped, options);
+        const protectedMarkdown = this.protectFragments(markdown);
+        this.editor.commands.setContent(protectedMarkdown.stripped, options);
+        this.finishMarkdownLoad(protectedMarkdown);
+    }
+
+    /** Runs the post-parse load sequence once for both construction and replacement. */
+    private finishMarkdownLoad(protectedMarkdown: ProtectedMarkdown): void {
         // Wrap bare top-level images first: a standalone image loads as a schema-invalid document, and the
         // upgrade passes below dispatch transactions that throw "Called contentMatchAt on a node with invalid
         // content" over such a document (see wrapBareImages). Validity must be restored before any transaction.
         this.wrapBareImages();
         this.upgradeAlertBlockquotes();
         this.upgradeCollapsibles();
-        this.loadFencedCode(fences.fragments);
         this.loadImageWidths();
-        this.loadRawHtml(raw.fragments);
-        this.loadBadges(badges.fragments);
-        this.loadFootnotes(footnotes.definitions);
-        this.loadReferenceLinks(references.definitions);
+        protectedMarkdown.restore();
         this.collapseSoftBreaks();
     }
 
@@ -590,14 +570,77 @@ export class TiptapVisualEditor implements EditingSurface {
         this.editor.chain().focus().setTextSelection(position).run();
     }
 
+    /** Declares each protected fragment once, including both its find and restore ordering. */
+    private protectedFragmentFeatures(): readonly ProtectedFragmentFeature[] {
+        return [
+            protectedFragmentFeature({
+                find: stripFencedCode,
+                findOrder: 0,
+                name: "fenced-code",
+                restore: (fragments: FencedCodeFragment[], marker: ProtectedFragmentMarker): void =>
+                    this.loadFencedCode(fragments, marker),
+                restoreOrder: 0,
+            }),
+            protectedFragmentFeature({
+                find: (markdown: string) => {
+                    const found = extractFootnoteDefinitions(markdown);
+
+                    return { fragments: found.definitions, stripped: found.stripped };
+                },
+                findOrder: 1,
+                name: "footnote-definitions",
+                restore: (definitions: FootnoteDefinitionSource[]): void => this.loadFootnotes(definitions),
+                restoreOrder: 3,
+            }),
+            protectedFragmentFeature({
+                find: (markdown: string) => {
+                    const found = extractReferenceDefinitions(markdown);
+
+                    return { fragments: found.definitions, stripped: found.stripped };
+                },
+                findOrder: 2,
+                name: "reference-definitions",
+                restore: (definitions: ReferenceDefinitionSource[]): void => this.loadReferenceLinks(definitions),
+                restoreOrder: 4,
+            }),
+            protectedFragmentFeature({
+                find: (markdown: string, marker: ProtectedFragmentMarker) => this.extractRawHtml(markdown, marker),
+                findOrder: 3,
+                name: "raw-html",
+                restore: (fragments: RawHtmlFragment[], marker: ProtectedFragmentMarker): void =>
+                    this.loadRawHtml(fragments, marker),
+                restoreOrder: 1,
+            }),
+            protectedFragmentFeature({
+                find: (markdown: string, marker: ProtectedFragmentMarker) => this.extractBadges(markdown, marker),
+                findOrder: 4,
+                name: "badges",
+                restore: (fragments: BadgeFragment[], marker: ProtectedFragmentMarker): void =>
+                    this.loadBadges(fragments, marker),
+                restoreOrder: 2,
+            }),
+        ];
+    }
+
+    /** Protects Markdown fragments before they cross the marked-to-ProseMirror conversion. */
+    private protectFragments(markdown: string): ProtectedMarkdown {
+        return protectMarkdown(markdown, this.protectedFragmentFeatures());
+    }
+
     /** Pre-extracts raw HTML (sentinels for marked) when preservation is on; a no-op passthrough otherwise. */
-    private extractRawHtml(markdown: string): { stripped: string; fragments: RawHtmlFragment[] } {
-        return this.preserveRawHtml ? stripRawHtml(markdown) : { fragments: [], stripped: markdown };
+    private extractRawHtml(
+        markdown: string,
+        marker: ProtectedFragmentMarker,
+    ): { stripped: string; fragments: RawHtmlFragment[] } {
+        return this.preserveRawHtml ? stripRawHtml(markdown, marker) : { fragments: [], stripped: markdown };
     }
 
     /** Pre-extracts badge lozenges (sentinels for marked) when preservation is on; a no-op otherwise. */
-    private extractBadges(markdown: string): { stripped: string; fragments: BadgeFragment[] } {
-        return this.preserveRawHtml ? stripBadges(markdown) : { fragments: [], stripped: markdown };
+    private extractBadges(
+        markdown: string,
+        marker: ProtectedFragmentMarker,
+    ): { stripped: string; fragments: BadgeFragment[] } {
+        return this.preserveRawHtml ? stripBadges(markdown, marker) : { fragments: [], stripped: markdown };
     }
 
     /**
@@ -605,7 +648,7 @@ export class TiptapVisualEditor implements EditingSurface {
      * mark (with its colour), after the content has loaded. marked passes the sentinels through as text;
      * this swaps each for the lozenge's text so it renders as a pill and round-trips.
      */
-    private loadBadges(fragments: BadgeFragment[]): void {
+    private loadBadges(fragments: BadgeFragment[], marker: ProtectedFragmentMarker): void {
         if (fragments.length === 0) {
             return;
         }
@@ -623,22 +666,17 @@ export class TiptapVisualEditor implements EditingSurface {
                 return true;
             }
 
-            const pattern = new RegExp(BADGE_SENTINEL.source, "gu");
-            let match = pattern.exec(node.text);
-
-            while (match !== null) {
-                const fragment = fragments[Number(match[1])];
+            for (const match of marker.find(node.text)) {
+                const fragment = fragments[match.fragmentIndex];
 
                 if (fragment !== undefined && fragment.text !== "") {
                     replacements.push({
                         colour: fragment.colour,
-                        from: position + match.index,
+                        from: position + match.from,
                         text: fragment.text,
-                        to: position + match.index + match[0].length,
+                        to: position + match.to,
                     });
                 }
-
-                match = pattern.exec(node.text);
             }
 
             return true;
@@ -668,7 +706,7 @@ export class TiptapVisualEditor implements EditingSurface {
      * fragment's sentinel is swapped in place for an inline raw-html node. Either way the HTML survives the
      * round-trip inert, never interpreted or rendered live.
      */
-    private loadRawHtml(fragments: RawHtmlFragment[]): void {
+    private loadRawHtml(fragments: RawHtmlFragment[], marker: ProtectedFragmentMarker): void {
         if (fragments.length === 0) {
             return;
         }
@@ -685,10 +723,11 @@ export class TiptapVisualEditor implements EditingSurface {
         this.editor.state.doc.descendants((node: ProseMirrorNode, position: number): boolean => {
             // A paragraph whose sole content is a block fragment's sentinel becomes a block raw-html node.
             if (node.type.name === "paragraph") {
-                const wholeMatch = /^\u{E000}(\d+)\u{E001}$/u.exec(node.textContent);
-                const fragment = wholeMatch ? fragments[Number(wholeMatch[1])] : undefined;
+                const [wholeMatch] = marker.find(node.textContent);
+                const isWholeMatch = wholeMatch?.from === 0 && wholeMatch.to === node.textContent.length;
+                const fragment = isWholeMatch ? fragments[wholeMatch.fragmentIndex] : undefined;
 
-                if (wholeMatch && fragment?.block) {
+                if (fragment?.block) {
                     replacements.push({
                         from: position,
                         node: rawHtmlBlockType.create({ html: fragment.html }),
@@ -703,21 +742,16 @@ export class TiptapVisualEditor implements EditingSurface {
                 return true;
             }
 
-            const pattern = new RegExp(RAW_HTML_SENTINEL.source, "gu");
-            let match = pattern.exec(node.text);
-
-            while (match !== null) {
-                const fragment = fragments[Number(match[1])];
+            for (const match of marker.find(node.text)) {
+                const fragment = fragments[match.fragmentIndex];
 
                 if (fragment !== undefined) {
                     replacements.push({
-                        from: position + match.index,
+                        from: position + match.from,
                         node: rawHtmlType.create({ html: fragment.html }, null, node.marks),
-                        to: position + match.index + match[0].length,
+                        to: position + match.to,
                     });
                 }
-
-                match = pattern.exec(node.text);
             }
 
             return true;
@@ -742,7 +776,7 @@ export class TiptapVisualEditor implements EditingSurface {
      * collapsible, since a plain paragraph survives the loader's nesting), and is promoted whole to a
      * code-block node carrying the verbatim content and language (RFC-0025).
      */
-    private loadFencedCode(fragments: FencedCodeFragment[]): void {
+    private loadFencedCode(fragments: FencedCodeFragment[], marker: ProtectedFragmentMarker): void {
         if (fragments.length === 0) {
             return;
         }
@@ -762,10 +796,12 @@ export class TiptapVisualEditor implements EditingSurface {
 
             // Tolerate surrounding whitespace: @tiptap/markdown indents continuation paragraphs inside a
             // loose list item, so a later sentinel comes back as e.g. "  <sentinel>" rather than bare.
-            const match = /^\s*\u{E004}(\d+)\u{E005}\s*$/u.exec(node.textContent);
-            const fragment = match ? fragments[Number(match[1])] : undefined;
+            const sentinelText = node.textContent.trim();
+            const [match] = marker.find(sentinelText);
+            const isWholeMatch = match?.from === 0 && match.to === sentinelText.length;
+            const fragment = isWholeMatch ? fragments[match.fragmentIndex] : undefined;
 
-            if (match && fragment) {
+            if (fragment) {
                 const attrs = fragment.language === null ? {} : { language: fragment.language };
                 const content = fragment.content.length > 0 ? this.editor.state.schema.text(fragment.content) : null;
                 replacements.push({

@@ -8,7 +8,6 @@ import {
 import { isInlineImage, uploadAttachment } from "./attachment-upload.js";
 import { badgeExtension } from "./badge-extension.js";
 import { type Breadcrumb, parseBreadcrumbs } from "./breadcrumbs.js";
-import { BubbleToolbarElement } from "./bubble-toolbar-element.js";
 import {
     type ChromeDropdownElement,
     type ChromeSegmentElement,
@@ -39,6 +38,7 @@ import { themedConfirm } from "./confirm-dialog.js";
 import { registerExtension } from "./content-extension.js";
 import type { EditingCommand, EditingSurface } from "./editing-surface.js";
 import { INLINE_COMMANDS } from "./editor-toolbar-shared.js";
+import { FloatingSurfaces, type SlashCommand, type TableAlignment } from "./floating-surfaces.js";
 import { frontmatterName, joinFrontmatter, setFrontmatterName, splitFrontmatter } from "./frontmatter.js";
 import { imageShortTitles } from "./image-metadata.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
@@ -56,12 +56,6 @@ import {
 import { rawHtmlExtension } from "./raw-html-extension.js";
 import { SaveStateController, type SaveStateView } from "./save-state-controller.js";
 import { SearchPanel } from "./search-panel.js";
-import { SlashMenuElement, type SlashSelectEventDetail } from "./slash-menu-element.js";
-import {
-    type TableAlignEventDetail,
-    type TableCommandEventDetail,
-    TableControlsElement,
-} from "./table-controls-element.js";
 import { documentHeadings, TableOfContentsPanel } from "./table-of-contents.js";
 import {
     TiptapVisualEditor,
@@ -130,17 +124,6 @@ const visualThemes: { value: VisualTheme; label: string }[] = [
 /** Narrows an arbitrary string to a known visual theme. */
 function isVisualTheme(value: string | null): value is VisualTheme {
     return value !== null && visualThemes.some((theme) => theme.value === value);
-}
-
-/**
- * One entry in the Studio slash command menu. A leaf carries `run`; a group carries `children` and, when
- * chosen, opens those as a submenu instead of running; the synthetic back entry carries `back`.
- */
-interface SlashCommand {
-    label: string;
-    run?: () => void;
-    children?: SlashCommand[];
-    back?: boolean;
 }
 
 /** The display label for a visual theme. */
@@ -232,6 +215,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private mode: EditorMode = "visual";
     private panes: HTMLDivElement | null = null;
     private linkController: LinkPopoverController | null = null;
+    private floatingSurfaces: FloatingSurfaces | null = null;
     private saveError: HTMLElement | null = null;
     private saveErrorMessage: HTMLElement | null = null;
     private errorBanner: HTMLDivElement | null = null;
@@ -287,47 +271,6 @@ export class MarkdownEditorElement extends HTMLElement {
         this.updateTableControls();
         this.updateCursorPosition();
     };
-    private readonly handleSlashKeydown = (event: KeyboardEvent): void => {
-        if (!this.slashMenu || this.slashMenu.hidden) {
-            return;
-        }
-
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-            event.preventDefault();
-            event.stopPropagation();
-            const delta = event.key === "ArrowDown" ? 1 : -1;
-            this.slashIndex = (this.slashIndex + delta + this.slashCommands.length) % this.slashCommands.length;
-            this.highlightSlashItem();
-        } else if (event.key === "Enter") {
-            event.preventDefault();
-            event.stopPropagation();
-            this.selectSlashItem(this.slashIndex);
-        } else if (event.key === "ArrowLeft" && this.slashStack.length > 0) {
-            // Inside a submenu, Left steps back a level (mirrors Right/Enter opening one).
-            event.preventDefault();
-            event.stopPropagation();
-            this.exitSlashSubmenu();
-        } else if (event.key === "Escape") {
-            event.preventDefault();
-            event.stopPropagation();
-            // Escape backs out of a submenu one level at a time, then closes the menu.
-            if (this.slashStack.length > 0) {
-                this.exitSlashSubmenu();
-            } else {
-                this.closeSlashMenu();
-            }
-        }
-    };
-    private bubbleToolbar: BubbleToolbarElement | null = null;
-    private slashMenu: SlashMenuElement | null = null;
-    /** The top-level slash commands (the root menu level). */
-    private slashRoot: SlashCommand[] = [];
-    /** The slash commands currently displayed (the root, or an opened submenu with a leading Back entry). */
-    private slashCommands: SlashCommand[] = [];
-    /** Parent levels awaiting return, pushed when a submenu opens and popped by Back. */
-    private slashStack: SlashCommand[][] = [];
-    private slashIndex = 0;
-    private tableControls: TableControlsElement | null = null;
     private commandBar: CommandBarElement | null = null;
     private uploadNotice: HTMLDivElement | null = null;
     private uploadNoticeMessage: HTMLElement | null = null;
@@ -424,7 +367,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.body?.removeEventListener("dragover", this.handleDragOver);
         this.body?.removeEventListener("drop", this.handleDrop);
         this.body?.removeEventListener("paste", this.handlePaste, true);
-        this.closeSlashMenu();
+        this.floatingSurfaces?.slash.hide();
         this.linkController?.dispose();
         this.saveController?.dispose();
         if (this.autosaveHandle !== null) {
@@ -813,10 +756,8 @@ export class MarkdownEditorElement extends HTMLElement {
         this.toolbar = this.createToolbar();
         this.documentName = this.createDocumentName();
         this.commandBar = this.createCommandBar();
+        this.floatingSurfaces = this.createFloatingSurfaces();
         this.linkController = this.createLinkController();
-        this.bubbleToolbar = this.createBubbleToolbar();
-        this.slashMenu = this.createSlashMenu();
-        this.tableControls = this.createTableControls();
         this.body = document.createElement("div");
         this.body.className = "markdown-editor__body";
         this.wordCount = document.createElement("span");
@@ -933,10 +874,8 @@ export class MarkdownEditorElement extends HTMLElement {
             contentColumn,
             this.linkController.editorElement(),
             this.linkController.actionsElement(),
-            this.bubbleToolbar,
-            this.slashMenu,
-            this.tableControls,
         );
+        this.floatingSurfaces.mount();
         this.applyBodyWidth();
         this.setSidebarCollapsed(readStoredPreference(sidebarCollapsedStorageKey) === "true");
         initBasecoat();
@@ -1661,10 +1600,42 @@ export class MarkdownEditorElement extends HTMLElement {
         this.errorBanner.hidden = false;
     }
 
+    /** Creates the floating surfaces module and wires editor domain actions into it. */
+    private createFloatingSurfaces(): FloatingSurfaces {
+        return new FloatingSurfaces(this, {
+            applyBadge: (value: string): void => {
+                this.applyBadge(value);
+                this.updateBubbleToolbar();
+            },
+            applyBlockStyle: (style: string): void => {
+                if (isVisualBlockStyle(style)) {
+                    this.applyBlockStyle(style);
+                    this.updateBubbleToolbar();
+                }
+            },
+            applyTableAlignment: (align: TableAlignment): void => this.alignTableColumn(align),
+            runTableCommand: (command: VisualTableCommand): void => this.runTableCommand(command),
+            toggleInlineStyle: (style: VisualInlineStyle): void => {
+                this.toggleInlineStyle(style);
+                this.updateBubbleToolbar();
+            },
+            toggleStructure: (style: VisualStructureStyle): void => {
+                this.toggleStructure(style);
+                this.updateBubbleToolbar();
+            },
+        });
+    }
+
     /** Creates the link popover controller, wiring its host dependencies (RFC-0002). */
     private createLinkController(): LinkPopoverController {
+        const floatingSurfaces = this.floatingSurfaces;
+
+        if (!floatingSurfaces) {
+            throw new Error("Floating surfaces must exist before the link controller.");
+        }
+
         return new LinkPopoverController({
-            position: (overlay: HTMLElement, anchor: DOMRect): void => this.positionOverlay(overlay, anchor),
+            position: (overlay: HTMLElement, anchor: DOMRect): void => floatingSurfaces.position(overlay, anchor),
             editorAnchorRect: (anchorRect: DOMRect | null): DOMRect =>
                 anchorRect ??
                 selectionClientRect() ??
@@ -1708,158 +1679,88 @@ export class MarkdownEditorElement extends HTMLElement {
         this.applyEditingCommand({ kind: "remove-link", selection });
     }
 
-    /** Creates the Studio selection bubble toolbar and routes its command events to the active editor. */
-    private createBubbleToolbar(): BubbleToolbarElement {
-        const bubble = new BubbleToolbarElement();
-        bubble.className = "markdown-editor__bubble";
-        bubble.setAttribute("role", "toolbar");
-        bubble.hidden = true;
-        bubble.addEventListener("command-block-style", (event: Event): void => {
-            const style = (event as CustomEvent<CommandBlockStyleEventDetail>).detail.style;
-
-            if (isVisualBlockStyle(style)) {
-                this.applyBlockStyle(style);
-                this.updateBubbleToolbar();
-            }
-        });
-        bubble.addEventListener("command-inline", (event: Event): void => {
-            this.toggleInlineStyle((event as CustomEvent<CommandInlineEventDetail>).detail.style);
-            this.updateBubbleToolbar();
-        });
-        bubble.addEventListener("command-structure", (event: Event): void => {
-            this.toggleStructure((event as CustomEvent<CommandStructureEventDetail>).detail.style);
-            this.updateBubbleToolbar();
-        });
-        bubble.addEventListener("command-badge", (event: Event): void => {
-            this.applyBadge((event as CustomEvent<CommandBadgeEventDetail>).detail.value);
-            this.updateBubbleToolbar();
-        });
-
-        return bubble;
-    }
-
     /** Shows or hides the bubble toolbar over the current visual selection under Studio. */
     private updateBubbleToolbar(): void {
-        if (!this.bubbleToolbar) {
+        if (!this.floatingSurfaces) {
             return;
         }
 
         if (!themeUsesStudioSurfaces(this.visualTheme) || !this.visualEditor) {
-            this.hideBubbleToolbar();
+            this.floatingSurfaces.bubble.hide();
             return;
         }
 
         const range = visualSelectionRange(this.visualEditor.element());
 
         if (!range) {
-            this.hideBubbleToolbar();
+            this.floatingSurfaces.bubble.hide();
             return;
         }
 
         const editor = this.visualEditor;
-        this.bubbleToolbar.blockStyle = editor.currentBlockStyle();
-        this.bubbleToolbar.activeStyles = INLINE_COMMANDS.map((command) => command.style).filter((style) =>
-            editor.isInlineActive(style),
-        );
-        this.bubbleToolbar.flush();
-        this.bubbleToolbar.hidden = false;
-        this.positionOverlay(this.bubbleToolbar, range.getBoundingClientRect());
+        this.floatingSurfaces.bubble.showAt(range.getBoundingClientRect(), {
+            activeStyles: INLINE_COMMANDS.map((command) => command.style).filter((style) =>
+                editor.isInlineActive(style),
+            ),
+            blockStyle: editor.currentBlockStyle(),
+        });
     }
 
-    /** Hides the bubble toolbar. */
-    private hideBubbleToolbar(): void {
-        if (this.bubbleToolbar) {
-            this.bubbleToolbar.hidden = true;
-        }
-    }
+    /** Returns the root slash commands with editor actions bound to the active visual surface. */
+    private slashCommands(): readonly SlashCommand[] {
+        const run =
+            (apply: () => void): (() => void) =>
+            (): void =>
+                this.runSlashCommand(apply);
 
-    /** Creates the Studio slash command menu and runs the chosen block or structure command. */
-    private createSlashMenu(): SlashMenuElement {
-        const menu = new SlashMenuElement();
-        menu.className = "markdown-editor__slash-menu";
-        menu.setAttribute("role", "listbox");
-        menu.hidden = true;
-        // Callout opens a submenu of its kinds so Studio -- which has no command bar -- can insert any callout
-        // from the slash menu. Inline marks (Badge, bold, etc.) are not block inserts, so they live on the
-        // selection bubble toolbar instead, not here.
-        this.slashRoot = [
-            { label: "Heading 1", run: (): void => this.applyBlockStyle("heading-1") },
-            { label: "Heading 2", run: (): void => this.applyBlockStyle("heading-2") },
-            { label: "Heading 3", run: (): void => this.applyBlockStyle("heading-3") },
-            { label: "Heading 4", run: (): void => this.applyBlockStyle("heading-4") },
-            { label: "Heading 5", run: (): void => this.applyBlockStyle("heading-5") },
-            { label: "Heading 6", run: (): void => this.applyBlockStyle("heading-6") },
-            { label: "Bullet list", run: (): void => this.toggleStructure("bullet-list") },
-            { label: "Numbered list", run: (): void => this.toggleStructure("ordered-list") },
-            { label: "Quote", run: (): void => this.toggleStructure("blockquote") },
-            { label: "Code block", run: (): void => this.toggleStructure("code-block") },
-            { label: "Horizontal rule", run: (): void => this.toggleStructure("thematic-break") },
+        return [
+            { label: "Heading 1", run: run((): void => this.applyBlockStyle("heading-1")) },
+            { label: "Heading 2", run: run((): void => this.applyBlockStyle("heading-2")) },
+            { label: "Heading 3", run: run((): void => this.applyBlockStyle("heading-3")) },
+            { label: "Heading 4", run: run((): void => this.applyBlockStyle("heading-4")) },
+            { label: "Heading 5", run: run((): void => this.applyBlockStyle("heading-5")) },
+            { label: "Heading 6", run: run((): void => this.applyBlockStyle("heading-6")) },
+            { label: "Bullet list", run: run((): void => this.toggleStructure("bullet-list")) },
+            { label: "Numbered list", run: run((): void => this.toggleStructure("ordered-list")) },
+            { label: "Quote", run: run((): void => this.toggleStructure("blockquote")) },
+            { label: "Code block", run: run((): void => this.toggleStructure("code-block")) },
+            { label: "Horizontal rule", run: run((): void => this.toggleStructure("thematic-break")) },
             {
                 label: "Callout",
                 children: ADMONITION_KINDS.map((kind) => ({
                     label: admonitionTitle(kind),
-                    run: (): void => this.insertAdmonition(kind),
+                    run: run((): void => this.insertAdmonition(kind)),
                 })),
             },
-            { label: "Collapsible", run: (): void => this.insertCollapsible("note") },
-            { label: "Mermaid diagram", run: (): void => this.insertMermaid() },
-            { label: "Table", run: (): void => this.insertTable() },
-            { label: "Image", run: (): void => this.openFilePicker("image") },
-            { label: "File", run: (): void => this.openFilePicker("file") },
+            { label: "Collapsible", run: run((): void => this.insertCollapsible("note")) },
+            { label: "Mermaid diagram", run: run((): void => this.insertMermaid()) },
+            { label: "Table", run: run((): void => this.insertTable()) },
+            { label: "Image", run: run((): void => this.openFilePicker("image")) },
+            { label: "File", run: run((): void => this.openFilePicker("file")) },
         ];
-        this.slashStack = [];
-        this.slashCommands = this.slashRoot;
-        menu.items = this.slashItemLabels();
-        menu.addEventListener("slash-select", (event: Event): void => {
-            this.selectSlashItem((event as CustomEvent<SlashSelectEventDetail>).detail.index);
-        });
-
-        return menu;
     }
 
     /** Shows or hides the slash menu at the caret when the current block is a slash trigger under Studio. */
     private updateSlashMenu(): void {
-        if (!this.slashMenu) {
+        if (!this.floatingSurfaces) {
             return;
         }
 
         if (!themeUsesStudioSurfaces(this.visualTheme) || !this.visualEditor?.isSlashTrigger()) {
-            this.closeSlashMenu();
+            this.floatingSurfaces.slash.hide();
             return;
         }
 
-        if (this.slashMenu.hidden) {
-            this.slashIndex = 0;
-            this.addEventListener("keydown", this.handleSlashKeydown, true);
-        }
-
-        this.highlightSlashItem();
-        this.slashMenu.hidden = false;
         const caret = this.visualEditor.slashCaretRect() ?? this.activeEditPaneRect();
 
         if (caret) {
-            this.positionOverlay(this.slashMenu, caret);
+            this.floatingSurfaces.slash.showAt(caret, this.slashCommands());
         }
-    }
-
-    /** Creates the floating Lit table-editing controls and routes their events to table commands. */
-    private createTableControls(): TableControlsElement {
-        const controls = new TableControlsElement();
-        controls.className = "markdown-editor__table-controls";
-        controls.hidden = true;
-        controls.addEventListener("table-command", (event: Event): void => {
-            this.runTableCommand((event as CustomEvent<TableCommandEventDetail>).detail.command);
-        });
-        controls.addEventListener("table-align", (event: Event): void => {
-            this.alignTableColumn((event as CustomEvent<TableAlignEventDetail>).detail.align);
-        });
-
-        return controls;
     }
 
     /** Shows the table controls anchored to the current table when the visual selection is inside one. */
     private updateTableControls(): void {
-        if (!this.tableControls) {
+        if (!this.floatingSurfaces) {
             return;
         }
 
@@ -1871,12 +1772,11 @@ export class MarkdownEditorElement extends HTMLElement {
                   : null;
 
         if (!rect) {
-            this.tableControls.hidden = true;
+            this.floatingSurfaces.table.hide();
             return;
         }
 
-        this.tableControls.hidden = false;
-        this.positionOverlay(this.tableControls, rect);
+        this.floatingSurfaces.table.showAt(rect);
     }
 
     /** Runs a table-editing command through the visual editor and refreshes the controls. */
@@ -1894,97 +1794,10 @@ export class MarkdownEditorElement extends HTMLElement {
         }
     }
 
-    /** Hides the slash menu, removes its keyboard navigation, and resets to the root level for the next open. */
-    private closeSlashMenu(): void {
-        this.removeEventListener("keydown", this.handleSlashKeydown, true);
-
-        if (this.slashMenu) {
-            this.slashMenu.hidden = true;
-        }
-
-        this.slashIndex = 0;
-
-        if (this.slashStack.length > 0) {
-            this.slashStack = [];
-            this.slashCommands = this.slashRoot;
-
-            if (this.slashMenu) {
-                this.slashMenu.items = this.slashItemLabels();
-            }
-        }
-    }
-
-    /** Reflects the highlighted slash command onto the menu items. */
-    private highlightSlashItem(): void {
-        if (this.slashMenu) {
-            this.slashMenu.activeIndex = this.slashIndex;
-            this.slashMenu.flush();
-        }
-    }
-
-    /** The display labels for the current menu level; group entries carry a trailing chevron affordance. */
-    private slashItemLabels(): string[] {
-        return this.slashCommands.map((command) => (command.children ? `${command.label} ›` : command.label));
-    }
-
-    /** Runs a leaf command, opens a group's submenu, or steps back a level -- from a click or from Enter. */
-    private selectSlashItem(index: number): void {
-        const command = this.slashCommands[index];
-
-        if (!command) {
-            return;
-        }
-
-        if (command.back) {
-            this.exitSlashSubmenu();
-        } else if (command.children) {
-            this.enterSlashSubmenu(command.children);
-        } else if (command.run) {
-            this.runSlashCommand(command.run);
-        }
-    }
-
-    /** Opens a submenu: shows its children beneath a Back entry, highlighted from the top. */
-    private enterSlashSubmenu(children: SlashCommand[]): void {
-        this.slashStack.push(this.slashCommands);
-        this.slashCommands = [{ label: "‹ Back", back: true }, ...children];
-        this.slashIndex = 0;
-        this.refreshSlashMenu();
-    }
-
-    /** Returns to the parent menu level. */
-    private exitSlashSubmenu(): void {
-        const parent = this.slashStack.pop();
-
-        if (!parent) {
-            return;
-        }
-
-        this.slashCommands = parent;
-        this.slashIndex = 0;
-        this.refreshSlashMenu();
-    }
-
-    /** Repaints the menu for the current level and repositions it against the caret (its size just changed). */
-    private refreshSlashMenu(): void {
-        if (!this.slashMenu) {
-            return;
-        }
-
-        this.slashMenu.items = this.slashItemLabels();
-        this.highlightSlashItem();
-        const caret = this.visualEditor?.slashCaretRect() ?? this.activeEditPaneRect();
-
-        if (caret) {
-            this.positionOverlay(this.slashMenu, caret);
-        }
-    }
-
     /** Removes the slash trigger and applies the chosen command. */
     private runSlashCommand(apply: () => void): void {
         this.visualEditor?.deleteSlashTrigger();
         apply();
-        this.closeSlashMenu();
     }
 
     /** Re-renders the editor body for the current mode. */
@@ -2207,23 +2020,6 @@ export class MarkdownEditorElement extends HTMLElement {
     private handleVisualLinkShortcut(): void {
         this.activePane = "visual";
         this.linkController?.openEditor();
-    }
-
-    /** Positions an editor overlay near an anchor without covering it. */
-    private positionOverlay(overlay: HTMLElement, anchor: DOMRect): void {
-        const hostRect = this.getBoundingClientRect();
-        const overlayRect = overlay.getBoundingClientRect();
-        const gap = 8;
-        const preferredTop = anchor.bottom - hostRect.top + gap;
-        const fallbackTop = anchor.top - hostRect.top - overlayRect.height - gap;
-        const availableBelow = window.innerHeight - anchor.bottom;
-        const top = availableBelow >= overlayRect.height + gap ? preferredTop : Math.max(gap, fallbackTop);
-        const preferredLeft = anchor.left - hostRect.left;
-        const maxLeft = Math.max(gap, hostRect.width - overlayRect.width - gap);
-        const left = Math.max(gap, Math.min(preferredLeft, maxLeft));
-
-        overlay.style.left = `${left}px`;
-        overlay.style.top = `${top}px`;
     }
 
     /** Returns the active edit pane rectangle for overlay anchoring. */

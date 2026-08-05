@@ -24,11 +24,8 @@ import type { VisualInlineStyle, VisualStructureStyle } from "./tiptap-visual-ed
 const BUBBLE_STRUCTURE_COMMANDS = STRUCTURE_COMMANDS.filter((command) => command.style !== "thematic-break");
 
 /**
- * The Studio selection bubble toolbar (block-style dropdown + inline command buttons), rendered
- * declaratively with Lit over the Basecoat chrome helpers (RFC-0035). It owns no editor state: the host
- * shows, positions, and hides it, drives the block-style label and the active inline marks through
- * reactive properties, and routes the bubble's `command-block-style` / `command-inline` events to the
- * same editor commands the command bar uses.
+ * The internal Lit view for the Studio selection bubble toolbar. The floating surfaces module supplies
+ * the current block and inline styles, and routes its command events to the editor.
  */
 export class BubbleToolbarElement extends LitElement {
     static override properties = {
@@ -52,7 +49,7 @@ export class BubbleToolbarElement extends LitElement {
         return this;
     }
 
-    /** Processes any pending render synchronously, so the host can position the bubble against fresh layout. */
+    /** Processes any pending render synchronously for the owning floating surfaces module. */
     public flush(): void {
         this.performUpdate();
     }

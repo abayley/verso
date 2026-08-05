@@ -29,14 +29,18 @@ const ALIGN_BUTTONS: Array<{ align: TableAlign; icon: string; label: string }> =
 ];
 
 /**
- * The floating table-editing controls, rendered declaratively with Lit (the RFC's Lit-adoption
- * trigger). It owns no editor state: each button dispatches a `table-command` or `table-align`
- * event that the host element routes to the Tiptap table commands.
+ * The internal Lit view for the floating table controls. Each button dispatches a table command or
+ * alignment event for the floating surfaces module to route to the editor.
  */
 export class TableControlsElement extends LitElement {
     /** Renders into the light DOM so the page's Basecoat styles apply. */
     protected override createRenderRoot(): HTMLElement {
         return this;
+    }
+
+    /** Processes any pending render synchronously for the owning floating surfaces module. */
+    public flush(): void {
+        this.performUpdate();
     }
 
     /** Dispatches a structural table command to the host element. */

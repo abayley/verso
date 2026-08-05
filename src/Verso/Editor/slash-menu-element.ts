@@ -7,10 +7,8 @@ export interface SlashSelectEventDetail {
 }
 
 /**
- * The Studio slash command menu, rendered declaratively with Lit. It owns no editor state: the host
- * supplies the command labels, shows/positions/hides the menu, tracks and drives the highlighted index
- * through the `activeIndex` property (for both pointer and keyboard navigation), and runs the chosen
- * command when the menu dispatches `slash-select`.
+ * The internal Lit view for the Studio slash command menu. The floating surfaces module supplies its
+ * labels and highlighted index, and handles the `slash-select` event.
  */
 export class SlashMenuElement extends LitElement {
     static override properties = {
@@ -34,7 +32,7 @@ export class SlashMenuElement extends LitElement {
         return this;
     }
 
-    /** Processes any pending render synchronously, so the host can position the menu against fresh layout. */
+    /** Processes any pending render synchronously for the owning floating surfaces module. */
     public flush(): void {
         this.performUpdate();
     }

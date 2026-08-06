@@ -1,7 +1,14 @@
 import type { Nodes, PhrasingContent, Root, RootContent } from "mdast";
 import type { Plugin } from "unified";
-import type { ContentExtension, FromElementContext, ParseContext, ToMarkdownContext } from "./content-extension.js";
-import type { EditorBlock, InlineNode } from "./editor-model.js";
+import type {
+    ContentExtensionFor,
+    ExtensionBlockInput,
+    ExtensionInlineInput,
+    FromElementContext,
+    ParseContext,
+    ToMarkdownContext,
+} from "./content-extension.js";
+import type { InlineNode } from "./editor-model.js";
 
 /** A reference link's form: full `[text][id]`, collapsed `[text][]`, or shortcut `[text]`. */
 type ReferenceType = "full" | "collapsed" | "shortcut";
@@ -21,22 +28,16 @@ interface ReferenceDefinitionData {
     url: string;
 }
 
+declare module "./editor-model.js" {
+    interface ContentExtensionPayloads {
+        "reference-link": { block: ReferenceDefinitionData; inline: ReferenceLinkData };
+    }
+}
+
 /** A reference's resolved destination, attached to the mdast node by the resolve transform. */
 interface ResolvedReference {
     referenceTitle?: string | null;
     referenceUrl?: string;
-}
-
-/** Whether an editor block is a reference-link definition. */
-function isReferenceDefinition(block: EditorBlock): block is EditorBlock & { extension: string; data: unknown } {
-    return block.type === "custom" && block.extension === "reference-link";
-}
-
-/** Whether an editor inline node is a reference link. */
-function isReferenceLink(
-    node: InlineNode,
-): node is InlineNode & { extension: string; data: unknown; children?: InlineNode[] } {
-    return node.type === "custom" && node.extension === "reference-link";
 }
 
 /** Walks every node in an mdast tree, applying a visitor. */
@@ -81,7 +82,7 @@ const remarkResolveReferenceLinks: Plugin<[], Root> = () => {
 // Parse: linkReference -> custom reference-link inline; definition -> custom reference-link block.
 
 /** Converts an mdast link reference to a custom reference-link inline node, declining any other node. */
-function inlineFromMdast(node: PhrasingContent, ctx: ParseContext): InlineNode | null {
+function inlineFromMdast(node: PhrasingContent, ctx: ParseContext): ExtensionInlineInput<"reference-link"> | null {
     if (node.type !== "linkReference") {
         return null;
     }
@@ -96,28 +97,24 @@ function inlineFromMdast(node: PhrasingContent, ctx: ParseContext): InlineNode |
             title: resolved?.referenceTitle ?? null,
             url: resolved?.referenceUrl ?? "",
         },
-        extension: "reference-link",
-        type: "custom",
     };
 }
 
 /** Converts an mdast definition to a custom reference-link definition block, declining any other node. */
-function blockFromMdast(node: RootContent): EditorBlock | null {
+function blockFromMdast(node: RootContent): ExtensionBlockInput<"reference-link"> | null {
     if (node.type !== "definition") {
         return null;
     }
 
     return {
         data: { label: node.label ?? node.identifier, title: node.title ?? null, url: node.url },
-        extension: "reference-link",
-        type: "custom",
     };
 }
 
 // Serialise-in: a reference-link anchor -> custom inline; a definition element -> custom block.
 
 /** Recognises a reference-link anchor and rebuilds the custom inline node, declining otherwise. */
-function inlineFromElement(node: ChildNode, ctx: FromElementContext): InlineNode[] | null {
+function inlineFromElement(node: ChildNode, ctx: FromElementContext): ExtensionInlineInput<"reference-link">[] | null {
     if (node.nodeType !== Node.ELEMENT_NODE) {
         return null;
     }
@@ -143,14 +140,12 @@ function inlineFromElement(node: ChildNode, ctx: FromElementContext): InlineNode
                 title: element.getAttribute("title"),
                 url: element.getAttribute("href") ?? "",
             },
-            extension: "reference-link",
-            type: "custom",
         },
     ];
 }
 
 /** Recognises a reference-link definition element and rebuilds the custom block, declining otherwise. */
-function blockFromElement(element: Element): EditorBlock | null {
+function blockFromElement(element: Element): ExtensionBlockInput<"reference-link"> | null {
     if (element.tagName !== "DIV" || !element.classList.contains("markdown-reference-def")) {
         return null;
     }
@@ -167,8 +162,6 @@ function blockFromElement(element: Element): EditorBlock | null {
             title: element.getAttribute("data-reference-title"),
             url: element.getAttribute("data-reference-url") ?? "",
         },
-        extension: "reference-link",
-        type: "custom",
     };
 }
 
@@ -180,13 +173,9 @@ function referenceTypeFromAttribute(value: string | null): ReferenceType {
 // Serialise-out: a reference link -> its `[text][id]` form; a definition -> `[label]: url "title"`.
 
 /** Serialises a reference link to its Markdown reference form, declining any other inline node. */
-function inlineToMarkdown(node: InlineNode, ctx: ToMarkdownContext): string | null {
-    if (!isReferenceLink(node)) {
-        return null;
-    }
-
-    const { label, referenceType } = node.data as ReferenceLinkData;
-    const text = ctx.inlinesToMarkdown(node.children ?? []);
+function inlineToMarkdown(data: ReferenceLinkData, children: InlineNode[] | undefined, ctx: ToMarkdownContext): string {
+    const { label, referenceType } = data;
+    const text = ctx.inlinesToMarkdown(children ?? []);
 
     if (referenceType === "shortcut") {
         return `[${text}]`;
@@ -200,18 +189,14 @@ function inlineToMarkdown(node: InlineNode, ctx: ToMarkdownContext): string | nu
 }
 
 /** Serialises a reference-link definition to `[label]: url "title"`, declining any other block. */
-function blockToMarkdown(block: EditorBlock): string | null {
-    if (!isReferenceDefinition(block)) {
-        return null;
-    }
-
-    const { label, url, title } = block.data as ReferenceDefinitionData;
+function blockToMarkdown(data: ReferenceDefinitionData): string {
+    const { label, url, title } = data;
 
     return title !== null ? `[${label}]: ${url} "${title}"` : `[${label}]: ${url}`;
 }
 
 /** GFM reference links (`[text][id]` / `[text][]` / `[text]`) and their `[id]: url` definitions. */
-export const referenceLinkExtension: ContentExtension = {
+export const referenceLinkExtension: ContentExtensionFor<"reference-link"> = {
     blockFromElement,
     blockFromMdast,
     blockToMarkdown,

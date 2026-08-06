@@ -1,6 +1,12 @@
 import type { RootContent, TableCell, TableRow } from "mdast";
-import type { ContentExtension, FromElementContext, ParseContext, ToMarkdownContext } from "./content-extension.js";
-import type { EditorBlock, InlineNode } from "./editor-model.js";
+import type {
+    ContentExtensionFor,
+    ExtensionBlockInput,
+    FromElementContext,
+    ParseContext,
+    ToMarkdownContext,
+} from "./content-extension.js";
+import type { InlineNode } from "./editor-model.js";
 
 /** A column alignment, or null for an unaligned column. */
 type TableAlign = "left" | "center" | "right" | null;
@@ -15,6 +21,12 @@ interface TableData {
     rows: TableCellContent[][];
 }
 
+declare module "./editor-model.js" {
+    interface ContentExtensionPayloads {
+        table: { block: TableData };
+    }
+}
+
 /** Narrows an arbitrary value to a supported column alignment. */
 function asAlign(value: unknown): TableAlign {
     return value === "left" || value === "center" || value === "right" ? value : null;
@@ -23,7 +35,7 @@ function asAlign(value: unknown): TableAlign {
 // Parse: a GFM `table` mdast node becomes a custom table block.
 
 /** Converts a GFM table mdast node to a custom table block, declining any other node. */
-function blockFromMdast(node: RootContent, ctx: ParseContext): EditorBlock | null {
+function blockFromMdast(node: RootContent, ctx: ParseContext): ExtensionBlockInput<"table"> | null {
     if (node.type !== "table") {
         return null;
     }
@@ -36,8 +48,6 @@ function blockFromMdast(node: RootContent, ctx: ParseContext): EditorBlock | nul
             header: headerRow ? rowCellsFromMdast(headerRow, ctx) : [],
             rows: bodyRows.map((row: TableRow): TableCellContent[] => rowCellsFromMdast(row, ctx)),
         } satisfies TableData,
-        extension: "table",
-        type: "custom",
     };
 }
 
@@ -49,12 +59,7 @@ function rowCellsFromMdast(row: TableRow, ctx: ParseContext): TableCellContent[]
 // Serialise-out: a custom table block becomes a GFM pipe table.
 
 /** Serialises a custom table block to a GFM pipe table, declining any other block. */
-function blockToMarkdown(block: EditorBlock, ctx: ToMarkdownContext): string | null {
-    if (block.type !== "custom" || block.extension !== "table") {
-        return null;
-    }
-
-    const data = block.data as TableData;
+function blockToMarkdown(data: TableData, _children: undefined, ctx: ToMarkdownContext): string {
     const columns = data.header.length;
     const delimiter = `| ${Array.from({ length: columns }, (_, column) => delimiterCell(data.align[column] ?? null)).join(" | ")} |`;
 
@@ -91,7 +96,7 @@ function delimiterCell(align: TableAlign): string {
 // Serialise-in: a rendered `<table>` element becomes a custom table block.
 
 /** Converts a DOM table element (or a wrapper around one, as Tiptap renders it) to a custom table block. */
-function blockFromElement(element: Element, ctx: FromElementContext): EditorBlock | null {
+function blockFromElement(element: Element, ctx: FromElementContext): ExtensionBlockInput<"table"> | null {
     const table = element.tagName === "TABLE" ? element : element.querySelector(":scope > table");
 
     if (!table) {
@@ -111,8 +116,6 @@ function blockFromElement(element: Element, ctx: FromElementContext): EditorBloc
             header: rowCellsFromElement(headerRow, ctx),
             rows: bodyRows.map((row) => rowCellsFromElement(row, ctx)),
         } satisfies TableData,
-        extension: "table",
-        type: "custom",
     };
 }
 
@@ -139,7 +142,7 @@ function alignFromCell(cell: Element): TableAlign {
 }
 
 /** GFM pipe tables recognised, rendered, and serialised through the content-extension registry. */
-export const tableExtension: ContentExtension = {
+export const tableExtension: ContentExtensionFor<"table"> = {
     blockFromElement,
     blockFromMdast,
     blockToMarkdown,

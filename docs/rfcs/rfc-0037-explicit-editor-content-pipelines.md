@@ -235,17 +235,17 @@ the base blockquote and GFM alert serialisers.
 
 ### Phase 3: Typed extension payloads
 
-- [ ] Test: given a block or inline handler, when the pipeline creates and
+- [x] Test: given a block or inline handler, when the pipeline creates and
       serialises its custom node, then the handler receives its declared payload
       and the pipeline stamps the extension identity.
-- [ ] Add the open extension payload map and declaration merging for every
+- [x] Add the open extension payload map and declaration merging for every
       in-tree extension.
-- [ ] Change mdast and DOM handlers to return payloads and optional children
+- [x] Change mdast and DOM handlers to return payloads and optional children
       instead of complete custom nodes.
-- [ ] Use direct extension lookup for custom-node Markdown serialisation.
-- [ ] Remove every extension payload cast and keep common model types
+- [x] Use direct extension lookup for custom-node Markdown serialisation.
+- [x] Remove every extension payload cast and keep common model types
       non-generic.
-- [ ] Run `make check` and commit the phase.
+- [x] Run `make check` and commit the phase.
 
 ### Phase 4: Legacy parser and wrapper deletion
 

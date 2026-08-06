@@ -56,7 +56,7 @@ describe("table Markdown round-trip", (): void => {
                 header: [[{ text: "h", type: "text" as const }]],
                 rows: [[[{ text: "a | b", type: "text" as const }]]],
             },
-            extension: "table",
+            extension: "table" as const,
             type: "custom" as const,
         };
 

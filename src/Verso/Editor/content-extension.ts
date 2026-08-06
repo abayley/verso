@@ -1,7 +1,19 @@
 import type { PhrasingContent, RootContent } from "mdast";
 import type { PluggableList } from "unified";
 import { baseExtension } from "./base-extension.js";
-import type { EditorBlock, EditorDocument, InlineNode } from "./editor-model.js";
+import type {
+    ContentExtensionBlockPayload,
+    ContentExtensionInlinePayload,
+    ContentExtensionName,
+    ContentExtensionPayloads,
+    CustomBlock,
+    CustomInline,
+    EditorBlock,
+    EditorDocument,
+    InlineNode,
+} from "./editor-model.js";
+
+type DeclaredContentExtensionName = keyof ContentExtensionPayloads & string;
 
 /** Recursion helpers handed to an extension while parsing mdast into the editor model. */
 export interface ParseContext {
@@ -32,16 +44,52 @@ export interface ToMarkdownContext {
  * A content extension contributes handlers for the pipeline seams it needs. Each handler returns
  * `null` to decline a node, letting the next extension and finally the base extension try it.
  */
-export interface ContentExtension {
-    name: string;
-    blockFromElement?(element: Element, ctx: FromElementContext): EditorBlock | null;
-    blockFromMdast?(node: RootContent, ctx: ParseContext): EditorBlock | null;
-    blockToMarkdown?(block: EditorBlock, ctx: ToMarkdownContext): string | null;
-    inlineFromElement?(node: ChildNode, ctx: FromElementContext): InlineNode[] | null;
-    inlineFromMdast?(node: PhrasingContent, ctx: ParseContext): InlineNode | null;
-    inlineToMarkdown?(node: InlineNode, ctx: ToMarkdownContext): string | null;
+export interface ContentExtensionFor<Name extends DeclaredContentExtensionName> {
+    name: Name;
+    blockFromElement?(element: Element, ctx: FromElementContext): ExtensionBlockInput<Name> | null;
+    blockFromMdast?(node: RootContent, ctx: ParseContext): ExtensionBlockInput<Name> | null;
+    blockToMarkdown?(
+        data: ContentExtensionBlockPayload<Name>,
+        children: EditorBlock[] | undefined,
+        ctx: ToMarkdownContext,
+    ): string;
+    inlineFromElement?(node: ChildNode, ctx: FromElementContext): ExtensionInlineInput<Name>[] | null;
+    inlineFromMdast?(node: PhrasingContent, ctx: ParseContext): ExtensionInlineInput<Name> | null;
+    inlineToMarkdown?(
+        data: ContentExtensionInlinePayload<Name>,
+        children: InlineNode[] | undefined,
+        ctx: ToMarkdownContext,
+    ): string;
     /** remark/unified plugins this extension installs in the parse processor. */
     remarkPlugins?: PluggableList;
+}
+
+/** Any descriptor contributed to the open content extension payload map. */
+export type ContentExtension = {
+    [Name in ContentExtensionName]: ContentExtensionFor<Name>;
+}[ContentExtensionName];
+
+/** An extension block payload and its optional nested blocks before the pipeline stamps identity. */
+export interface ExtensionBlockInput<Name extends ContentExtensionName> {
+    children?: EditorBlock[];
+    data: ContentExtensionBlockPayload<Name>;
+}
+
+/** An extension inline payload and its optional nested inlines before the pipeline stamps identity. */
+export interface ExtensionInlineInput<Name extends ContentExtensionName> {
+    children?: InlineNode[];
+    data: ContentExtensionInlinePayload<Name>;
+}
+
+/** The private built-in subset descriptor installed last by every content pipeline. */
+export interface BaseContentExtension {
+    name: "base";
+    blockFromElement(element: Element, ctx: FromElementContext): EditorBlock;
+    blockFromMdast(node: RootContent, ctx: ParseContext): EditorBlock | null;
+    blockToMarkdown(block: EditorBlock, ctx: ToMarkdownContext): string;
+    inlineFromElement(node: ChildNode, ctx: FromElementContext): InlineNode[];
+    inlineFromMdast(node: PhrasingContent, ctx: ParseContext): InlineNode | null;
+    inlineToMarkdown(node: InlineNode, ctx: ToMarkdownContext): string;
 }
 
 /** The immutable document-level interface for one explicit content extension set. */
@@ -69,9 +117,9 @@ export function createContentPipeline(featureExtensions: readonly ContentExtensi
         throw new Error(`Duplicate content extension name: ${duplicate.name}`);
     }
 
-    const orderedExtensions = Object.freeze([...featureExtensions, baseExtension]);
+    const extensions = Object.freeze([...featureExtensions]);
     const extensionsByName = new Map(
-        orderedExtensions.map((extension: ContentExtension): readonly [string, ContentExtension] => [
+        extensions.map((extension: ContentExtension): readonly [ContentExtensionName, ContentExtension] => [
             extension.name,
             extension,
         ]),
@@ -84,12 +132,23 @@ export function createContentPipeline(featureExtensions: readonly ContentExtensi
 
     /** Converts one mdast block node into an editor block. */
     function blockFromMdast(node: RootContent): EditorBlock {
-        for (const extension of orderedExtensions) {
-            const block = extension.blockFromMdast?.(node, parseContext);
+        for (const extension of extensions) {
+            const input = extension.blockFromMdast?.(node, parseContext);
 
-            if (block != null) {
-                return block;
+            if (input != null) {
+                return {
+                    ...(input.children ? { children: input.children } : {}),
+                    data: input.data,
+                    extension: extension.name,
+                    type: "custom",
+                } as CustomBlock;
             }
+        }
+
+        const block = baseExtension.blockFromMdast(node, parseContext);
+
+        if (block != null) {
+            return block;
         }
 
         throw unsupportedNode(node.type);
@@ -102,12 +161,23 @@ export function createContentPipeline(featureExtensions: readonly ContentExtensi
 
     /** Converts one mdast phrasing node into an editor inline node. */
     function inlineFromMdast(node: PhrasingContent): InlineNode {
-        for (const extension of orderedExtensions) {
-            const inline = extension.inlineFromMdast?.(node, parseContext);
+        for (const extension of extensions) {
+            const input = extension.inlineFromMdast?.(node, parseContext);
 
-            if (inline != null) {
-                return inline;
+            if (input != null) {
+                return {
+                    ...(input.children ? { children: input.children } : {}),
+                    data: input.data,
+                    extension: extension.name,
+                    type: "custom",
+                } as CustomInline;
             }
+        }
+
+        const inline = baseExtension.inlineFromMdast(node, parseContext);
+
+        if (inline != null) {
+            return inline;
         }
 
         throw unsupportedNode(node.type);
@@ -128,15 +198,20 @@ export function createContentPipeline(featureExtensions: readonly ContentExtensi
 
     /** Converts one DOM block element to an editor block. */
     function blockFromElement(element: Element): EditorBlock {
-        for (const extension of orderedExtensions) {
-            const block = extension.blockFromElement?.(element, fromElementContext);
+        for (const extension of extensions) {
+            const input = extension.blockFromElement?.(element, fromElementContext);
 
-            if (block != null) {
-                return block;
+            if (input != null) {
+                return {
+                    ...(input.children ? { children: input.children } : {}),
+                    data: input.data,
+                    extension: extension.name,
+                    type: "custom",
+                } as CustomBlock;
             }
         }
 
-        return { children: [], type: "paragraph" };
+        return baseExtension.blockFromElement(element, fromElementContext);
     }
 
     /** Builds an editor document from DOM block elements. */
@@ -148,15 +223,23 @@ export function createContentPipeline(featureExtensions: readonly ContentExtensi
 
     /** Converts one inline DOM node to zero or more editor inline nodes. */
     function inlineFromNode(node: ChildNode): InlineNode[] {
-        for (const extension of orderedExtensions) {
-            const nodes = extension.inlineFromElement?.(node, fromElementContext);
+        for (const extension of extensions) {
+            const inputs = extension.inlineFromElement?.(node, fromElementContext);
 
-            if (nodes != null) {
-                return nodes;
+            if (inputs != null) {
+                return inputs.map(
+                    (input): CustomInline =>
+                        ({
+                            ...(input.children ? { children: input.children } : {}),
+                            data: input.data,
+                            extension: extension.name,
+                            type: "custom",
+                        }) as CustomInline,
+                );
             }
         }
 
-        return [];
+        return baseExtension.inlineFromElement(node, fromElementContext);
     }
 
     /** Converts an element's inline DOM children to editor inline nodes. */
@@ -174,18 +257,14 @@ export function createContentPipeline(featureExtensions: readonly ContentExtensi
     /** Serialises one editor block to Markdown. */
     function blockToMarkdown(block: EditorBlock): string {
         if (block.type === "custom") {
-            return extensionsByName.get(block.extension)?.blockToMarkdown?.(block, toMarkdownContext) ?? "";
+            return (
+                extensionsByName
+                    .get(block.extension)
+                    ?.blockToMarkdown?.(block.data as never, block.children, toMarkdownContext) ?? ""
+            );
         }
 
-        for (const extension of orderedExtensions) {
-            const markdown = extension.blockToMarkdown?.(block, toMarkdownContext);
-
-            if (markdown != null) {
-                return markdown;
-            }
-        }
-
-        return "";
+        return baseExtension.blockToMarkdown(block, toMarkdownContext);
     }
 
     /** Serialises an editor document to Markdown. */
@@ -196,18 +275,14 @@ export function createContentPipeline(featureExtensions: readonly ContentExtensi
     /** Serialises one editor inline node to Markdown. */
     function inlineToMarkdown(node: InlineNode): string {
         if (node.type === "custom") {
-            return extensionsByName.get(node.extension)?.inlineToMarkdown?.(node, toMarkdownContext) ?? "";
+            return (
+                extensionsByName
+                    .get(node.extension)
+                    ?.inlineToMarkdown?.(node.data as never, node.children, toMarkdownContext) ?? ""
+            );
         }
 
-        for (const extension of orderedExtensions) {
-            const markdown = extension.inlineToMarkdown?.(node, toMarkdownContext);
-
-            if (markdown != null) {
-                return markdown;
-            }
-        }
-
-        return "";
+        return baseExtension.inlineToMarkdown(node, toMarkdownContext);
     }
 
     /** Serialises editor inline nodes to Markdown. */
@@ -227,7 +302,7 @@ export function createContentPipeline(featureExtensions: readonly ContentExtensi
         documentFromMdast: (nodes: RootContent[]): EditorDocument => ({ blocks: blocksFromMdast(nodes) }),
         documentToMarkdown,
         remarkPlugins: Object.freeze(
-            orderedExtensions.flatMap((extension: ContentExtension): PluggableList => extension.remarkPlugins ?? []),
+            extensions.flatMap((extension: ContentExtension): PluggableList => extension.remarkPlugins ?? []),
         ) as PluggableList,
     });
 }

@@ -2,7 +2,13 @@ import type { Code, Paragraph, Parent, Root, RootContent } from "mdast";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { type Plugin, unified } from "unified";
-import type { ContentExtension, FromElementContext, ParseContext, ToMarkdownContext } from "./content-extension.js";
+import type {
+    ContentExtensionFor,
+    ExtensionBlockInput,
+    FromElementContext,
+    ParseContext,
+    ToMarkdownContext,
+} from "./content-extension.js";
 import type { EditorBlock } from "./editor-model.js";
 
 /** The collapsible types recognised, sharing the admonitions' callout chrome via the semantic palette. */
@@ -15,6 +21,12 @@ interface CollapsibleData {
     collapsibleType: CollapsibleKind;
     title: string | null;
     open: boolean;
+}
+
+declare module "./editor-model.js" {
+    interface ContentExtensionPayloads {
+        collapsible: { block: CollapsibleData };
+    }
 }
 
 /** The mdast node the collapsible remark transform produces; its body is re-parsed Markdown. */
@@ -137,7 +149,7 @@ const remarkCollapsible: Plugin<[], Root> = () => {
 // Parse: a `collapsible` mdast node (produced by the remark transform) becomes a custom collapsible block.
 
 /** Converts a collapsible mdast node to a custom collapsible block, declining any other node. */
-function blockFromMdast(node: RootContent, ctx: ParseContext): EditorBlock | null {
+function blockFromMdast(node: RootContent, ctx: ParseContext): ExtensionBlockInput<"collapsible"> | null {
     if (node.type !== "collapsible") {
         return null;
     }
@@ -145,15 +157,13 @@ function blockFromMdast(node: RootContent, ctx: ParseContext): EditorBlock | nul
     return {
         children: ctx.blocksFromMdast(node.children),
         data: { collapsibleType: node.collapsibleType, open: node.open, title: node.title },
-        extension: "collapsible",
-        type: "custom",
     };
 }
 
 // Serialise-in: a rendered collapsible element (the Tiptap node's DOM) becomes a custom collapsible block.
 
 /** Recognises a `<details.markdown-collapsible>` callout element and rebuilds the custom block, else declines. */
-function blockFromElement(element: Element, ctx: FromElementContext): EditorBlock | null {
+function blockFromElement(element: Element, ctx: FromElementContext): ExtensionBlockInput<"collapsible"> | null {
     if (element.tagName !== "DETAILS" || !element.classList.contains("markdown-collapsible")) {
         return null;
     }
@@ -173,23 +183,17 @@ function blockFromElement(element: Element, ctx: FromElementContext): EditorBloc
             open: element.hasAttribute("open"),
             title: element.getAttribute("data-title"),
         },
-        extension: "collapsible",
-        type: "custom",
     };
 }
 
 // Serialise-out: a custom collapsible block becomes mkdocs `???` / `???+` source with a four-space body.
 
 /** Serialises a custom collapsible block back to mkdocs Markdown, declining any other block. */
-function blockToMarkdown(block: EditorBlock, ctx: ToMarkdownContext): string | null {
-    if (block.type !== "custom" || block.extension !== "collapsible") {
-        return null;
-    }
-
-    const { collapsibleType, title, open } = block.data as CollapsibleData;
+function blockToMarkdown(data: CollapsibleData, children: EditorBlock[] | undefined, ctx: ToMarkdownContext): string {
+    const { collapsibleType, title, open } = data;
     const marker = open ? "???+" : "???";
     const head = title !== null ? `${marker} ${collapsibleType} "${title}"` : `${marker} ${collapsibleType}`;
-    const body = ctx.documentToMarkdown({ blocks: block.children ?? [] });
+    const body = ctx.documentToMarkdown({ blocks: children ?? [] });
     const indented = body
         .split("\n")
         .map((line: string): string => (line.length > 0 ? `    ${line}` : ""))
@@ -199,7 +203,7 @@ function blockToMarkdown(block: EditorBlock, ctx: ToMarkdownContext): string | n
 }
 
 /** mkdocs-material `???` / `???+` collapsible callouts, parsed by a custom remark transform. */
-export const collapsibleExtension: ContentExtension = {
+export const collapsibleExtension: ContentExtensionFor<"collapsible"> = {
     blockFromElement,
     blockFromMdast,
     blockToMarkdown,

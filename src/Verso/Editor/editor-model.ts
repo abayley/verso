@@ -2,6 +2,30 @@ export interface EditorDocument {
     blocks: EditorBlock[];
 }
 
+declare const contentExtensionPayloads: unique symbol;
+
+/** Extension-owned payloads, augmented by each in-tree content extension. */
+export interface ContentExtensionPayloads {
+    readonly [contentExtensionPayloads]?: never;
+}
+
+/** The names contributed to the open content extension payload map. */
+export type ContentExtensionName = keyof ContentExtensionPayloads & string;
+
+/** The block payload owned by one named content extension. */
+export type ContentExtensionBlockPayload<Name extends ContentExtensionName> = Name extends ContentExtensionName
+    ? ContentExtensionPayloads[Name] extends { block: infer Payload }
+        ? Payload
+        : never
+    : never;
+
+/** The inline payload owned by one named content extension. */
+export type ContentExtensionInlinePayload<Name extends ContentExtensionName> = Name extends ContentExtensionName
+    ? ContentExtensionPayloads[Name] extends { inline: infer Payload }
+        ? Payload
+        : never
+    : never;
+
 export type EditorBlock =
     | BlockquoteBlock
     | CodeBlock
@@ -51,10 +75,10 @@ interface HorizontalRuleBlock {
 }
 
 /** A block contributed by a content extension; its payload is owned and validated by that extension. */
-interface CustomBlock {
+export interface CustomBlock<Name extends ContentExtensionName = ContentExtensionName> {
     children?: EditorBlock[];
-    data: unknown;
-    extension: string;
+    data: ContentExtensionBlockPayload<Name>;
+    extension: Name;
     type: "custom";
 }
 
@@ -69,10 +93,10 @@ export type InlineNode =
     | TextInline;
 
 /** An inline node contributed by a content extension; its payload is owned and validated by that extension. */
-interface CustomInline {
+export interface CustomInline<Name extends ContentExtensionName = ContentExtensionName> {
     children?: InlineNode[];
-    data: unknown;
-    extension: string;
+    data: ContentExtensionInlinePayload<Name>;
+    extension: Name;
     type: "custom";
 }
 

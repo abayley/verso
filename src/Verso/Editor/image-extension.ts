@@ -1,7 +1,6 @@
 import type { Nodes, PhrasingContent, Root } from "mdast";
 import type { Plugin } from "unified";
-import type { ContentExtension, FromElementContext, ParseContext, ToMarkdownContext } from "./content-extension.js";
-import type { EditorBlock, InlineNode } from "./editor-model.js";
+import type { ContentExtensionFor, ExtensionInlineInput, ParseContext } from "./content-extension.js";
 
 /** The payload on a custom image inline node. */
 interface ImageData {
@@ -10,6 +9,12 @@ interface ImageData {
     title: string | null;
     /** Display width in pixels from a `{width=N}` attribute, or null when unsized. */
     width: number | null;
+}
+
+declare module "./editor-model.js" {
+    interface ContentExtensionPayloads {
+        image: { inline: ImageData };
+    }
 }
 
 /** A width attached to an mdast image node by the attribute-parsing transform. */
@@ -107,15 +112,10 @@ function widthFromAttribute(value: string | null): number | null {
     return width > 0 ? width : null;
 }
 
-/** Whether an editor inline node is an image. */
-function isImage(node: InlineNode): node is InlineNode & { data: unknown } {
-    return node.type === "custom" && node.extension === "image";
-}
-
 // Parse: an mdast image -> a custom image inline.
 
 /** Converts an mdast image to a custom image inline node, declining any other node. */
-function inlineFromMdast(node: PhrasingContent, _ctx: ParseContext): InlineNode | null {
+function inlineFromMdast(node: PhrasingContent, _ctx: ParseContext): ExtensionInlineInput<"image"> | null {
     if (node.type !== "image") {
         return null;
     }
@@ -124,15 +124,13 @@ function inlineFromMdast(node: PhrasingContent, _ctx: ParseContext): InlineNode 
 
     return {
         data: { alt: node.alt ?? "", src: node.url, title: node.title ?? null, width },
-        extension: "image",
-        type: "custom",
     };
 }
 
 // Serialise-in: an <img> element -> a custom image inline.
 
 /** Builds a custom image inline node from an `<img>` element. */
-function imageInlineFromElement(element: Element): InlineNode {
+function imageInlineFromElement(element: Element): ExtensionInlineInput<"image"> {
     return {
         data: {
             alt: element.getAttribute("alt") ?? "",
@@ -140,8 +138,6 @@ function imageInlineFromElement(element: Element): InlineNode {
             title: element.getAttribute("title"),
             width: widthFromAttribute(element.getAttribute("width")),
         },
-        extension: "image",
-        type: "custom",
     };
 }
 
@@ -158,7 +154,7 @@ function isContentImage(element: Element): boolean {
 }
 
 /** Recognises a content `<img>` element and rebuilds the custom image inline, declining otherwise. */
-function inlineFromElement(node: ChildNode): InlineNode[] | null {
+function inlineFromElement(node: ChildNode): ExtensionInlineInput<"image">[] | null {
     if (node.nodeType !== Node.ELEMENT_NODE) {
         return null;
     }
@@ -172,31 +168,11 @@ function inlineFromElement(node: ChildNode): InlineNode[] | null {
     return isContentImage(element) ? [imageInlineFromElement(element)] : [];
 }
 
-/**
- * Claims a block-level content `<img>` (the visual editor can render a standalone `![](url)` as a bare
- * top-level image rather than inside a paragraph) as a paragraph holding the image, declining otherwise.
- * A src-less artifact `<img>` is declined so the base extension drops it rather than emitting `![]()`.
- */
-function blockFromElement(element: Element, _ctx: FromElementContext): EditorBlock | null {
-    if (element.tagName !== "IMG" || !isContentImage(element)) {
-        return null;
-    }
-
-    return {
-        children: [imageInlineFromElement(element)],
-        type: "paragraph",
-    };
-}
-
 // Serialise-out: an image -> its `![alt](src "title")` form.
 
 /** Serialises an image to its Markdown image form, declining any other inline node. */
-function inlineToMarkdown(node: InlineNode, _ctx: ToMarkdownContext): string | null {
-    if (!isImage(node)) {
-        return null;
-    }
-
-    const { alt, src, title, width } = node.data as ImageData;
+function inlineToMarkdown(data: ImageData): string {
+    const { alt, src, title, width } = data;
     const destination = title !== null ? `${src} "${title}"` : src;
     const widthSuffix = width !== null ? `{width=${width}}` : "";
 
@@ -204,8 +180,7 @@ function inlineToMarkdown(node: InlineNode, _ctx: ToMarkdownContext): string | n
 }
 
 /** GFM images (`![alt](src "title")`, optionally `{width=N}`) rendered inline as `<img>`; no raw HTML. */
-export const imageExtension: ContentExtension = {
-    blockFromElement,
+export const imageExtension: ContentExtensionFor<"image"> = {
     inlineFromElement,
     inlineFromMdast,
     inlineToMarkdown,

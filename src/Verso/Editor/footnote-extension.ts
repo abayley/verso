@@ -1,42 +1,38 @@
 import type { PhrasingContent, RootContent } from "mdast";
-import type { ContentExtension, FromElementContext, ParseContext, ToMarkdownContext } from "./content-extension.js";
-import type { EditorBlock, InlineNode } from "./editor-model.js";
+import type {
+    ContentExtensionFor,
+    ExtensionBlockInput,
+    ExtensionInlineInput,
+    FromElementContext,
+    ParseContext,
+    ToMarkdownContext,
+} from "./content-extension.js";
+import type { EditorBlock } from "./editor-model.js";
 
 /** The extension-owned payload carried on a custom footnote reference (inline) or definition (block). */
 interface FootnoteData {
     footnoteId: string;
 }
 
-/** Whether an editor block is a footnote definition. */
-function isFootnoteDefinition(
-    block: EditorBlock,
-): block is EditorBlock & { extension: string; data: unknown; children?: EditorBlock[] } {
-    return block.type === "custom" && block.extension === "footnote";
-}
-
-/** Whether an editor inline node is a footnote reference. */
-function isFootnoteReference(node: InlineNode): node is InlineNode & { extension: string; data: unknown } {
-    return node.type === "custom" && node.extension === "footnote";
-}
-
-/** Reads the footnote id from a custom footnote node's payload. */
-function footnoteId(data: unknown): string {
-    return (data as FootnoteData).footnoteId;
+declare module "./editor-model.js" {
+    interface ContentExtensionPayloads {
+        footnote: { block: FootnoteData; inline: FootnoteData };
+    }
 }
 
 // Parse: footnoteReference -> custom inline; footnoteDefinition -> custom block.
 
 /** Converts an mdast footnote reference to a custom footnote inline node, declining any other node. */
-function inlineFromMdast(node: PhrasingContent): InlineNode | null {
+function inlineFromMdast(node: PhrasingContent): ExtensionInlineInput<"footnote"> | null {
     if (node.type !== "footnoteReference") {
         return null;
     }
 
-    return { data: { footnoteId: node.label ?? node.identifier }, extension: "footnote", type: "custom" };
+    return { data: { footnoteId: node.label ?? node.identifier } };
 }
 
 /** Converts an mdast footnote definition to a custom footnote block, declining any other node. */
-function blockFromMdast(node: RootContent, ctx: ParseContext): EditorBlock | null {
+function blockFromMdast(node: RootContent, ctx: ParseContext): ExtensionBlockInput<"footnote"> | null {
     if (node.type !== "footnoteDefinition") {
         return null;
     }
@@ -44,15 +40,13 @@ function blockFromMdast(node: RootContent, ctx: ParseContext): EditorBlock | nul
     return {
         children: ctx.blocksFromMdast(node.children),
         data: { footnoteId: node.label ?? node.identifier },
-        extension: "footnote",
-        type: "custom",
     };
 }
 
 // Serialise-in: a reference superscript -> custom inline; a definition element -> custom block.
 
 /** Recognises a footnote reference superscript and rebuilds the custom inline node, declining otherwise. */
-function inlineFromElement(node: ChildNode): InlineNode[] | null {
+function inlineFromElement(node: ChildNode): ExtensionInlineInput<"footnote">[] | null {
     if (node.nodeType !== Node.ELEMENT_NODE) {
         return null;
     }
@@ -69,11 +63,11 @@ function inlineFromElement(node: ChildNode): InlineNode[] | null {
         return null;
     }
 
-    return [{ data: { footnoteId: id }, extension: "footnote", type: "custom" }];
+    return [{ data: { footnoteId: id } }];
 }
 
 /** Recognises a footnote definition element and rebuilds the custom block, declining otherwise. */
-function blockFromElement(element: Element, ctx: FromElementContext): EditorBlock | null {
+function blockFromElement(element: Element, ctx: FromElementContext): ExtensionBlockInput<"footnote"> | null {
     if (element.tagName !== "DIV" || !element.classList.contains("markdown-footnote-def")) {
         return null;
     }
@@ -89,38 +83,28 @@ function blockFromElement(element: Element, ctx: FromElementContext): EditorBloc
     return {
         children: body ? ctx.documentFromElements(body.children).blocks : [],
         data: { footnoteId: id },
-        extension: "footnote",
-        type: "custom",
     };
 }
 
 // Serialise-out: a reference -> [^id]; a definition -> [^id]: body (continuations indented four spaces).
 
 /** Serialises a footnote reference to a `[^id]` label, declining any other inline node. */
-function inlineToMarkdown(node: InlineNode): string | null {
-    if (!isFootnoteReference(node)) {
-        return null;
-    }
-
-    return `[^${footnoteId(node.data)}]`;
+function inlineToMarkdown(data: FootnoteData): string {
+    return `[^${data.footnoteId}]`;
 }
 
 /** Serialises a footnote definition to `[^id]: body` Markdown, declining any other block. */
-function blockToMarkdown(block: EditorBlock, ctx: ToMarkdownContext): string | null {
-    if (!isFootnoteDefinition(block)) {
-        return null;
-    }
-
-    const body = ctx.documentToMarkdown({ blocks: block.children ?? [] });
+function blockToMarkdown(data: FootnoteData, children: EditorBlock[] | undefined, ctx: ToMarkdownContext): string {
+    const body = ctx.documentToMarkdown({ blocks: children ?? [] });
     const [firstLine, ...rest] = body.split("\n");
-    const head = `[^${footnoteId(block.data)}]: ${firstLine ?? ""}`;
+    const head = `[^${data.footnoteId}]: ${firstLine ?? ""}`;
     const indented = rest.map((line: string): string => (line.length > 0 ? `    ${line}` : "")).join("\n");
 
     return rest.length > 0 ? `${head}\n${indented}` : head;
 }
 
 /** GFM footnotes (`[^id]` references and `[^id]:` definitions), rendered as a collected numbered list. */
-export const footnoteExtension: ContentExtension = {
+export const footnoteExtension: ContentExtensionFor<"footnote"> = {
     blockFromElement,
     blockFromMdast,
     blockToMarkdown,

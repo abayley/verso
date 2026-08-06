@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { type ContentExtension, createContentPipeline } from "../../src/Verso/Editor/content-extension.js";
+import { type ContentExtensionFor, createContentPipeline } from "../../src/Verso/Editor/content-extension.js";
 import { parseMarkdownWithRemark } from "../../src/Verso/Editor/remark-adapter.js";
+
+declare module "../../src/Verso/Editor/editor-model.js" {
+    interface ContentExtensionPayloads {
+        absent: { block: Record<string, never> };
+        feature: { block: { marker: string } };
+        first: { block: Record<string, never> };
+        other: { block: Record<string, never> };
+        owner: { block: Record<string, never> };
+        second: { block: Record<string, never> };
+    }
+}
 
 describe("createContentPipeline", (): void => {
     it("given no feature extensions, when base Markdown is parsed and serialised, then it is preserved", (): void => {
@@ -12,7 +23,7 @@ describe("createContentPipeline", (): void => {
 
     it("given ordered feature extensions, when a node is recognised, then supplied order precedes the base", (): void => {
         const visited: string[] = [];
-        const decliningExtension: ContentExtension = {
+        const decliningExtension: ContentExtensionFor<"first"> = {
             blockFromMdast: () => {
                 visited.push("first");
 
@@ -20,11 +31,11 @@ describe("createContentPipeline", (): void => {
             },
             name: "first",
         };
-        const recognisingExtension: ContentExtension = {
+        const recognisingExtension: ContentExtensionFor<"second"> = {
             blockFromMdast: () => {
                 visited.push("second");
 
-                return { children: [], data: {}, extension: "second", type: "custom" };
+                return { children: [], data: {} };
             },
             name: "second",
         };
@@ -36,10 +47,12 @@ describe("createContentPipeline", (): void => {
         expect(visited).toEqual(["first", "second"]);
     });
 
-    it("given a feature named base, when a pipeline is constructed, then it rejects replacement of the base", (): void => {
+    it("given duplicate feature names, when a pipeline is constructed, then it rejects the duplicate", (): void => {
+        const extension: ContentExtensionFor<"first"> = { name: "first" };
+
         expect((): void => {
-            createContentPipeline([{ name: "base" }]);
-        }).toThrow("Duplicate content extension name: base");
+            createContentPipeline([extension, extension]);
+        }).toThrow("Duplicate content extension name: first");
     });
 
     it("given a custom node, when serialised, then only its named extension handles it", (): void => {
@@ -72,11 +85,9 @@ describe("createContentPipeline", (): void => {
     });
 
     it("given pipelines with different feature sets, when both run, then neither changes the other", (): void => {
-        const feature: ContentExtension = {
-            blockFromMdast: (node) =>
-                node.type === "thematicBreak"
-                    ? { data: { marker: "feature" }, extension: "feature", type: "custom" }
-                    : null,
+        const feature: ContentExtensionFor<"feature"> = {
+            blockFromMdast: (node) => (node.type === "thematicBreak" ? { data: { marker: "feature" } } : null),
+            blockToMarkdown: (data) => data.marker,
             name: "feature",
         };
         const baseOnly = createContentPipeline([]);
@@ -85,6 +96,7 @@ describe("createContentPipeline", (): void => {
 
         expect(withFeature.documentFromMdast([...thematicBreak]).blocks[0]).toMatchObject({ extension: "feature" });
         expect(baseOnly.documentFromMdast([...thematicBreak]).blocks[0]).toEqual({ type: "horizontalRule" });
+        expect(withFeature.documentToMarkdown(withFeature.documentFromMdast([...thematicBreak]))).toBe("feature");
     });
 
     it("given a custom node whose extension is absent, when serialised, then it produces the fail-soft empty result", (): void => {

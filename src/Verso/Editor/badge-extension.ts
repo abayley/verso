@@ -1,8 +1,7 @@
 import type { Nodes, PhrasingContent, Root } from "mdast";
 import type { Plugin } from "unified";
 import { BADGE_ATTR } from "./badge-syntax.js";
-import type { ContentExtension } from "./content-extension.js";
-import type { InlineNode } from "./editor-model.js";
+import type { ContentExtensionFor, ExtensionInlineInput } from "./content-extension.js";
 
 // Badge lozenges (RFC-0021), an opt-in tree-mode content extension. The corpus writes a badge as an inline
 // code span immediately followed by a `{.badge.<colour>}` attribute list (e.g. `` `TODO`{.badge.yellow} ``),
@@ -15,9 +14,10 @@ interface BadgeData {
     colour: string;
 }
 
-/** Whether an editor inline node is a badge. */
-function isBadge(node: InlineNode): node is InlineNode & { data: BadgeData } {
-    return node.type === "custom" && node.extension === "badge";
+declare module "./editor-model.js" {
+    interface ContentExtensionPayloads {
+        badge: { inline: BadgeData };
+    }
 }
 
 // Parse: a remark transform fuses an `inlineCode` node and an immediately-following `{.badge.<colour>}`
@@ -64,21 +64,21 @@ const remarkBadges: Plugin<[], Root> = () => {
 };
 
 /** Converts a fused `badge` mdast node to a custom badge inline node, declining any other node. */
-function inlineFromMdast(node: PhrasingContent): InlineNode | null {
+function inlineFromMdast(node: PhrasingContent): ExtensionInlineInput<"badge"> | null {
     const badge = node as unknown as { type: string; value?: string; colour?: string };
 
     if (badge.type !== "badge") {
         return null;
     }
 
-    return { data: { colour: badge.colour ?? "", text: badge.value ?? "" }, extension: "badge", type: "custom" };
+    return { data: { colour: badge.colour ?? "", text: badge.value ?? "" } };
 }
 
 // Serialise-in: a `span.badge` placeholder becomes a badge node, reading the colour from data-badge-colour
 // and the literal text from the element's text content.
 
 /** Recognises a rendered badge span and rebuilds the badge inline, declining otherwise. */
-function inlineFromElement(node: ChildNode): InlineNode[] | null {
+function inlineFromElement(node: ChildNode): ExtensionInlineInput<"badge">[] | null {
     if (node.nodeType !== Node.ELEMENT_NODE) {
         return null;
     }
@@ -92,8 +92,6 @@ function inlineFromElement(node: ChildNode): InlineNode[] | null {
     return [
         {
             data: { colour: element.getAttribute("data-badge-colour") ?? "", text: element.textContent ?? "" },
-            extension: "badge",
-            type: "custom",
         },
     ];
 }
@@ -102,12 +100,8 @@ function inlineFromElement(node: ChildNode): InlineNode[] | null {
 // text itself contains backticks (CommonMark inline code).
 
 /** Serialises a badge to its canonical Markdown, declining any other inline node. */
-function inlineToMarkdown(node: InlineNode): string | null {
-    if (!isBadge(node)) {
-        return null;
-    }
-
-    const { text, colour } = node.data;
+function inlineToMarkdown(data: BadgeData): string {
+    const { text, colour } = data;
 
     return `${codeSpan(text)}{.badge.${colour}}`;
 }
@@ -122,7 +116,7 @@ function codeSpan(text: string): string {
 }
 
 /** Badge lozenges (`` `text`{.badge.<colour>} ``); registered only in the trusted document-tree mode. */
-export const badgeExtension: ContentExtension = {
+export const badgeExtension: ContentExtensionFor<"badge"> = {
     inlineFromElement,
     inlineFromMdast,
     inlineToMarkdown,

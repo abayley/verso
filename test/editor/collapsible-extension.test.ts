@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdown } from "../../src/Verso/Editor/markdown-parse.js";
-import { documentFromElements, documentToMarkdown } from "../../src/Verso/Editor/markdown-serialise.js";
+import { commonContentPipeline } from "../../src/Verso/Editor/register-extensions.js";
+import { parseMarkdownWithRemark } from "../../src/Verso/Editor/remark-adapter.js";
+
+const parseMarkdown = (markdown: string) => parseMarkdownWithRemark(markdown, commonContentPipeline);
+const { documentFromElements, documentToMarkdown } = commonContentPipeline;
 
 describe("collapsible parsing", (): void => {
     it("given a collapsed note with a title and body, when parsed, then it becomes a custom collapsible block", (): void => {

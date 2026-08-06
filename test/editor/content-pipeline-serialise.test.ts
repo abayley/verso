@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdown } from "../../src/Verso/Editor/markdown-parse.js";
-import { documentFromElements, documentToMarkdown } from "../../src/Verso/Editor/markdown-serialise.js";
+import { commonContentPipeline } from "../../src/Verso/Editor/register-extensions.js";
+import { parseMarkdownWithRemark } from "../../src/Verso/Editor/remark-adapter.js";
 
-describe("documentFromElements", (): void => {
+const parseMarkdown = (markdown: string) => parseMarkdownWithRemark(markdown, commonContentPipeline);
+const { documentFromElements, documentToMarkdown } = commonContentPipeline;
+
+describe("commonContentPipeline DOM conversion", (): void => {
     it("serialises supported DOM blocks into an editor document", (): void => {
         const root = document.createElement("div");
 

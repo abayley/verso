@@ -249,17 +249,17 @@ the base blockquote and GFM alert serialisers.
 
 ### Phase 4: Legacy parser and wrapper deletion
 
-- [ ] Test: given the current supported Markdown and DOM cases, when callers use
+- [x] Test: given the current supported Markdown and DOM cases, when callers use
       the pipeline or remark adapter directly, then table, GFM alert, MkDocs
       collapsible, footnote, reference link, image, raw HTML, and badge results
       remain exact.
-- [ ] Test: given a supplied pipeline, when the remark adapter parses Markdown,
+- [x] Test: given a supplied pipeline, when the remark adapter parses Markdown,
       then it uses that pipeline for mdast conversion.
-- [ ] Move expected-model and round-trip cases to pipeline-facing tests.
-- [ ] Delete `markdown-parse.ts`, `markdown-serialise.ts`, and
+- [x] Move expected-model and round-trip cases to pipeline-facing tests.
+- [x] Delete `markdown-parse.ts`, `markdown-serialise.ts`, and
       `markdown-parse-local.ts` without adding a replacement grammar.
-- [ ] Remove every import of the deleted modules.
-- [ ] Run `make check` and commit the phase.
+- [x] Remove every import of the deleted modules.
+- [x] Run `make check` and commit the phase.
 
 ### Phase 5: Callout consolidation and active-code rename
 

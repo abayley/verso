@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdown } from "../../src/Verso/Editor/markdown-parse.js";
-import { documentFromElements, documentToMarkdown } from "../../src/Verso/Editor/markdown-serialise.js";
+import { commonContentPipeline } from "../../src/Verso/Editor/register-extensions.js";
+import { parseMarkdownWithRemark } from "../../src/Verso/Editor/remark-adapter.js";
+
+const parseMarkdown = (markdown: string) => parseMarkdownWithRemark(markdown, commonContentPipeline);
+const { documentFromElements, documentToMarkdown } = commonContentPipeline;
 
 describe("footnote parsing", (): void => {
     it("given an inline reference with a matching definition, when parsed, then the reference becomes a custom footnote inline node", (): void => {

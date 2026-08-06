@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdown } from "../../src/Verso/Editor/markdown-parse.js";
+import { commonContentPipeline } from "../../src/Verso/Editor/register-extensions.js";
+import { parseMarkdownWithRemark } from "../../src/Verso/Editor/remark-adapter.js";
 
-describe("parseMarkdown", (): void => {
+const parseMarkdown = (markdown: string) => parseMarkdownWithRemark(markdown, commonContentPipeline);
+
+describe("commonContentPipeline Markdown parsing", (): void => {
     it("parses supported block and inline nodes into an editor document", (): void => {
         const markdown = [
             "# Heading",

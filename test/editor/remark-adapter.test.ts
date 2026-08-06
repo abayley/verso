@@ -1,25 +1,32 @@
 import { describe, expect, it } from "vitest";
-import { parseMarkdownLocally } from "../../src/Verso/Editor/markdown-parse-local.js";
+import { type ContentExtensionFor, createContentPipeline } from "../../src/Verso/Editor/content-extension.js";
 import { commonContentPipeline } from "../../src/Verso/Editor/register-extensions.js";
 import { badgeSpans, parseMarkdownWithRemark, rawHtmlSpans } from "../../src/Verso/Editor/remark-adapter.js";
 
-describe("parseMarkdownWithRemark", (): void => {
-    it("given supported Markdown, when parsed through remark, then it matches the legacy local parser", (): void => {
-        const markdown = [
-            "# Heading",
-            "",
-            "Paragraph with **strong**, *emphasis*, `code`, and [link](/target).",
-            "",
-            "- first",
-            "- second",
-            "",
-            "1. ordered",
-            "2. list",
-            "",
-            "---",
-        ].join("\n");
+declare module "../../src/Verso/Editor/editor-model.js" {
+    interface ContentExtensionPayloads {
+        "adapter-probe": { block: { source: string } };
+    }
+}
 
-        expect(parseMarkdownWithRemark(markdown, commonContentPipeline)).toEqual(parseMarkdownLocally(markdown));
+describe("parseMarkdownWithRemark", (): void => {
+    it("given a supplied pipeline, when Markdown is parsed, then that pipeline converts the mdast", (): void => {
+        const extension: ContentExtensionFor<"adapter-probe"> = {
+            blockFromMdast: (node) =>
+                node.type === "thematicBreak" ? { data: { source: "supplied pipeline" } } : null,
+            name: "adapter-probe",
+        };
+        const pipeline = createContentPipeline([extension]);
+
+        expect(parseMarkdownWithRemark("---", pipeline)).toEqual({
+            blocks: [
+                {
+                    data: { source: "supplied pipeline" },
+                    extension: "adapter-probe",
+                    type: "custom",
+                },
+            ],
+        });
     });
 
     it("given unsupported Markdown, when parsed through remark, then it rejects the unsupported node", (): void => {

@@ -999,7 +999,9 @@ export class MarkdownEditorElement extends HTMLElement {
                 ),
             listMoves: async (): Promise<MoveOp[] | null> => {
                 try {
-                    const response = await fetch("/operations", { headers: { Accept: "application/json" } });
+                    const response = await fetch("/operations?type=move&limit=10", {
+                        headers: { Accept: "application/json" },
+                    });
                     if (!response.ok) {
                         return null;
                     }
@@ -1026,9 +1028,9 @@ export class MarkdownEditorElement extends HTMLElement {
                     return null;
                 }
             },
-            listTrash: async (): Promise<TrashEntry[] | null> => {
+            listTrash: async (limit: number): Promise<TrashEntry[] | null> => {
                 try {
-                    const response = await fetch("/trash", { headers: { Accept: "application/json" } });
+                    const response = await fetch(`/trash?limit=${limit}`, { headers: { Accept: "application/json" } });
                     if (!response.ok) {
                         return null;
                     }

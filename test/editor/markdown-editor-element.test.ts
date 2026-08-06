@@ -78,6 +78,44 @@ describe("MarkdownEditorElement", (): void => {
         expect(banner?.hidden).toBe(true);
     });
 
+    it("given the trash menu, when opened, then it requests only the ten most recent server entries", async (): Promise<void> => {
+        const requestedUrls: string[] = [];
+        vi.stubGlobal("fetch", async (input: RequestInfo | URL): Promise<Response> => {
+            requestedUrls.push(String(input));
+            return new Response("[]", { status: 200 });
+        });
+        const editor = document.createElement(elementName);
+        editor.textContent = "# Heading";
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        (editor.querySelector("#nav-trash-menu-trigger") as HTMLElement).click();
+        await new Promise<void>((resolve): void => {
+            setTimeout(resolve);
+        });
+
+        expect(requestedUrls).toContain("/trash?limit=10");
+    });
+
+    it("given the undo menu, when opened, then it requests only the ten most recent moves", async (): Promise<void> => {
+        const requestedUrls: string[] = [];
+        vi.stubGlobal("fetch", async (input: RequestInfo | URL): Promise<Response> => {
+            requestedUrls.push(String(input));
+            return new Response("[]", { status: 200 });
+        });
+        const editor = document.createElement(elementName);
+        editor.textContent = "# Heading";
+        document.body.append(editor);
+        await waitForInitialisation();
+
+        (editor.querySelector("#nav-undo-menu-trigger") as HTMLElement).click();
+        await new Promise<void>((resolve): void => {
+            setTimeout(resolve);
+        });
+
+        expect(requestedUrls).toContain("/operations?type=move&limit=10");
+    });
+
     it("given source mode, when initialised, then it uses CodeMirror and serialises Markdown", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.setAttribute("mode", "source");

@@ -3219,6 +3219,13 @@ markdown-editor[data-appearance-open]
   z-index: 2;
 }
 
+/* Keep an open header popover above the decorative rail edge without changing
+   the normal sticky-header stacking order. */
+:root[data-editor-theme="moebius"]
+  .markdown-editor__nav-header:has([aria-expanded="true"]) {
+  z-index: 3;
+}
+
 :root[data-editor-theme="moebius"].dark .markdown-editor__nav::after {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='1000' viewBox='0 0 8 1000' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%237e86c2' stroke-linecap='round'%3E%3Cpath d='M6.3 0 C7.0 35 7.07 95 6.3 130 C5.6 175 5.53 260 6.37 310 C6.79 350 6.86 415 6.3 455 C5.67 500 5.53 595 6.37 640' stroke-width='1.7'/%3E%3Cpath d='M6.37 643.5 C7.07 680 6.93 740 6.23 780' stroke-width='1.35'/%3E%3Cpath d='M6.23 782.5 C5.53 815 5.6 865 6.37 900' stroke-width='1.95'/%3E%3Cpath d='M6.37 903.5 C7.07 930 6.93 975 6.3 1000' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E");
 }

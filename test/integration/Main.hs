@@ -14,7 +14,9 @@ import qualified System.IO as IO
 import Test.Hspec
 import qualified Verso.AppSpec as AppSpec
 import qualified Verso.GitSpec as GitSpec
+import qualified Verso.OperationStoreSpec as OperationStoreSpec
 import qualified Verso.SearchAppSpec as SearchAppSpec
+import qualified Verso.TrashStoreSpec as TrashStoreSpec
 
 main :: IO ()
 main = do
@@ -31,5 +33,7 @@ main = do
         StaticSpec.spec
         StreamSpec.spec
         GitSpec.spec
+        OperationStoreSpec.spec
         AppSpec.spec
         SearchAppSpec.spec
+        TrashStoreSpec.spec

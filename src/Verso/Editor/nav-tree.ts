@@ -104,6 +104,7 @@ function coerceChildren(parsed: unknown): TreeNodeData[] {
 
 const EXPANDED_KEY = "editor-nav-expanded";
 const COLLAPSED_KEY = "editor-nav-collapsed";
+const CHILDREN_KEY = "editor-nav-children";
 
 /** The parent folder tree path of a node path (`a/b.md` -> `a`, `a/b` -> `a`, top-level -> ``). */
 function parentOfPath(path: string): string {
@@ -114,6 +115,23 @@ function parentOfPath(path: string): string {
 /** The index.md document path of a folder (`index.md` at the root), for navigating to a folder. */
 function folderIndexPath(folder: string): string {
     return folder === "" ? "index.md" : `${folder}/index.md`;
+}
+
+/** Whether two child listings describe the same rendered rows in the same order. */
+function sameChildren(left: TreeNodeData[] | undefined, right: TreeNodeData[]): boolean {
+    if (!left || left.length !== right.length) {
+        return false;
+    }
+    return left.every((node, index): boolean => {
+        const other = right[index];
+        return (
+            other !== undefined &&
+            node.name === other.name &&
+            node.path === other.path &&
+            node.kind === other.kind &&
+            node.hasChildren === other.hasChildren
+        );
+    });
 }
 
 /** A delete outcome from the server: moved to trash, refused with referrers, or an error. */
@@ -188,7 +206,7 @@ export interface NavTreeOptions {
     /** List the logged moves for the undo picker (most recent first); null when the server is unreachable. */
     listMoves: () => Promise<MoveOp[] | null>;
     /** List the trash entries for the Trash view; null when the server is unreachable. */
-    listTrash: () => Promise<TrashEntry[] | null>;
+    listTrash: (limit: number) => Promise<TrashEntry[] | null>;
     /** Restore a trash entry to its origin. */
     restore: (id: string) => Promise<OpResult>;
 }
@@ -203,6 +221,7 @@ export class NavTreePanel {
     private readonly list: HTMLUListElement;
     private readonly options: NavTreeOptions;
     private readonly cache = new Map<string, TreeNodeData[]>();
+    private readonly spinePaths: Set<string>;
     private readonly expanded: Set<string>;
     /** Folder paths whose last children-fetch failed; rendered as an inline error with a retry. */
     private readonly errors = new Set<string>();
@@ -233,9 +252,14 @@ export class NavTreePanel {
         this.options = options;
         this.activePath = activeNodePath(options.documentPath);
 
+        for (const [path, children] of this.loadCachedChildren()) {
+            this.cache.set(path, children);
+        }
+        this.spinePaths = new Set(options.spine.map((entry): string => entry.path));
         for (const entry of options.spine) {
             this.cache.set(entry.path, entry.children);
         }
+        this.saveCachedChildren();
         this.expanded = this.loadExpanded(options.spine.map((entry): string => entry.path));
         this.collapsed = this.loadCollapsed();
 
@@ -318,20 +342,39 @@ export class NavTreePanel {
         // The spine only seeds the open page's ancestors; any other persisted-expanded folder has no cached
         // children yet, so fetch those and re-render -- otherwise it would show expanded (arrow down) but empty.
         void this.hydrate().then((): void => this.revealActive(false));
-        // Start the expensive trash listing while the page settles, rather than exposing its cold cost on
-        // the first menu click. The click handler still refreshes it so long-lived pages do not go stale.
-        void this.loadTrashItems();
-        void this.loadUndoItems();
     }
 
-    /** Fetches children for persisted-expanded folders not covered by the spine, then re-renders. */
+    /** Checks persisted expanded folders outside the current spine in parallel, then renders changed rows. */
     private async hydrate(): Promise<void> {
+        const paths = [...this.expanded].filter((path): boolean => !this.spinePaths.has(path));
+        const updates = await Promise.all(
+            paths.map(async (path): Promise<{ path: string; children: TreeNodeData[] } | { path: string }> => {
+                try {
+                    return { path, children: await this.options.fetchChildren(path) };
+                } catch {
+                    return { path };
+                }
+            }),
+        );
         let changed = false;
-        for (const path of [...this.expanded]) {
-            if (!this.cache.has(path)) {
-                await this.loadInto(path);
+        let fetched = false;
+        for (const update of updates) {
+            if (!("children" in update)) {
+                if (!this.cache.has(update.path)) {
+                    this.errors.add(update.path);
+                    changed = true;
+                }
+                continue;
+            }
+            fetched = true;
+            this.errors.delete(update.path);
+            if (!sameChildren(this.cache.get(update.path), update.children)) {
+                this.cache.set(update.path, update.children);
                 changed = true;
             }
+        }
+        if (fetched) {
+            this.saveCachedChildren();
         }
         if (changed) {
             this.render();
@@ -532,6 +575,7 @@ export class NavTreePanel {
             return;
         }
         this.cache.set(path, await this.options.fetchChildren(path));
+        this.saveCachedChildren();
     }
 
     private async retry(path: string): Promise<void> {
@@ -968,7 +1012,7 @@ export class NavTreePanel {
     }
 
     private async refreshTrashItems(): Promise<void> {
-        const entries = await this.options.listTrash();
+        const entries = await this.options.listTrash(TRASH_DROPDOWN_LIMIT);
         this.trashEntries = entries ?? [];
         const recent = this.trashEntries.slice(0, TRASH_DROPDOWN_LIMIT);
         const entryItems =
@@ -1150,6 +1194,49 @@ export class NavTreePanel {
             }
         }
         return expanded;
+    }
+
+    /** Reads validated folder children saved by an earlier page in this browser session. */
+    private loadCachedChildren(): Map<string, TreeNodeData[]> {
+        const cached = new Map<string, TreeNodeData[]>();
+        let stored: string | null = null;
+        try {
+            stored = window.sessionStorage.getItem(CHILDREN_KEY);
+        } catch {
+            return cached;
+        }
+        if (!stored) {
+            return cached;
+        }
+
+        try {
+            const parsed: unknown = JSON.parse(stored);
+            if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+                return cached;
+            }
+            for (const [path, value] of Object.entries(parsed)) {
+                if (!Array.isArray(value)) {
+                    continue;
+                }
+                const children = parseTreeChildren(JSON.stringify(value));
+                if (children.length === value.length) {
+                    cached.set(path, children);
+                }
+            }
+        } catch {
+            return cached;
+        }
+
+        return cached;
+    }
+
+    /** Saves the current validated child listings for the next page in this browser session. */
+    private saveCachedChildren(): void {
+        try {
+            window.sessionStorage.setItem(CHILDREN_KEY, JSON.stringify(Object.fromEntries(this.cache)));
+        } catch {
+            // storage may be unavailable or full; the live fetch path remains authoritative
+        }
     }
 
     private saveExpanded(): void {

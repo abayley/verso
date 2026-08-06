@@ -5,7 +5,7 @@ status: Implemented
 owners:
     - alistairbayley
 created: 2026-06-23
-updated: 2026-06-23
+updated: 2026-08-06
 supersedes: []
 superseded_by: null
 ---
@@ -90,8 +90,8 @@ it as complete in the phase checklist.
   machinery's collision/not-found guard) rather than forced. Choosing a still-valid
   inverse is always well-defined; reasoning about interactions between non-adjacent
   operations is left to the author.
-- **Automatic trash GC.** Trash retention/purge policy is future; trash grows until
-  manually cleared.
+- **Background trash GC.** Retention remains a lazy sweep when trash is read; no
+  timer or background worker is introduced.
 
 ## Proposal
 
@@ -173,6 +173,43 @@ the navigation tree that reads the trash root (not by placing trash in the tree)
   location/slug (consistent with move-collision). Restore appends a `restore`
   operation to the log.
 
+### Warm operation catalogue
+
+The server opens one warm operation catalogue before it starts serving requests.
+The catalogue reads and fully evaluates the append-only log once, owns sequence
+allocation and durable appends, and supplies every request-time operation read.
+Each successful append writes the durable record before publishing the same record
+to in-memory readers. Structural mutations already hold the server write lock, so
+sequence allocation and append cannot interleave with another mutation.
+
+The operation log remains the source of truth. The catalogue is derived state and
+is rebuilt on restart. Direct route tests use an uncached adapter through the same
+interface, while the production application supplies the warm catalogue.
+
+`GET /operations` without query parameters remains the complete append-order log.
+The optional `type` filter accepts `move`, `delete`, or `restore`. A non-negative
+`limit` selects the newest matching records while preserving append order in the
+response. The recent Undo menu requests `GET /operations?type=move&limit=10`; the
+full Undo page remains unbounded.
+
+### Warm trash catalogue
+
+The server builds a derived, in-memory trash catalogue before it starts serving
+requests. Startup reads every trash manifest once and joins deletion timestamps
+from the warm operation catalogue. The trash catalogue holds entries newest-first
+and answers subsequent trash listings without walking the trash root.
+
+The trash manifests and operation log remain the source of truth. The catalogue is
+not persisted and is rebuilt on every server start, so a crash or an offline replay
+is repaired by restart. Out-of-band changes made while the server is running are
+outside the live freshness contract; replay is already an offline workflow.
+
+Every in-server delete, restore, undo, retention purge, permanent delete, and empty
+operation updates the catalogue while holding the structural write lock. The recent
+trash dropdown requests `GET /trash?limit=10`; the full trash page reads the complete
+catalogue. Undo remains lazy because opening its menu now reads a small filtered
+slice from the warm operation catalogue.
+
 ### Relationship to RFC-0027
 
 RFC-0027 owns the move/delete operations and their link/asset/listing
@@ -214,8 +251,13 @@ preferred.)
   **apply-then-append** with failure reporting -- a crash between the two loses at
   most one log entry rather than corrupting the tree (an applied-but-unlogged op).
 - **Replay best-effort** never half-breaks the corpus; the report captures gaps.
-- **Trash growth**: unbounded until manual purge (GC is a non-goal); the operator
-  manages retention.
+- **Trash growth**: when retention is enabled, the lazy sweep evaluates catalogue
+  entries without rescanning manifests or the operation log. With retention
+  disabled, trash grows until the operator empties or permanently deletes entries.
+- **Catalogue recovery**: the catalogue is disposable derived state. Restart
+  reconstructs the operation catalogue from the log, then reconstructs the trash
+  catalogue from manifests plus those operations. A restart repairs both after a
+  crash or offline replay.
 - **Partial apply** within one operation is RFC-0027's concern (it reports
   per-file failures); the log entry is written for the operation as a whole.
 
@@ -229,6 +271,11 @@ preferred.)
 - No new MicroHs capability beyond RFC-0027's (`rename`/`unlink`/`rmdir`); moving to
   trash is a single `rename(2)` (trash is on the same device, so no copy+remove
   fallback is needed).
+- `GET /trash` remains backward compatible. An optional non-negative `limit` query
+  returns only that many newest entries; omitting it returns the full list.
+- `GET /operations` remains backward compatible. Optional `type` and non-negative
+  `limit` query values select a newest matching slice for recent menus; omitting
+  both returns the complete append-order log.
 
 ## Testing and Quality Gates
 
@@ -241,7 +288,10 @@ preferred.)
   free origin and refusal when occupied; refuse-if-referenced still blocks a delete.
   Filesystem cases use a `build/` fixture corpus + fixture log/trash dirs.
 - Client (vitest): undo affordance, restore-from-trash listing, replay report
-  rendering.
+  rendering, and no trash or undo request until its menu opens.
+- Warm catalogue (hspec): startup rebuild and newest-first ordering, in-memory reads
+  after startup, operation append and sequence consistency, bounded recent move and
+  trash listings, and consistency after every trash mutation.
 
 ## Rollout Plan
 
@@ -286,6 +336,21 @@ preferred.)
    message in the notice area and refreshes the tree. Replay is intentionally **not**
    in the UI (it is the `replay-tool` CLI, an operator action). Browser-verified
    against a scratch tree.
+6. **Phase 6 -- Warm operation and trash catalogues.** [DONE] Remove page-start
+   trash and undo requests while keeping both menus lazy. Build one operation
+   catalogue and the derived trash catalogue at server startup, serve bounded
+   recent menu data, and maintain both catalogues across in-server mutations.
+
+   - [x] Navigation mount performs no trash or undo request; opening a menu loads it.
+   - [x] Startup rebuilds a newest-first catalogue and subsequent reads stay in memory.
+   - [x] One operation catalogue owns startup read, sequence allocation, append, and
+     request-time reads; the trash catalogue consumes the same held operations.
+   - [x] The recent-trash endpoint limit and full trash page return the right entries.
+   - [x] The recent Undo menu requests ten filtered moves while the full operation
+     endpoint and Undo page remain compatible.
+   - [x] Delete, restore, undo, retention purge, permanent delete, and empty keep the
+     catalogue current.
+   - [x] Full quality gate and browser verification pass.
 
 ### Rollout Plan Escape Hatch
 

@@ -12,6 +12,8 @@ import Test.Hspec
 import qualified Verso.App as App
 import qualified Verso.Config as VConfig
 import qualified Verso.Git as Git
+import qualified Verso.OperationLog as OperationLog
+import qualified Verso.Trash as Trash
 
 spec :: Spec
 spec = do
@@ -25,43 +27,32 @@ spec = do
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
             fmap contentTypeOf outcome `shouldBe` Right (Just (BS.pack "text/css"))
             fmap isSizedFileBody outcome `shouldBe` Right True
-    describe "Verso.App startup preparation" $
+    describe "Verso.App startup preparation" $ do
         it "given log and oplog paths under missing directories, when the app is built, then their parents are created" $ do
             root <- setupTreeFixture
             _ <- Process.runProcess "rm" ["-rf", "build/appspec-writable"] Nothing Nothing
-            let vc =
-                    VConfig.VersoConfig
-                        { VConfig.documentTreeRoot = root
-                        , VConfig.editorTheme = "paper"
-                        , VConfig.operationLog = "build/appspec-writable/oplog/operation_log"
-                        , VConfig.trashRoot = "build/appspec-writable/trash"
-                        , VConfig.trashRetentionDays = 90
-                        , VConfig.linkIndex = "build/appspec-writable/linkindex"
-                        , VConfig.accessLog = "build/appspec-writable/logs/access.log"
-                        , VConfig.clientErrorLog = "build/appspec-writable/logs/client-errors.log"
-                        , VConfig.logMaxBytes = 1048576
-                        , VConfig.logKeep = 2
-                        , VConfig.staticMounts = []
-                        , VConfig.versioningEnabled = False
-                        , VConfig.linkIndexEnabled = False
-                        , VConfig.draftRoot = "build/appspec-writable/drafts"
-                        , VConfig.identityHeader = "X-Remote-User"
-                        , VConfig.identityDefault = "anonymous"
-                        , VConfig.identityEmailDomain = "verso.local"
-                        , VConfig.searchEnabled = False
-                        , VConfig.searchModel = ""
-                        , VConfig.searchVocab = ""
-                        , VConfig.searchIndexDir = ""
-                        , VConfig.searchModelId = ""
-                        , VConfig.searchPooling = "cls"
-                        , VConfig.searchMaxTokens = 384
-                        , VConfig.searchDims = 384
-                        , VConfig.searchThreads = 1
-                        , VConfig.searchQueryPrefix = ""
-                        }
+            let vc = appConfig root "build/appspec-writable"
             _ <- App.appFromConfig Server.defaultSettings vc
             Directory.doesDirectoryExist "build/appspec-writable/logs" `shouldReturn` True
             Directory.doesDirectoryExist "build/appspec-writable/oplog" `shouldReturn` True
+        it "given trash at startup, when its manifest later disappears, then the trash endpoint still serves the warmed entry" $ do
+            root <- setupTreeFixture
+            let stateRoot = "build/appspec-warm-trash"
+                vc = appConfig root stateRoot
+                trashRoot = VConfig.trashRoot vc
+                logPath = VConfig.operationLog vc
+                manifestPath = trashRoot ++ "/7/manifest"
+            _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
+            Directory.createDirectoryIfMissing True (trashRoot ++ "/7")
+            Directory.createDirectoryIfMissing True (stateRoot ++ "/oplog")
+            writeFile manifestPath (Trash.renderManifest (Trash.Manifest "removed.md" "page" 7 Nothing []))
+            OperationLog.appendOperation logPath (OperationLog.Operation OperationLog.OpDelete "page" (Just "removed.md") Nothing 7 "2026-08-06T10:00:00.000+1200" (Just "7"))
+            application <- App.appFromConfig Server.defaultSettings vc
+            Directory.removeFile manifestPath
+
+            response <- Server.respondToRequestBytes application (BS.pack (getRequest "/trash"))
+
+            fmap (bodyContains (BS.pack "\"path\":\"removed.md\"")) response `shouldBe` Right True
     describe "Verso.App document tree" $ do
         it "given an edit request for a tree document, when routing, then the editor page is returned with its content" $ do
             root <- setupTreeFixture
@@ -452,6 +443,101 @@ spec = do
             draftAfterRestore `shouldBe` True
 
     describe "Verso.App trash listing and page (RFC-0028)" $ do
+        it "given an empty warm catalogue, when a page is deleted, then the trash endpoint lists it" $ do
+            root <- setupTreeFixture
+            let stateRoot = "build/appspec-warm-delete"
+            _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
+            writeFile (root ++ "/sec/warm-delete.md") "# Delete me\n"
+            application <- App.appFromConfig Server.defaultSettings (appConfig root stateRoot)
+
+            _ <- Server.respondToRequestBytes application (BS.pack (deleteRequest "/tree/sec/warm-delete.md"))
+            listing <- Server.respondToRequestBytes application (BS.pack (getRequest "/trash"))
+
+            fmap (bodyContains (BS.pack "sec/warm-delete.md")) listing `shouldBe` Right True
+        it "given an entry in the warm catalogue, when it is restored, then the trash endpoint no longer lists it" $ do
+            root <- setupTreeFixture
+            let stateRoot = "build/appspec-warm-restore"
+            _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
+            writeFile (root ++ "/sec/warm-restore.md") "# Restore me\n"
+            application <- App.appFromConfig Server.defaultSettings (appConfig root stateRoot)
+            deleted <- Server.respondToRequestBytes application (BS.pack (deleteRequest "/tree/sec/warm-restore.md"))
+            let trashId = either (const "") trashIdOf deleted
+
+            _ <- Server.respondToRequestBytes application (BS.pack (postRequest ("/trash/" ++ trashId) ""))
+            listing <- Server.respondToRequestBytes application (BS.pack (getRequest "/trash"))
+
+            fmap (bodyContains (BS.pack "sec/warm-restore.md")) listing `shouldBe` Right False
+        it "given an entry in the warm catalogue, when it is permanently deleted, then the trash endpoint no longer lists it" $ do
+            root <- setupTreeFixture
+            let stateRoot = "build/appspec-warm-purge-one"
+            _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
+            writeFile (root ++ "/sec/warm-purge-one.md") "# Purge me\n"
+            application <- App.appFromConfig Server.defaultSettings (appConfig root stateRoot)
+            deleted <- Server.respondToRequestBytes application (BS.pack (deleteRequest "/tree/sec/warm-purge-one.md"))
+            let trashId = either (const "") trashIdOf deleted
+
+            _ <- Server.respondToRequestBytes application (BS.pack (deleteRequest ("/trash/" ++ trashId)))
+            listing <- Server.respondToRequestBytes application (BS.pack (getRequest "/trash"))
+
+            fmap (bodyContains (BS.pack "sec/warm-purge-one.md")) listing `shouldBe` Right False
+        it "given entries in the warm catalogue, when trash is emptied, then the trash endpoint returns an empty list" $ do
+            root <- setupTreeFixture
+            let stateRoot = "build/appspec-warm-empty"
+            _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
+            writeFile (root ++ "/sec/warm-empty-one.md") "# Empty one\n"
+            writeFile (root ++ "/sec/warm-empty-two.md") "# Empty two\n"
+            application <- App.appFromConfig Server.defaultSettings (appConfig root stateRoot)
+            _ <- Server.respondToRequestBytes application (BS.pack (deleteRequest "/tree/sec/warm-empty-one.md"))
+            _ <- Server.respondToRequestBytes application (BS.pack (deleteRequest "/tree/sec/warm-empty-two.md"))
+
+            _ <- Server.respondToRequestBytes application (BS.pack (deleteRequest "/trash"))
+            listing <- Server.respondToRequestBytes application (BS.pack (getRequest "/trash"))
+
+            fmap bodyString listing `shouldBe` Right "[]"
+        it "given an expired warm entry, when retention runs, then later trash reads stay empty" $ do
+            root <- setupTreeFixture
+            let stateRoot = "build/appspec-warm-retention"
+                vc = appConfig root stateRoot
+                trashRoot = VConfig.trashRoot vc
+                logPath = VConfig.operationLog vc
+            _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
+            Directory.createDirectoryIfMissing True (trashRoot ++ "/3")
+            Directory.createDirectoryIfMissing True (stateRoot ++ "/oplog")
+            writeFile (trashRoot ++ "/3/manifest") (Trash.renderManifest (Trash.Manifest "expired.md" "page" 3 Nothing []))
+            OperationLog.appendOperation logPath (OperationLog.Operation OperationLog.OpDelete "page" (Just "expired.md") Nothing 3 "2020-01-01T00:00:00.000+1200" (Just "3"))
+            application <- App.appFromConfig Server.defaultSettings vc
+
+            firstListing <- Server.respondToRequestBytes application (BS.pack (getRequest "/trash"))
+            secondListing <- Server.respondToRequestBytes application (BS.pack (getRequest "/trash"))
+
+            fmap bodyString firstListing `shouldBe` Right "[]"
+            fmap bodyString secondListing `shouldBe` Right "[]"
+        it "given a delete in the warm catalogue, when the delete is undone, then the trash endpoint no longer lists it" $ do
+            root <- setupTreeFixture
+            let stateRoot = "build/appspec-warm-undo-delete"
+            _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
+            writeFile (root ++ "/sec/warm-undo-delete.md") "# Undo delete\n"
+            application <- App.appFromConfig Server.defaultSettings (appConfig root stateRoot)
+            _ <- Server.respondToRequestBytes application (BS.pack (deleteRequest "/tree/sec/warm-undo-delete.md"))
+
+            _ <- Server.respondToRequestBytes application (BS.pack (postRequest "/undo" ""))
+            listing <- Server.respondToRequestBytes application (BS.pack (getRequest "/trash"))
+
+            fmap (bodyContains (BS.pack "sec/warm-undo-delete.md")) listing `shouldBe` Right False
+        it "given a restored entry, when the restore is undone, then the trash endpoint lists the new delete" $ do
+            root <- setupTreeFixture
+            let stateRoot = "build/appspec-warm-undo-restore"
+            _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
+            writeFile (root ++ "/sec/warm-undo-restore.md") "# Undo restore\n"
+            application <- App.appFromConfig Server.defaultSettings (appConfig root stateRoot)
+            deleted <- Server.respondToRequestBytes application (BS.pack (deleteRequest "/tree/sec/warm-undo-restore.md"))
+            let trashId = either (const "") trashIdOf deleted
+            _ <- Server.respondToRequestBytes application (BS.pack (postRequest ("/trash/" ++ trashId) ""))
+
+            _ <- Server.respondToRequestBytes application (BS.pack (postRequest "/undo" ""))
+            listing <- Server.respondToRequestBytes application (BS.pack (getRequest "/trash"))
+
+            fmap (bodyContains (BS.pack "sec/warm-undo-restore.md")) listing `shouldBe` Right True
         it "given two deletions, when listing /trash, then entries are JSON newest-first with a deletion timestamp" $ do
             root <- setupTreeFixture
             writeFile (root ++ "/sec/trash-older.md") "# Older\n\nfirst to go."
@@ -477,6 +563,29 @@ spec = do
             ("\"ts\":" `List.isInfixOf` body) `shouldBe` True
             -- newest-first: the later deletion precedes the earlier one
             orderedBefore "sec/trash-newer.md" "sec/trash-older.md" body `shouldBe` True
+        it "given two deletions, when listing /trash with a limit, then only the newest entry is returned" $ do
+            root <- setupTreeFixture
+            let stateRoot = "build/appspec-warm-limit"
+            _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
+            writeFile (root ++ "/sec/trash-limit-older.md") "# Older\n"
+            writeFile (root ++ "/sec/trash-limit-newer.md") "# Newer\n"
+            application <- App.appFromConfig Server.defaultSettings (appConfig root stateRoot)
+            _ <-
+                Server.respondToRequestBytes
+                    application
+                    (BS.pack (deleteRequest "/tree/sec/trash-limit-older.md"))
+            _ <-
+                Server.respondToRequestBytes
+                    application
+                    (BS.pack (deleteRequest "/tree/sec/trash-limit-newer.md"))
+
+            listing <-
+                Server.respondToRequestBytes
+                    application
+                    (BS.pack (getRequest "/trash?limit=1"))
+
+            fmap (bodyContains (BS.pack "sec/trash-limit-newer.md")) listing `shouldBe` Right True
+            fmap (bodyContains (BS.pack "sec/trash-limit-older.md")) listing `shouldBe` Right False
         it "given a deleted page, when viewing /trashbin, then the trash page lists it newest-first with a Restore control" $ do
             root <- setupTreeFixture
             writeFile (root ++ "/sec/trash-page.md") "# Bin me\n\ncontent."
@@ -721,6 +830,39 @@ uploadRequest target filename body =
         ++ show (length body)
         ++ "\r\n\r\n"
         ++ body
+
+-- | A production-wired application configuration whose writable state is isolated under one test directory.
+appConfig :: FilePath -> FilePath -> VConfig.VersoConfig
+appConfig root stateRoot =
+    VConfig.VersoConfig
+        { VConfig.documentTreeRoot = root
+        , VConfig.editorTheme = "paper"
+        , VConfig.operationLog = stateRoot ++ "/oplog/operation_log"
+        , VConfig.trashRoot = stateRoot ++ "/trash"
+        , VConfig.trashRetentionDays = 90
+        , VConfig.linkIndex = stateRoot ++ "/linkindex"
+        , VConfig.accessLog = stateRoot ++ "/logs/access.log"
+        , VConfig.clientErrorLog = stateRoot ++ "/logs/client-errors.log"
+        , VConfig.logMaxBytes = 1048576
+        , VConfig.logKeep = 2
+        , VConfig.staticMounts = []
+        , VConfig.versioningEnabled = False
+        , VConfig.linkIndexEnabled = False
+        , VConfig.draftRoot = stateRoot ++ "/drafts"
+        , VConfig.identityHeader = "X-Remote-User"
+        , VConfig.identityDefault = "anonymous"
+        , VConfig.identityEmailDomain = "verso.local"
+        , VConfig.searchEnabled = False
+        , VConfig.searchModel = ""
+        , VConfig.searchVocab = ""
+        , VConfig.searchIndexDir = ""
+        , VConfig.searchModelId = ""
+        , VConfig.searchPooling = "cls"
+        , VConfig.searchMaxTokens = 384
+        , VConfig.searchDims = 384
+        , VConfig.searchThreads = 1
+        , VConfig.searchQueryPrefix = ""
+        }
 
 setupTreeFixture :: IO FilePath
 setupTreeFixture = do

@@ -61,8 +61,8 @@ function expandedPaths(): string[] {
     return raw ? (JSON.parse(raw) as string[]) : [];
 }
 
-/** Installs a fresh in-memory localStorage (happy-dom does not provide one). */
-function installLocalStorageStub(): void {
+/** Installs a fresh in-memory web storage stub (happy-dom does not provide one). */
+function installStorageStub(name: "localStorage" | "sessionStorage"): void {
     const store = new Map<string, string>();
     const stub: Storage = {
         get length(): number {
@@ -84,13 +84,73 @@ function installLocalStorageStub(): void {
             store.set(key, value);
         },
     };
-    Object.defineProperty(window, "localStorage", { configurable: true, value: stub });
+    Object.defineProperty(window, name, { configurable: true, value: stub });
 }
 
 describe("NavTreePanel navigation (RFC-0026)", () => {
     beforeEach((): void => {
-        installLocalStorageStub();
+        installStorageStub("localStorage");
+        installStorageStub("sessionStorage");
         document.body.replaceChildren();
+    });
+
+    it("given cached children for an expanded branch, when mounted, then the branch renders before its freshness check completes", () => {
+        window.localStorage.setItem("editor-nav-expanded", JSON.stringify(["guide"]));
+        window.sessionStorage.setItem(
+            "editor-nav-children",
+            JSON.stringify({
+                guide: [{ hasChildren: false, kind: "page", name: "Cached page", path: "guide/cached.md" }],
+            }),
+        );
+        const pending = new Promise<unknown[]>((): void => {});
+
+        const { panel } = mountNav({ fetchChildren: (): Promise<unknown[]> => pending });
+
+        expect(navLabel(panel, "Cached page")).toBeInstanceOf(HTMLElement);
+    });
+
+    it("given cached children for expanded branches, when mounted, then freshness checks run in parallel and replace changed rows", async () => {
+        window.localStorage.setItem("editor-nav-expanded", JSON.stringify(["guide", "servers"]));
+        window.sessionStorage.setItem(
+            "editor-nav-children",
+            JSON.stringify({
+                guide: [{ hasChildren: false, kind: "page", name: "Old guide", path: "guide/old.md" }],
+                servers: [{ hasChildren: false, kind: "page", name: "Server page", path: "servers/page.md" }],
+            }),
+        );
+        const responses = new Map<string, (children: unknown[]) => void>();
+        const requested: string[] = [];
+        const engineering = { hasChildren: true, kind: "section", name: "Engineering", path: "engineering" };
+        const guide = { hasChildren: true, kind: "section", name: "Guide", path: "guide" };
+        const servers = { hasChildren: true, kind: "section", name: "Servers", path: "servers" };
+        const runbook = { hasChildren: false, kind: "page", name: "Runbook", path: "engineering/runbook.md" };
+
+        const { panel } = mountNav({
+            spine: [
+                { children: [engineering, guide, servers], path: "" },
+                { children: [runbook], path: "engineering" },
+            ],
+            fetchChildren: (path: string): Promise<unknown[]> => {
+                requested.push(path);
+                return new Promise<unknown[]>((resolve): void => {
+                    responses.set(path, resolve);
+                });
+            },
+        });
+
+        expect(requested).toEqual(["guide", "servers"]);
+        responses.get("guide")?.([
+            { hasChildren: false, kind: "page", name: "Current guide", path: "guide/current.md" },
+        ]);
+        responses.get("servers")?.([
+            { hasChildren: false, kind: "page", name: "Server page", path: "servers/page.md" },
+        ]);
+        await new Promise((resolve): void => {
+            setTimeout(resolve);
+        });
+
+        expect(navLabel(panel, "Current guide")).toBeInstanceOf(HTMLElement);
+        expect(panel.textContent).not.toContain("Old guide");
     });
 
     it("given a section label click, when opening, then the section expands and the browser navigates", () => {
@@ -150,7 +210,7 @@ describe("NavTreePanel navigation (RFC-0026)", () => {
         expect(labels).toContain("View all in trash…");
     });
 
-    it("given a new navigation tree, when mounted, then it starts loading trash before the menu is opened", () => {
+    it("given a new navigation tree, when mounted, then it does not load trash before the menu is opened", () => {
         let listCalls = 0;
 
         mountNav({
@@ -160,10 +220,10 @@ describe("NavTreePanel navigation (RFC-0026)", () => {
             },
         });
 
-        expect(listCalls).toBe(1);
+        expect(listCalls).toBe(0);
     });
 
-    it("given a new navigation tree, when mounted, then it starts loading moves before the menu is opened", () => {
+    it("given a new navigation tree, when mounted, then it does not load moves before the menu is opened", () => {
         let listCalls = 0;
 
         mountNav({
@@ -173,10 +233,10 @@ describe("NavTreePanel navigation (RFC-0026)", () => {
             },
         });
 
-        expect(listCalls).toBe(1);
+        expect(listCalls).toBe(0);
     });
 
-    it("given trash is still preloading, when the trash dropdown opens, then it reuses the pending request", async () => {
+    it("given trash is still loading, when the trash dropdown opens again, then it reuses the pending request", async () => {
         let listCalls = 0;
         let finishListing: (entries: unknown[]) => void = (): void => {};
         const listing = new Promise<unknown[]>((resolve): void => {
@@ -191,13 +251,14 @@ describe("NavTreePanel navigation (RFC-0026)", () => {
 
         const trigger = panel.querySelector("#nav-trash-menu-trigger") as HTMLElement;
         trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
         expect(listCalls).toBe(1);
         finishListing([]);
         await listing;
     });
 
-    it("given moves are still preloading, when the undo dropdown opens, then it reuses the pending request", async () => {
+    it("given moves are still loading, when the undo dropdown opens again, then it reuses the pending request", async () => {
         let listCalls = 0;
         let finishListing: (moves: unknown[]) => void = (): void => {};
         const listing = new Promise<unknown[]>((resolve): void => {
@@ -211,6 +272,7 @@ describe("NavTreePanel navigation (RFC-0026)", () => {
         });
 
         const trigger = panel.querySelector("#nav-undo-menu-trigger") as HTMLElement;
+        trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
         expect(listCalls).toBe(1);

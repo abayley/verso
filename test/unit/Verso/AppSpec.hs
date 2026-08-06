@@ -12,6 +12,7 @@ import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
 import Test.Hspec
 import qualified Verso.App as App
+import qualified Verso.OperationLog as OperationLog
 
 spec :: Spec
 spec =
@@ -303,6 +304,27 @@ spec =
                 bodyText response `shouldInclude` "\"type\":\"move\""
                 bodyText response `shouldInclude` "\"from\":\"x\""
                 bodyText response `shouldInclude` "\"seq\":0"
+
+            it "given mixed operations, when recent moves are requested with a limit, then only the newest matching move is returned" $ do
+                appliedRoot <- setupMoveUndoFixture
+                let firstMove = (request Http.POST ["tree", "x"]){Http.requestQuery = [("move", "")]}
+                _ <- runTreeAppBody appliedRoot firstMove "to=y&slug=x&confirm=true"
+                OperationLog.appendOperation
+                    "build/tree-spec-oplog"
+                    (OperationLog.Operation OperationLog.OpDelete "page" (Just "old.md") Nothing 1 "2026-08-06T10:01:00.000+1200" (Just "1"))
+                OperationLog.appendOperation
+                    "build/tree-spec-oplog"
+                    (OperationLog.Operation OperationLog.OpMove "page" (Just "new.md") (Just "latest.md") 2 "2026-08-06T10:02:00.000+1200" Nothing)
+                let recentMoves =
+                        (request Http.GET ["operations"])
+                            { Http.requestQuery = [("type", "move"), ("limit", "1")]
+                            }
+
+                response <- runTreeApp appliedRoot recentMoves
+
+                bodyText response `shouldInclude` "\"seq\":2"
+                bodyText response `shouldNotInclude` "\"seq\":1"
+                bodyText response `shouldNotInclude` "\"seq\":0"
 
             it "given DELETE /trash/<id>, when routed, then the entry is permanently removed" $ do
                 appliedRoot <- setupDeleteRouteFixture

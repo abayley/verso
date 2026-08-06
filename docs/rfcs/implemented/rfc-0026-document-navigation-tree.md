@@ -5,7 +5,7 @@ status: Implemented
 owners:
     - alistairbayley
 created: 2026-06-23
-updated: 2026-06-23
+updated: 2026-08-06
 supersedes: []
 superseded_by: null
 ---
@@ -202,10 +202,19 @@ control, and node labels carry a full-title tooltip since deep rows truncate.
   expanded-ancestor computation for the open path (from the spine), the
   title-to-slug derivation, and the label filter.
 - `NavTreePanel` builds a `<nav>` of nested `<ul>`/`<li>` with a disclosure
-  control per section. Expanding fetches `GET /tree/<path>` once and **caches the
-  children for the session** (collapse hides the DOM, it does not refetch); a
-  refresh action re-reads (the escape hatch for out-of-band changes). DOM is
-  rendered lazily -- only expanded subtrees exist.
+  control per section. Expanding fetches `GET /tree/<path>` once and keeps the
+  children in memory (collapse hides the DOM, it does not refetch). Successful
+  reads and the embedded ancestor spine also seed a validated `sessionStorage`
+  child catalogue for later pages in the same browser tab.
+- A new page reads the session catalogue before its first render. The current
+  page's embedded spine replaces any stored copies of its ancestor listings.
+  Other persisted expanded branches render from stored children immediately,
+  then check their live `GET /tree/<path>` values in parallel. Changed listings
+  replace their stored rows after the checks finish. A failed check keeps the
+  stored rows; a branch with no stored rows shows the existing retry state.
+- The explicit refresh action clears the in-memory view and reads the root and
+  every expanded branch in parallel. DOM remains lazy, so only expanded
+  subtrees exist.
 - Section-row interaction: the disclosure control toggles expand/collapse; the
   row label navigates to the section's `index.md`.
 - Persistence in `localStorage`, mirroring `editor-mode`/theme:
@@ -262,10 +271,10 @@ persistence, navigation, create, lazy-load error/retry) is verified.
 
 ## Reliability Impact
 
-- **No drift.** Reading live means the tree is always consistent with the
-  filesystem; out-of-band edits appear on the next read. The only staleness is
-  the client's session cache of already-fetched subtrees, cleared by refresh or
-  reload.
+- **Bounded client staleness.** The server still reads the filesystem live. A
+  stored expanded branch can be stale during its parallel freshness check. A
+  successful check replaces changed rows, while a failed check keeps the stored
+  rows until a later page load or explicit refresh succeeds.
 - **Create failure** (write/`createDirectoryIfMissing` error) is surfaced to the
   client and leaves the tree unchanged; a partial section create (dir made,
   `index.md` write failed) is reported rather than silently leaving an
@@ -295,7 +304,9 @@ persistence, navigation, create, lazy-load error/retry) is verified.
 - Client (vitest, `test/editor/`): `parseTreeChildren`, active-node match,
   expanded-ancestor computation from the spine, title-to-slug derivation, label
   filter; panel behaviour contracts (present in both views, collapse/expand,
-  persistence, section-row navigation vs disclosure, create-then-open).
+  persistence, section-row navigation vs disclosure, create-then-open); immediate
+  rendering from the session child catalogue and parallel freshness checks that
+  replace changed rows.
 - Visual layout (panel placement, per-theme grid) is browser-verified via
   `preview_*`, not brittle-tested (AGENTS.md).
 
@@ -310,6 +321,10 @@ persistence, navigation, create, lazy-load error/retry) is verified.
    title->slug, numeric-suffix collision, seed, section `index.md`); create
    affordance (inline form, both views, hover-revealed "+"); optimistic reveal +
    open-in-edit. Panel also gains collapse-all and full-title tooltips.
+3. **Phase 3 -- Cross-page child catalogue.** (Done 2026-08-06.) Seed a
+   validated `sessionStorage` catalogue from successful reads and each embedded
+   spine. Render persisted expanded branches from it before first paint, then
+   check those branches in parallel and replace only changed rows.
 
 ### Rollout Plan Escape Hatch
 

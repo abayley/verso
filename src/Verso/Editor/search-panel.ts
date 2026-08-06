@@ -6,21 +6,7 @@
 // itself entirely when the server has search disabled.
 
 import { chromeButtonEl, chromeIconEl, NETWORK_ERROR } from "./chrome.js";
-
-/** One search result row, as the server's json flavour reports it. */
-interface SearchResult {
-    path: string;
-    title: string;
-    anchor: string;
-    excerpt: string;
-}
-
-/** The server's `/search?json` response shape. */
-interface SearchResponse {
-    enabled: boolean;
-    pending?: number;
-    results?: SearchResult[];
-}
+import { editorServerClient, type SearchResult, type ServerClient } from "./server-client.js";
 
 /** Milliseconds of typing quiet before a query is sent. */
 const DEBOUNCE_MS = 250;
@@ -44,7 +30,10 @@ export class SearchPanel {
     private results: SearchResult[] = [];
     private selected = -1;
 
-    constructor(private readonly navigate: (path: string) => void = SearchPanel.defaultNavigate) {
+    constructor(
+        private readonly navigate: (path: string) => void = SearchPanel.defaultNavigate,
+        private readonly client: Pick<ServerClient, "searchPages"> = editorServerClient,
+    ) {
         this.panel = document.createElement("div");
         this.panel.className = "markdown-editor__search";
         this.panel.hidden = true;
@@ -133,13 +122,12 @@ export class SearchPanel {
 
     /** Probes search availability; the panel stays hidden when disabled. */
     public async connect(): Promise<void> {
-        try {
-            const response = await fetch("/search?json&q=");
-            const body = (await response.json()) as SearchResponse;
-            this.panel.hidden = !body.enabled;
-        } catch {
+        const result = await this.client.searchPages("");
+        if (!result.ok) {
             this.panel.hidden = true;
+            return;
         }
+        this.panel.hidden = !result.value.enabled;
     }
 
     private onInput(): void {
@@ -158,21 +146,18 @@ export class SearchPanel {
     private async search(query: string): Promise<void> {
         this.inFlight?.abort();
         this.inFlight = new AbortController();
-        try {
-            const response = await fetch(`/search?json&q=${encodeURIComponent(query)}`, {
-                signal: this.inFlight.signal,
-            });
-            // Every result the server sends (it caps at one-per-page anyway);
-            // the dropdown scrolls rather than truncating.
-            const body = (await response.json()) as SearchResponse;
-            this.results = body.results ?? [];
-            this.selected = -1;
-            this.render(query, body.pending ?? 0);
-        } catch (error) {
-            if ((error as Error).name !== "AbortError") {
+        const result = await this.client.searchPages(query, this.inFlight.signal);
+        if (!result.ok) {
+            if (!result.aborted) {
                 this.renderError();
             }
+            return;
         }
+        // Every result the server sends (it caps at one-per-page anyway);
+        // the dropdown scrolls rather than truncating.
+        this.results = result.value.results;
+        this.selected = -1;
+        this.render(query, result.value.pending);
     }
 
     /** Replaces the dropdown content with the unreachable-server message, keeping it open. */

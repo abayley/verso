@@ -15,14 +15,9 @@ import {
     NETWORK_ERROR,
 } from "./chrome.js";
 import { themedConfirm } from "./confirm-dialog.js";
+import type { MoveOperation, ServerClient, TrashEntry, TreeNodeData } from "./server-client.js";
 
-/** A navigation-tree node as the server serialises it: a section (folder) or page, with its tree-relative path. */
-export interface TreeNodeData {
-    name: string;
-    path: string;
-    kind: "section" | "page";
-    hasChildren: boolean;
-}
+export type { TreeNodeData } from "./server-client.js";
 
 /** One ancestor folder of the open page and its immediate children, as embedded in `data-tree-spine`. */
 export interface SpineEntry {
@@ -134,41 +129,6 @@ function sameChildren(left: TreeNodeData[] | undefined, right: TreeNodeData[]): 
     });
 }
 
-/** A delete outcome from the server: moved to trash, refused with referrers, or an error. */
-export interface DeleteResult {
-    status: "deleted" | "refused" | "error";
-    referrers?: { page: string; link: string }[];
-    message?: string;
-}
-
-/** A move outcome: applied (or previewed) with the count of files whose links change, the new path, or an error. */
-export interface MoveResult {
-    ok: boolean;
-    changed?: number;
-    to?: string;
-    message?: string;
-}
-
-/** A generic operation outcome (undo/restore/replay) with a human message. */
-export interface OpResult {
-    ok: boolean;
-    message: string;
-}
-
-/** A trash entry for the Trash view. */
-export interface TrashEntry {
-    id: string;
-    path: string;
-    kind: string;
-}
-
-/** A logged move, for the undo picker (most recent first). */
-export interface MoveOp {
-    seq: number;
-    from: string;
-    to: string;
-}
-
 /** How many recent deletions the trash dropdown shows before deferring to the full trash page. */
 const TRASH_DROPDOWN_LIMIT = 10;
 /** The sentinel menu value that navigates to the full trash page rather than restoring an entry. */
@@ -181,34 +141,20 @@ const UNDO_VIEW_ALL = "__view_all_moves__";
 
 const UNDO_PAGE_URL = "/undo";
 
-/** The callbacks the panel needs from the editor element to fetch, create, navigate, and reorganise. */
+/** The server client and UI policy the navigation tree receives from its host. */
 export interface NavTreeOptions {
     /** The open document's tree-relative path (`data-document`). */
     documentPath: string;
     /** The embedded ancestor spine, so the open page is pre-expanded without fetches. */
     spine: SpineEntry[];
-    /** Fetch a folder's immediate children (`GET /tree/<path>`). */
-    fetchChildren: (path: string) => Promise<TreeNodeData[]>;
-    /** Create a page or section under a parent; resolves to the new page's edit path, or null on failure. */
-    createNode: (parentPath: string, kind: "page" | "section", title: string) => Promise<string | null>;
+    /** The named server operations used by the tree. */
+    client: ServerClient;
     /** Navigate the browser to a document URL (clicking a node). */
     navigate: (documentPath: string) => void;
     /** Attach a fast hover tooltip showing a node's full label (deep rows truncate). */
     registerTooltip: (target: HTMLElement, text: string) => void;
     /** Surface a transient message in the editor's standard notification area. */
     notify: (message: string, isError: boolean) => void;
-    /** Delete a page or section (routes to trash, or refuses with referrers). */
-    deleteNode: (path: string) => Promise<DeleteResult>;
-    /** Move a page/section: preview (confirm false) returns the impact; apply (confirm true) performs it. */
-    moveNode: (path: string, destParent: string, slug: string, confirm: boolean) => Promise<MoveResult>;
-    /** Undo a logged operation by its seq (generates and applies its inverse). */
-    undo: (seq: number) => Promise<OpResult>;
-    /** List the logged moves for the undo picker (most recent first); null when the server is unreachable. */
-    listMoves: () => Promise<MoveOp[] | null>;
-    /** List the trash entries for the Trash view; null when the server is unreachable. */
-    listTrash: (limit: number) => Promise<TrashEntry[] | null>;
-    /** Restore a trash entry to its origin. */
-    restore: (id: string) => Promise<OpResult>;
 }
 
 /**
@@ -236,7 +182,7 @@ export class NavTreePanel {
     /** A shared in-flight trash listing, so opening the menu cannot duplicate its preload. */
     private trashLoading: Promise<void> | null = null;
     /** The logged moves backing the undo dropdown (most recent first). */
-    private moves: MoveOp[] = [];
+    private moves: MoveOperation[] = [];
     /** A shared in-flight move listing, so opening the menu cannot duplicate its preload. */
     private movesLoading: Promise<void> | null = null;
     /** The undo dropdown (a Basecoat menu anchored to its header button). */
@@ -349,11 +295,11 @@ export class NavTreePanel {
         const paths = [...this.expanded].filter((path): boolean => !this.spinePaths.has(path));
         const updates = await Promise.all(
             paths.map(async (path): Promise<{ path: string; children: TreeNodeData[] } | { path: string }> => {
-                try {
-                    return { path, children: await this.options.fetchChildren(path) };
-                } catch {
+                const result = await this.options.client.loadTreeChildren(path);
+                if (!result.ok) {
                     return { path };
                 }
+                return { path, children: result.value };
             }),
         );
         let changed = false;
@@ -569,12 +515,16 @@ export class NavTreePanel {
         }
     }
 
-    /** Fetches a folder's children once (cached for the session). Throws on failure -- nothing is cached. */
+    /** Fetches a folder's children once (cached for the session). Throws on failure so nothing is cached. */
     private async ensureChildren(path: string): Promise<void> {
         if (this.cache.has(path)) {
             return;
         }
-        this.cache.set(path, await this.options.fetchChildren(path));
+        const result = await this.options.client.loadTreeChildren(path);
+        if (!result.ok) {
+            throw new Error(result.message);
+        }
+        this.cache.set(path, result.value);
         this.saveCachedChildren();
     }
 
@@ -673,18 +623,18 @@ export class NavTreePanel {
         // parts of the UI change underneath; block the whole UI with an obvious overlay until done.
         this.options.notify(`Moving “${name}”…`, false);
         await this.withBlockedUI(`Moving “${name}”…`, async (): Promise<boolean> => {
-            const applied = await this.options.moveNode(path, destParent, slug, true);
+            const applied = await this.options.client.moveTreeNode(path, destParent, slug, true);
             if (!applied.ok) {
-                this.options.notify(applied.message ?? "Move failed.", true);
+                this.options.notify(applied.message, true);
                 return false;
             }
-            const count = applied.changed ?? 0;
+            const count = applied.value.changed;
             this.options.notify(`Moved “${name}” — updated links in ${count} file(s).`, false);
             // If the open document moved (the item itself, or a page inside a moved section), follow it
             // to its new location; the navigation reloads the page, so keep the overlay up (return true).
             const openMoved = this.openDocumentUnder(path);
-            if (openMoved !== null && applied.to) {
-                this.options.navigate(applied.to + openMoved.slice(path.length));
+            if (openMoved !== null && applied.value.to) {
+                this.options.navigate(applied.value.to + openMoved.slice(path.length));
                 return true;
             }
             // Otherwise refresh in place, expanding the destination so the moved item is visible.
@@ -806,14 +756,14 @@ export class NavTreePanel {
         }
         this.options.notify(`Deleting “${node.name}”…`, false);
         await this.withBlockedUI(`Deleting “${node.name}”…`, async (): Promise<boolean> => {
-            const result = await this.options.deleteNode(node.path);
-            if (result.status === "refused") {
-                const pages = (result.referrers ?? []).map((r): string => r.page).join(", ");
-                this.options.notify(`Cannot delete “${node.name}”: still linked from ${pages}.`, true);
+            const result = await this.options.client.deleteTreeNode(node.path);
+            if (!result.ok) {
+                this.options.notify(result.message, true);
                 return false;
             }
-            if (result.status === "error") {
-                this.options.notify(result.message ?? "Delete failed.", true);
+            if (result.value.status === "refused") {
+                const pages = result.value.referrers.map((referrer): string => referrer.page).join(", ");
+                this.options.notify(`Cannot delete “${node.name}”: still linked from ${pages}.`, true);
                 return false;
             }
             this.options.notify(`Deleted “${node.name}” (in trash). Use Undo or Trash to recover.`, false);
@@ -908,7 +858,8 @@ export class NavTreePanel {
     }
 
     private async refreshUndoItems(): Promise<void> {
-        const moves = await this.options.listMoves();
+        const result = await this.options.client.listMoves(10);
+        const moves = result.ok ? result.value : null;
         this.moves = [...(moves ?? [])].reverse(); // most recent first
         const moveItems =
             moves === null
@@ -920,7 +871,7 @@ export class NavTreePanel {
     }
 
     /** Confirms, then applies the inverse of a chosen move (the item at its destination goes back to its source). */
-    private async undoMove(move: MoveOp): Promise<void> {
+    private async undoMove(move: MoveOperation): Promise<void> {
         const confirmed = await themedConfirm({
             title: "Undo move",
             message: `Undo this move? “${move.to}” moves back to “${move.from}”.`,
@@ -931,8 +882,8 @@ export class NavTreePanel {
         }
         this.options.notify("Undoing move…", false);
         await this.withBlockedUI("Undoing move…", async (): Promise<boolean> => {
-            const result = await this.options.undo(move.seq);
-            this.options.notify(result.message, !result.ok);
+            const result = await this.options.client.undoMove(move.seq);
+            this.options.notify(result.ok ? "Undone." : result.message, !result.ok);
             if (!result.ok) {
                 return false;
             }
@@ -1012,7 +963,8 @@ export class NavTreePanel {
     }
 
     private async refreshTrashItems(): Promise<void> {
-        const entries = await this.options.listTrash(TRASH_DROPDOWN_LIMIT);
+        const result = await this.options.client.listTrash(TRASH_DROPDOWN_LIMIT);
+        const entries = result.ok ? result.value : null;
         this.trashEntries = entries ?? [];
         const recent = this.trashEntries.slice(0, TRASH_DROPDOWN_LIMIT);
         const entryItems =
@@ -1035,8 +987,8 @@ export class NavTreePanel {
             return;
         }
         await this.withBlockedUI("Restoring…", async (): Promise<boolean> => {
-            const result = await this.options.restore(entry.id);
-            this.options.notify(result.message, !result.ok);
+            const result = await this.options.client.restoreTrashEntry(entry.id);
+            this.options.notify(result.ok ? "Restored." : result.message, !result.ok);
             if (!result.ok) {
                 return false;
             }
@@ -1058,21 +1010,19 @@ export class NavTreePanel {
             this.focusCreateInput();
             return;
         }
-        // The form stays open on failure so the title can be retried; errors go to the standard notice area
-        // (a rejected fetch when the server is unreachable throws here, rather than resolving to null).
-        try {
-            const editPath = await this.options.createNode(parentPath, this.createKind, title);
-            if (editPath) {
-                this.creatingUnder = null;
-                this.options.navigate(`${editPath}?edit`);
-            } else {
-                this.options.notify("Couldn’t create -- the server rejected the request.", true);
-                this.focusCreateInput();
-            }
-        } catch {
-            this.options.notify("Couldn’t create -- the server is unreachable.", true);
+        const result = await this.options.client.createTreeNode(parentPath, this.createKind, title);
+        if (!result.ok) {
+            this.options.notify(
+                result.message === NETWORK_ERROR
+                    ? "Couldn’t create -- the server is unreachable."
+                    : "Couldn’t create -- the server rejected the request.",
+                true,
+            );
             this.focusCreateInput();
+            return;
         }
+        this.creatingUnder = null;
+        this.options.navigate(`${result.value}?edit`);
     }
 
     private focusCreateInput(): void {

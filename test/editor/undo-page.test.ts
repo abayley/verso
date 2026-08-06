@@ -4,9 +4,8 @@ import { installUndoApply } from "../../src/Verso/Editor/undo-page.js";
 let uninstall: (() => void) | null = null;
 
 /** Mounts one undo-page row and installs the delegated handler with recording fakes. */
-function mountUndoRow(confirmAnswer: boolean): { fetchMock: ReturnType<typeof vi.fn>; reloads: number[] } {
-    const fetchMock = vi.fn(async (): Promise<Response> => new Response("{}", { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
+function mountUndoRow(confirmAnswer: boolean): { undoMove: ReturnType<typeof vi.fn>; reloads: number[] } {
+    const undoMove = vi.fn(async (): Promise<{ ok: true; value: undefined }> => ({ ok: true, value: undefined }));
     const reloads: number[] = [];
 
     document.body.innerHTML = [
@@ -15,13 +14,14 @@ function mountUndoRow(confirmAnswer: boolean): { fetchMock: ReturnType<typeof vi
         "</td></tr></tbody></table>",
     ].join("");
     uninstall = installUndoApply({
+        client: { undoMove },
         confirm: async (): Promise<boolean> => confirmAnswer,
         reload: (): void => {
             reloads.push(1);
         },
     });
 
-    return { fetchMock, reloads };
+    return { undoMove, reloads };
 }
 
 /** Lets the handler's async chain settle. */
@@ -41,25 +41,22 @@ describe("undo page", (): void => {
     });
 
     it("given an undo row, when its button is clicked and confirmed, then it posts the seq to /undo and reloads", async (): Promise<void> => {
-        const { fetchMock, reloads } = mountUndoRow(true);
+        const { undoMove, reloads } = mountUndoRow(true);
 
         (document.querySelector(".verso-undo-apply") as HTMLElement).click();
         await settle();
 
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(String(fetchMock.mock.calls[0]?.[0])).toBe("/undo");
-        expect((fetchMock.mock.calls[0]?.[1] as RequestInit).method).toBe("POST");
-        expect(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)).toBe("seq=3");
+        expect(undoMove).toHaveBeenCalledWith(3);
         expect(reloads).toHaveLength(1);
     });
 
     it("given an undo row, when the confirmation is declined, then nothing is posted", async (): Promise<void> => {
-        const { fetchMock, reloads } = mountUndoRow(false);
+        const { undoMove, reloads } = mountUndoRow(false);
 
         (document.querySelector(".verso-undo-apply") as HTMLElement).click();
         await settle();
 
-        expect(fetchMock).not.toHaveBeenCalled();
+        expect(undoMove).not.toHaveBeenCalled();
         expect(reloads).toHaveLength(0);
     });
 });

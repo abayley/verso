@@ -1,10 +1,23 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { SearchPanel } from "../../src/Verso/Editor/search-panel.js";
+import type { SearchResponse, SearchResult, ServerClient, ServerResult } from "../../src/Verso/Editor/server-client.js";
 
-const enabledResponse = (results: object[], pending = 0): Response =>
-    new Response(JSON.stringify({ enabled: true, pending, results }), {
-        headers: { "Content-Type": "application/json" },
-    });
+const enabledResult = (results: SearchResult[], pending = 0): ServerResult<SearchResponse> => ({
+    ok: true,
+    value: { enabled: true, pending, results },
+});
+
+/** A recording fake for the panel's server seam. */
+interface SearchClientFake {
+    searchPages: Mock<ServerClient["searchPages"]>;
+}
+
+/** Creates a recording fake for the panel's server seam. */
+const fakeClient = (result: ServerResult<SearchResponse>): SearchClientFake => {
+    const searchPages = vi.fn<ServerClient["searchPages"]>();
+    searchPages.mockResolvedValue(result);
+    return { searchPages };
+};
 
 const aResult = {
     path: "guides/failover.md",
@@ -24,23 +37,22 @@ describe("SearchPanel", (): void => {
     });
 
     it("hides itself when the server has search disabled", async (): Promise<void> => {
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response('{"enabled":false}')));
-        const panel = new SearchPanel();
+        const client = fakeClient({ ok: true, value: { enabled: false, pending: 0, results: [] } });
+        const panel = new SearchPanel(undefined, client);
         await panel.connect();
         expect(panel.element().hidden).toBe(true);
     });
 
     it("shows itself when the server has search enabled", async (): Promise<void> => {
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(enabledResponse([])));
-        const panel = new SearchPanel();
+        const client = fakeClient(enabledResult([]));
+        const panel = new SearchPanel(undefined, client);
         await panel.connect();
         expect(panel.element().hidden).toBe(false);
     });
 
     it("debounces typing into one query and renders title, anchor, and excerpt rows", async (): Promise<void> => {
-        const fetchMock = vi.fn().mockResolvedValue(enabledResponse([aResult]));
-        vi.stubGlobal("fetch", fetchMock);
-        const panel = new SearchPanel();
+        const client = fakeClient(enabledResult([aResult]));
+        const panel = new SearchPanel(undefined, client);
         const input = panel.element().querySelector("input") as HTMLInputElement;
 
         for (const value of ["f", "fa", "fai", "failover"]) {
@@ -49,8 +61,8 @@ describe("SearchPanel", (): void => {
         }
         await vi.advanceTimersByTimeAsync(300);
 
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/search?json&q=failover");
+        expect(client.searchPages).toHaveBeenCalledTimes(1);
+        expect(client.searchPages).toHaveBeenCalledWith("failover", expect.any(AbortSignal));
         const row = panel.dropdownElement().querySelector(".markdown-editor__search-row") as HTMLElement;
         expect(row.querySelector(".markdown-editor__search-title")?.textContent).toBe("Failover Guide");
         expect(row.querySelector(".markdown-editor__search-anchor")?.textContent).toContain("Timeouts");
@@ -59,11 +71,11 @@ describe("SearchPanel", (): void => {
     });
 
     it("renders rows as page links, leaving modified clicks (new tab) to the browser", async (): Promise<void> => {
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(enabledResponse([aResult])));
+        const client = fakeClient(enabledResult([aResult]));
         const navigations: string[] = [];
         const panel = new SearchPanel((path: string): void => {
             navigations.push(path);
-        });
+        }, client);
         const input = panel.element().querySelector("input") as HTMLInputElement;
         input.value = "failover";
         input.dispatchEvent(new Event("input"));
@@ -85,11 +97,11 @@ describe("SearchPanel", (): void => {
     });
 
     it("navigates to the clicked result's page", async (): Promise<void> => {
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(enabledResponse([aResult])));
+        const client = fakeClient(enabledResult([aResult]));
         const navigations: string[] = [];
         const panel = new SearchPanel((path: string): void => {
             navigations.push(path);
-        });
+        }, client);
         const input = panel.element().querySelector("input") as HTMLInputElement;
         input.value = "failover";
         input.dispatchEvent(new Event("input"));
@@ -100,8 +112,8 @@ describe("SearchPanel", (): void => {
     });
 
     it("closes the dropdown on Escape and when the query is too short", async (): Promise<void> => {
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(enabledResponse([aResult])));
-        const panel = new SearchPanel();
+        const client = fakeClient(enabledResult([aResult]));
+        const panel = new SearchPanel(undefined, client);
         const input = panel.element().querySelector("input") as HTMLInputElement;
         input.value = "failover";
         input.dispatchEvent(new Event("input"));
@@ -119,8 +131,8 @@ describe("SearchPanel", (): void => {
     });
 
     it("given an unreachable server, when a query is typed, then the dropdown shows an error message", async (): Promise<void> => {
-        vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
-        const panel = new SearchPanel();
+        const client = fakeClient({ ok: false, message: "Couldn’t reach the server." });
+        const panel = new SearchPanel(undefined, client);
         const input = panel.element().querySelector("input") as HTMLInputElement;
         input.value = "failover";
         input.dispatchEvent(new Event("input"));
@@ -134,8 +146,8 @@ describe("SearchPanel", (): void => {
     });
 
     it("shows the indexing-pending note when the queue is busy", async (): Promise<void> => {
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(enabledResponse([aResult], 42)));
-        const panel = new SearchPanel();
+        const client = fakeClient(enabledResult([aResult], 42));
+        const panel = new SearchPanel(undefined, client);
         const input = panel.element().querySelector("input") as HTMLInputElement;
         input.value = "failover";
         input.dispatchEvent(new Event("input"));

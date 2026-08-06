@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { attachmentMarkdown, isInlineImage, uploadAttachment } from "../../src/Verso/Editor/attachment-upload.js";
+import { describe, expect, it } from "vitest";
+import { attachmentMarkdown, isInlineImage } from "../../src/Verso/Editor/attachment-upload.js";
 
 /** Builds a minimal File-like value for classification and upload tests. */
 function fileLike(name: string, type = ""): File {
@@ -43,61 +43,5 @@ describe("attachment Markdown", (): void => {
         expect(attachmentMarkdown(fileLike("report.pdf", "application/pdf"), "/attachments/h/report.pdf")).toBe(
             "[report.pdf](/attachments/h/report.pdf)",
         );
-    });
-});
-
-describe("uploadAttachment", (): void => {
-    afterEach((): void => {
-        vi.unstubAllGlobals();
-    });
-
-    it("posts the file as the raw body with the filename header and returns the stored URL", async (): Promise<void> => {
-        const fetchMock = vi.fn(
-            async (): Promise<Response> =>
-                new Response(JSON.stringify({ url: "/attachments/abc/cat.png" }), { status: 200 }),
-        );
-        vi.stubGlobal("fetch", fetchMock);
-
-        const url = await uploadAttachment(fileLike("a b.png", "image/png"));
-
-        expect(url).toBe("/attachments/abc/cat.png");
-        expect(fetchMock).toHaveBeenCalledWith("/attachments", {
-            body: expect.any(File),
-            headers: { "X-Attachment-Filename": "a%20b.png" },
-            method: "POST",
-        });
-    });
-
-    it("posts to a given endpoint (tree mode) and returns its relative URL", async (): Promise<void> => {
-        const fetchMock = vi.fn(
-            async (): Promise<Response> => new Response(JSON.stringify({ url: "assets/cat.png" }), { status: 200 }),
-        );
-        vi.stubGlobal("fetch", fetchMock);
-
-        const url = await uploadAttachment(fileLike("cat.png", "image/png"), "/documents/sec/page.md?asset");
-
-        expect(url).toBe("assets/cat.png");
-        expect(fetchMock).toHaveBeenCalledWith("/documents/sec/page.md?asset", expect.any(Object));
-    });
-
-    it.each([
-        [413, "too large"],
-        [415, "type"],
-    ])("throws a helpful message on a %d response", async (status, fragment): Promise<void> => {
-        vi.stubGlobal(
-            "fetch",
-            vi.fn(async (): Promise<Response> => new Response("no", { status })),
-        );
-
-        await expect(uploadAttachment(fileLike("x.exe", "application/octet-stream"))).rejects.toThrow(fragment);
-    });
-
-    it("throws when the response omits a URL", async (): Promise<void> => {
-        vi.stubGlobal(
-            "fetch",
-            vi.fn(async (): Promise<Response> => new Response(JSON.stringify({}), { status: 200 })),
-        );
-
-        await expect(uploadAttachment(fileLike("cat.png", "image/png"))).rejects.toThrow();
     });
 });

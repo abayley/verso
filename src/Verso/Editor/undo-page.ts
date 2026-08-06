@@ -2,9 +2,12 @@
 // undo picker, wired like trash-page.ts (delegated listener, themed confirmation, plain fetch).
 
 import { themedConfirm } from "./confirm-dialog.js";
+import { editorServerClient, type ServerClient } from "./server-client.js";
 
 /** The undo page's effectful seams, injectable for tests. */
 export interface UndoPageDeps {
+    /** The server operation used to undo one move. */
+    client: Pick<ServerClient, "undoMove">;
     /** Asks the user to confirm the undo; resolves true to proceed. */
     confirm: (options: { title: string; message: string; confirmLabel: string }) => Promise<boolean>;
     /** Reloads the page after a successful undo (the log and rows are stale). */
@@ -12,6 +15,7 @@ export interface UndoPageDeps {
 }
 
 const defaultDeps: UndoPageDeps = {
+    client: editorServerClient,
     confirm: themedConfirm,
     reload: (): void => window.location.reload(),
 };
@@ -51,18 +55,10 @@ async function applyUndo(button: HTMLButtonElement, deps: UndoPageDeps): Promise
         return;
     }
     button.disabled = true;
-    try {
-        const response = await fetch("/undo", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams({ seq }).toString(),
-        });
-        if (response.ok) {
-            deps.reload();
-            return;
-        }
-    } catch {
-        // fall through to the failure path
+    const result = await deps.client.undoMove(Number(seq));
+    if (result.ok) {
+        deps.reload();
+        return;
     }
     button.disabled = false;
     window.alert(`Could not undo the move of “${to}”. The tree may have changed since.`);

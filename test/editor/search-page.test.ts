@@ -1,10 +1,23 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 import { installSearchPage } from "../../src/Verso/Editor/search-page.js";
+import type { SearchResponse, SearchResult, ServerClient, ServerResult } from "../../src/Verso/Editor/server-client.js";
 
-const searchResponse = (results: object[], pending = 0): Response =>
-    new Response(JSON.stringify({ enabled: true, pending, results }), {
-        headers: { "Content-Type": "application/json" },
-    });
+const searchResult = (results: SearchResult[], pending = 0): ServerResult<SearchResponse> => ({
+    ok: true,
+    value: { enabled: true, pending, results },
+});
+
+/** A recording fake for the search page's server seam. */
+interface SearchClientFake {
+    searchPages: Mock<ServerClient["searchPages"]>;
+}
+
+/** Creates a recording fake for the search page's server seam. */
+const fakeClient = (result: ServerResult<SearchResponse>): SearchClientFake => {
+    const searchPages = vi.fn<ServerClient["searchPages"]>();
+    searchPages.mockResolvedValue(result);
+    return { searchPages };
+};
 
 const aResult = {
     path: "guides/failover.md",
@@ -51,17 +64,16 @@ describe("installSearchPage", (): void => {
     });
 
     it("debounces typing into one query and renders result cards", async (): Promise<void> => {
-        const fetchMock = vi.fn().mockResolvedValue(searchResponse([aResult]));
-        vi.stubGlobal("fetch", fetchMock);
-        uninstall = installSearchPage();
+        const client = fakeClient(searchResult([aResult]));
+        uninstall = installSearchPage(client);
 
         for (const value of ["f", "fa", "fai", "failover"]) {
             type(value);
         }
         await vi.advanceTimersByTimeAsync(300);
 
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(fetchMock.mock.calls[0]?.[0]).toContain("q=failover");
+        expect(client.searchPages).toHaveBeenCalledTimes(1);
+        expect(client.searchPages).toHaveBeenCalledWith("failover", expect.any(AbortSignal));
         const card = output().querySelector("li.card.verso-search-result") as HTMLElement;
         expect(card).not.toBeNull();
         const link = card.querySelector(".verso-search-hit a") as HTMLAnchorElement;
@@ -72,21 +84,20 @@ describe("installSearchPage", (): void => {
     });
 
     it("does not query below the minimum length and clears stale output", async (): Promise<void> => {
-        const fetchMock = vi.fn().mockResolvedValue(searchResponse([aResult]));
-        vi.stubGlobal("fetch", fetchMock);
-        uninstall = installSearchPage();
+        const client = fakeClient(searchResult([aResult]));
+        uninstall = installSearchPage(client);
         output().innerHTML = "<p>stale</p>";
 
         type("f");
         await vi.advanceTimersByTimeAsync(300);
 
-        expect(fetchMock).not.toHaveBeenCalled();
+        expect(client.searchPages).not.toHaveBeenCalled();
         expect(output().textContent).toBe("");
     });
 
     it("shows the clear button while there is text, and clears everything on click", async (): Promise<void> => {
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(searchResponse([aResult])));
-        uninstall = installSearchPage();
+        const client = fakeClient(searchResult([aResult]));
+        uninstall = installSearchPage(client);
 
         type("failover");
         expect(clearButton().hidden).toBe(false);
@@ -100,8 +111,8 @@ describe("installSearchPage", (): void => {
     });
 
     it("renders the unreachable-server notice when the query fails", async (): Promise<void> => {
-        vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
-        uninstall = installSearchPage();
+        const client = fakeClient({ ok: false, message: "Couldn’t reach the server." });
+        uninstall = installSearchPage(client);
 
         type("failover");
         await vi.advanceTimersByTimeAsync(300);
@@ -110,8 +121,8 @@ describe("installSearchPage", (): void => {
     });
 
     it("renders the indexing-pending notice ahead of the results", async (): Promise<void> => {
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(searchResponse([aResult], 3)));
-        uninstall = installSearchPage();
+        const client = fakeClient(searchResult([aResult], 3));
+        uninstall = installSearchPage(client);
 
         type("failover");
         await vi.advanceTimersByTimeAsync(300);
@@ -121,9 +132,8 @@ describe("installSearchPage", (): void => {
     });
 
     it("prevents the form submit and searches immediately instead", async (): Promise<void> => {
-        const fetchMock = vi.fn().mockResolvedValue(searchResponse([aResult]));
-        vi.stubGlobal("fetch", fetchMock);
-        uninstall = installSearchPage();
+        const client = fakeClient(searchResult([aResult]));
+        uninstall = installSearchPage(client);
 
         queryInput().value = "failover";
         const submit = new Event("submit", { bubbles: true, cancelable: true });
@@ -131,12 +141,12 @@ describe("installSearchPage", (): void => {
         await vi.advanceTimersByTimeAsync(0);
 
         expect(submit.defaultPrevented).toBe(true);
-        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(client.searchPages).toHaveBeenCalledTimes(1);
     });
 
     it("keeps the page URL in step with the query", async (): Promise<void> => {
-        vi.stubGlobal("fetch", vi.fn().mockResolvedValue(searchResponse([aResult])));
-        uninstall = installSearchPage();
+        const client = fakeClient(searchResult([aResult]));
+        uninstall = installSearchPage(client);
 
         type("failover");
         await vi.advanceTimersByTimeAsync(300);
@@ -144,14 +154,13 @@ describe("installSearchPage", (): void => {
     });
 
     it("stops responding once uninstalled", async (): Promise<void> => {
-        const fetchMock = vi.fn().mockResolvedValue(searchResponse([aResult]));
-        vi.stubGlobal("fetch", fetchMock);
-        uninstall = installSearchPage();
+        const client = fakeClient(searchResult([aResult]));
+        uninstall = installSearchPage(client);
         uninstall();
         uninstall = null;
 
         type("failover");
         await vi.advanceTimersByTimeAsync(300);
-        expect(fetchMock).not.toHaveBeenCalled();
+        expect(client.searchPages).not.toHaveBeenCalled();
     });
 });

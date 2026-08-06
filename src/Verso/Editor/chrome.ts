@@ -16,6 +16,8 @@
 import { html, type TemplateResult } from "lit";
 import { ifDefined } from "lit/directives/if-defined.js";
 
+export { NETWORK_ERROR } from "./server-client.js";
+
 export type ButtonIntent = "primary" | "quiet" | "outline" | "icon" | "danger";
 
 export type ButtonOptions = {
@@ -49,9 +51,6 @@ function intentAttrs(intent: ButtonIntent): IntentAttrs {
             return { variant: "destructive", size: "sm" };
     }
 }
-
-/** The user-facing message for any fetch that failed to reach the server. */
-export const NETWORK_ERROR = "Couldn’t reach the server.";
 
 /** Re-scans for Basecoat components; hosts call this from updated(). */
 export function initBasecoat(): void {

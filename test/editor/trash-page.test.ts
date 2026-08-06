@@ -3,10 +3,18 @@ import { installTrashPurge } from "../../src/Verso/Editor/trash-page.js";
 
 let uninstall: (() => void) | null = null;
 
-/** Mounts a one-row trash page (with the empty-trash control) and installs the purge handler. */
-function mountTrashPage(confirmAnswer: boolean): ReturnType<typeof vi.fn> {
-    const fetchMock = vi.fn(async (): Promise<Response> => new Response("{}", { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock);
+/** Mounts a one-row trash page with recording server client methods. */
+function mountTrashPage(confirmAnswer: boolean): {
+    deleteTrashEntry: ReturnType<typeof vi.fn>;
+    emptyTrash: ReturnType<typeof vi.fn>;
+} {
+    const deleteTrashEntry = vi.fn(
+        async (): Promise<{ ok: true; value: undefined }> => ({
+            ok: true,
+            value: undefined,
+        }),
+    );
+    const emptyTrash = vi.fn(async (): Promise<{ ok: true; value: undefined }> => ({ ok: true, value: undefined }));
 
     document.body.innerHTML = [
         '<button class="verso-trash-empty">Empty trash</button>',
@@ -14,9 +22,12 @@ function mountTrashPage(confirmAnswer: boolean): ReturnType<typeof vi.fn> {
         '<button class="verso-trash-delete" data-delete-id="3" data-delete-path="sec/page.md">Delete forever</button>',
         "</td></tr></tbody></table></div>",
     ].join("");
-    uninstall = installTrashPurge({ confirm: async (): Promise<boolean> => confirmAnswer });
+    uninstall = installTrashPurge({
+        client: { deleteTrashEntry, emptyTrash },
+        confirm: async (): Promise<boolean> => confirmAnswer,
+    });
 
-    return fetchMock;
+    return { deleteTrashEntry, emptyTrash };
 }
 
 describe("trash page purge controls", (): void => {
@@ -31,38 +42,34 @@ describe("trash page purge controls", (): void => {
     });
 
     it("given a delete-forever button, when clicked and confirmed, then it DELETEs the entry and drops the row", async (): Promise<void> => {
-        const fetchMock = mountTrashPage(true);
+        const { deleteTrashEntry } = mountTrashPage(true);
 
         (document.querySelector(".verso-trash-delete") as HTMLElement).click();
         await new Promise((resolve) => setTimeout(resolve));
 
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(String(fetchMock.mock.calls[0]?.[0])).toBe("/trash/3");
-        expect((fetchMock.mock.calls[0]?.[1] as RequestInit).method).toBe("DELETE");
+        expect(deleteTrashEntry).toHaveBeenCalledWith("3");
         expect(document.querySelector("tr")).toBeNull();
     });
 
     it("given the empty-trash button, when clicked and confirmed, then it DELETEs /trash and shows the empty state", async (): Promise<void> => {
-        const fetchMock = mountTrashPage(true);
+        const { emptyTrash } = mountTrashPage(true);
 
         (document.querySelector(".verso-trash-empty") as HTMLElement).click();
         await new Promise((resolve) => setTimeout(resolve));
 
-        expect(fetchMock).toHaveBeenCalledTimes(1);
-        expect(String(fetchMock.mock.calls[0]?.[0])).toBe("/trash");
-        expect((fetchMock.mock.calls[0]?.[1] as RequestInit).method).toBe("DELETE");
+        expect(emptyTrash).toHaveBeenCalledTimes(1);
         expect(document.querySelector(".verso-trash-scroll")).toBeNull();
         expect(document.querySelector(".verso-trash-empty")).toBeNull();
         expect(document.body.textContent).toContain("Trash is empty.");
     });
 
     it("given a delete-forever button, when the confirmation is declined, then nothing is sent", async (): Promise<void> => {
-        const fetchMock = mountTrashPage(false);
+        const { deleteTrashEntry } = mountTrashPage(false);
 
         (document.querySelector(".verso-trash-delete") as HTMLElement).click();
         await new Promise((resolve) => setTimeout(resolve));
 
-        expect(fetchMock).not.toHaveBeenCalled();
+        expect(deleteTrashEntry).not.toHaveBeenCalled();
         expect(document.querySelector("tr")).not.toBeNull();
     });
 });

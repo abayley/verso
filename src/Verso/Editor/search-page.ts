@@ -6,20 +6,7 @@
 // this script the form still submits as a plain GET.
 
 import { NETWORK_ERROR } from "./chrome.js";
-
-/** One search result row, as the server's json flavour reports it. */
-interface SearchResult {
-    path: string;
-    anchor: string;
-    excerpt: string;
-}
-
-/** The server's `/search?json` response shape. */
-interface SearchResponse {
-    enabled: boolean;
-    pending?: number;
-    results?: SearchResult[];
-}
+import { editorServerClient, type SearchResult, type ServerClient } from "./server-client.js";
 
 /** Milliseconds of typing quiet before a query is sent (matches SearchPanel). */
 const DEBOUNCE_MS = 250;
@@ -34,7 +21,7 @@ const MIN_QUERY_LENGTH = 2;
  * pages, and on a server with search disabled (no output region is rendered).
  * Returns the listeners' remover for tests.
  */
-export function installSearchPage(): () => void {
+export function installSearchPage(client: Pick<ServerClient, "searchPages"> = editorServerClient): () => void {
     let debounceTimer: number | undefined;
     let inFlight: AbortController | null = null;
 
@@ -91,18 +78,15 @@ export function installSearchPage(): () => void {
     const search = async (query: string): Promise<void> => {
         inFlight?.abort();
         inFlight = new AbortController();
-        try {
-            const response = await fetch(`/search?json&q=${encodeURIComponent(query)}`, {
-                signal: inFlight.signal,
-            });
-            const body = (await response.json()) as SearchResponse;
-            render(body.results ?? [], body.pending ?? 0);
-            syncUrl(query);
-        } catch (error) {
-            if ((error as Error).name !== "AbortError") {
+        const result = await client.searchPages(query, inFlight.signal);
+        if (!result.ok) {
+            if (!result.aborted) {
                 renderError();
             }
+            return;
         }
+        render(result.value.results, result.value.pending);
+        syncUrl(query);
     };
 
     document.addEventListener("input", onInput);

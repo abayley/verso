@@ -5,7 +5,7 @@ import {
     type PanelAttachment,
     parseEmbeddedAttachments,
 } from "./attachment-panel.js";
-import { isInlineImage, uploadAttachment } from "./attachment-upload.js";
+import { isInlineImage } from "./attachment-upload.js";
 import { badgeExtension } from "./badge-extension.js";
 import { type Breadcrumb, parseBreadcrumbs } from "./breadcrumbs.js";
 import {
@@ -20,7 +20,6 @@ import {
     chromePanelRowEl,
     chromeSegmentEl,
     initBasecoat,
-    NETWORK_ERROR,
 } from "./chrome.js";
 import { type ClientErrorKind, ClientErrorReporter } from "./client-error-reporter.js";
 import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
@@ -42,20 +41,11 @@ import { FloatingSurfaces, type SlashCommand, type TableAlignment } from "./floa
 import { frontmatterName, joinFrontmatter, setFrontmatterName, splitFrontmatter } from "./frontmatter.js";
 import { imageShortTitles } from "./image-metadata.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
-import {
-    type DeleteResult,
-    type MoveOp,
-    type MoveResult,
-    NavTreePanel,
-    type OpResult,
-    parseTreeChildren,
-    parseTreeSpine,
-    type TrashEntry,
-    type TreeNodeData,
-} from "./nav-tree.js";
+import { NavTreePanel, parseTreeSpine } from "./nav-tree.js";
 import { rawHtmlExtension } from "./raw-html-extension.js";
 import { SaveStateController, type SaveStateView } from "./save-state-controller.js";
 import { SearchPanel } from "./search-panel.js";
+import { editorServerClient, type ServerClient } from "./server-client.js";
 import { documentHeadings, TableOfContentsPanel } from "./table-of-contents.js";
 import {
     TiptapVisualEditor,
@@ -194,6 +184,12 @@ const autosaveDebounceMilliseconds = 2000;
 export class MarkdownEditorElement extends HTMLElement {
     /** Participates in form submission natively (RFC-0001), so htmx and ordinary posts share one value. */
     static formAssociated = true;
+
+    /** Creates an editor that uses the live server client, or a supplied fake in direct tests. */
+    public constructor(private readonly serverClient: ServerClient = editorServerClient) {
+        super();
+    }
+
     private internals: ElementInternals | null = null;
     private body: HTMLDivElement | null = null;
     private activePane: ActivePane | null = null;
@@ -856,7 +852,7 @@ export class MarkdownEditorElement extends HTMLElement {
         const topBarRow = document.createElement("div");
         topBarRow.className = "markdown-editor__topbar-row";
         topBarRow.append(this.documentName);
-        const searchPanel = new SearchPanel();
+        const searchPanel = new SearchPanel(undefined, this.serverClient);
         topBarRow.append(searchPanel.element());
         void searchPanel.connect();
         this.topBar.append(this.toolbar, topBarRow, this.createSidebarDisclosure());
@@ -908,35 +904,10 @@ export class MarkdownEditorElement extends HTMLElement {
      */
     private createNavTree(): NavTreePanel {
         const editMode = !this.isReadonly();
-        const encodePath = (path: string): string =>
-            path
-                .split("/")
-                .map((segment): string => encodeURIComponent(segment))
-                .join("/");
         return new NavTreePanel({
+            client: this.serverClient,
             documentPath: this.getAttribute("data-document") ?? "",
             spine: parseTreeSpine(this.getAttribute("data-tree-spine")),
-            fetchChildren: async (path: string): Promise<TreeNodeData[]> => {
-                const response = await fetch(`/tree/${encodePath(path)}`, { headers: { Accept: "application/json" } });
-                if (!response.ok) {
-                    throw new Error(`Failed to load tree children: ${response.status}`);
-                }
-                return parseTreeChildren(await response.text());
-            },
-            createNode: async (parentPath: string, kind: "page" | "section", title: string): Promise<string | null> => {
-                const response = await fetch(`/tree/${encodePath(parentPath)}`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                    body: new URLSearchParams({ kind, title }).toString(),
-                });
-                if (!response.ok) {
-                    return null;
-                }
-                const data: unknown = JSON.parse(await response.text());
-                const editPath =
-                    data && typeof data === "object" ? (data as Record<string, unknown>)["editPath"] : null;
-                return typeof editPath === "string" ? editPath : null;
-            },
             navigate: (target: string): void => {
                 const suffix = editMode && !target.includes("?") ? "?edit" : "";
                 window.location.href = `/documents/${target}${suffix}`;
@@ -945,103 +916,6 @@ export class MarkdownEditorElement extends HTMLElement {
                 target.setAttribute("data-tooltip", text);
             },
             notify: (message: string, isError: boolean): void => this.showUploadNotice(message, isError),
-            deleteNode: async (path: string): Promise<DeleteResult> => {
-                try {
-                    const response = await fetch(`/tree/${encodePath(path)}`, { method: "DELETE" });
-                    if (response.status === 409) {
-                        const data: unknown = safeJson(await response.text());
-                        const referrers =
-                            data &&
-                            typeof data === "object" &&
-                            Array.isArray((data as Record<string, unknown>)["referrers"])
-                                ? ((data as Record<string, unknown>)["referrers"] as { page: string; link: string }[])
-                                : undefined;
-                        return referrers
-                            ? { status: "refused", referrers }
-                            : { status: "error", message: (await response.text()).trim() || "Delete refused." };
-                    }
-                    return response.ok ? { status: "deleted" } : { status: "error", message: "Delete failed." };
-                } catch {
-                    return { status: "error", message: NETWORK_ERROR };
-                }
-            },
-            moveNode: async (path: string, destParent: string, slug: string, confirm: boolean): Promise<MoveResult> => {
-                try {
-                    const body = new URLSearchParams({ to: destParent, slug, ...(confirm ? { confirm: "true" } : {}) });
-                    const response = await fetch(`/tree/${encodePath(path)}?move`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                        body: body.toString(),
-                    });
-                    if (!response.ok) {
-                        return { ok: false, message: (await response.text()).trim() || "Move failed." };
-                    }
-                    const data: unknown = safeJson(await response.text());
-                    const record = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
-                    const changed = Array.isArray(record["changed"]) ? (record["changed"] as unknown[]).length : 0;
-                    return typeof record["to"] === "string"
-                        ? { ok: true, changed, to: record["to"] as string }
-                        : { ok: true, changed };
-                } catch {
-                    return { ok: false, message: NETWORK_ERROR };
-                }
-            },
-            undo: (seq: number): Promise<OpResult> =>
-                opRequest(
-                    "/undo",
-                    {
-                        method: "POST",
-                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                        body: new URLSearchParams({ seq: String(seq) }).toString(),
-                    },
-                    "Undone.",
-                    "Nothing to undo.",
-                ),
-            listMoves: async (): Promise<MoveOp[] | null> => {
-                try {
-                    const response = await fetch("/operations?type=move&limit=10", {
-                        headers: { Accept: "application/json" },
-                    });
-                    if (!response.ok) {
-                        return null;
-                    }
-                    const data: unknown = safeJson(await response.text());
-                    if (!Array.isArray(data)) {
-                        return [];
-                    }
-                    return (data as Record<string, unknown>[])
-                        .filter(
-                            (op): boolean =>
-                                op["type"] === "move" &&
-                                typeof op["from"] === "string" &&
-                                typeof op["to"] === "string" &&
-                                typeof op["seq"] === "number",
-                        )
-                        .map(
-                            (op): MoveOp => ({
-                                seq: op["seq"] as number,
-                                from: op["from"] as string,
-                                to: op["to"] as string,
-                            }),
-                        );
-                } catch {
-                    return null;
-                }
-            },
-            listTrash: async (limit: number): Promise<TrashEntry[] | null> => {
-                try {
-                    const response = await fetch(`/trash?limit=${limit}`, { headers: { Accept: "application/json" } });
-                    if (!response.ok) {
-                        return null;
-                    }
-                    const data: unknown = safeJson(await response.text());
-                    return Array.isArray(data) ? (data as TrashEntry[]) : [];
-                } catch {
-                    return null;
-                }
-            },
-            restore: (id: string): Promise<OpResult> =>
-                opRequest(`/trash/${encodeURIComponent(id)}`, { method: "POST" }, "Restored.", "Restore failed."),
         });
     }
 
@@ -1186,7 +1060,7 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         try {
-            await fetch(`/drafts/${documentPath}`, { method: "DELETE" });
+            await this.serverClient.discardDraft(documentPath);
         } finally {
             window.location.href = `/documents/${documentPath}`;
         }
@@ -1199,11 +1073,7 @@ export class MarkdownEditorElement extends HTMLElement {
      */
     private async publishDocument(documentPath: string): Promise<void> {
         try {
-            await fetch(`/documents/${documentPath}`, {
-                method: "PUT",
-                headers: { "Content-Type": "text/markdown; charset=utf-8" },
-                body: this.documentMarkdown(),
-            });
+            await this.serverClient.saveDocument(documentPath, this.documentMarkdown());
             await this.syncImageTitles(documentPath);
         } finally {
             window.location.href = `/documents/${documentPath}`;
@@ -1222,11 +1092,7 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
-        await fetch(`/documents/${documentPath}?image-titles`, {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: new URLSearchParams(parameters).toString(),
-        });
+        await this.serverClient.syncImageTitles(documentPath, parameters);
     }
 
     /** The metadata-pane panel linking to the page's revision history (RFC-0032), tree mode only. */
@@ -1945,17 +1811,12 @@ export class MarkdownEditorElement extends HTMLElement {
             return this.textContent?.trim() ?? "";
         }
 
-        const response = await fetch(src, {
-            headers: {
-                Accept: "text/markdown",
-            },
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to load Markdown document: ${response.status}`);
+        const result = await this.serverClient.loadMarkdown(src);
+        if (!result.ok) {
+            throw new Error(result.message);
         }
 
-        return response.text();
+        return result.value;
     }
 
     /** Serialises the current editor value to Markdown. */
@@ -2075,7 +1936,11 @@ export class MarkdownEditorElement extends HTMLElement {
             this.showUploadNotice(`Uploading ${file.name}…`, false);
 
             try {
-                const url = await uploadAttachment(file, endpoint);
+                const result = await this.serverClient.uploadAttachment(file, endpoint);
+                if (!result.ok) {
+                    throw new Error(result.message);
+                }
+                const url = result.value;
                 this.insertUpload(file, url);
                 if (!isInlineImage(file)) {
                     this.attachmentPanel?.add({ name: file.name, localPath: url });
@@ -2293,27 +2158,20 @@ export class MarkdownEditorElement extends HTMLElement {
         this.saveController?.markSaving();
 
         try {
-            const response = await fetch(this.saveEndpoint(), {
-                method: "PUT",
-                headers: { "Content-Type": "text/markdown; charset=utf-8" },
-                body: this.documentMarkdown(),
-            });
+            const documentPath = this.getAttribute("data-document") ?? "";
+            const markdown = this.documentMarkdown();
+            const result = this.hasAttribute("data-versioning")
+                ? await this.serverClient.saveDraft(documentPath, markdown)
+                : await this.serverClient.saveDocument(documentPath, markdown);
 
-            if (response.ok) {
+            if (result.ok) {
                 this.saveController?.markSucceeded();
             } else {
-                this.saveController?.markFailed(`HTTP ${response.status}`);
+                this.saveController?.markFailed(result.status === undefined ? "connection error" : result.message);
             }
         } catch {
             this.saveController?.markFailed("connection error");
         }
-    }
-
-    /** The autosave target: the draft resource with versioning on, else the live page. */
-    private saveEndpoint(): string {
-        const documentPath = this.getAttribute("data-document") ?? "";
-
-        return this.hasAttribute("data-versioning") ? `/drafts/${documentPath}` : `/documents/${documentPath}`;
     }
 
     /** Renders the save controller's reported view onto the Save button and error text. */
@@ -2574,38 +2432,6 @@ function firstUsableClientRect(rects: DOMRectList): DOMRect | null {
 }
 
 /** Reads the string value from an HTML or custom form control host. */
-/** Parses JSON, returning null on malformed input (for tolerant response handling). */
-function safeJson(text: string): unknown {
-    try {
-        return JSON.parse(text);
-    } catch {
-        return null;
-    }
-}
-
-/**
- * Runs a structural-operation request (undo/restore/replay) and normalises it to an OpResult: the
- * ok message on success, the response body (or a fallback) on an error status, and the network
- * message when the fetch itself throws — so a failure always surfaces rather than being swallowed.
- */
-async function opRequest(
-    url: string,
-    init: RequestInit,
-    okMessage: string,
-    failMessage: string,
-): Promise<{ ok: boolean; message: string }> {
-    try {
-        const response = await fetch(url, init);
-        if (response.ok) {
-            return { ok: true, message: okMessage };
-        }
-        const body = (await response.text()).trim();
-        return { ok: false, message: body || failMessage };
-    } catch {
-        return { ok: false, message: NETWORK_ERROR };
-    }
-}
-
 function elementValue(element: HTMLElement): string {
     const value = (element as HTMLElement & { value?: unknown }).value;
 

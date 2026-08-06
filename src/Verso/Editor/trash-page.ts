@@ -3,30 +3,44 @@
 // left the buttons inert), and restore gets the same themed confirmation as the nav dropdown and delete.
 
 import { themedConfirm } from "./confirm-dialog.js";
+import { editorServerClient, type ServerClient } from "./server-client.js";
+
+/** The Trash restore page's effectful dependencies. */
+export interface TrashRestoreDeps {
+    /** The server operation used to restore one entry. */
+    client: Pick<ServerClient, "restoreTrashEntry">;
+    /** Asks the user to confirm the restore. */
+    confirm: typeof themedConfirm;
+}
+
+const defaultRestoreDeps: TrashRestoreDeps = { client: editorServerClient, confirm: themedConfirm };
 
 /**
  * Handles clicks on the trash page's Restore buttons via a single delegated document listener. Delegation
  * (rather than per-button wiring) is required because the shared bundle loads as a head script that runs
  * before the body's buttons exist; it also matches the tooltip controller's approach. A no-op elsewhere.
  */
-export function installTrashRestore(): void {
-    document.addEventListener("click", (event): void => {
+export function installTrashRestore(deps: TrashRestoreDeps = defaultRestoreDeps): () => void {
+    const onClick = (event: Event): void => {
         const target = event.target instanceof Element ? event.target : null;
         const button = target?.closest<HTMLButtonElement>(".verso-trash-restore[data-restore-id]");
         if (button !== null && button !== undefined) {
-            void restoreEntry(button);
+            void restoreEntry(button, deps);
         }
-    });
+    };
+    document.addEventListener("click", onClick);
+
+    return (): void => document.removeEventListener("click", onClick);
 }
 
 /** Confirms, POSTs the restore, then removes the row (or the whole list once empty). */
-async function restoreEntry(button: HTMLButtonElement): Promise<void> {
+async function restoreEntry(button: HTMLButtonElement, deps: TrashRestoreDeps): Promise<void> {
     const id = button.dataset["restoreId"];
     if (id === undefined) {
         return;
     }
     const path = button.dataset["restorePath"] ?? "this item";
-    const confirmed = await themedConfirm({
+    const confirmed = await deps.confirm({
         title: "Restore",
         message: `Restore “${path}” to its original location?`,
         confirmLabel: "Restore",
@@ -35,20 +49,16 @@ async function restoreEntry(button: HTMLButtonElement): Promise<void> {
         return;
     }
     button.disabled = true;
-    try {
-        const response = await fetch(`/trash/${encodeURIComponent(id)}`, { method: "POST" });
-        if (response.ok) {
-            // A restored page returns to its original path: open it. Sections have no page to open,
-            // so just drop the row and stay on the trash page.
-            if (path.endsWith(".md")) {
-                window.location.assign(`/documents/${path.split("/").map(encodeURIComponent).join("/")}`);
-            } else {
-                removeRow(button);
-            }
-            return;
+    const result = await deps.client.restoreTrashEntry(id);
+    if (result.ok) {
+        // A restored page returns to its original path: open it. Sections have no page to open,
+        // so just drop the row and stay on the trash page.
+        if (path.endsWith(".md")) {
+            window.location.assign(`/documents/${path.split("/").map(encodeURIComponent).join("/")}`);
+        } else {
+            removeRow(button);
         }
-    } catch {
-        // fall through to the failure path
+        return;
     }
     button.disabled = false;
     window.alert(`Could not restore “${path}”. Its original location may now be occupied.`);
@@ -77,11 +87,13 @@ function showEmptyState(): void {
 
 /** The trash page's destructive seams, injectable for tests. */
 export interface TrashPurgeDeps {
+    /** The server operations used to delete one or every Trash entry. */
+    client: Pick<ServerClient, "deleteTrashEntry" | "emptyTrash">;
     /** Asks the user to confirm the permanent delete; resolves true to proceed. */
     confirm: (options: { title: string; message: string; confirmLabel: string }) => Promise<boolean>;
 }
 
-const defaultPurgeDeps: TrashPurgeDeps = { confirm: themedConfirm };
+const defaultPurgeDeps: TrashPurgeDeps = { client: editorServerClient, confirm: themedConfirm };
 
 /**
  * Handles the trash page's permanent-delete controls -- the per-row "Delete forever" buttons and the
@@ -122,14 +134,10 @@ async function deleteEntry(button: HTMLButtonElement, deps: TrashPurgeDeps): Pro
         return;
     }
     button.disabled = true;
-    try {
-        const response = await fetch(`/trash/${encodeURIComponent(id)}`, { method: "DELETE" });
-        if (response.ok) {
-            removeRow(button);
-            return;
-        }
-    } catch {
-        // fall through to the failure path
+    const result = await deps.client.deleteTrashEntry(id);
+    if (result.ok) {
+        removeRow(button);
+        return;
     }
     button.disabled = false;
     window.alert(`Could not delete “${path}”.`);
@@ -146,14 +154,10 @@ async function emptyTrash(button: HTMLButtonElement, deps: TrashPurgeDeps): Prom
         return;
     }
     button.disabled = true;
-    try {
-        const response = await fetch("/trash", { method: "DELETE" });
-        if (response.ok) {
-            showEmptyState();
-            return;
-        }
-    } catch {
-        // fall through to the failure path
+    const result = await deps.client.emptyTrash();
+    if (result.ok) {
+        showEmptyState();
+        return;
     }
     button.disabled = false;
     window.alert("Could not empty the trash.");

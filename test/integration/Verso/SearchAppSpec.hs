@@ -91,7 +91,6 @@ runRoute runtime reqHead body = do
                 Nothing
                 (Just runtime)
                 App.noVersioning
-                "paper"
                 root
                 "build/search-app-spec/oplog"
                 "build/search-app-spec/trash"

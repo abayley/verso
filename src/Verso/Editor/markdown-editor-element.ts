@@ -55,14 +55,19 @@ import {
     type VisualStructureStyle,
     type VisualTableCommand,
 } from "./tiptap-visual-editor.js";
+import {
+    initialiseVisualTheme,
+    listVisualThemes,
+    resolveStoredVisualTheme,
+    selectVisualTheme,
+    type VisualThemeState,
+} from "./visual-theme-registry.js";
 
 type EditorMode = "visual" | "source" | "split";
 type EditorTheme = "light" | "dark" | "match-system";
 type BodyWidth = "narrow" | "medium" | "full";
-type VisualTheme = "shadcn" | "studio" | "moebius";
 type ActivePane = "source" | "visual";
 
-const visualThemeStorageKey = "editor-theme";
 const colorSchemeStorageKey = "editor-color-scheme";
 const bodyWidthStorageKey = "editor-body-width";
 const modeStorageKey = "editor-mode";
@@ -97,66 +102,6 @@ const bodyWidths: { value: BodyWidth; label: string; icon: string }[] = [
 /** Narrows an arbitrary string to a known editing-column width. */
 function isBodyWidth(value: string | null): value is BodyWidth {
     return value !== null && bodyWidths.some((width) => width.value === value);
-}
-
-/** The selectable visual themes (RFC-0035): Default (the shadcn look); Studio,
- * which keeps the same look but swaps the persistent command bar for the bubble
- * toolbar and slash menu; and Moebius, a full re-skin whose light and dark schemes
- * are the same desert at noon and at night. The stored value stays "shadcn" -- it is
- * what preferences, the `editor_theme` config and the page attribute already carry --
- * and only the label the reader sees is "Default". */
-const visualThemes: { value: VisualTheme; label: string }[] = [
-    { value: "shadcn", label: "Default" },
-    { value: "studio", label: "Studio" },
-    { value: "moebius", label: "Moebius" },
-];
-
-/** Narrows an arbitrary string to a known visual theme. */
-function isVisualTheme(value: string | null): value is VisualTheme {
-    return value !== null && visualThemes.some((theme) => theme.value === value);
-}
-
-/** The display label for a visual theme. */
-function themeLabel(theme: VisualTheme): string {
-    return visualThemes.find((entry) => entry.value === theme)?.label ?? theme;
-}
-
-/** Whether a theme replaces the persistent command bar with the bubble toolbar and slash menu. */
-function themeUsesStudioSurfaces(theme: VisualTheme): boolean {
-    return theme === "studio";
-}
-
-/** The id of the hidden SVG holding the Moebius theme's filters. */
-const moebiusFilterDefsId = "moebius-filter-defs";
-
-/**
- * The Moebius theme's hand-drawn wobble: turbulence displacing an element's own pixels, in two seeds so
- * that neighbouring controls do not bend identically. The stylesheet's scenery and grain are self-contained
- * SVG data URIs, but a filter applied to live DOM has to resolve against a document node, so these defs are
- * injected when the theme is chosen and left in place afterwards (they cost nothing once unreferenced).
- */
-function ensureMoebiusFilterDefs(): void {
-    if (document.getElementById(moebiusFilterDefsId)) {
-        return;
-    }
-
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.id = moebiusFilterDefsId;
-    svg.setAttribute("aria-hidden", "true");
-    svg.setAttribute("width", "0");
-    svg.setAttribute("height", "0");
-    svg.style.position = "absolute";
-    svg.innerHTML = [
-        '<filter id="moebius-wobble-a" x="-10%" y="-10%" width="120%" height="120%">',
-        '<feTurbulence type="fractalNoise" baseFrequency="0.012 0.018" numOctaves="2" seed="7" result="n"/>',
-        '<feDisplacementMap in="SourceGraphic" in2="n" scale="2.5" xChannelSelector="R" yChannelSelector="G"/>',
-        "</filter>",
-        '<filter id="moebius-wobble-b" x="-10%" y="-10%" width="120%" height="120%">',
-        '<feTurbulence type="fractalNoise" baseFrequency="0.014 0.02" numOctaves="2" seed="13" result="n"/>',
-        '<feDisplacementMap in="SourceGraphic" in2="n" scale="2.5" xChannelSelector="R" yChannelSelector="G"/>',
-        "</filter>",
-    ].join("");
-    document.body.append(svg);
 }
 
 /** Reads a stored preference, tolerating an unavailable or throwing localStorage. */
@@ -238,7 +183,7 @@ export class MarkdownEditorElement extends HTMLElement {
     private theme: EditorTheme = "match-system";
     private themeGroup: ChromeSegmentElement | null = null;
     private themeDropdown: ChromeDropdownElement | null = null;
-    private visualTheme: VisualTheme = "shadcn";
+    private visualTheme: VisualThemeState = resolveStoredVisualTheme();
     /** A faster (200 ms) tooltip just for the navigation tree's truncated labels (RFC-0026). */
     private readonly handleSystemThemeChange = (): void => {
         if (this.theme === "match-system") {
@@ -716,7 +661,7 @@ export class MarkdownEditorElement extends HTMLElement {
         registerExtension(rawHtmlExtension);
         registerExtension(badgeExtension);
 
-        this.visualTheme = this.editorVisualTheme();
+        this.visualTheme = initialiseVisualTheme();
         this.theme = this.editorTheme();
         this.mode = this.editorMode();
         this.bodyWidth = this.editorBodyWidth();
@@ -1345,37 +1290,28 @@ export class MarkdownEditorElement extends HTMLElement {
             id: "editor-theme-menu",
             className: "markdown-editor__theme-dropdown",
             intent: "quiet",
-            triggerLabel: themeLabel(this.visualTheme),
+            triggerLabel: this.visualTheme.label,
             triggerClassName: "markdown-editor__button markdown-editor__theme-trigger",
             ariaLabel: "Visual theme",
-            items: visualThemes.map((theme) => ({ value: theme.value, label: theme.label })),
+            items: listVisualThemes().map((theme) => ({ value: theme.id, label: theme.label })),
             onSelect: (value: string): void => {
-                if (isVisualTheme(value)) {
-                    this.setVisualTheme(value);
-                }
+                this.setVisualTheme(value);
             },
         });
     }
 
     /** Applies, persists, and reflects a chosen visual theme. */
-    private setVisualTheme(theme: VisualTheme): void {
-        this.visualTheme = theme;
-        writeStoredPreference(visualThemeStorageKey, theme);
+    private setVisualTheme(themeId: string): void {
+        this.visualTheme = selectVisualTheme(themeId);
         this.applyVisualTheme();
         this.syncThemeDropdown();
     }
 
-    /** Sets the document's visual-theme attribute and reflects Studio's chrome. */
+    /** Applies the active visual theme's browser capabilities. */
     private applyVisualTheme(): void {
-        document.documentElement.setAttribute("data-editor-theme", this.visualTheme);
-
-        if (this.visualTheme === "moebius") {
-            ensureMoebiusFilterDefs();
-        }
-
         // The bubble toolbar and slash menu are visual-pane only, so the command
         // bar is suppressed only in visual mode; source and split keep it usable.
-        const surfacesActive = themeUsesStudioSurfaces(this.visualTheme) && this.mode === "visual";
+        const surfacesActive = this.visualTheme.capabilities.contextualEditingSurfaces && this.mode === "visual";
         this.classList.toggle("markdown-editor--studio-surfaces", surfacesActive);
         this.relocateNotices();
         this.updateBubbleToolbar();
@@ -1400,27 +1336,14 @@ export class MarkdownEditorElement extends HTMLElement {
         }
     }
 
-    /** Resolves the initial visual theme: stored preference, then page attribute, else shadcn. */
-    private editorVisualTheme(): VisualTheme {
-        const stored = readStoredPreference(visualThemeStorageKey);
-
-        if (isVisualTheme(stored)) {
-            return stored;
-        }
-
-        const fromPage = document.documentElement.getAttribute("data-editor-theme");
-
-        return isVisualTheme(fromPage) ? fromPage : "shadcn";
-    }
-
     /** Reflects the current visual theme into the dropdown trigger and items. */
     private syncThemeDropdown(): void {
         if (!this.themeDropdown) {
             return;
         }
 
-        this.themeDropdown.setTriggerLabel(themeLabel(this.visualTheme));
-        this.themeDropdown.syncChecked(this.visualTheme);
+        this.themeDropdown.setTriggerLabel(this.visualTheme.label);
+        this.themeDropdown.syncChecked(this.visualTheme.id);
     }
 
     /** Creates the save error notice shown when the last save failed. */
@@ -1553,7 +1476,7 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
-        if (!themeUsesStudioSurfaces(this.visualTheme) || !this.visualEditor) {
+        if (!this.visualTheme.capabilities.contextualEditingSurfaces || !this.visualEditor) {
             this.floatingSurfaces.bubble.hide();
             return;
         }
@@ -1614,7 +1537,7 @@ export class MarkdownEditorElement extends HTMLElement {
             return;
         }
 
-        if (!themeUsesStudioSurfaces(this.visualTheme) || !this.visualEditor?.isSlashTrigger()) {
+        if (!this.visualTheme.capabilities.contextualEditingSurfaces || !this.visualEditor?.isSlashTrigger()) {
             this.floatingSurfaces.slash.hide();
             return;
         }

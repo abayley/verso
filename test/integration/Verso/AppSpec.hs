@@ -22,7 +22,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/static/editor/markdown-editor.css"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
             fmap contentTypeOf outcome `shouldBe` Right (Just (BS.pack "text/css"))
@@ -58,7 +58,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/sec/page.md?edit"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
             fmap (bodyContains (BS.pack "markdown-editor")) outcome `shouldBe` Right True
@@ -67,7 +67,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/sec/page.md"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
             fmap (bodyContains (BS.pack "markdown-editor")) outcome `shouldBe` Right True
@@ -77,14 +77,14 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/sec/missing.md"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 404
         it "given a ?raw request, when routing, then the file is served verbatim as a sized text/markdown body" $ do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/sec/page.md?raw"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
             fmap contentTypeOf outcome `shouldBe` Right (Just (BS.pack "text/markdown"))
@@ -94,7 +94,7 @@ spec = do
             BS.writeFile (root ++ "/sec/utf8.md") (BS.pack "# T\n\nnbsp[\xc2\xa0] acute[\xc3\xa9] emoji[\xf0\x9f\x98\x80]\n")
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/sec/utf8.md"))
             fmap (bodyContains (BS.pack "nbsp[\xc2\xa0]")) outcome `shouldBe` Right True
             fmap (bodyContains (BS.pack "acute[\xc3\xa9]")) outcome `shouldBe` Right True
@@ -103,7 +103,7 @@ spec = do
             root <- setupTreeFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=caf%C3%A9%20%E2%9C%93"))
             saved <- BS.readFile (root ++ "/sec/page.md")
             saved `shouldBe` BS.pack "caf\xc3\xa9 \xe2\x9c\x93"
@@ -111,7 +111,7 @@ spec = do
             root <- setupTreeFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=line1%0D%0Aline2%0Dline3%0Aline4"))
             saved <- BS.readFile (root ++ "/sec/page.md")
             saved `shouldBe` BS.pack "line1\nline2\nline3\nline4"
@@ -119,7 +119,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 303
             fmap locationOf outcome `shouldBe` Right (Just (BS.pack "/documents/"))
@@ -127,7 +127,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/index.html"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 303
             fmap locationOf outcome `shouldBe` Right (Just (BS.pack "/documents/"))
@@ -135,7 +135,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
             fmap (bodyContains (BS.pack "data-readonly")) outcome `shouldBe` Right True
@@ -144,7 +144,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/sec/missing.md?edit"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
             fmap (bodyContains (BS.pack "markdown-editor")) outcome `shouldBe` Right True
@@ -152,7 +152,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/sec/assets/pixel.png"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
             fmap contentTypeOf outcome `shouldBe` Right (Just (BS.pack "image/png"))
@@ -161,7 +161,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Edited+tree"))
             saved <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 303
@@ -171,14 +171,14 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/sec/../../secret.md"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 404
         it "given a save containing raw HTML, when routing, then it is written (the tree is trusted, no guard)" $ do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=%3C%21--+note+--%3E%0A%0A%23+H"))
             saved <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 303
@@ -187,7 +187,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "PNGDATA"))
             stored <- FileSystem.readFileStrict (root ++ "/sec/assets/diagram.png")
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
@@ -197,22 +197,22 @@ spec = do
             root <- setupTreeFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "SAME"))
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "SAME"))
             fmap (bodyContains (BS.pack "{\"url\":\"assets/diagram.png\"}")) outcome `shouldBe` Right True
         it "given a name collision with different content, when routing, then the upload is suffixed" $ do
             root <- setupTreeFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "FIRST"))
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "diagram.png" "SECOND"))
             suffixed <- FileSystem.readFileStrict (root ++ "/sec/assets/diagram-2.png")
             fmap (bodyContains (BS.pack "{\"url\":\"assets/diagram-2.png\"}")) outcome `shouldBe` Right True
@@ -221,14 +221,14 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "evil.exe" "MZ"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 415
         it "given an image upload, when routing, then it is recorded in the page's images.yaml" $ do
             root <- setupTreeFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "Diagram One.png" "PNGDATA"))
             recorded <- FileSystem.readFileStrict (root ++ "/sec/meta/page.meta/images.yaml")
             recorded
@@ -239,7 +239,7 @@ spec = do
             root <- setupTreeFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "My Report.pdf" "PDFDATA"))
             recorded <- FileSystem.readFileStrict (root ++ "/sec/meta/page.meta/attachments.yaml")
             recorded
@@ -251,11 +251,11 @@ spec = do
             root <- setupTreeFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "My Report.pdf" "PDFDATA"))
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/sec/page.md?edit"))
             fmap (bodyContains (BS.pack "data-attachments")) outcome `shouldBe` Right True
             fmap (bodyContains (BS.pack "My Report.pdf")) outcome `shouldBe` Right True
@@ -264,11 +264,11 @@ spec = do
             root <- setupTreeFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "Diagram One.png" "PNGDATA"))
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     ( BS.pack
                         ( postRequest
                             "/documents/sec/page.md?image-titles"
@@ -284,11 +284,11 @@ spec = do
             root <- setupTreeFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "My Report.pdf" "PDFDATA"))
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "My Report.pdf" "PDFDATA"))
             recorded <- FileSystem.readFileStrict (root ++ "/sec/meta/page.meta/attachments.yaml")
             recorded
@@ -302,7 +302,7 @@ spec = do
             removeIfExists (treeDraftRoot ++ "/sec/page.md")
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Draft+edit"))
             live <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             drafted <- FileSystem.readFileStrict (treeDraftRoot ++ "/sec/page.md")
@@ -313,11 +313,11 @@ spec = do
             removeIfExists (treeDraftRoot ++ "/sec/page.md")
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Drafted+heading"))
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (getRequest "/documents/sec/page.md?edit"))
             fmap (bodyContains (BS.pack "Drafted heading")) outcome `shouldBe` Right True
     describe "Verso.App draft resource (RFC-0036)" $ do
@@ -326,7 +326,7 @@ spec = do
             removeIfExists (treeDraftRoot ++ "/sec/page.md")
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/drafts/sec/page.md" "# Draft edit\n\nliteral + and %20 stay\n"))
             live <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             drafted <- BS.readFile (treeDraftRoot ++ "/sec/page.md")
@@ -338,36 +338,36 @@ spec = do
             removeIfExists (treeDraftRoot ++ "/sec/page.md")
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/drafts/sec/page.md" "# Drafted via PUT"))
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (getRequest "/documents/sec/page.md?edit"))
             fmap (bodyContains (BS.pack "Drafted via PUT")) outcome `shouldBe` Right True
         it "given an unsafe path, when PUT to /drafts, then it is refused" $ do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/drafts/../escape.md" "# Escape"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 404
         it "given versioning off, when PUT to /drafts, then there is no draft resource" $ do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (rawPutRequest "/drafts/sec/page.md" "# No drafts here"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 404
         it "given a staged draft, when DELETE on /drafts, then it is removed and the live page is unchanged" $ do
             root <- setupTreeFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/drafts/sec/page.md" "# Throwaway"))
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (deleteRequest "/drafts/sec/page.md"))
             stillDrafted <- Directory.doesFileExist (treeDraftRoot ++ "/sec/page.md")
             live <- FileSystem.readFileStrict (root ++ "/sec/page.md")
@@ -379,11 +379,11 @@ spec = do
             root <- setupVersionedFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/drafts/sec/page.md" "# Published content"))
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/documents/sec/page.md" "# Published content"))
             live <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             stillDrafted <- Directory.doesFileExist (treeDraftRoot ++ "/sec/page.md")
@@ -396,12 +396,12 @@ spec = do
             root <- setupVersionedFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/documents/sec/page.md" "# Same content"))
             revsAfterFirst <- Git.logForPath root "sec/page.md"
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/documents/sec/page.md" "# Same content"))
             revsAfterSecond <- Git.logForPath root "sec/page.md"
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 204
@@ -410,7 +410,7 @@ spec = do
             root <- setupTreeFixture
             outcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (rawPutRequest "/documents/sec/page.md" "# Direct write\n"))
             live <- BS.readFile (root ++ "/sec/page.md")
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 204
@@ -421,12 +421,12 @@ spec = do
             let draftPath = treeDraftRoot ++ "/sec/page.md"
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Draft+before+delete"))
             draftBeforeDelete <- Directory.doesFileExist draftPath
             deleteOutcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (deleteRequest "/tree/sec/page.md"))
             draftAfterDelete <- Directory.doesFileExist draftPath
             deleteSubject <- lastCommitSubject root
@@ -434,7 +434,7 @@ spec = do
             let trashId = either (const "") trashIdOf deleteOutcome
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (postRequest ("/trash/" ++ trashId) ""))
             draftAfterRestore <- Directory.doesFileExist draftPath
             draftBeforeDelete `shouldBe` True
@@ -544,15 +544,15 @@ spec = do
             writeFile (root ++ "/sec/trash-newer.md") "# Newer\n\nsecond to go."
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (deleteRequest "/tree/sec/trash-older.md"))
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (deleteRequest "/tree/sec/trash-newer.md"))
             listing <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/trash"))
             fmap (Http.statusCode . Http.responseStatus) listing `shouldBe` Right 200
             let body = either (const "") bodyString listing
@@ -591,12 +591,12 @@ spec = do
             writeFile (root ++ "/sec/trash-page.md") "# Bin me\n\ncontent."
             deleteOutcome <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (deleteRequest "/tree/sec/trash-page.md"))
             let trashId = either (const "") trashIdOf deleteOutcome
             page <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/trashbin"))
             fmap (Http.statusCode . Http.responseStatus) page `shouldBe` Right 200
             fmap (bodyContains (BS.pack "Trash")) page `shouldBe` Right True
@@ -606,18 +606,19 @@ spec = do
             fmap (bodyContains (BS.pack "verso-trash-restore")) page `shouldBe` Right True
             fmap (bodyContains (BS.pack ("data-restore-id=\"" ++ trashId ++ "\""))) page `shouldBe` Right True
             fmap (bodyContains (BS.pack "data-restore-path=\"sec/trash-page.md\"")) page `shouldBe` Right True
-            -- the standalone page carries the shared editor chrome (theme head)
-            fmap (bodyContains (BS.pack "data-editor-theme")) page `shouldBe` Right True
+            -- The standalone page delegates appearance to the browser bootstrap.
+            fmap (bodyContains (BS.pack "appearance-bootstrap.js")) page `shouldBe` Right True
+            fmap (bodyContains (BS.pack "data-editor-theme")) page `shouldBe` Right False
         it "given a deleted page, when viewing /trashbin, then it offers empty-trash, per-row delete-forever, and the retention notice" $ do
             root <- setupTreeFixture
             writeFile (root ++ "/sec/bin-me.md") "# Bin me\n\ncontent."
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (deleteRequest "/tree/sec/bin-me.md"))
             page <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/trashbin"))
             fmap (bodyContains (BS.pack "Items older than 90 days will be permanently deleted.")) page `shouldBe` Right True
             fmap (bodyContains (BS.pack "verso-trash-empty")) page `shouldBe` Right True
@@ -628,33 +629,33 @@ spec = do
             root <- setupTreeFixture
             withReferer <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequestWithReferer "/trashbin" "http://localhost:8080/documents/sec/page.md?edit"))
             fmap (bodyContains (BS.pack "/documents/sec/page.md")) withReferer `shouldBe` Right True
             fmap (bodyContains (BS.pack "Back to sec/page.md")) withReferer `shouldBe` Right True
             -- no Referer (a direct visit): the link falls back to the wiki root
             noReferer <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/trashbin"))
             fmap (bodyContains (BS.pack "Back to the wiki")) noReferer `shouldBe` Right True
             -- an off-tree Referer is ignored: the link falls back to the wiki root
             offTree <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequestWithReferer "/trashbin" "http://evil.example/documents/../../etc/passwd"))
             fmap (bodyContains (BS.pack "Back to the wiki")) offTree `shouldBe` Right True
         it "given a Referer page, when viewing /search, then the back link returns to that page" $ do
             root <- setupTreeFixture
             withReferer <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequestWithReferer "/search" "http://localhost:8080/documents/sec/page.md"))
             fmap (bodyContains (BS.pack "Back to sec/page.md")) withReferer `shouldBe` Right True
             -- no Referer (a direct visit): the link falls back to the wiki root
             noReferer <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTree "paper" root)
+                    (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/search"))
             fmap (bodyContains (BS.pack "Back to the wiki")) noReferer `shouldBe` Right True
 
@@ -663,26 +664,25 @@ spec = do
             root <- setupVersionedFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/documents/sec/page.md" "# Version one"))
             history <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (getRequest "/documents/sec/page.md?history"))
             fmap (Http.statusCode . Http.responseStatus) history `shouldBe` Right 200
             fmap (bodyContains (BS.pack "Revision history")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "anonymous")) history `shouldBe` Right True
-            -- the restyled page carries the editor theme head, a per-revision checkbox, and the diff hint
-            fmap (bodyContains (BS.pack "data-editor-theme")) history `shouldBe` Right True
+            -- The page carries a browser-owned appearance host, a per-revision checkbox, and the diff hint.
+            fmap (bodyContains (BS.pack "appearance-bootstrap.js")) history `shouldBe` Right True
+            fmap (bodyContains (BS.pack "data-editor-theme")) history `shouldBe` Right False
             fmap (bodyContains (BS.pack "verso-pick")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "verso-diff-hint")) history `shouldBe` Right True
-            -- the theme bootstrap resolves dark/light/system (not always light)
-            fmap (bodyContains (BS.pack "prefers-color-scheme")) history `shouldBe` Right True
-            -- theme/appearance controls (Basecoat chrome, matching the editor), scrollable table,
-            -- in-page diff pane, and per-revision view links
-            fmap (bodyContains (BS.pack "verso-theme-menu")) history `shouldBe` Right True
-            fmap (bodyContains (BS.pack "verso-scheme-group")) history `shouldBe` Right True
-            fmap (bodyContains (BS.pack "role=\"menuitem\"")) history `shouldBe` Right True
+            -- Haskell emits only the mount point. The deferred browser bundle owns all controls.
+            fmap (bodyContains (BS.pack "verso-appearance-controls")) history `shouldBe` Right True
+            fmap (bodyContains (BS.pack "verso-theme-menu")) history `shouldBe` Right False
+            fmap (bodyContains (BS.pack "verso-scheme-group")) history `shouldBe` Right False
+            fmap (bodyContains (BS.pack "role=\"menuitem\"")) history `shouldBe` Right False
             fmap (bodyContains (BS.pack "verso-history-scroll")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "verso-diff-pane")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "?at=")) history `shouldBe` Right True
@@ -690,17 +690,17 @@ spec = do
             root <- setupVersionedFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/documents/sec/page.md" "# Changed line"))
             toRev <- gitRevParse root "HEAD"
             fromRev <- gitRevParse root "HEAD^"
             diff <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (getRequest ("/documents/sec/page.md?diff&from=" ++ fromRev ++ "&to=" ++ toRev)))
             pane <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (getRequest ("/documents/sec/page.md?diff&pane&from=" ++ fromRev ++ "&to=" ++ toRev)))
             fmap (Http.statusCode . Http.responseStatus) diff `shouldBe` Right 200
             fmap (bodyContains (BS.pack "verso-diff-side")) diff `shouldBe` Right True
@@ -713,16 +713,16 @@ spec = do
             root <- setupVersionedFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/documents/sec/page.md" "# First version"))
             firstRev <- gitRevParse root "HEAD"
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/documents/sec/page.md" "# Second version"))
             atFirst <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (getRequest ("/documents/sec/page.md?at=" ++ firstRev)))
             fmap (Http.statusCode . Http.responseStatus) atFirst `shouldBe` Right 200
             fmap (bodyContains (BS.pack "data-readonly")) atFirst `shouldBe` Right True
@@ -732,17 +732,17 @@ spec = do
             root <- setupVersionedFixture
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/documents/sec/page.md" "# Version one"))
             v1Hash <- gitRevParse root "HEAD"
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/documents/sec/page.md" "# Version two"))
             liveAfterV2 <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             _ <-
                 Server.respondToRequestBytes
-                    (App.appWithDocumentTreeVersioned "paper" root treeDraftRoot)
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (postRequest "/documents/sec/page.md?rollback" ("rev=" ++ v1Hash)))
             liveAfterRollback <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             rollbackSubject <- lastCommitSubject root
@@ -836,7 +836,6 @@ appConfig :: FilePath -> FilePath -> VConfig.VersoConfig
 appConfig root stateRoot =
     VConfig.VersoConfig
         { VConfig.documentTreeRoot = root
-        , VConfig.editorTheme = "paper"
         , VConfig.operationLog = stateRoot ++ "/oplog/operation_log"
         , VConfig.trashRoot = stateRoot ++ "/trash"
         , VConfig.trashRetentionDays = 90

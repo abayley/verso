@@ -21,7 +21,6 @@ import qualified MicroHttp.Config as Config
 -- | The application's resolved configuration, read once from a 'Config.Config'.
 data VersoConfig = VersoConfig
     { documentTreeRoot :: String
-    , editorTheme :: String
     , operationLog :: String
     , trashRoot :: String
     , trashRetentionDays :: Int
@@ -56,7 +55,6 @@ so the overlay can be scoped to exactly these keys (RFC-0030).
 appEnvKeys :: [String]
 appEnvKeys =
     [ "document_tree_root"
-    , "editor_theme"
     , "operation_log"
     , "trash_root"
     , "trash_retention_days"
@@ -119,7 +117,6 @@ fromConfig cfg = do
     pure
         VersoConfig
             { documentTreeRoot = treeRoot
-            , editorTheme = Config.configString "editor_theme" "shadcn" cfg
             , operationLog = Config.configString "operation_log" "data/operation_log" cfg
             , trashRoot = Config.configString "trash_root" "data/trash" cfg
             , trashRetentionDays = retention

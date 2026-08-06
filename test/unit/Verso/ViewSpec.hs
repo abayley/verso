@@ -1,11 +1,45 @@
 module Verso.ViewSpec (spec) where
 
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.List as List
+import qualified MicroHttp.Html as Html
 import Test.Hspec
 import qualified Verso.View as View
 
 spec :: Spec
 spec =
     describe "Verso.View" $ do
+        describe "standalone page shell" $ do
+            it "given a standalone page, when rendered, then browser appearance loads before CSS without theme data" $ do
+                let out = Html.renderHtml (View.versionPageShell "History: page" (pure ()))
+                List.isInfixOf "src=\"/static/editor/appearance-bootstrap.js\"" out `shouldBe` True
+                List.isInfixOf "data-editor-theme" out `shouldBe` False
+                List.isInfixOf "role=\"menuitem\"" out `shouldBe` False
+                appearsBefore "appearance-bootstrap.js" "basecoat.css" out `shouldBe` True
+                appearsBefore "appearance-bootstrap.js" "markdown-editor.css" out `shouldBe` True
+
+        describe "editor page shell" $ do
+            it "given an editor page, when rendered, then browser appearance loads before CSS without theme data" $ do
+                let out =
+                        Html.renderHtml
+                            ( View.editorPage
+                                "page.md"
+                                Nothing
+                                "Page"
+                                (BS.pack "# Page")
+                                False
+                                False
+                                False
+                                []
+                                []
+                                "[]"
+                            )
+                List.isInfixOf "src=\"/static/editor/appearance-bootstrap.js\"" out `shouldBe` True
+                List.isInfixOf "data-editor-theme" out `shouldBe` False
+                List.isInfixOf "editor-theme" out `shouldBe` False
+                appearsBefore "appearance-bootstrap.js" "basecoat.css" out `shouldBe` True
+                appearsBefore "appearance-bootstrap.js" "markdown-editor.css" out `shouldBe` True
+
         describe "jsonObject" $ do
             it "given no fields, when rendered, then it is an empty object" $
                 View.jsonObject [] `shouldBe` "{}"
@@ -61,3 +95,11 @@ spec =
             it "given structural characters, when rendered, then they are escaped" $
                 View.jsonString "a\"b\\c\nd\re\tf"
                     `shouldBe` "\"a\\\"b\\\\c\\nd\\re\\tf\""
+
+appearsBefore :: String -> String -> String -> Bool
+appearsBefore first second input =
+    case (indexOf first input, indexOf second input) of
+        (Just firstIndex, Just secondIndex) -> firstIndex < secondIndex
+        _ -> False
+  where
+    indexOf needle = List.findIndex (List.isPrefixOf needle) . List.tails

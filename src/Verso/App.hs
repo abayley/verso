@@ -126,7 +126,7 @@ mounts. The tree is the only serving mode (RFC-0036 retired the flat store);
 configuredRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> OperationStore.OperationStore -> TrashStore.TrashStore -> VConfig.VersoConfig -> (String -> IO ()) -> [Router.Route]
 configuredRoutes writeLock indexStore search operationStore trashStore vc clientErrorSink =
     clientErrorRoute clientErrorSink
-        : treeRoutesWithStores operationStore trashStore writeLock indexStore search (versioningFromConfig vc) (VConfig.editorTheme vc) (VConfig.documentTreeRoot vc) (VConfig.trashRoot vc) (VConfig.trashRetentionDays vc) (VConfig.linkIndex vc)
+        : treeRoutesWithStores operationStore trashStore writeLock indexStore search (versioningFromConfig vc) (VConfig.documentTreeRoot vc) (VConfig.trashRoot vc) (VConfig.trashRetentionDays vc) (VConfig.linkIndex vc)
         ++ mounts
   where
     mounts = [Static.static prefix root | (prefix, root) <- VConfig.staticMounts vc]
@@ -268,28 +268,28 @@ and every other tree file (images, attachments, raw Markdown) is served
 statically and path-safely (reusing 'Static.resolveStaticPath'). The document id
 is the tree-relative path including the @.md@ extension.
 -}
-treeRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> Versioning -> String -> FilePath -> FilePath -> FilePath -> Int -> FilePath -> [Router.Route]
-treeRoutes writeLock indexStore search versioning editorThemeDefault root logPath trashRoot =
-    treeRoutesWithStores operationStore (TrashStore.uncachedTrashStore trashRoot logPath) writeLock indexStore search versioning editorThemeDefault root trashRoot
+treeRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> Versioning -> FilePath -> FilePath -> FilePath -> Int -> FilePath -> [Router.Route]
+treeRoutes writeLock indexStore search versioning root logPath trashRoot =
+    treeRoutesWithStores operationStore (TrashStore.uncachedTrashStore trashRoot logPath) writeLock indexStore search versioning root trashRoot
   where
     operationStore = OperationStore.uncachedOperationStore logPath
 
 -- | The tree routes with warm production stores or uncached adapters for direct route tests.
-treeRoutesWithStores :: OperationStore.OperationStore -> TrashStore.TrashStore -> WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> Versioning -> String -> FilePath -> FilePath -> Int -> FilePath -> [Router.Route]
-treeRoutesWithStores operationStore trashStore writeLock indexStore search versioning editorThemeDefault root trashRoot trashRetentionDays indexPath =
+treeRoutesWithStores :: OperationStore.OperationStore -> TrashStore.TrashStore -> WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> Versioning -> FilePath -> FilePath -> Int -> FilePath -> [Router.Route]
+treeRoutesWithStores operationStore trashStore writeLock indexStore search versioning root trashRoot trashRetentionDays indexPath =
     [ Router.get "/" (redirectTo "/documents/")
     , Router.get "/index.html" (redirectTo "/documents/")
-    , Router.get "/search" (treeSearchHandler editorThemeDefault search)
+    , Router.get "/search" (treeSearchHandler search)
     , Static.static "/static/editor" "static/editor"
     , Router.get "/tree/*path" (treeChildrenHandler root)
     , Router.post "/tree/*path" (treePostDispatch versioning writeLock findRelevant maint operationStore root)
     , Router.get "/trash" (treeTrashListHandler writeLock trashStore trashRetentionDays trashRoot)
-    , Router.get "/trashbin" (treeTrashPageHandler editorThemeDefault writeLock trashStore trashRetentionDays trashRoot)
+    , Router.get "/trashbin" (treeTrashPageHandler writeLock trashStore trashRetentionDays trashRoot)
     , Router.post "/trash/*id" (treeRestoreHandler versioning writeLock maint operationStore trashStore root trashRoot)
     , Router.delete "/trash" (treeTrashEmptyHandler writeLock trashStore trashRoot)
     , Router.delete "/trash/*id" (treeTrashDeleteHandler writeLock trashStore trashRoot)
     , Router.get "/operations" (treeOperationsHandler operationStore)
-    , Router.get "/undo" (treeUndoPageHandler editorThemeDefault operationStore)
+    , Router.get "/undo" (treeUndoPageHandler operationStore)
     , Router.post "/undo" (treeUndoHandler versioning writeLock findRelevant maint operationStore trashStore root trashRoot)
     , Router.post "/index/refresh" (treeRefreshHandler writeLock refresh)
     , Router.put "/documents/*path" (treePutDocument versioning maint root)
@@ -297,7 +297,7 @@ treeRoutesWithStores operationStore trashStore writeLock indexStore search versi
     , Router.put "/drafts/*path" (draftPut versioning root)
     , Router.delete "/drafts/*path" (draftDelete versioning root)
     , Router.post "/documents/*path" (treePost versioning maint root)
-    , Router.get "/documents/*path" (treeGet versioning editorThemeDefault root)
+    , Router.get "/documents/*path" (treeGet versioning root)
     ]
   where
     -- The server backs page lookups with the warm index (no per-request walk) and
@@ -633,8 +633,8 @@ newestInAppendOrder operations limit = reverse (take limit (reverse operations))
 move with a per-row Undo, for when the recent-moves dropdown is too small.
 Complements the dropdown; both invert through @POST /undo@.
 -}
-treeUndoPageHandler :: String -> OperationStore.OperationStore -> Router.Handler
-treeUndoPageHandler themeDefault operationStore _ request = do
+treeUndoPageHandler :: OperationStore.OperationStore -> Router.Handler
+treeUndoPageHandler operationStore _ request = do
     ops <- Iteratee.liftIO (OperationStore.readOperations operationStore)
     let moves =
             [ (show (OperationLog.opSeq op), from, to, OperationLog.opTs op)
@@ -644,7 +644,7 @@ treeUndoPageHandler themeDefault operationStore _ request = do
             , Just to <- [OperationLog.opTo op]
             ]
     -- The page that opened the undo view, so "back" returns there rather than the root.
-    pure (documentResponse (View.undoPage themeDefault (originFromReferer request) moves))
+    pure (documentResponse (View.undoPage (originFromReferer request) moves))
 
 {- | The undo endpoint (RFC-0028): @POST /undo@ applies the inverse of an operation and
 appends that inverse as a new record (undo is itself logged, so a further undo is a
@@ -837,11 +837,11 @@ trashEntryIds store = fmap (map TrashStore.entryId) (TrashStore.trashEntries sto
 restorable item with a per-row Restore, for when the recent-deletes dropdown is
 too small. Complements the dropdown; both restore through @POST /trash/\<id\>@.
 -}
-treeTrashPageHandler :: String -> WriteLock -> TrashStore.TrashStore -> Int -> FilePath -> Router.Handler
-treeTrashPageHandler themeDefault writeLock trashStore retentionDays trashRoot _ request = do
+treeTrashPageHandler :: WriteLock -> TrashStore.TrashStore -> Int -> FilePath -> Router.Handler
+treeTrashPageHandler writeLock trashStore retentionDays trashRoot _ request = do
     entries <- Iteratee.liftIO (withWriteLock writeLock (purgeExpiredTrash trashStore retentionDays trashRoot))
     -- The page that opened the trash view, so "back" returns there rather than the root (RFC-0028).
-    pure (documentResponse (View.trashPage themeDefault (originFromReferer request) retentionDays entries))
+    pure (documentResponse (View.trashPage (originFromReferer request) retentionDays entries))
 
 {- | The originating page for a full-page view's back link (trash, search), taken from the request's
 @Referer@ (the page the trash view was opened from): the tree path of its
@@ -934,31 +934,31 @@ redirectTo :: String -> Router.Handler
 redirectTo location _ _ = pure (seeOtherResponse location)
 
 -- | The bare tree-serving application (no middleware), for tests and embedding.
-appWithDocumentTree :: String -> FilePath -> Server.Application
-appWithDocumentTree editorThemeDefault root =
+appWithDocumentTree :: FilePath -> Server.Application
+appWithDocumentTree root =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
-        (treeRoutes Nothing Nothing Nothing noVersioning editorThemeDefault root "data/operation_log" "data/trash" 90 "data/link_index")
+        (treeRoutes Nothing Nothing Nothing noVersioning root "data/operation_log" "data/trash" 90 "data/link_index")
 
 -- | A tree-mode app with draft/publish versioning on and drafts staged under @draftRoot@ (RFC-0032; tests).
-appWithDocumentTreeVersioned :: String -> FilePath -> FilePath -> Server.Application
-appWithDocumentTreeVersioned editorThemeDefault root draftRoot =
+appWithDocumentTreeVersioned :: FilePath -> FilePath -> Server.Application
+appWithDocumentTreeVersioned root draftRoot =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
-        (treeRoutes Nothing Nothing Nothing (Versioning True draftRoot defaultIdentityConfig) editorThemeDefault root "data/operation_log" "data/trash" 90 "data/link_index")
+        (treeRoutes Nothing Nothing Nothing (Versioning True draftRoot defaultIdentityConfig) root "data/operation_log" "data/trash" 90 "data/link_index")
 
 {- | A GET under the tree: the editor page for @?edit@ on a Markdown file,
 otherwise the file served statically (raw Markdown, images, attachments).
 -}
-treeGet :: Versioning -> String -> FilePath -> Router.Handler
-treeGet versioning editorThemeDefault root captures request
+treeGet :: Versioning -> FilePath -> Router.Handler
+treeGet versioning root captures request
     | not (isMarkdownPath path) = treeServeFile root path
-    | hasQueryFlag "history" request = treeHistory editorThemeDefault root path
-    | hasQueryFlag "diff" request = treeDiff editorThemeDefault root path request
-    | hasQueryFlag "at" request = treeReadAt editorThemeDefault root path request
-    | hasQueryFlag "edit" request = treeEdit versioning editorThemeDefault root path request
+    | hasQueryFlag "history" request = treeHistory root path
+    | hasQueryFlag "diff" request = treeDiff root path request
+    | hasQueryFlag "at" request = treeReadAt root path request
+    | hasQueryFlag "edit" request = treeEdit versioning root path request
     | hasQueryFlag "raw" request = treeServeFile root path
-    | otherwise = treeRead versioning editorThemeDefault root path request
+    | otherwise = treeRead versioning root path request
   where
     -- The tree root (@/documents@ or @/documents/@) resolves to its @index.md@ page.
     path = case capture "path" captures of
@@ -968,8 +968,8 @@ treeGet versioning editorThemeDefault root captures request
 {- | Renders the editable editor for a tree document, loading its current content
 (or a seed if the file is absent, so a missing page can be created by editing).
 -}
-treeEdit :: Versioning -> String -> FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
-treeEdit versioning editorThemeDefault root path request =
+treeEdit :: Versioning -> FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
+treeEdit versioning root path request =
     case Static.resolveStaticPath root (pathSegments path) of
         Nothing -> pure treeNotFound
         Just fsPath -> do
@@ -988,14 +988,14 @@ treeEdit versioning editorThemeDefault root path request =
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
             breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
             spine <- Iteratee.liftIO (treeSpineFor root path)
-            pure (documentResponse (View.editorPage path (editorMode request) editorThemeDefault (documentPageTitle isNew path content) content (versioningOn versioning) True (Maybe.isJust mDraft) attachments breadcrumbs spine))
+            pure (documentResponse (View.editorPage path (editorMode request) (documentPageTitle isNew path content) content (versioningOn versioning) True (Maybe.isJust mDraft) attachments breadcrumbs spine))
 
 {- | Renders the read-only view for a tree document (the default @GET@, RFC-0020):
 the editor shell with editing disabled. A missing page is a @404@ -- reading never
 seeds (that stays an @?edit@ affordance).
 -}
-treeRead :: Versioning -> String -> FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
-treeRead versioning editorThemeDefault root path request =
+treeRead :: Versioning -> FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
+treeRead versioning root path request =
     case Static.resolveStaticPath root (pathSegments path) of
         Nothing -> pure treeNotFound
         Just fsPath -> do
@@ -1012,7 +1012,7 @@ treeRead versioning editorThemeDefault root path request =
                         if versioningOn versioning
                             then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
                             else pure False
-                    pure (documentResponse (View.editorPage path (editorMode request) editorThemeDefault (documentPageTitle False path content) content (versioningOn versioning) False hasDraft attachments breadcrumbs spine))
+                    pure (documentResponse (View.editorPage path (editorMode request) (documentPageTitle False path content) content (versioningOn versioning) False hasDraft attachments breadcrumbs spine))
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
 treeServeFile :: FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
@@ -1704,11 +1704,11 @@ the page's git revisions (newest first) with a compare form (pick two revisions 
 diff) and a per-row roll-back button. An empty history (no repository, or an
 untracked page) renders an empty-state page.
 -}
-treeHistory :: String -> FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
-treeHistory editorThemeDefault root path = do
+treeHistory :: FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
+treeHistory root path = do
     revs <- Iteratee.liftIO (Git.logForPath root path)
     title <- Iteratee.liftIO (treePageTitle root path)
-    pure (documentResponse (View.historyPage editorThemeDefault title path revs))
+    pure (documentResponse (View.historyPage title path revs))
 
 -- | A tree page's display title read from disk (fallback: humanised filename).
 treePageTitle :: FilePath -> String -> IO String
@@ -1725,8 +1725,8 @@ renders a side-by-side diff of the page between the two revisions. With the
 @pane@ flag it returns just the diff fragment (for the history page's diff pane);
 otherwise a full standalone page.
 -}
-treeDiff :: String -> FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
-treeDiff editorThemeDefault root path request = do
+treeDiff :: FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
+treeDiff root path request = do
     let fromRev = queryValue "from" request
         toRev = queryValue "to" request
     diff <- Iteratee.liftIO (Git.diffBetween root fromRev toRev path)
@@ -1734,7 +1734,7 @@ treeDiff editorThemeDefault root path request = do
         then pure (htmlResponseChunks (View.diffBody fromRev toRev diff))
         else do
             title <- Iteratee.liftIO (treePageTitle root path)
-            pure (documentResponse (View.diffPage editorThemeDefault title path fromRev toRev diff))
+            pure (documentResponse (View.diffPage title path fromRev toRev diff))
 
 {- | View a page as it was at a revision (RFC-0032): @GET /documents/\<path\>?at=\<rev\>@
 renders the read-only editor over the page's content at that revision. Assets
@@ -1742,8 +1742,8 @@ referenced by the old content resolve against the /current/ tree, so an asset
 removed since then will be missing -- an accepted limitation. A revision where the
 page did not exist is a @404@.
 -}
-treeReadAt :: String -> FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
-treeReadAt editorThemeDefault root path request = do
+treeReadAt :: FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
+treeReadAt root path request = do
     let rev = queryValue "at" request
     content <- Iteratee.liftIO (Git.showFileAtRevision root rev path)
     if BS.null content
@@ -1752,7 +1752,7 @@ treeReadAt editorThemeDefault root path request = do
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
             breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
             spine <- Iteratee.liftIO (treeSpineFor root path)
-            pure (documentResponse (View.editorPage path (editorMode request) editorThemeDefault (documentPageTitle False path content) content False False False attachments breadcrumbs spine))
+            pure (documentResponse (View.editorPage path (editorMode request) (documentPageTitle False path content) content False False False attachments breadcrumbs spine))
 
 {- | The rollback action (RFC-0032): @POST /documents/\<path\>?rollback@ with a
 @rev@ field restores the page's content at that revision, writes it through the
@@ -1784,8 +1784,8 @@ and, for a non-empty query, the fused hybrid results -- one per page, best
 chunk excerpted -- plus the indexing-in-progress note whenever the re-index
 queue is non-empty. With search disabled it says so rather than 404ing.
 -}
-treeSearchHandler :: String -> Maybe SearchIndex.SearchRuntime -> Router.Handler
-treeSearchHandler themeDefault search _captures request = do
+treeSearchHandler :: Maybe SearchIndex.SearchRuntime -> Router.Handler
+treeSearchHandler search _captures request = do
     let query = capture "q" (Http.requestQuery request)
         wantsJson = hasQueryFlag "json" request
         -- The page that opened the search view, so "back" returns there rather than the root.
@@ -1794,7 +1794,7 @@ treeSearchHandler themeDefault search _captures request = do
         Nothing ->
             if wantsJson
                 then pure (jsonResponse (View.jsonObject [("enabled", View.jsonBool False)]))
-                else pure (documentResponse (View.searchPage themeDefault origin query Nothing))
+                else pure (documentResponse (View.searchPage origin query Nothing))
         Just runtime -> do
             outcome <-
                 if null query
@@ -1807,7 +1807,7 @@ treeSearchHandler themeDefault search _captures request = do
                 Right hits
                     | wantsJson -> pure (jsonResponse (searchResultsJson depth hits))
                     | otherwise ->
-                        pure (documentResponse (View.searchPage themeDefault origin query (Just (hits, depth))))
+                        pure (documentResponse (View.searchPage origin query (Just (hits, depth))))
 
 -- | The most results a search answers with (one per page).
 searchResultLimit :: Int

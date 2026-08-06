@@ -1,10 +1,8 @@
 {- | Page rendering extracted from the request handlers (RFC-0035).
 
-App.hs keeps routing and handlers; this module owns page shells, whole-page
-views, and the theme registry they share. Appearance diffs land here (and in
-"Verso.Chrome" for controls), never in handler code. The extraction runs
-through the RFC's phases; the editor page itself moves as its chrome
-migrates.
+App.hs keeps routing and handlers; this module owns page shells and whole-page
+views. Appearance behaviour belongs to the browser modules, never in handler
+or view code.
 -}
 module Verso.View (
     Crumb (..),
@@ -12,15 +10,12 @@ module Verso.View (
     diffBody,
     diffPage,
     editorPage,
-    editorThemeBootstrapScript,
     excerptOf,
     historyPage,
     jsonArray,
     jsonBool,
     jsonObject,
     jsonString,
-    knownEditorThemes,
-    safeEditorTheme,
     searchPage,
     trashPage,
     undoPage,
@@ -35,59 +30,6 @@ import qualified Data.Maybe as Maybe
 import qualified MicroHttp.Html as Html
 import qualified Verso.Chrome as Chrome
 import qualified Verso.Git as Git
-
-{- | The visual themes the editor implements (RFC-0035): the default shadcn
-look; Studio, which keeps the same look but swaps the persistent command bar
-for the bubble toolbar and slash menu; and Moebius, a full re-skin of the same
-chrome as a Jean Giraud desert, whose light and dark schemes are the same
-scene at noon and at night. The page default and the pre-paint bootstrap
-validate against this set, so an unknown configured or stored value (including
-retired theme names) falls back to the default.
--}
-knownEditorThemes :: [String]
-knownEditorThemes = ["shadcn", "studio", "moebius"]
-
--- | Validates a configured default theme name, falling back to @shadcn@.
-safeEditorTheme :: String -> String
-safeEditorTheme theme
-    | theme `elem` knownEditorThemes = theme
-    | otherwise = "shadcn"
-
-{- | A JavaScript array literal of the given strings, e.g. @['a','b']@. The
-theme names are simple identifiers, so single-quoting without escaping is safe;
-this keeps the bootstrap allowlist derived from 'knownEditorThemes' rather than
-duplicated. (The dropdown's parallel list lives in the editor TypeScript.)
--}
-jsStringArray :: [String] -> String
-jsStringArray items =
-    "[" ++ List.intercalate "," (map (\item -> "'" ++ item ++ "'") items) ++ "]"
-
-{- | An inline, pre-paint script that applies the visitor's stored editor
-preferences before the body renders, so a saved theme or colour scheme does not
-flash the page default. It sets the theme attribute only from a fixed allowlist,
-so a tampered stored value cannot inject an attribute payload.
--}
-editorThemeBootstrapScript :: String
-editorThemeBootstrapScript =
-    "<script>(function(){try{"
-        ++ "var K="
-        ++ jsStringArray knownEditorThemes
-        ++ ";var r=document.documentElement;"
-        -- Scripting is on, so the stylesheet may hide the server-rendered fallback textarea until the
-        -- editor element is defined. Set here, in the pre-paint script, so it is true before the first
-        -- paint; without scripting the class never appears and the fallback stands, which is its purpose.
-        ++ "r.classList.add('js');"
-        ++ "var t=localStorage.getItem('editor-theme');"
-        ++ "if(t&&K.indexOf(t)>=0){r.setAttribute('data-editor-theme',t);}"
-        ++ "var s=localStorage.getItem('editor-color-scheme');"
-        -- Resolve dark/light/system exactly as the editor element's resolvedEditorTheme does (RFC-0032):
-        -- only the literal 'dark'/'light' are explicit; ANY other value (unset, or the stored
-        -- 'match-system') follows the OS preference. Applied here so every page -- editor, reader, and the
-        -- standalone history/diff views -- paints consistently. (Earlier this only matched 'system', so the
-        -- stored 'match-system' fell through to light.)
-        ++ "var d=s==='dark'||(s!=='light'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);"
-        ++ "r.classList.toggle('dark',d);"
-        ++ "}catch(e){}})();</script>"
 
 {- | The head tags shared by every full page: the responsive viewport, the
 vendored Roboto and Roboto Mono fonts, the Basecoat chrome bundle (RFC-0035),
@@ -120,18 +62,17 @@ chromeInitScript =
         ++ "document.addEventListener('DOMContentLoaded',i);})()</script>"
 
 {- | The full-page shell shared by the history, diff, and search views. It
-reuses the editor page's theming (the @data-editor-theme@ default, the
-theme-bootstrap script, and the shared head assets) so these pages match the
-editor\/reader look, and loads the editor bundle so its chrome behaviours are
-available. The @\<markdown-editor\>@ element the bundle also defines is
-simply unused on these pages.
+loads the browser appearance bootstrap before the shared stylesheets and loads
+the deferred editor bundle so its chrome behaviours are available. The
+@\<markdown-editor\>@ element the bundle also defines is simply unused on
+these pages.
 -}
-versionPageShell :: String -> String -> Html.Html () -> Html.Html ()
-versionPageShell themeDefault pageTitle bodyContent =
-    Html.html [Html.lang "en", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
+versionPageShell :: String -> Html.Html () -> Html.Html ()
+versionPageShell pageTitle bodyContent =
+    Html.html [Html.lang "en"] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
-            Html.rawTrusted editorThemeBootstrapScript
+            Html.rawTrusted "<script src=\"/static/editor/appearance-bootstrap.js\"></script>"
             Html.title [] (Html.text pageTitle)
             chromeHeadAssets
             Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\" defer></script>"
@@ -142,10 +83,10 @@ versionPageShell themeDefault pageTitle bodyContent =
 The outcome 'Nothing' means search is not enabled on this server; the origin
 is the page the search was opened from (its Referer), for the back link.
 -}
-searchPage :: String -> Maybe String -> String -> Maybe ([Store.Hit], Int) -> Html.Html ()
-searchPage themeDefault origin query outcome =
-    versionPageShell themeDefault "Search" $ do
-        versionControls themeDefault
+searchPage :: Maybe String -> String -> Maybe ([Store.Hit], Int) -> Html.Html ()
+searchPage origin query outcome =
+    versionPageShell "Search" $ do
+        versionControls
         Html.el "h1" [] (Html.text "Search")
         Html.p [Html.class_ "verso-version-back"] (backLink origin)
         -- The form still submits as a plain GET without JS; search-page.ts intercepts
@@ -213,10 +154,10 @@ retention notice. The buttons carry the entry id and path as data attributes;
 @trash-page.ts@ (loaded with the shared bundle) confirms, sends the request,
 and updates the page. Entries are @(id, originalPath, kind, deletedAt)@.
 -}
-trashPage :: String -> Maybe String -> Int -> [(String, String, String, String)] -> Html.Html ()
-trashPage themeDefault origin retentionDays entries =
-    versionPageShell themeDefault "Trash" $ do
-        versionControls themeDefault
+trashPage :: Maybe String -> Int -> [(String, String, String, String)] -> Html.Html ()
+trashPage origin retentionDays entries =
+    versionPageShell "Trash" $ do
+        versionControls
         Html.el "h1" [] (Html.text "Trash")
         Html.p [Html.class_ "verso-version-back"] (backLink origin)
         Monad.when (retentionDays > 0) $
@@ -270,10 +211,10 @@ operation seq and both paths as data attributes; @undo-page.ts@ (loaded with
 the shared bundle) confirms, posts to @\/undo@, and reloads. Entries are
 @(seq, from, to, ts)@.
 -}
-undoPage :: String -> Maybe String -> [(String, String, String, String)] -> Html.Html ()
-undoPage themeDefault origin entries =
-    versionPageShell themeDefault "Undo" $ do
-        versionControls themeDefault
+undoPage :: Maybe String -> [(String, String, String, String)] -> Html.Html ()
+undoPage origin entries =
+    versionPageShell "Undo" $ do
+        versionControls
         Html.el "h1" [] (Html.text "Undo")
         Html.p [Html.class_ "verso-version-back"] (backLink origin)
         if null entries
@@ -305,10 +246,10 @@ fixed-height scrollable table of revisions (each timestamp links to that
 revision in the read-only view, with a per-row Restore), and a diff pane below
 that appears automatically, side-by-side, once two revisions are selected.
 -}
-historyPage :: String -> String -> String -> [Git.Revision] -> Html.Html ()
-historyPage themeDefault title path revs =
-    versionPageShell themeDefault ("History: " ++ title) $ do
-        versionControls themeDefault
+historyPage :: String -> String -> [Git.Revision] -> Html.Html ()
+historyPage title path revs =
+    versionPageShell ("History: " ++ title) $ do
+        versionControls
         Html.el "h1" [] (Html.text "Revision history")
         Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href ("/documents/" ++ path)] (Html.text ("Back to " ++ path)))
         if null revs
@@ -322,44 +263,18 @@ historyPage themeDefault title path revs =
                 Html.div [Html.attr "id" "verso-diff-pane", Html.class_ "verso-diff-pane", Html.attr "data-path" path, Html.attr "hidden" ""] (pure ())
                 Html.rawTrusted historyScript
 
-{- | The theme and appearance (light\/dark\/match-system) controls on the version
-pages, rendered with the same Basecoat chrome and classes as the editor (a
-dropdown menu for the visual theme and a joined group of icon buttons for the
-colour scheme). 'historyScript' wires them to the same @localStorage@ keys the
-editor uses, so a choice here carries over to the editor and back.
-@themeDefault@ sets the initial dropdown label.
+{- | The generic host where the deferred browser bundle renders standalone
+appearance controls. With JavaScript disabled, the host stays empty.
 -}
-versionControls :: String -> Html.Html ()
-versionControls themeDefault =
+versionControls :: Html.Html ()
+versionControls =
     Html.div [Html.class_ "markdown-editor__toolbar markdown-editor__toolbar--top verso-version-toolbar"] $
         Html.div [Html.class_ "markdown-editor__toolbar-controls"] $
-            Html.div [Html.class_ "markdown-editor__appearance"] $ do
-                themeDropdown
-                schemeGroup
-  where
-    themeDropdown =
-        Chrome.chromeDropdown
-            "verso-theme-menu"
-            Chrome.QuietControl
-            ( do
-                Html.el "span" [Html.attr "id" "verso-theme-trigger"] (Html.text (themeLabelFor (safeEditorTheme themeDefault)))
-                Chrome.chromeIcon "chevron-down"
-            )
-            visualThemeOptions
-    schemeGroup =
-        Html.div [Html.class_ "chrome-segment-joined", Html.attr "id" "verso-scheme-group", Html.attr "role" "radiogroup", Html.attr "aria-label" "Editor colour theme"] $ do
-            schemeButton "light" "Light" "sun"
-            schemeButton "dark" "Dark" "moon"
-            schemeButton "match-system" "Match system" "monitor"
-    schemeButton value label icon =
-        Chrome.chromeButton
-            Chrome.IconControl
-            ([Html.attr "data-scheme" value, Html.attr "role" "radio", Html.attr "aria-checked" "false", Html.attr "aria-label" label] ++ Chrome.tooltipAttrsAt label "bottom" "end")
-            (Chrome.chromeIcon icon)
-    -- The stored value stays @shadcn@ (preferences, the @editor_theme@ config and the
-    -- page attribute all carry it); only the label shown is "Default".
-    visualThemeOptions = [("shadcn", "Default"), ("studio", "Studio"), ("moebius", "Moebius")]
-    themeLabelFor t = Maybe.fromMaybe "Default" (lookup t visualThemeOptions)
+            Html.div
+                [ Html.class_ "markdown-editor__appearance"
+                , Html.attr "id" "verso-appearance-controls"
+                ]
+                (pure ())
 
 -- | One history-table row: a select checkbox, the timestamp linking to that revision's read view, author, subject, and a Restore button.
 revisionRow :: String -> Git.Revision -> Html.Html ()
@@ -396,9 +311,9 @@ historyScript =
         ++ "update();})();</script>"
 
 -- | Renders the standalone diff page (a back link plus the diff body), for a direct @?diff@ link.
-diffPage :: String -> String -> String -> String -> String -> String -> Html.Html ()
-diffPage themeDefault title path fromRev toRev diff =
-    versionPageShell themeDefault ("Diff: " ++ title) $ do
+diffPage :: String -> String -> String -> String -> String -> Html.Html ()
+diffPage title path fromRev toRev diff =
+    versionPageShell ("Diff: " ++ title) $ do
         Html.el "h1" [] (Html.text "Diff")
         Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href ("/documents/" ++ path ++ "?history")] (Html.text "Back to history"))
         diffBody fromRev toRev diff
@@ -504,12 +419,12 @@ breadcrumbsJson crumbs = jsonArray (map crumbObject crumbs)
     crumbObject (Crumb label href) =
         jsonObject (("label", jsonString label) : maybe [] (\h -> [("href", jsonString h)]) href)
 
-editorPage :: String -> Maybe String -> String -> String -> BS.ByteString -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Html.Html ()
-editorPage docId mode themeDefault pageTitle content versioned editable hasDraft attachments breadcrumbs treeSpine =
-    Html.html [Html.lang "en", Html.attr "data-editor-theme" (safeEditorTheme themeDefault)] $ do
+editorPage :: String -> Maybe String -> String -> BS.ByteString -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Html.Html ()
+editorPage docId mode pageTitle content versioned editable hasDraft attachments breadcrumbs treeSpine =
+    Html.html [Html.lang "en"] $ do
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
-            Html.rawTrusted editorThemeBootstrapScript
+            Html.rawTrusted "<script src=\"/static/editor/appearance-bootstrap.js\"></script>"
             Html.title [] (Html.text pageTitle)
             chromeHeadAssets
             Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\" defer></script>"

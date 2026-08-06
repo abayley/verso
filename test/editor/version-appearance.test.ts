@@ -23,16 +23,7 @@ function installLocalStorageStub(): void {
 
 /** Mounts the appearance controls shared by the standalone pages. */
 function mountAppearanceControls(): void {
-    document.body.innerHTML = `
-        <span id="verso-theme-trigger">Default</span>
-        <div id="verso-theme-menu">
-            <button role="menuitem" data-value="studio">Studio</button>
-        </div>
-        <div id="verso-scheme-group">
-            <button data-scheme="light" aria-checked="false">Light</button>
-            <button data-scheme="dark" aria-checked="false">Dark</button>
-            <button data-scheme="match-system" aria-checked="false">Match system</button>
-        </div>`;
+    document.body.innerHTML = '<div id="verso-appearance-controls"></div>';
 }
 
 describe("standalone page appearance controls", (): void => {
@@ -43,6 +34,27 @@ describe("standalone page appearance controls", (): void => {
         mountAppearanceControls();
     });
 
+    it("given an empty appearance host, when installed, then registry controls are rendered", (): void => {
+        document.body.innerHTML = '<div id="verso-appearance-controls"></div>';
+
+        const uninstall = installVersionAppearance();
+
+        expect({
+            themes: Array.from(
+                document.querySelectorAll<HTMLElement>("#verso-theme-menu [data-value]"),
+                (item) => item.dataset["value"],
+            ),
+            schemes: Array.from(
+                document.querySelectorAll<HTMLElement>("#verso-scheme-group [data-value]"),
+                (item) => item.dataset["value"],
+            ),
+        }).toEqual({
+            themes: ["shadcn", "studio", "moebius"],
+            schemes: ["light", "dark", "match-system"],
+        });
+        uninstall();
+    });
+
     it("given a theme menu item, when clicked, then the page applies and stores the theme", (): void => {
         const uninstall = installVersionAppearance();
 
@@ -50,19 +62,19 @@ describe("standalone page appearance controls", (): void => {
 
         expect(document.documentElement.getAttribute("data-editor-theme")).toBe("studio");
         expect(window.localStorage.getItem("editor-theme")).toBe("studio");
-        expect(document.querySelector("#verso-theme-trigger")?.textContent).toBe("Studio");
+        expect(document.querySelector("#verso-theme-menu-trigger span")?.textContent).toBe("Studio");
         uninstall();
     });
 
     it("given a colour scheme button, when clicked, then the page applies and stores the scheme", (): void => {
         const uninstall = installVersionAppearance();
 
-        document.querySelector<HTMLElement>('[data-scheme="dark"]')?.click();
+        document.querySelector<HTMLElement>('#verso-scheme-group [data-value="dark"]')?.click();
 
         expect(document.documentElement.classList.contains("dark")).toBe(true);
         expect(window.localStorage.getItem("editor-color-scheme")).toBe("dark");
-        expect(document.querySelector('[data-scheme="dark"]')?.getAttribute("aria-checked")).toBe("true");
-        expect(document.querySelector('[data-scheme="light"]')?.getAttribute("aria-checked")).toBe("false");
+        expect(document.querySelector('[data-value="dark"]')?.getAttribute("aria-selected")).toBe("true");
+        expect(document.querySelector('[data-value="light"]')?.getAttribute("aria-selected")).toBe("false");
         uninstall();
     });
 
@@ -72,8 +84,8 @@ describe("standalone page appearance controls", (): void => {
 
         const uninstall = installVersionAppearance();
 
-        expect(document.querySelector("#verso-theme-trigger")?.textContent).toBe("Studio");
-        expect(document.querySelector('[data-scheme="dark"]')?.getAttribute("aria-checked")).toBe("true");
+        expect(document.querySelector("#verso-theme-menu-trigger span")?.textContent).toBe("Studio");
+        expect(document.querySelector('[data-value="dark"]')?.getAttribute("aria-selected")).toBe("true");
         uninstall();
     });
 });

@@ -1,3 +1,4 @@
+import { checkEditorLayoutCss } from "../src/Verso/Editor/editor-layout.ts";
 import { checkVisualThemeCss } from "../src/Verso/Editor/visual-theme-registry.ts";
 
 const outfile = "static/editor/markdown-editor.js";
@@ -29,11 +30,18 @@ const editorStylesheet = "static/editor/markdown-editor.css";
 // build so the leaner production builds are bundled and the dev-mode warnings are dropped.
 process.env.NODE_ENV = "production";
 
-const themeCssCheck = checkVisualThemeCss(await Bun.file(editorStylesheet).text());
+const editorCss = await Bun.file(editorStylesheet).text();
+const themeCssCheck = checkVisualThemeCss(editorCss);
 if (themeCssCheck.missingThemeIds.length > 0 || themeCssCheck.unregisteredThemeIds.length > 0) {
     console.error(
         `Visual theme CSS does not match the registry. Missing selectors: ${themeCssCheck.missingThemeIds.join(", ") || "none"}. Unregistered selectors: ${themeCssCheck.unregisteredThemeIds.join(", ") || "none"}.`,
     );
+    process.exit(1);
+}
+
+const layoutCssError = checkEditorLayoutCss(editorCss);
+if (layoutCssError !== null) {
+    console.error(layoutCssError);
     process.exit(1);
 }
 

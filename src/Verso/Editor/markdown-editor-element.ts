@@ -36,6 +36,7 @@ import {
 import { themedConfirm } from "./confirm-dialog.js";
 import { registerExtension } from "./content-extension.js";
 import type { EditingCommand, EditingSurface } from "./editing-surface.js";
+import { type EditorLayout, editorLayoutMediaQueries, resolveEditorLayout } from "./editor-layout.js";
 import { INLINE_COMMANDS } from "./editor-toolbar-shared.js";
 import { FloatingSurfaces, type SlashCommand, type TableAlignment } from "./floating-surfaces.js";
 import { frontmatterName, joinFrontmatter, setFrontmatterName, splitFrontmatter } from "./frontmatter.js";
@@ -78,18 +79,6 @@ const SIDEBAR_DISCLOSURE_FALLBACK = "Contents";
 
 /** How often scrolling may re-read the heading positions to rename the disclosure trigger. */
 const sidebarLabelThrottleMilliseconds = 100;
-
-/** Below this width the navigation tree is a panel, not a column. Kept in step with the stylesheet. */
-const navPanelMediaQuery = "(max-width: 74rem)";
-
-/**
- * With the rail in the row, the metadata pane gives up its column below this width: the window can no
- * longer seat the rail (24rem), the narrow measure (48rem) and the pane (18rem) with the gaps between
- * them. It is a query the element reads rather than a media query in the stylesheet because the answer
- * depends on the rail, which the reader can collapse by hand at any width; the element publishes the
- * result as `data-pane-panel` and the stylesheet keys the panel rules on that.
- */
-const panePanelWithRailQuery = "(max-width: 93rem)";
 
 /** The selectable editing-column widths, in toolbar order; "narrow" is the default. Icons read as
     increasing column width (a portrait, a square, a landscape rectangle). */
@@ -438,33 +427,23 @@ export class MarkdownEditorElement extends HTMLElement {
         this.appearanceTrigger?.setAttribute("aria-expanded", open ? "true" : "false");
     }
 
+    /** Reads browser and rail state through the pure editor layout decision. */
+    private resolveLayout(): EditorLayout {
+        return resolveEditorLayout({
+            navPanelQueryMatches: window.matchMedia(editorLayoutMediaQueries.navPanel).matches,
+            panePanelWithRailQueryMatches: window.matchMedia(editorLayoutMediaQueries.panePanelWithRail).matches,
+            railCollapsed: this.navTree?.isCollapsed() ?? false,
+        });
+    }
+
     /** Whether the viewport is below the rail breakpoint, where the tree is a panel rather than a column. */
     private navIsPanel(): boolean {
-        return window.matchMedia(navPanelMediaQuery).matches;
+        return this.resolveLayout().navIsPanel;
     }
 
-    /** Whether the navigation rail currently stands in the row, taking its 24rem from the window. */
-    private railIsColumn(): boolean {
-        return !this.navIsPanel() && !(this.navTree?.isCollapsed() ?? false);
-    }
-
-    /**
-     * Publishes whether the metadata pane has room for its column, as `data-pane-panel`. Re-read on resize
-     * and whenever the rail is shown or hidden, since the rail's 24rem is what decides whether the pane
-     * fits beside the prose.
-     *
-     * Below the rail's own breakpoint the pane is always a panel, rather than being measured again without
-     * the rail's 24rem. Strictly there is room for its column between 69rem and the rail's 74rem, but
-     * taking it means the pane reappears for one 80px band while the window is still shrinking and then
-     * goes again -- so once the pane has become a dropdown, shrinking keeps it one. Collapsing the rail by
-     * hand above the breakpoint still restores the pane's column, which is the point of measuring the two
-     * cases separately.
-     */
+    /** Publishes whether the metadata pane uses its overlay panel. */
     private syncPanePanel(): void {
-        const panel =
-            window.matchMedia(navPanelMediaQuery).matches ||
-            (this.railIsColumn() && window.matchMedia(panePanelWithRailQuery).matches);
-        this.toggleAttribute("data-pane-panel", panel);
+        this.toggleAttribute("data-pane-panel", this.resolveLayout().paneIsPanel);
     }
 
     /**

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { editorLayoutMediaQueries } from "../../src/Verso/Editor/editor-layout.js";
 import { MarkdownEditorElement } from "../../src/Verso/Editor/markdown-editor-element.js";
 
 const elementName = "markdown-editor-test";
@@ -41,6 +42,28 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.querySelector(".markdown-editor__source .cm-editor")).toBeInstanceOf(HTMLElement);
         expect((editor as MarkdownEditorElement).toMarkdown()).toBe("<script>alert(1)</script>");
         expect(editor.querySelector(".markdown-editor__error")).toBeNull();
+    });
+
+    it("given the narrow layout queries match, when navigation is opened, then navigation and metadata use panels", async (): Promise<void> => {
+        vi.stubGlobal("fetch", async (): Promise<Response> => new Response("[]"));
+        installMatchMediaFake(
+            new Map([
+                [editorLayoutMediaQueries.navPanel, true],
+                [editorLayoutMediaQueries.panePanelWithRail, true],
+            ]),
+        );
+        const editor = document.createElement(elementName);
+        editor.textContent = "# Heading";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        (editor.querySelector(".markdown-editor__nav-trigger") as HTMLButtonElement).click();
+
+        expect({
+            navOpen: editor.hasAttribute("data-nav-open"),
+            navTriggerExpanded: editor.querySelector(".markdown-editor__nav-trigger")?.getAttribute("aria-expanded"),
+            paneIsPanel: editor.hasAttribute("data-pane-panel"),
+        }).toEqual({ navOpen: true, navTriggerExpanded: "true", paneIsPanel: true });
     });
 
     it("given an uncaught error on the page, when it fires, then a dismissible error banner appears", async (): Promise<void> => {
@@ -1909,6 +1932,23 @@ function installLocalStorageStub(): void {
         },
     };
     Object.defineProperty(window, "localStorage", { configurable: true, value: stub });
+}
+
+/** Installs a media query fake that returns authored match state by query string. */
+function installMatchMediaFake(matchesByQuery: ReadonlyMap<string, boolean>): void {
+    vi.stubGlobal(
+        "matchMedia",
+        (query: string): MediaQueryList => ({
+            matches: matchesByQuery.get(query) ?? false,
+            media: query,
+            onchange: null,
+            addEventListener: (): void => {},
+            removeEventListener: (): void => {},
+            addListener: (): void => {},
+            removeListener: (): void => {},
+            dispatchEvent: (): boolean => true,
+        }),
+    );
 }
 
 /** Clicks a Basecoat dropdown menu item by value inside a dropdown root. */

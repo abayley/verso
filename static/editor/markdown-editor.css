@@ -2574,13 +2574,12 @@ markdown-editor[data-sidebar-open]
    ---------------------------------------------------------------------------
    The layout sheds chrome as the viewport narrows, widest threshold first.
 
-   1. Metadata pane (93rem / 1488px with the rail in the row; always below the rail's own 74rem). The pane
-      gives up its column once the window cannot seat the rail, the narrow measure and the pane together:
-      24rem + 1.5 + 48rem + 1.5 + 18rem = 93rem. Not a media query but a `data-pane-panel` attribute the
-      element sets (syncPanePanel), because the answer depends on the rail, which the reader can also
-      collapse by hand at any width -- collapsing it restores the pane's column. Below the rail's
-      breakpoint the pane stays a panel whatever the arithmetic says: the rail's folding frees 24rem, and
-      claiming it brought the pane back for one 80px band mid-shrink before taking it away again.
+   1. Metadata pane (93rem / 1488px with the rail in the row; always below the rail's own 74rem). The
+      threshold table and pure decision based on rail state live in editor-layout.ts. The pane gives up its
+      column once the window cannot seat the rail, the narrow measure and the pane together:
+      24rem + 1.5 + 48rem + 1.5 + 18rem = 93rem. The element publishes the decision as `data-pane-panel`.
+      Collapsing the rail by hand restores the pane's column above the navigation breakpoint. Below that
+      breakpoint the pane stays a panel, avoiding a brief reappearance while the window is shrinking.
 
       Deriving it from the measure is what removes the jumps: the column is the same 48rem either side of
       the threshold, so the pane's going changes nothing about the prose. The pane is not moved in the
@@ -2671,8 +2670,9 @@ markdown-editor[data-pane-panel] .markdown-editor__sidebar[data-collapsed="true"
 }
 
 /* ---------------------------------------------------------------------------
-   2. Navigation rail (74rem / 1184px). Derived from the measure, exactly as the pane's threshold above
-      it: the rail gives up its column once the window cannot seat the rail and the narrow measure
+   2. Navigation rail (74rem / 1184px). editor-layout.ts owns this threshold, and the editor build checks
+      that this media query agrees with its table. The rail gives up its column once the window cannot
+      seat the rail and the narrow measure
       together (24rem + 1.5 + 48rem = 73.5rem, rounded to 74rem). That is what makes the whole sequence
       jump-free in the narrow width -- the column holds 48rem from 93rem all the way down to about 50rem,
       where the window itself becomes the constraint, and neither the pane's going nor the rail's changes

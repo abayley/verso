@@ -2,13 +2,7 @@ import type { Code, Paragraph, Parent, Root, RootContent } from "mdast";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { type Plugin, unified } from "unified";
-import {
-    type ContentExtension,
-    type FromElementContext,
-    type ParseContext,
-    registerExtension,
-    type ToMarkdownContext,
-} from "./content-extension.js";
+import type { ContentExtension, FromElementContext, ParseContext, ToMarkdownContext } from "./content-extension.js";
 import type { EditorBlock } from "./editor-model.js";
 
 /** The collapsible types recognised, sharing the admonitions' callout chrome via the semantic palette. */
@@ -205,12 +199,10 @@ function blockToMarkdown(block: EditorBlock, ctx: ToMarkdownContext): string | n
 }
 
 /** mkdocs-material `???` / `???+` collapsible callouts, parsed by a custom remark transform. */
-const collapsibleExtension: ContentExtension = {
+export const collapsibleExtension: ContentExtension = {
     blockFromElement,
     blockFromMdast,
     blockToMarkdown,
     name: "collapsible",
     remarkPlugins: [remarkCollapsible],
 };
-
-registerExtension(collapsibleExtension);

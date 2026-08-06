@@ -219,19 +219,19 @@ the base blockquote and GFM alert serialisers.
 
 ### Phase 2: Explicit production and test composition
 
-- [ ] Test: given two pipelines with different feature sets, when both run in
+- [x] Test: given two pipelines with different feature sets, when both run in
       one process, then neither pipeline changes the other.
-- [ ] Test: given a custom model node, when its named extension is active, then
+- [x] Test: given a custom model node, when its named extension is active, then
       only that extension serialises it.
-- [ ] Test: given a custom model node whose extension is absent, when it is
+- [x] Test: given a custom model node whose extension is absent, when it is
       serialised, then the accepted empty result is preserved.
-- [ ] Define the common and document-tree feature sets in composition modules.
-- [ ] Pass the production document-tree pipeline into editor adapters.
-- [ ] Convert tests to construct their complete feature sets explicitly.
-- [ ] Remove `registerExtension`, import-side-effect registration, and mutable
+- [x] Define the common and document-tree feature sets in composition modules.
+- [x] Pass the production document-tree pipeline into editor adapters.
+- [x] Convert tests to construct their complete feature sets explicitly.
+- [x] Remove `registerExtension`, import-side-effect registration, and mutable
       module state before the phase commit.
-- [ ] Preserve the current full production extension order.
-- [ ] Run `make check` and commit the phase.
+- [x] Preserve the current full production extension order.
+- [x] Run `make check` and commit the phase.
 
 ### Phase 3: Typed extension payloads
 

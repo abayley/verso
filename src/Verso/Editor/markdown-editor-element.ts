@@ -6,7 +6,6 @@ import {
     parseEmbeddedAttachments,
 } from "./attachment-panel.js";
 import { isInlineImage } from "./attachment-upload.js";
-import { badgeExtension } from "./badge-extension.js";
 import { type Breadcrumb, parseBreadcrumbs } from "./breadcrumbs.js";
 import {
     type ChromeDropdownElement,
@@ -34,7 +33,6 @@ import {
     type InsertStructureKind,
 } from "./command-bar-element.js";
 import { themedConfirm } from "./confirm-dialog.js";
-import { registerExtension } from "./content-extension.js";
 import type { EditingCommand, EditingSurface } from "./editing-surface.js";
 import { type EditorLayout, editorLayoutMediaQueries, resolveEditorLayout } from "./editor-layout.js";
 import { INLINE_COMMANDS } from "./editor-toolbar-shared.js";
@@ -43,7 +41,7 @@ import { frontmatterName, joinFrontmatter, setFrontmatterName, splitFrontmatter 
 import { imageShortTitles } from "./image-metadata.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
 import { NavTreePanel, parseTreeSpine } from "./nav-tree.js";
-import { rawHtmlExtension } from "./raw-html-extension.js";
+import { documentTreeContentPipeline } from "./register-extensions.js";
 import { SaveStateController, type SaveStateView } from "./save-state-controller.js";
 import { SearchPanel } from "./search-panel.js";
 import { editorServerClient, type ServerClient } from "./server-client.js";
@@ -633,12 +631,6 @@ export class MarkdownEditorElement extends HTMLElement {
         const loaded = splitFrontmatter(await this.loadMarkdown());
         this.frontmatter = loaded.frontmatter;
         this.markdown = loaded.body;
-
-        // The trusted document tree may contain raw HTML (export-metadata comments, occasional
-        // markup); preserve it verbatim and inert rather than throwing on it (ADR-040/041).
-        // Badge lozenges (RFC-0021) ride along.
-        registerExtension(rawHtmlExtension);
-        registerExtension(badgeExtension);
 
         this.visualTheme = initialiseVisualTheme();
         this.theme = this.editorTheme();
@@ -1618,6 +1610,7 @@ export class MarkdownEditorElement extends HTMLElement {
                 this.markdown,
                 (): void => this.handleEditingSurfaceInput(this.visualEditor),
                 (): void => this.handleVisualLinkShortcut(),
+                documentTreeContentPipeline,
                 { preserveRawHtml: true, editable: !this.isReadonly() },
             );
             this.visualEditor.element().addEventListener("focusin", (): void => {

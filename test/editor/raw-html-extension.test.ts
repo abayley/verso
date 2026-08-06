@@ -1,14 +1,11 @@
-import { beforeAll, describe, expect, it } from "vitest";
-import { registerExtension } from "../../src/Verso/Editor/content-extension.js";
-import { parseMarkdown } from "../../src/Verso/Editor/markdown-parse.js";
-import { documentFromElements, documentToMarkdown } from "../../src/Verso/Editor/markdown-serialise.js";
+import { describe, expect, it } from "vitest";
+import { createContentPipeline } from "../../src/Verso/Editor/content-extension.js";
 import { rawHtmlExtension } from "../../src/Verso/Editor/raw-html-extension.js";
+import { parseMarkdownWithRemark } from "../../src/Verso/Editor/remark-adapter.js";
 
-// Raw-HTML preservation is opt-in (the document-tree editing mode enables it); register it for this suite.
-// Vitest isolates module state per file, so this does not relax the strict parse in the other suites.
-beforeAll((): void => {
-    registerExtension(rawHtmlExtension);
-});
+const pipeline = createContentPipeline([rawHtmlExtension]);
+const parseMarkdown = (markdown: string) => parseMarkdownWithRemark(markdown, pipeline);
+const { documentFromElements, documentToMarkdown } = pipeline;
 
 describe("raw HTML parsing", (): void => {
     it("given a block HTML comment, when parsed, then it becomes a preserved raw-html block", (): void => {

@@ -1,11 +1,10 @@
-import type { Nodes, Root, RootContent } from "mdast";
+import type { Nodes, Root } from "mdast";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 import { BADGE_ATTR } from "./badge-syntax.js";
-import { blockFromMdast, type ContentPipeline, collectRemarkPlugins } from "./content-extension.js";
-import "./register-extensions.js";
-import type { EditorBlock, EditorDocument } from "./editor-model.js";
+import type { ContentPipeline } from "./content-extension.js";
+import type { EditorDocument } from "./editor-model.js";
 
 /** A raw `html` node's verbatim text, its source-offset span, and whether it is block-level. */
 export interface RawHtmlSpan {
@@ -95,18 +94,11 @@ export function badgeSpans(markdown: string): BadgeSpan[] {
 }
 
 /** Parses Markdown with remark and converts the mdast tree through the content-extension registry. */
-export function parseMarkdownWithRemark(markdown: string, pipeline?: ContentPipeline): EditorDocument {
+export function parseMarkdownWithRemark(markdown: string, pipeline: ContentPipeline): EditorDocument {
     // Extensions may install syntax plugins (e.g. collapsibles), so run the processor's transformers
     // (runSync) after parsing rather than using parse() alone.
-    const processor = unified()
-        .use(remarkParse)
-        .use(remarkGfm)
-        .use(pipeline?.remarkPlugins ?? collectRemarkPlugins());
+    const processor = unified().use(remarkParse).use(remarkGfm).use(pipeline.remarkPlugins);
     const tree = processor.runSync(processor.parse(markdown)) as Root;
 
-    if (pipeline) {
-        return pipeline.documentFromMdast(tree.children);
-    }
-
-    return { blocks: tree.children.map((node: RootContent): EditorBlock => blockFromMdast(node)) };
+    return pipeline.documentFromMdast(tree.children);
 }

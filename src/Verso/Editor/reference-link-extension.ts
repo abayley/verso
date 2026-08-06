@@ -1,12 +1,6 @@
 import type { Nodes, PhrasingContent, Root, RootContent } from "mdast";
 import type { Plugin } from "unified";
-import {
-    type ContentExtension,
-    type FromElementContext,
-    type ParseContext,
-    registerExtension,
-    type ToMarkdownContext,
-} from "./content-extension.js";
+import type { ContentExtension, FromElementContext, ParseContext, ToMarkdownContext } from "./content-extension.js";
 import type { EditorBlock, InlineNode } from "./editor-model.js";
 
 /** A reference link's form: full `[text][id]`, collapsed `[text][]`, or shortcut `[text]`. */
@@ -217,7 +211,7 @@ function blockToMarkdown(block: EditorBlock): string | null {
 }
 
 /** GFM reference links (`[text][id]` / `[text][]` / `[text]`) and their `[id]: url` definitions. */
-const referenceLinkExtension: ContentExtension = {
+export const referenceLinkExtension: ContentExtension = {
     blockFromElement,
     blockFromMdast,
     blockToMarkdown,
@@ -227,5 +221,3 @@ const referenceLinkExtension: ContentExtension = {
     name: "reference-link",
     remarkPlugins: [remarkResolveReferenceLinks],
 };
-
-registerExtension(referenceLinkExtension);

@@ -1,11 +1,5 @@
 import type { RootContent, TableCell, TableRow } from "mdast";
-import {
-    type ContentExtension,
-    type FromElementContext,
-    type ParseContext,
-    registerExtension,
-    type ToMarkdownContext,
-} from "./content-extension.js";
+import type { ContentExtension, FromElementContext, ParseContext, ToMarkdownContext } from "./content-extension.js";
 import type { EditorBlock, InlineNode } from "./editor-model.js";
 
 /** A column alignment, or null for an unaligned column. */
@@ -145,11 +139,9 @@ function alignFromCell(cell: Element): TableAlign {
 }
 
 /** GFM pipe tables recognised, rendered, and serialised through the content-extension registry. */
-const tableExtension: ContentExtension = {
+export const tableExtension: ContentExtension = {
     blockFromElement,
     blockFromMdast,
     blockToMarkdown,
     name: "table",
 };
-
-registerExtension(tableExtension);

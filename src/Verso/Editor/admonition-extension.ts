@@ -1,11 +1,5 @@
 import type { Blockquote, Paragraph, PhrasingContent, RootContent, Text } from "mdast";
-import {
-    type ContentExtension,
-    type FromElementContext,
-    type ParseContext,
-    registerExtension,
-    type ToMarkdownContext,
-} from "./content-extension.js";
+import type { ContentExtension, FromElementContext, ParseContext, ToMarkdownContext } from "./content-extension.js";
 import type { EditorBlock } from "./editor-model.js";
 
 /** The GFM alert kinds recognised as admonitions. */
@@ -154,11 +148,9 @@ function alertLineToMarkdown(line: string): string {
 }
 
 /** GFM alert blockquotes (`> [!NOTE]`) recognised and styled as callouts. */
-const admonitionExtension: ContentExtension = {
+export const admonitionExtension: ContentExtension = {
     blockFromElement,
     blockFromMdast,
     blockToMarkdown,
     name: "admonition",
 };
-
-registerExtension(admonitionExtension);

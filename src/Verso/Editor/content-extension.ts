@@ -70,6 +70,12 @@ export function createContentPipeline(featureExtensions: readonly ContentExtensi
     }
 
     const orderedExtensions = Object.freeze([...featureExtensions, baseExtension]);
+    const extensionsByName = new Map(
+        orderedExtensions.map((extension: ContentExtension): readonly [string, ContentExtension] => [
+            extension.name,
+            extension,
+        ]),
+    );
 
     /** Builds an unsupported-node error for the current editor subset. */
     function unsupportedNode(type: string): Error {
@@ -167,6 +173,10 @@ export function createContentPipeline(featureExtensions: readonly ContentExtensi
 
     /** Serialises one editor block to Markdown. */
     function blockToMarkdown(block: EditorBlock): string {
+        if (block.type === "custom") {
+            return extensionsByName.get(block.extension)?.blockToMarkdown?.(block, toMarkdownContext) ?? "";
+        }
+
         for (const extension of orderedExtensions) {
             const markdown = extension.blockToMarkdown?.(block, toMarkdownContext);
 
@@ -185,6 +195,10 @@ export function createContentPipeline(featureExtensions: readonly ContentExtensi
 
     /** Serialises one editor inline node to Markdown. */
     function inlineToMarkdown(node: InlineNode): string {
+        if (node.type === "custom") {
+            return extensionsByName.get(node.extension)?.inlineToMarkdown?.(node, toMarkdownContext) ?? "";
+        }
+
         for (const extension of orderedExtensions) {
             const markdown = extension.inlineToMarkdown?.(node, toMarkdownContext);
 
@@ -216,45 +230,4 @@ export function createContentPipeline(featureExtensions: readonly ContentExtensi
             orderedExtensions.flatMap((extension: ContentExtension): PluggableList => extension.remarkPlugins ?? []),
         ) as PluggableList,
     });
-}
-
-// Temporary legacy composition. Phase 2 removes this state after all production callers receive a pipeline.
-const registeredFeatureExtensions: ContentExtension[] = [];
-
-/** Registers a feature extension in the temporary legacy production composition. */
-export function registerExtension(extension: ContentExtension, options: { fallback?: boolean } = {}): void {
-    if (options.fallback) {
-        return;
-    }
-
-    if (
-        !registeredFeatureExtensions.some((registered: ContentExtension): boolean => registered.name === extension.name)
-    ) {
-        registeredFeatureExtensions.push(extension);
-    }
-}
-
-/** Returns the temporary legacy content pipeline. */
-function registeredContentPipeline(): ContentPipeline {
-    return createContentPipeline(registeredFeatureExtensions);
-}
-
-/** Collects remark plugins from the temporary legacy content pipeline. */
-export function collectRemarkPlugins(): PluggableList {
-    return registeredContentPipeline().remarkPlugins;
-}
-
-/** Converts one mdast block through the temporary legacy content pipeline. */
-export function blockFromMdast(node: RootContent): EditorBlock {
-    return registeredContentPipeline().documentFromMdast([node]).blocks[0] as EditorBlock;
-}
-
-/** Converts DOM elements through the temporary legacy content pipeline. */
-export function documentFromElements(elements: HTMLCollection | Element[]): EditorDocument {
-    return registeredContentPipeline().documentFromElements(elements);
-}
-
-/** Serialises an editor document through the temporary legacy content pipeline. */
-export function documentToMarkdown(document: EditorDocument): string {
-    return registeredContentPipeline().documentToMarkdown(document);
 }

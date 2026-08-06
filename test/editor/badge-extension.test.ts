@@ -1,14 +1,11 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { badgeExtension } from "../../src/Verso/Editor/badge-extension.js";
-import { registerExtension } from "../../src/Verso/Editor/content-extension.js";
-import { parseMarkdown } from "../../src/Verso/Editor/markdown-parse.js";
-import { documentFromElements, documentToMarkdown } from "../../src/Verso/Editor/markdown-serialise.js";
+import { createContentPipeline } from "../../src/Verso/Editor/content-extension.js";
+import { parseMarkdownWithRemark } from "../../src/Verso/Editor/remark-adapter.js";
 
-// Badge support is opt-in (the document-tree mode enables it); register it for this suite. Vitest isolates
-// module state per file, so this does not affect the other suites' strict parse.
-beforeAll((): void => {
-    registerExtension(badgeExtension);
-});
+const pipeline = createContentPipeline([badgeExtension]);
+const parseMarkdown = (markdown: string) => parseMarkdownWithRemark(markdown, pipeline);
+const { documentFromElements, documentToMarkdown } = pipeline;
 
 describe("badge parsing", (): void => {
     it("given an inline code span with a badge attribute list, when parsed, then it becomes a badge inline", (): void => {

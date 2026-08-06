@@ -16,6 +16,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import StarterKit from "@tiptap/starter-kit";
 import { type AdmonitionKind, matchAlertMarker } from "./admonition-extension.js";
 import { type CollapsibleKind, matchCollapsibleMarker } from "./collapsible-extension.js";
+import type { ContentPipeline } from "./content-extension.js";
 import type {
     EditingCommand,
     EditingSelection,
@@ -29,7 +30,6 @@ export type { VisualBlockStyle, VisualInlineStyle, VisualStructureStyle } from "
 
 import { widthFromAttributes } from "./image-extension.js";
 import { isAllowedLinkUri } from "./link-uri.js";
-import { documentFromElements, documentToMarkdown } from "./markdown-serialise.js";
 import {
     type ProtectedFragmentFeature,
     type ProtectedFragmentMarker,
@@ -381,6 +381,7 @@ export class TiptapVisualEditor implements EditingSurface {
         markdown: string,
         onChange: TiptapChangeHandler,
         onLinkShortcut: TiptapLinkShortcutHandler,
+        private readonly contentPipeline: ContentPipeline,
         options: { preserveRawHtml?: boolean; editable?: boolean } = {},
     ) {
         this.root = document.createElement("div");
@@ -482,7 +483,9 @@ export class TiptapVisualEditor implements EditingSurface {
 
     /** Serialises the current Tiptap document to Markdown. */
     public toMarkdown(): string {
-        const markdown = documentToMarkdown(documentFromElements(editorContentElements(this.editor.view.dom)));
+        const markdown = this.contentPipeline.documentToMarkdown(
+            this.contentPipeline.documentFromElements(editorContentElements(this.editor.view.dom)),
+        );
 
         return escapeLiteralParagraphMarkers(markdown, this.editor.getJSON());
     }

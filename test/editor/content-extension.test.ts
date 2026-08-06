@@ -41,4 +41,59 @@ describe("createContentPipeline", (): void => {
             createContentPipeline([{ name: "base" }]);
         }).toThrow("Duplicate content extension name: base");
     });
+
+    it("given a custom node, when serialised, then only its named extension handles it", (): void => {
+        const visited: string[] = [];
+        const pipeline = createContentPipeline([
+            {
+                blockToMarkdown: () => {
+                    visited.push("other");
+
+                    return "wrong";
+                },
+                name: "other",
+            },
+            {
+                blockToMarkdown: () => {
+                    visited.push("owner");
+
+                    return "owned";
+                },
+                name: "owner",
+            },
+        ]);
+
+        expect(
+            pipeline.documentToMarkdown({
+                blocks: [{ data: {}, extension: "owner", type: "custom" }],
+            }),
+        ).toBe("owned");
+        expect(visited).toEqual(["owner"]);
+    });
+
+    it("given pipelines with different feature sets, when both run, then neither changes the other", (): void => {
+        const feature: ContentExtension = {
+            blockFromMdast: (node) =>
+                node.type === "thematicBreak"
+                    ? { data: { marker: "feature" }, extension: "feature", type: "custom" }
+                    : null,
+            name: "feature",
+        };
+        const baseOnly = createContentPipeline([]);
+        const withFeature = createContentPipeline([feature]);
+        const thematicBreak = [{ type: "thematicBreak" }] as const;
+
+        expect(withFeature.documentFromMdast([...thematicBreak]).blocks[0]).toMatchObject({ extension: "feature" });
+        expect(baseOnly.documentFromMdast([...thematicBreak]).blocks[0]).toEqual({ type: "horizontalRule" });
+    });
+
+    it("given a custom node whose extension is absent, when serialised, then it produces the fail-soft empty result", (): void => {
+        const pipeline = createContentPipeline([]);
+
+        expect(
+            pipeline.documentToMarkdown({
+                blocks: [{ data: {}, extension: "absent", type: "custom" }],
+            }),
+        ).toBe("");
+    });
 });

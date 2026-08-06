@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseMarkdownLocally } from "../../src/Verso/Editor/markdown-parse-local.js";
+import { commonContentPipeline } from "../../src/Verso/Editor/register-extensions.js";
 import { badgeSpans, parseMarkdownWithRemark, rawHtmlSpans } from "../../src/Verso/Editor/remark-adapter.js";
 
 describe("parseMarkdownWithRemark", (): void => {
@@ -18,12 +19,12 @@ describe("parseMarkdownWithRemark", (): void => {
             "---",
         ].join("\n");
 
-        expect(parseMarkdownWithRemark(markdown)).toEqual(parseMarkdownLocally(markdown));
+        expect(parseMarkdownWithRemark(markdown, commonContentPipeline)).toEqual(parseMarkdownLocally(markdown));
     });
 
     it("given unsupported Markdown, when parsed through remark, then it rejects the unsupported node", (): void => {
         expect((): void => {
-            parseMarkdownWithRemark("<script>alert(1)</script>");
+            parseMarkdownWithRemark("<script>alert(1)</script>", commonContentPipeline);
         }).toThrow("Unsupported Markdown node for editor subset: html");
     });
 });

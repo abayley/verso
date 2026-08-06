@@ -1,12 +1,6 @@
 import type { Nodes, PhrasingContent, Root } from "mdast";
 import type { Plugin } from "unified";
-import {
-    type ContentExtension,
-    type FromElementContext,
-    type ParseContext,
-    registerExtension,
-    type ToMarkdownContext,
-} from "./content-extension.js";
+import type { ContentExtension, FromElementContext, ParseContext, ToMarkdownContext } from "./content-extension.js";
 import type { EditorBlock, InlineNode } from "./editor-model.js";
 
 /** The payload on a custom image inline node. */
@@ -210,7 +204,7 @@ function inlineToMarkdown(node: InlineNode, _ctx: ToMarkdownContext): string | n
 }
 
 /** GFM images (`![alt](src "title")`, optionally `{width=N}`) rendered inline as `<img>`; no raw HTML. */
-const imageExtension: ContentExtension = {
+export const imageExtension: ContentExtension = {
     blockFromElement,
     inlineFromElement,
     inlineFromMdast,
@@ -218,5 +212,3 @@ const imageExtension: ContentExtension = {
     name: "image",
     remarkPlugins: [remarkImageWidth],
 };
-
-registerExtension(imageExtension);

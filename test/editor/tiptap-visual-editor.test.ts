@@ -1,13 +1,6 @@
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
-import { badgeExtension } from "../../src/Verso/Editor/badge-extension.js";
-import { registerExtension } from "../../src/Verso/Editor/content-extension.js";
-import { rawHtmlExtension } from "../../src/Verso/Editor/raw-html-extension.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { documentTreeContentPipeline } from "../../src/Verso/Editor/register-extensions.js";
 import { TiptapVisualEditor } from "../../src/Verso/Editor/tiptap-visual-editor.js";
-
-beforeAll((): void => {
-    registerExtension(rawHtmlExtension);
-    registerExtension(badgeExtension);
-});
 
 describe("TiptapVisualEditor protected fragments", (): void => {
     let editor: TiptapVisualEditor | null = null;
@@ -37,6 +30,7 @@ describe("TiptapVisualEditor protected fragments", (): void => {
             markdown,
             (): void => {},
             (): void => {},
+            documentTreeContentPipeline,
             { preserveRawHtml: true },
         );
         document.body.append(editor.element());

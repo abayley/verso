@@ -1,11 +1,5 @@
 import type { PhrasingContent, RootContent } from "mdast";
-import {
-    type ContentExtension,
-    type FromElementContext,
-    type ParseContext,
-    registerExtension,
-    type ToMarkdownContext,
-} from "./content-extension.js";
+import type { ContentExtension, FromElementContext, ParseContext, ToMarkdownContext } from "./content-extension.js";
 import type { EditorBlock, InlineNode } from "./editor-model.js";
 
 /** The extension-owned payload carried on a custom footnote reference (inline) or definition (block). */
@@ -126,7 +120,7 @@ function blockToMarkdown(block: EditorBlock, ctx: ToMarkdownContext): string | n
 }
 
 /** GFM footnotes (`[^id]` references and `[^id]:` definitions), rendered as a collected numbered list. */
-const footnoteExtension: ContentExtension = {
+export const footnoteExtension: ContentExtension = {
     blockFromElement,
     blockFromMdast,
     blockToMarkdown,
@@ -135,5 +129,3 @@ const footnoteExtension: ContentExtension = {
     inlineToMarkdown,
     name: "footnote",
 };
-
-registerExtension(footnoteExtension);

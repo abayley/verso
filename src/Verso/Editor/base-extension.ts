@@ -1,11 +1,5 @@
 import type { ListItem, PhrasingContent, RootContent } from "mdast";
-import {
-    type ContentExtension,
-    type FromElementContext,
-    type ParseContext,
-    registerExtension,
-    type ToMarkdownContext,
-} from "./content-extension.js";
+import type { ContentExtension, FromElementContext, ParseContext, ToMarkdownContext } from "./content-extension.js";
 import type { EditorBlock, HeadingLevel, InlineNode, ListItemBlock } from "./editor-model.js";
 
 // Parse: mdast -> editor block.
@@ -474,7 +468,7 @@ function textNode(text: string): InlineNode[] {
 }
 
 /** The built-in Markdown subset, reframed as the always-present base content extension. */
-const baseExtension: ContentExtension = {
+export const baseExtension: ContentExtension = {
     blockFromElement,
     blockFromMdast,
     blockToMarkdown,
@@ -483,5 +477,3 @@ const baseExtension: ContentExtension = {
     inlineToMarkdown,
     name: "base",
 };
-
-registerExtension(baseExtension, { fallback: true });

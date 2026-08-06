@@ -1,7 +1,7 @@
 ---
 id: RFC-0037
 name: Explicit Editor Content Pipelines
-status: Accepted
+status: Implemented
 owners:
     - alistair
 created: 2026-08-07
@@ -12,10 +12,11 @@ superseded_by: null
 
 # Explicit Editor Content Pipelines
 
-| Stage    | Timestamp  |
-|----------|------------|
-| Authored | 2026-08-07 |
-| Started  | 2026-08-07 |
+| Stage     | Timestamp  |
+|-----------|------------|
+| Authored  | 2026-08-07 |
+| Started   | 2026-08-07 |
+| Completed | 2026-08-07 |
 
 ## Summary
 
@@ -263,19 +264,19 @@ the base blockquote and GFM alert serialisers.
 
 ### Phase 5: Callout consolidation and active-code rename
 
-- [ ] Test: given each supported Callout kind, when GFM alert and MkDocs
+- [x] Test: given each supported Callout kind, when GFM alert and MkDocs
       collapsible Markdown and DOM are converted, then their current output is
       unchanged.
-- [ ] Test: given base blockquotes and GFM alerts, when they are serialised,
+- [x] Test: given base blockquotes and GFM alerts, when they are serialised,
       then quoted-line output remains exact.
-- [ ] Add the shared Callout module for kinds, default titles, and class
+- [x] Add the shared Callout module for kinds, default titles, and class
       decoding.
-- [ ] Rename active Admonition identifiers, commands, Tiptap nodes, tests, and
+- [x] Rename active Admonition identifiers, commands, Tiptap nodes, tests, and
       extension keys to GFM alert terms.
-- [ ] Keep GFM alert and MkDocs collapsible as separate extensions.
-- [ ] Extract a neutral quoted-line helper only if both current serialisers use
+- [x] Keep GFM alert and MkDocs collapsible as separate extensions.
+- [x] Extract a neutral quoted-line helper only if both current serialisers use
       it without widening their interfaces.
-- [ ] Run `make check`, run `make test-editor-browser`, mark this RFC
+- [x] Run `make check`, run `make test-editor-browser`, mark this RFC
       implemented, move it to `docs/rfcs/implemented`, and commit the phase.
 
 ### Rollout Plan Escape Hatch

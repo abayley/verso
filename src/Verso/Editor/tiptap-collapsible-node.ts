@@ -1,22 +1,18 @@
 import { mergeAttributes, Node as TiptapNode } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
-import {
-    COLLAPSIBLE_KINDS,
-    type CollapsibleKind,
-    collapsibleTitle,
-    kindFromClassName,
-} from "./collapsible-extension.js";
+import { calloutKindFromClassName, calloutTitle, isCalloutKind } from "./callout.js";
+import type { CollapsibleKind } from "./collapsible-extension.js";
 
 /** Normalises an unknown attribute value to a supported collapsible type. */
 function asKind(value: unknown): CollapsibleKind {
-    return COLLAPSIBLE_KINDS.includes(value as CollapsibleKind) ? (value as CollapsibleKind) : "note";
+    return isCalloutKind(value) ? value : "note";
 }
 
 /** The title shown on a collapsible's bar: its explicit title, else the type label. */
 function barTitle(node: ProseMirrorNode): string {
     const title = node.attrs["title"];
 
-    return typeof title === "string" ? title : collapsibleTitle(asKind(node.attrs["collapsibleType"]));
+    return typeof title === "string" ? title : calloutTitle(asKind(node.attrs["collapsibleType"]));
 }
 
 /**
@@ -35,7 +31,8 @@ export const Collapsible = TiptapNode.create({
         return {
             collapsibleType: {
                 default: "note",
-                parseHTML: (element: HTMLElement): CollapsibleKind => kindFromClassName(element.classList) ?? "note",
+                parseHTML: (element: HTMLElement): CollapsibleKind =>
+                    calloutKindFromClassName(element.classList, "markdown-collapsible") ?? "note",
                 renderHTML: (): Record<string, never> => ({}),
             },
             title: {

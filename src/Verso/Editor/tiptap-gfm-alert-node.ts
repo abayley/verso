@@ -1,9 +1,10 @@
 import { Node } from "@tiptap/core";
-import { type AdmonitionKind, admonitionTitle, kindFromClassName } from "./admonition-extension.js";
+import { calloutKindFromClassName, calloutTitle, isCalloutKind } from "./callout.js";
+import type { GfmAlertKind } from "./gfm-alert-extension.js";
 
-/** Normalises an unknown attribute value to a supported admonition kind. */
-function asKind(value: unknown): AdmonitionKind {
-    return value === "tip" || value === "important" || value === "warning" || value === "caution" ? value : "note";
+/** Normalises an unknown attribute value to a supported GFM alert kind. */
+function asKind(value: unknown): GfmAlertKind {
+    return isCalloutKind(value) ? value : "note";
 }
 
 /**
@@ -11,8 +12,8 @@ function asKind(value: unknown): AdmonitionKind {
  * plus an editable body. The kind is carried in the `markdown-alert-<kind>` class (no DOM attribute),
  * matching the callout markup the render and serialise seams use.
  */
-export const Admonition = Node.create({
-    name: "admonition",
+export const GfmAlert = Node.create({
+    name: "gfmAlert",
     group: "block",
     content: "block+",
     defining: true,
@@ -21,7 +22,8 @@ export const Admonition = Node.create({
         return {
             kind: {
                 default: "note",
-                parseHTML: (element: HTMLElement): AdmonitionKind => kindFromClassName(element.classList) ?? "note",
+                parseHTML: (element: HTMLElement): GfmAlertKind =>
+                    calloutKindFromClassName(element.classList, "markdown-alert") ?? "note",
                 renderHTML: (): Record<string, never> => ({}),
             },
         };
@@ -37,7 +39,7 @@ export const Admonition = Node.create({
         return [
             "div",
             { class: `markdown-alert markdown-alert-${kind}` },
-            ["p", { class: "markdown-alert-title", contenteditable: "false" }, admonitionTitle(kind)],
+            ["p", { class: "markdown-alert-title", contenteditable: "false" }, calloutTitle(kind)],
             ["div", { class: "markdown-alert-body" }, 0],
         ];
     },

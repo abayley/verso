@@ -1,8 +1,8 @@
-import { admonitionExtension } from "./admonition-extension.js";
 import { badgeExtension } from "./badge-extension.js";
 import { collapsibleExtension } from "./collapsible-extension.js";
 import { type ContentExtension, createContentPipeline } from "./content-extension.js";
 import { footnoteExtension } from "./footnote-extension.js";
+import { gfmAlertExtension } from "./gfm-alert-extension.js";
 import { imageExtension } from "./image-extension.js";
 import { rawHtmlExtension } from "./raw-html-extension.js";
 import { referenceLinkExtension } from "./reference-link-extension.js";
@@ -10,7 +10,7 @@ import { tableExtension } from "./table-extension.js";
 
 /** The ordered feature set shared by reference pipeline and extension tests. */
 const commonFeatureExtensions: readonly ContentExtension[] = Object.freeze([
-    admonitionExtension,
+    gfmAlertExtension,
     tableExtension,
     collapsibleExtension,
     footnoteExtension,

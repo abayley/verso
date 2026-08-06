@@ -1,4 +1,3 @@
-import { ADMONITION_KINDS, type AdmonitionKind, admonitionTitle } from "./admonition-extension.js";
 import {
     ATTACHMENT_DRAG_TYPE,
     AttachmentPanel,
@@ -7,6 +6,7 @@ import {
 } from "./attachment-panel.js";
 import { isInlineImage } from "./attachment-upload.js";
 import { type Breadcrumb, parseBreadcrumbs } from "./breadcrumbs.js";
+import { CALLOUT_KINDS, calloutTitle } from "./callout.js";
 import {
     type ChromeDropdownElement,
     type ChromeSegmentElement,
@@ -38,6 +38,7 @@ import { type EditorLayout, editorLayoutMediaQueries, resolveEditorLayout } from
 import { INLINE_COMMANDS } from "./editor-toolbar-shared.js";
 import { FloatingSurfaces, type SlashCommand, type TableAlignment } from "./floating-surfaces.js";
 import { frontmatterName, joinFrontmatter, setFrontmatterName, splitFrontmatter } from "./frontmatter.js";
+import type { GfmAlertKind } from "./gfm-alert-extension.js";
 import { imageShortTitles } from "./image-metadata.js";
 import { LinkPopoverController } from "./link-popover-controller.js";
 import { NavTreePanel, parseTreeSpine } from "./nav-tree.js";
@@ -1053,7 +1054,7 @@ export class MarkdownEditorElement extends HTMLElement {
         });
         bar.addEventListener("command-insert-structure", (event: Event): void => {
             const detail = (event as CustomEvent<CommandInsertStructureEventDetail>).detail;
-            this.insertStructure(detail.kind, detail.admonitionKind);
+            this.insertStructure(detail.kind, detail.gfmAlertKind);
         });
         bar.addEventListener("command-badge", (event: Event): void => {
             this.applyBadge((event as CustomEvent<CommandBadgeEventDetail>).detail.value);
@@ -1078,11 +1079,11 @@ export class MarkdownEditorElement extends HTMLElement {
      * Tiptap commands; in the source editor it inserts the equivalent Markdown (a GFM table skeleton, a
      * `> [!NOTE]` alert, or an mkdocs `??? note` collapsible) at the caret.
      */
-    private insertStructure(kind: InsertStructureKind, admonitionKind?: string): void {
+    private insertStructure(kind: InsertStructureKind, gfmAlertKind?: GfmAlertKind): void {
         this.applyEditingCommand({
             kind: "insert-structure",
             structure: kind,
-            ...(kind === "admonition" ? { admonitionKind: (admonitionKind ?? "note") as AdmonitionKind } : {}),
+            ...(kind === "gfm-alert" ? { gfmAlertKind: gfmAlertKind ?? "note" } : {}),
         });
     }
 
@@ -1489,9 +1490,9 @@ export class MarkdownEditorElement extends HTMLElement {
             { label: "Horizontal rule", run: run((): void => this.toggleStructure("thematic-break")) },
             {
                 label: "Callout",
-                children: ADMONITION_KINDS.map((kind) => ({
-                    label: admonitionTitle(kind),
-                    run: run((): void => this.insertAdmonition(kind)),
+                children: CALLOUT_KINDS.map((kind) => ({
+                    label: calloutTitle(kind),
+                    run: run((): void => this.insertGfmAlert(kind)),
                 })),
             },
             { label: "Collapsible", run: run((): void => this.insertCollapsible("note")) },
@@ -1790,9 +1791,9 @@ export class MarkdownEditorElement extends HTMLElement {
         this.applyEditingCommand({ kind: "toggle-structure", style });
     }
 
-    /** Inserts an admonition callout of the given kind at the current visual selection. */
-    private insertAdmonition(kind: AdmonitionKind): void {
-        this.applyEditingCommand({ kind: "insert-structure", structure: "admonition", admonitionKind: kind });
+    /** Inserts a GFM alert Callout of the given kind at the current visual selection. */
+    private insertGfmAlert(kind: GfmAlertKind): void {
+        this.applyEditingCommand({ gfmAlertKind: kind, kind: "insert-structure", structure: "gfm-alert" });
     }
 
     /** Inserts a collapsible callout of the given type at the current visual selection. */

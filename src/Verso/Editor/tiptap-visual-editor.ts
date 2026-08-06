@@ -14,7 +14,6 @@ import { Plugin } from "@tiptap/pm/state";
 import { CellSelection, selectionCell } from "@tiptap/pm/tables";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import StarterKit from "@tiptap/starter-kit";
-import { type AdmonitionKind, matchAlertMarker } from "./admonition-extension.js";
 import { type CollapsibleKind, matchCollapsibleMarker } from "./collapsible-extension.js";
 import type { ContentPipeline } from "./content-extension.js";
 import type {
@@ -25,6 +24,7 @@ import type {
     VisualInlineStyle,
     VisualStructureStyle,
 } from "./editing-surface.js";
+import { type GfmAlertKind, matchAlertMarker } from "./gfm-alert-extension.js";
 
 export type { VisualBlockStyle, VisualInlineStyle, VisualStructureStyle } from "./editing-surface.js";
 
@@ -38,11 +38,11 @@ import {
     protectMarkdown,
 } from "./protected-fragment-pass.js";
 import { badgeSpans, rawHtmlSpans } from "./remark-adapter.js";
-import { Admonition } from "./tiptap-admonition-node.js";
 import { Badge } from "./tiptap-badge-mark.js";
 import { CodeBlock } from "./tiptap-code-block-node.js";
 import { Collapsible } from "./tiptap-collapsible-node.js";
 import { FootnoteDefinition, FootnoteReference } from "./tiptap-footnote-node.js";
+import { GfmAlert } from "./tiptap-gfm-alert-node.js";
 import { Image } from "./tiptap-image-node.js";
 import { RawHtml, RawHtmlBlock } from "./tiptap-raw-html-node.js";
 import { ReferenceDefinition, ReferenceLink } from "./tiptap-reference-link-node.js";
@@ -421,7 +421,7 @@ export class TiptapVisualEditor implements EditingSurface {
                 }),
                 HeadingWithoutInputRules,
                 CodeBlock,
-                Admonition,
+                GfmAlert,
                 Collapsible,
                 FootnoteReference,
                 FootnoteDefinition,
@@ -551,8 +551,8 @@ export class TiptapVisualEditor implements EditingSurface {
             return this.insertTable();
         }
 
-        if (command.structure === "admonition") {
-            return this.insertAdmonition(command.admonitionKind ?? "note");
+        if (command.structure === "gfm-alert") {
+            return this.insertGfmAlert(command.gfmAlertKind ?? "note");
         }
 
         return this.insertCollapsible(command.collapsibleKind ?? "note");
@@ -833,13 +833,13 @@ export class TiptapVisualEditor implements EditingSurface {
     }
 
     /**
-     * Promotes GFM alert blockquotes (`> [!NOTE]` ...) into admonition nodes after content loads.
+     * Promotes GFM alert blockquotes (`> [!NOTE]` ...) into GFM alert nodes after content loads.
      * Runs before {@link collapseSoftBreaks} so the marker is still on its own line in the text.
      */
     private upgradeAlertBlockquotes(): void {
         const schema = this.editor.state.schema;
 
-        if (!schema.nodes["admonition"]) {
+        if (!schema.nodes["gfmAlert"]) {
             return;
         }
 
@@ -850,10 +850,10 @@ export class TiptapVisualEditor implements EditingSurface {
                 return true;
             }
 
-            const admonition = admonitionFromBlockquote(schema, node);
+            const gfmAlert = gfmAlertFromBlockquote(schema, node);
 
-            if (admonition) {
-                replacements.push({ from: position, node: admonition, to: position + node.nodeSize });
+            if (gfmAlert) {
+                replacements.push({ from: position, node: gfmAlert, to: position + node.nodeSize });
 
                 return false;
             }
@@ -874,9 +874,9 @@ export class TiptapVisualEditor implements EditingSurface {
         this.editor.view.dispatch(transaction.setMeta("addToHistory", false));
     }
 
-    /** Inserts an admonition callout of the given kind around the current selection. */
-    public insertAdmonition(kind: AdmonitionKind): boolean {
-        return this.editor.chain().focus().wrapIn("admonition", { kind }).run();
+    /** Inserts a GFM alert Callout of the given kind around the current selection. */
+    public insertGfmAlert(kind: GfmAlertKind): boolean {
+        return this.editor.chain().focus().wrapIn("gfmAlert", { kind }).run();
     }
 
     /** Inserts a collapsed collapsible callout of the given type around the current selection. */
@@ -1769,13 +1769,13 @@ export class TiptapVisualEditor implements EditingSurface {
     }
 }
 
-/** Builds an admonition node from an alert-marker blockquote, or null when the blockquote is not an alert. */
-function admonitionFromBlockquote(schema: Schema, blockquote: ProseMirrorNode): ProseMirrorNode | null {
+/** Builds a GFM alert node from an alert-marker blockquote, or null when the blockquote is not an alert. */
+function gfmAlertFromBlockquote(schema: Schema, blockquote: ProseMirrorNode): ProseMirrorNode | null {
     const paragraphType = schema.nodes["paragraph"];
-    const admonitionType = schema.nodes["admonition"];
+    const gfmAlertType = schema.nodes["gfmAlert"];
     const firstChild = blockquote.firstChild;
 
-    if (!paragraphType || !admonitionType || !firstChild || firstChild.type.name !== "paragraph") {
+    if (!paragraphType || !gfmAlertType || !firstChild || firstChild.type.name !== "paragraph") {
         return null;
     }
 
@@ -1802,7 +1802,7 @@ function admonitionFromBlockquote(schema: Schema, blockquote: ProseMirrorNode): 
         bodyNodes.push(paragraphType.create());
     }
 
-    return admonitionType.create({ kind: marker.kind }, Fragment.fromArray(bodyNodes));
+    return gfmAlertType.create({ kind: marker.kind }, Fragment.fromArray(bodyNodes));
 }
 
 /** Checks whether a keyboard event matches a primary-modifier shortcut key. */

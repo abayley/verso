@@ -5,8 +5,8 @@ import { parseMarkdownWithRemark } from "../../src/Verso/Editor/remark-adapter.j
 const parseMarkdown = (markdown: string) => parseMarkdownWithRemark(markdown, commonContentPipeline);
 const { documentFromElements, documentToMarkdown } = commonContentPipeline;
 
-describe("admonition parsing", (): void => {
-    it("given a NOTE alert blockquote, when parsed, then it becomes a custom admonition block", (): void => {
+describe("GFM alert parsing", (): void => {
+    it("given a NOTE alert blockquote, when parsed, then it becomes a custom GFM alert block", (): void => {
         const markdown = ["> [!NOTE]", "> Body **text** here."].join("\n");
 
         expect(parseMarkdown(markdown)).toEqual({
@@ -23,7 +23,7 @@ describe("admonition parsing", (): void => {
                         },
                     ],
                     data: { kind: "note" },
-                    extension: "admonition",
+                    extension: "gfm-alert",
                     type: "custom",
                 },
             ],
@@ -40,7 +40,7 @@ describe("admonition parsing", (): void => {
         const document = parseMarkdown([`> [!${marker}]`, "> Body."].join("\n"));
         const block = document.blocks[0];
 
-        expect(block).toMatchObject({ data: { kind }, extension: "admonition", type: "custom" });
+        expect(block).toMatchObject({ data: { kind }, extension: "gfm-alert", type: "custom" });
     });
 
     it("given a blockquote without a marker, when parsed, then it stays a plain blockquote", (): void => {
@@ -61,13 +61,13 @@ describe("admonition parsing", (): void => {
         expect(document.blocks[0]?.type).toBe("blockquote");
     });
 
-    it("given a marker-only alert, when parsed, then it becomes an admonition with an empty body", (): void => {
+    it("given a marker-only alert, when parsed, then it becomes a GFM alert with an empty body", (): void => {
         expect(parseMarkdown("> [!TIP]")).toEqual({
             blocks: [
                 {
                     children: [],
                     data: { kind: "tip" },
-                    extension: "admonition",
+                    extension: "gfm-alert",
                     type: "custom",
                 },
             ],
@@ -75,7 +75,7 @@ describe("admonition parsing", (): void => {
     });
 });
 
-describe("admonition Markdown round-trip", (): void => {
+describe("GFM alert Markdown round-trip", (): void => {
     it("given a multi-paragraph alert, when parsed and serialised, then the GFM source round-trips", (): void => {
         const markdown = ["> [!WARNING]", "> First **paragraph**.", ">", "> Second paragraph."].join("\n");
 
@@ -87,7 +87,7 @@ describe("admonition Markdown round-trip", (): void => {
     });
 });
 
-describe("admonition DOM serialisation", (): void => {
+describe("GFM alert DOM serialisation", (): void => {
     it("given a rendered callout element, when serialised, then it becomes a GFM alert", (): void => {
         const root = document.createElement("div");
         root.innerHTML =
@@ -109,6 +109,25 @@ describe("admonition DOM serialisation", (): void => {
 
         const document_ = documentFromElements(root.children);
 
-        expect(document_.blocks[0]).toMatchObject({ data: { kind: "tip" }, extension: "admonition", type: "custom" });
+        expect(document_.blocks[0]).toMatchObject({ data: { kind: "tip" }, extension: "gfm-alert", type: "custom" });
+    });
+
+    it.each([
+        "note",
+        "tip",
+        "important",
+        "warning",
+        "caution",
+    ])("given a rendered %s alert, when converted from DOM, then its kind and Markdown are preserved", (kind: string): void => {
+        const root = document.createElement("div");
+        root.innerHTML =
+            `<div class="markdown-alert markdown-alert-${kind}">` +
+            `<p class="markdown-alert-title" contenteditable="false">${kind}</p>` +
+            '<div class="markdown-alert-body"><p>Body.</p></div>' +
+            "</div>";
+        const document_ = documentFromElements(root.children);
+
+        expect(document_.blocks[0]).toMatchObject({ data: { kind }, extension: "gfm-alert", type: "custom" });
+        expect(documentToMarkdown(document_)).toBe(`> [!${kind.toUpperCase()}]\n> Body.`);
     });
 });

@@ -423,7 +423,7 @@ describe("MarkdownEditorElement", (): void => {
         commandBar?.dispatchEvent(
             new CustomEvent("command-insert-structure", {
                 bubbles: true,
-                detail: { admonitionKind: "warning", kind: "admonition" },
+                detail: { gfmAlertKind: "warning", kind: "gfm-alert" },
             }),
         );
 
@@ -1100,7 +1100,7 @@ describe("MarkdownEditorElement", (): void => {
     });
 
     it("given content the editor normalises on load (a GFM alert), when initialised, then it stays clean", async (): Promise<void> => {
-        // Loading promotes the alert blockquote to an admonition (a dispatched transaction); that load-time
+        // Loading promotes the alert blockquote to a GFM alert node (a dispatched transaction); that load-time
         // normalisation must not mark the document dirty, which would autosave on every open.
         const editor = document.createElement(elementName);
         editor.textContent = "> [!NOTE]\n> Heads up.";

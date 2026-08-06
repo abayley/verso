@@ -130,4 +130,27 @@ describe("collapsible DOM serialisation", (): void => {
 
         expect(documentToMarkdown(documentFromElements(root.children))).toBe(["??? note", "", "    Body."].join("\n"));
     });
+
+    it.each([
+        "note",
+        "tip",
+        "important",
+        "warning",
+        "caution",
+    ])("given a rendered %s collapsible, when converted from DOM, then its type and Markdown are preserved", (kind: string): void => {
+        const root = document.createElement("div");
+        root.innerHTML =
+            `<details class="markdown-collapsible markdown-collapsible-${kind}">` +
+            `<summary class="markdown-collapsible-title" contenteditable="false">${kind}</summary>` +
+            '<div class="markdown-collapsible-body"><p>Body.</p></div>' +
+            "</details>";
+        const document_ = documentFromElements(root.children);
+
+        expect(document_.blocks[0]).toMatchObject({
+            data: { collapsibleType: kind },
+            extension: "collapsible",
+            type: "custom",
+        });
+        expect(documentToMarkdown(document_)).toBe([`??? ${kind}`, "", "    Body."].join("\n"));
+    });
 });

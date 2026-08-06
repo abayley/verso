@@ -540,8 +540,8 @@ function sourceStructureMarkdown(command: InsertStructureCommand): string {
         return "| Column | Column |\n| --- | --- |\n| Cell | Cell |\n";
     }
 
-    if (command.structure === "admonition") {
-        return `> [!${(command.admonitionKind ?? "note").toUpperCase()}]\n> Text\n`;
+    if (command.structure === "gfm-alert") {
+        return `> [!${(command.gfmAlertKind ?? "note").toUpperCase()}]\n> Text\n`;
     }
 
     return `??? ${command.collapsibleKind ?? "note"} "Title"\n    Text\n`;

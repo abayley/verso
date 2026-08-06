@@ -2,6 +2,7 @@ import type { Code, Paragraph, Parent, Root, RootContent } from "mdast";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { type Plugin, unified } from "unified";
+import { CALLOUT_KINDS, type CalloutKind, calloutKindFromClassName, isCalloutKind } from "./callout.js";
 import type {
     ContentExtensionFor,
     ExtensionBlockInput,
@@ -11,10 +12,7 @@ import type {
 } from "./content-extension.js";
 import type { EditorBlock } from "./editor-model.js";
 
-/** The collapsible types recognised, sharing the admonitions' callout chrome via the semantic palette. */
-export const COLLAPSIBLE_KINDS = ["note", "tip", "important", "warning", "caution"] as const;
-
-export type CollapsibleKind = (typeof COLLAPSIBLE_KINDS)[number];
+export type CollapsibleKind = CalloutKind;
 
 /** The extension-owned payload carried on a custom collapsible block. */
 interface CollapsibleData {
@@ -51,7 +49,7 @@ declare module "mdast" {
  * The mkdocs-material collapsible marker: `???` (collapsed) or `???+` (open), a known type, and an
  * optional `"title"`, alone on the line. The four-space-indented body is a separate (code) block.
  */
-const MARKER_PATTERN = /^(\?\?\?\+?) +(note|tip|important|warning|caution)(?: +"([^"]*)")? *$/;
+const MARKER_PATTERN = new RegExp(`^(\\?\\?\\?\\+?) +(${CALLOUT_KINDS.join("|")})(?: +"([^"]*)")? *$`);
 
 /** Re-parses a collapsible's dedented body text; carries no collapsible plugin, so bodies do not nest. */
 const bodyProcessor = unified().use(remarkParse).use(remarkGfm);
@@ -62,28 +60,17 @@ export function matchCollapsibleMarker(
 ): { kind: CollapsibleKind; title: string | null; open: boolean } | null {
     const match = MARKER_PATTERN.exec(text);
 
-    if (!match) {
+    const kind = match?.[2];
+
+    if (!match || !isCalloutKind(kind)) {
         return null;
     }
 
     return {
-        kind: match[2] as CollapsibleKind,
+        kind,
         open: match[1] === "???+",
         title: match[3] ?? null,
     };
-}
-
-/** Title-cases a collapsible type for the default callout heading. */
-export function collapsibleTitle(kind: CollapsibleKind): string {
-    return kind.charAt(0).toUpperCase() + kind.slice(1);
-}
-
-/** Returns the collapsible type named by a `markdown-collapsible-<kind>` class, or null. */
-export function kindFromClassName(classes: DOMTokenList): CollapsibleKind | null {
-    return (
-        COLLAPSIBLE_KINDS.find((kind: CollapsibleKind): boolean => classes.contains(`markdown-collapsible-${kind}`)) ??
-        null
-    );
 }
 
 /** Reads the marker, type, and optional title from a paragraph that is exactly a collapsible marker line. */
@@ -168,7 +155,7 @@ function blockFromElement(element: Element, ctx: FromElementContext): ExtensionB
         return null;
     }
 
-    const collapsibleType = kindFromClassName(element.classList);
+    const collapsibleType = calloutKindFromClassName(element.classList, "markdown-collapsible");
 
     if (!collapsibleType) {
         return null;

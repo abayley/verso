@@ -1,6 +1,7 @@
 import type { ListItem, PhrasingContent, RootContent } from "mdast";
 import type { BaseContentExtension, FromElementContext, ParseContext, ToMarkdownContext } from "./content-extension.js";
 import type { EditorBlock, HeadingLevel, InlineNode, ListItemBlock } from "./editor-model.js";
+import { quoteMarkdownLines } from "./markdown-quote.js";
 
 // Parse: mdast -> editor block.
 
@@ -314,11 +315,7 @@ function blockToMarkdown(block: EditorBlock, ctx: ToMarkdownContext): string {
     }
 
     if (block.type === "blockquote") {
-        return ctx
-            .documentToMarkdown({ blocks: block.blocks })
-            .split("\n")
-            .map((line: string): string => blockquoteLineToMarkdown(line))
-            .join("\n");
+        return quoteMarkdownLines(ctx.documentToMarkdown({ blocks: block.blocks }));
     }
 
     if (block.type === "heading") {
@@ -339,19 +336,6 @@ function blockToMarkdown(block: EditorBlock, ctx: ToMarkdownContext): string {
     }
 
     return "";
-}
-
-/** Serialises one blockquote body line while avoiding extra indentation in code content. */
-function blockquoteLineToMarkdown(line: string): string {
-    if (!line) {
-        return ">";
-    }
-
-    if (line.startsWith("    ")) {
-        return `>${line}`;
-    }
-
-    return `> ${line}`;
 }
 
 /** Returns the separator before the next item in a Markdown list. */

@@ -1,5 +1,6 @@
 import { html, LitElement } from "lit";
 import { badgeStyle, COMMON_BADGE_COLOURS } from "./badge-syntax.js";
+import { type CalloutKind, calloutTitle, isCalloutKind } from "./callout.js";
 import { chromeButton, chromeDropdown, chromeIcon, initBasecoat } from "./chrome.js";
 import {
     BLOCK_STYLES,
@@ -32,23 +33,20 @@ export interface CommandBadgeEventDetail {
 }
 
 /** A block construct the command bar can insert (table / callout / collapsible). */
-export type InsertStructureKind = "table" | "admonition" | "collapsible";
+export type InsertStructureKind = "table" | "gfm-alert" | "collapsible";
 
 /** Detail of the `command-insert-structure` event: the block construct to insert, plus the callout kind. */
 export interface CommandInsertStructureEventDetail {
     kind: InsertStructureKind;
-    /** For `kind: "admonition"`, which callout type to insert (note/warning/important/tip/caution). */
-    admonitionKind?: string | undefined;
+    /** For `kind: "gfm-alert"`, which Callout kind to insert. */
+    gfmAlertKind?: CalloutKind | undefined;
 }
 
-/** The callout types offered by the command bar's callout dropdown, in menu order. */
-const CALLOUT_KINDS: { value: string; label: string }[] = [
-    { value: "note", label: "Note" },
-    { value: "warning", label: "Warning" },
-    { value: "important", label: "Important" },
-    { value: "tip", label: "Tip" },
-    { value: "caution", label: "Caution" },
-];
+/** The Callout kinds offered by the command bar, in its established menu order. */
+const CALLOUT_MENU_ITEMS = (["note", "warning", "important", "tip", "caution"] as const).map((value: CalloutKind) => ({
+    label: calloutTitle(value),
+    value,
+}));
 
 /** The block-insert command buttons (table, callout, collapsible), in toolbar order. */
 const INSERT_COMMANDS: { kind: InsertStructureKind; label: string; icon: string }[] = [
@@ -149,16 +147,18 @@ export class CommandBarElement extends LitElement {
 
     /** Dispatches the chosen callout type for the host to insert. */
     private readonly handleCalloutSelect = (kind: string): void => {
-        this.emitInsertStructure("admonition", kind);
+        if (isCalloutKind(kind)) {
+            this.emitInsertStructure("gfm-alert", kind);
+        }
     };
 
     /** Dispatches a request to insert a block construct (table, callout, collapsible) for the host to run. */
-    private emitInsertStructure(kind: InsertStructureKind, admonitionKind?: string): void {
+    private emitInsertStructure(kind: InsertStructureKind, gfmAlertKind?: CalloutKind): void {
         this.dispatchEvent(
             new CustomEvent<CommandInsertStructureEventDetail>("command-insert-structure", {
                 bubbles: true,
                 composed: true,
-                detail: { admonitionKind, kind },
+                detail: { gfmAlertKind, kind },
             }),
         );
     }
@@ -255,7 +255,7 @@ export class CommandBarElement extends LitElement {
                 triggerTooltip: "Insert callout",
                 triggerDisabled: this.commandsDisabled,
                 onTriggerMouseDown: preventDefault,
-                items: CALLOUT_KINDS,
+                items: CALLOUT_MENU_ITEMS,
                 onSelect: this.handleCalloutSelect,
             })}
             <div class="markdown-editor__button-group" role="group">

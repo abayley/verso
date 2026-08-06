@@ -1,5 +1,5 @@
-import type { AdmonitionKind } from "./admonition-extension.js";
 import type { CollapsibleKind } from "./collapsible-extension.js";
+import type { GfmAlertKind } from "./gfm-alert-extension.js";
 
 /** Block styles understood by both editing surfaces. */
 export type VisualBlockStyle =
@@ -32,8 +32,8 @@ export type EditingCommand =
     | { readonly kind: "remove-badge" }
     | {
           readonly kind: "insert-structure";
-          readonly structure: "table" | "admonition" | "collapsible";
-          readonly admonitionKind?: AdmonitionKind;
+          readonly structure: "table" | "gfm-alert" | "collapsible";
+          readonly gfmAlertKind?: GfmAlertKind;
           readonly collapsibleKind?: CollapsibleKind;
       }
     | { readonly kind: "insert-mermaid" }

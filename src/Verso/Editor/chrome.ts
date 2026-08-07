@@ -27,6 +27,8 @@ export type ButtonOptions = {
     ariaLabel?: string;
     tooltip?: string;
     disabled?: boolean;
+    /** Toggle-button state; omitted for ordinary command buttons. */
+    pressed?: boolean;
     /** Renders type="submit" instead of type="button". */
     submit?: boolean;
     onClick?: (event: Event) => void;
@@ -74,6 +76,7 @@ export function chromeButton(
         data-variant=${ifDefined(attrs.variant)}
         data-size=${attrs.size}
         aria-label=${ifDefined(options.ariaLabel)}
+        aria-pressed=${ifDefined(options.pressed === undefined ? undefined : String(options.pressed))}
         data-tooltip=${ifDefined(options.tooltip)}
         ?disabled=${options.disabled ?? false}
         @click=${options.onClick}

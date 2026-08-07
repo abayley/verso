@@ -63,16 +63,22 @@ const INSERT_COMMANDS: { kind: InsertStructureKind; label: string; icon: string 
  */
 export class CommandBarElement extends LitElement {
     static override properties = {
+        activeStyles: { attribute: false },
         blockStyle: { attribute: false },
         commandsDisabled: { attribute: false },
+        linkDisabled: { attribute: false },
         saveLabel: { attribute: false },
         saveDisabled: { attribute: false },
     };
 
     /** The current block style value; reflected onto the dropdown trigger and checked item. */
     declare blockStyle: string;
+    /** The inline styles currently active at the Visual selection. */
+    declare activeStyles: readonly VisualInlineStyle[];
     /** Whether the style trigger and inline buttons are disabled (no active editor). */
     declare commandsDisabled: boolean;
+    /** Whether Link is disabled because the active editing surface has no non-empty text selection. */
+    declare linkDisabled: boolean;
     /** The save button label reported by the save-state controller. */
     declare saveLabel: string;
     /** Whether the save button is disabled (clean or saving). */
@@ -80,8 +86,10 @@ export class CommandBarElement extends LitElement {
 
     constructor() {
         super();
+        this.activeStyles = [];
         this.blockStyle = "paragraph";
         this.commandsDisabled = false;
+        this.linkDisabled = false;
         this.saveLabel = "Save";
         this.saveDisabled = true;
     }
@@ -205,7 +213,8 @@ export class CommandBarElement extends LitElement {
                         className: "markdown-editor__button markdown-editor__inline-button",
                         ariaLabel: command.label,
                         tooltip: `${command.label} (${inlineShortcut(command)})`,
-                        disabled: this.commandsDisabled,
+                        disabled: this.commandsDisabled || (command.style === "link" && this.linkDisabled),
+                        pressed: this.activeStyles.includes(command.style),
                         onMouseDown: preventDefault,
                         onClick: (): void => this.emitInline(command.style),
                     }),

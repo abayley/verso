@@ -54,6 +54,13 @@ export type TiptapChangeHandler = () => void;
 /** Callback fired when the visual editor requests link target input. */
 export type TiptapLinkShortcutHandler = () => void;
 
+/** Options which control the visual editor and report selection-only changes to its host. */
+interface TiptapVisualEditorOptions {
+    editable?: boolean;
+    onSelectionChange?: () => void;
+    preserveRawHtml?: boolean;
+}
+
 /** Supported table-editing commands exposed when the selection is inside a table. */
 export type VisualTableCommand = "row-after" | "row-delete" | "column-after" | "column-delete" | "delete";
 
@@ -382,7 +389,7 @@ export class TiptapVisualEditor implements EditingSurface {
         onChange: TiptapChangeHandler,
         onLinkShortcut: TiptapLinkShortcutHandler,
         private readonly contentPipeline: ContentPipeline,
-        options: { preserveRawHtml?: boolean; editable?: boolean } = {},
+        options: TiptapVisualEditorOptions = {},
     ) {
         this.root = document.createElement("div");
         this.root.className = "markdown-editor__surface";
@@ -454,6 +461,7 @@ export class TiptapVisualEditor implements EditingSurface {
 
                 onChange();
             },
+            onSelectionUpdate: (): void => options.onSelectionChange?.(),
         });
         this.finishMarkdownLoad(protectedMarkdown);
     }
@@ -1723,7 +1731,8 @@ export class TiptapVisualEditor implements EditingSurface {
         selection: { from: number; to: number } | null,
         command: (editor: Editor) => boolean,
     ): boolean {
-        if (selection) {
+        const current = this.editor.state.selection;
+        if (selection && (selection.from !== current.from || selection.to !== current.to)) {
             this.editor.commands.setTextSelection(selection);
         }
 

@@ -18,9 +18,7 @@ describe("FloatingSurfaces", (): void => {
         const bubble = host.querySelector<HTMLElement>(".markdown-editor__bubble");
         expect(bubble?.hidden).toBe(false);
         expect(bubble?.querySelector(".markdown-editor__bubble-style-trigger")?.textContent?.trim()).toBe("Heading 1");
-        expect(bubble?.querySelector('[aria-label="Bold"]')?.classList).toContain(
-            "markdown-editor__bubble-button--active",
-        );
+        expect(bubble?.querySelector('[aria-label="Bold"]')?.getAttribute("aria-pressed")).toBe("true");
         expect(bubble?.style.left).toBe("40px");
         expect(bubble?.style.top).toBe("88px");
 

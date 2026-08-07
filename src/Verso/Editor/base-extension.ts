@@ -394,15 +394,15 @@ function prefixListItemMarkdown(marker: string, markdown: string): string {
 /** Serialises one built-in editor inline node to Markdown (the base extension's inline serialise-out). */
 function inlineToMarkdown(node: InlineNode, ctx: ToMarkdownContext): string {
     if (node.type === "strong") {
-        return `**${ctx.inlinesToMarkdown(node.children)}**`;
+        return delimitInlineMarkdown("**", ctx.inlinesToMarkdown(node.children));
     }
 
     if (node.type === "emphasis") {
-        return `*${ctx.inlinesToMarkdown(node.children)}*`;
+        return delimitInlineMarkdown("*", ctx.inlinesToMarkdown(node.children));
     }
 
     if (node.type === "strikethrough") {
-        return `~~${ctx.inlinesToMarkdown(node.children)}~~`;
+        return delimitInlineMarkdown("~~", ctx.inlinesToMarkdown(node.children));
     }
 
     if (node.type === "code") {
@@ -422,6 +422,20 @@ function inlineToMarkdown(node: InlineNode, ctx: ToMarkdownContext): string {
     }
 
     return "";
+}
+
+/** Keeps surrounding whitespace outside a Markdown inline delimiter run. */
+function delimitInlineMarkdown(delimiter: string, markdown: string): string {
+    const leading = markdown.match(/^\s+/u)?.[0] ?? "";
+    const afterLeading = markdown.slice(leading.length);
+    const trailing = afterLeading.match(/\s+$/u)?.[0] ?? "";
+    const content = afterLeading.slice(0, afterLeading.length - trailing.length);
+
+    if (content.length === 0) {
+        return markdown;
+    }
+
+    return `${leading}${delimiter}${content}${delimiter}${trailing}`;
 }
 
 /** Extracts a Markdown code-fence language from a DOM code class. */

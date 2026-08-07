@@ -231,6 +231,13 @@ describe("documentToMarkdown", (): void => {
         ).toBe("# Heading\n\nParagraph with **strong**, [link](/target).\n\n- first\n- second");
     });
 
+    it("given nested strong and emphasis ending in whitespace, when serialised, then the delimiters close before the whitespace", (): void => {
+        const root = document.createElement("div");
+        root.innerHTML = "<p><strong>b <em>i </em></strong><code>c</code></p>";
+
+        expect(documentToMarkdown(documentFromElements(root.children))).toBe("**b *i*** `c`");
+    });
+
     it("serialises horizontal-rule blocks to Markdown", (): void => {
         expect(
             documentToMarkdown({

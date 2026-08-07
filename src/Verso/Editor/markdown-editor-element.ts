@@ -195,6 +195,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.showErrorBanner(event.reason, "unhandledrejection");
     };
     private readonly handleSelectionChange = (): void => {
+        this.updateCommandBarSelectionState();
         this.updateBubbleToolbar();
         this.updateSlashMenu();
         this.updateTableControls();
@@ -1462,11 +1463,14 @@ export class MarkdownEditorElement extends HTMLElement {
 
         const editor = this.visualEditor;
         this.floatingSurfaces.bubble.showAt(range.getBoundingClientRect(), {
-            activeStyles: INLINE_COMMANDS.map((command) => command.style).filter((style) =>
-                editor.isInlineActive(style),
-            ),
+            activeStyles: this.activeVisualInlineStyles(editor),
             blockStyle: editor.currentBlockStyle(),
         });
+    }
+
+    /** Lists the inline marks active at the Visual editor's current selection. */
+    private activeVisualInlineStyles(editor: TiptapVisualEditor): VisualInlineStyle[] {
+        return INLINE_COMMANDS.map((command) => command.style).filter((style) => editor.isInlineActive(style));
     }
 
     /** Returns the root slash commands with editor actions bound to the active visual surface. */
@@ -1603,6 +1607,7 @@ export class MarkdownEditorElement extends HTMLElement {
             );
             this.sourceEditor.element().addEventListener("focusin", (): void => {
                 this.activePane = "source";
+                this.updateCommandBarSelectionState();
             });
         }
 
@@ -1612,10 +1617,15 @@ export class MarkdownEditorElement extends HTMLElement {
                 (): void => this.handleEditingSurfaceInput(this.visualEditor),
                 (): void => this.handleVisualLinkShortcut(),
                 documentTreeContentPipeline,
-                { preserveRawHtml: true, editable: !this.isReadonly() },
+                {
+                    editable: !this.isReadonly(),
+                    onSelectionChange: this.handleSelectionChange,
+                    preserveRawHtml: true,
+                },
             );
             this.visualEditor.element().addEventListener("focusin", (): void => {
                 this.activePane = "visual";
+                this.updateCommandBarSelectionState();
             });
 
             if (this.linkController) {
@@ -1767,6 +1777,7 @@ export class MarkdownEditorElement extends HTMLElement {
         }
 
         this.applyEditingCommand({ kind: "toggle-inline-style", style });
+        this.updateCommandBarSelectionState();
     }
 
     /** Opens link editing from a source-pane keyboard shortcut. */
@@ -1955,6 +1966,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.syncInactiveSurface(surface, markdown);
         this.dispatchMarkdownChange(markdown);
         if (surface === this.visualEditor) {
+            this.updateCommandBarSelectionState();
             this.updateTableControls();
         }
     }
@@ -2124,11 +2136,27 @@ export class MarkdownEditorElement extends HTMLElement {
             this.commandBar.commandsDisabled = !this.visualEditor && !this.sourceEditor;
         }
 
+        this.updateCommandBarSelectionState();
+
         this.setStyleDropdownValue("paragraph");
 
         if (this.saveController) {
             this.applySaveView(this.saveController.view());
         }
+    }
+
+    /** Reflects the Visual selection's active marks and command eligibility onto the persistent command bar. */
+    private updateCommandBarSelectionState(): void {
+        if (!this.commandBar) {
+            return;
+        }
+
+        const surface = this.activeSurface();
+        const visual = surface === this.visualEditor ? this.visualEditor : null;
+        const selection = surface?.currentSelection() ?? null;
+        this.commandBar.activeStyles = visual ? this.activeVisualInlineStyles(visual) : [];
+        this.commandBar.linkDisabled = surface !== null && (!selection || selection.from === selection.to);
+        this.commandBar.flush();
     }
 
     /** Updates the word count from the current Markdown document. */

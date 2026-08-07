@@ -123,11 +123,10 @@ export class BubbleToolbarElement extends LitElement {
             })}
             ${INLINE_COMMANDS.map((command) =>
                 chromeButton("icon", chromeIcon(command.icon), {
-                    className: `markdown-editor__button markdown-editor__bubble-button ${
-                        this.activeStyles.includes(command.style) ? "markdown-editor__bubble-button--active" : ""
-                    }`,
+                    className: "markdown-editor__button markdown-editor__bubble-button",
                     ariaLabel: command.label,
                     tooltip: `${command.label} (${inlineShortcut(command)})`,
+                    pressed: this.activeStyles.includes(command.style),
                     onMouseDown: preventDefault,
                     onClick: (): void => this.emitInline(command.style),
                 }),

@@ -2020,6 +2020,12 @@ markdown-editor[data-body-width="full"] .markdown-editor__sidebar[data-collapsed
   inline-size: 2.25rem;
 }
 
+.markdown-editor__inline-button[aria-pressed="true"],
+.markdown-editor__bubble-button[aria-pressed="true"] {
+  background-color: var(--markdown-editor-accent);
+  color: var(--markdown-editor-background);
+}
+
 .markdown-editor__style-trigger {
   min-inline-size: 6.5rem;
 }
@@ -2234,10 +2240,6 @@ markdown-editor[data-save-state="retry"] .markdown-editor__save-button::before {
 
 .markdown-editor__bubble[hidden] {
   display: none;
-}
-
-.markdown-editor__bubble-button--active {
-  color: var(--markdown-editor-accent);
 }
 
 .markdown-editor__bubble .markdown-editor__bubble-style {

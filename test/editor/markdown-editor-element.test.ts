@@ -541,6 +541,34 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain("**Plain** paragraph");
     });
 
+    it("given bold text in Visual mode, when the selection is inside it, then the Bold toolbar button is pressed", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "**Bold** plain";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        selectText(editor, "Bold");
+        dispatchSelectionChange();
+
+        expect(toolbarButton(editor, "Bold").getAttribute("aria-pressed")).toBe("true");
+    });
+
+    it.each([
+        "Bold",
+        "Italic",
+    ])("given a Visual caret, when %s is clicked, then its toolbar button is immediately pressed", async (label: string): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        placeVisualCursor(editor, "Plain");
+
+        clickToolbarButton(editor, label);
+
+        expect(toolbarButton(editor, label).getAttribute("aria-pressed")).toBe("true");
+    });
+
     it("given visual mode, when italic is selected, then the selected text becomes emphasis", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = "Plain paragraph";
@@ -655,6 +683,18 @@ describe("MarkdownEditorElement", (): void => {
         expect(link?.getAttribute("href")).toBe("/target");
         expect(editor.querySelector(".markdown-editor__preview")).toBeNull();
         expect(editor.toMarkdown()).toContain("[Plain](/target) paragraph");
+    });
+
+    it("given Visual mode with no text selected, when the toolbar is shown, then Link is disabled", async (): Promise<void> => {
+        const editor = document.createElement(elementName) as MarkdownEditorElement;
+        editor.textContent = "Plain paragraph";
+
+        document.body.append(editor);
+        await waitForInitialisation();
+        placeVisualCursor(editor, "Plain");
+        dispatchSelectionChange();
+
+        expect(toolbarButton(editor, "Link").hasAttribute("disabled")).toBe(true);
     });
 
     it("given visual mode with an existing link, when its hover edit action is applied, then the link target changes", async (): Promise<void> => {
@@ -1813,6 +1853,29 @@ async function mountStudioEditor(markdown: string): Promise<MarkdownEditorElemen
     await waitForInitialisation();
 
     return editor;
+}
+
+/** Places the browser selection at the beginning of matching Visual text. */
+function placeVisualCursor(editor: Element, text: string): void {
+    const surface = editor.querySelector(".markdown-editor__surface .ProseMirror");
+
+    if (!(surface instanceof HTMLElement)) {
+        throw new Error("Expected visual editor surface.");
+    }
+
+    const textNode = findTextNode(surface, text);
+
+    if (!textNode) {
+        throw new Error(`Expected visual text node containing: ${text}`);
+    }
+
+    const range = document.createRange();
+    range.setStart(textNode, textNode.data.indexOf(text));
+    range.collapse(true);
+
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
 }
 
 /** Dispatches a document selectionchange event, which happy-dom does not emit on programmatic selection. */

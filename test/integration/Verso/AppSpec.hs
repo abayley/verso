@@ -406,6 +406,20 @@ spec = do
             revsAfterSecond <- Git.logForPath root "sec/page.md"
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 204
             length revsAfterSecond `shouldBe` length revsAfterFirst
+        it "given an unrelated tree change, when a page is published, then only that page is committed" $ do
+            root <- setupVersionedFixture
+            writeFile (root ++ "/index.md") "# Unpublished home change\n"
+            outcome <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# Published page"))
+            committedHome <- Git.showFileAtRevision root "HEAD" "index.md"
+            workingHome <- BS.readFile (root ++ "/index.md")
+            committedPage <- Git.showFileAtRevision root "HEAD" "sec/page.md"
+            fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 204
+            committedHome `shouldBe` BS.pack "# Home\n"
+            workingHome `shouldBe` BS.pack "# Unpublished home change\n"
+            committedPage `shouldBe` BS.pack "# Published page"
         it "given versioning off, when a raw body is PUT to the page, then the live page is written directly" $ do
             root <- setupTreeFixture
             outcome <-

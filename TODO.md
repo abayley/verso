@@ -17,7 +17,6 @@ backend:
   <https://givemeyourdata.org/>
   <https://mysysinfo.com/>
 
-- add trash index so it loads faster
 - reorganise project docs to match standard in aria-evals
 - refactor src/Verso/App.hs
   some functions have very large parameter lists: treeRoutes, treePostDispatch, treeDelete, treeDeleteHandler
@@ -39,8 +38,26 @@ backend:
 
 frontend:
 
-- make speckle dots larger
-- resizing in edit mode is noticeably slower
+- editor toolbar: styling buttons do not highlight or stay down to indicate
+  which styles are currently in effect
+- editor toolbar: can click on the "create link" button with no text selected.
+  The link dialogue opens, but Save appears to do nothing.
+- bold and italic styling does not round-trip correctly:
+  - `***bold italic ***` renders as literal text in Visual mode, not as bold and
+    italic
+  - `***bold italic***` renders as expected
+  - In Visual mode, click Bold, type `b` and a space, click Italic, type `i` and
+    a space, click Code, then type `c`. Switching to Markdown mode renders
+    `**b *i ***` followed by a code-formatted `c`. Switching back to Visual mode
+    shows literal text, not formatting.
+- test with no javascript
+- investigate watercolour effects for moebius
+    the colours have a watercolour feel IMO.
+    i want to imitate they way that surfaces look a bit rough and pitted.
+    see moebius-girl-on-bench.pjg. look at her hat; how it fades from white to blue, and it has spots on it.
+    and the bench and wall behing her do not look clean.
+    that's what i was trying for with the speckle.
+    can we get a watercolur effect, so that colours are not uniform and flat?
 - test pasting in tables from word or excel
 - review code structure
 - can we bundle as desktop app?
@@ -49,6 +66,10 @@ frontend:
 
 done:
 
+- 2026-08-07: Publish stages only the current page instead of scanning and
+  committing every change in the document tree
+- 2026-08-07: code-language picker menus materialise on first interaction, so
+  hidden controls no longer make large Visual documents slow to resize
 - 2026-07-14: RHS metadata-panel collapse toggle now rotates like the LHS nav
   toggle (transition + rotate(180deg) on data-collapsed)
 - 2026-07-14: search results render as clickable Basecoat cards (stretched

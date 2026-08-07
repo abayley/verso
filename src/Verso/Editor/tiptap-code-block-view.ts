@@ -1,7 +1,7 @@
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
-import { type ChromeDropdownElement, chromeDropdownEl, chromeIconEl, initBasecoat } from "./chrome.js";
+import { type ChromeDropdownElement, chromeDropdownEl, chromeIconEl } from "./chrome.js";
 import { loadMermaid } from "./mermaid-loader.js";
 
 /** The label shown for a code block with no language set (a plain, unhighlighted block). */
@@ -112,6 +112,7 @@ export class CodeBlockView {
             // is clipped by the block (badly, on a one-line fence) and its closed height gives the block a
             // scrollbar over nothing.
             pinned: true,
+            deferred: true,
             items: [
                 { value: "", label: PLAIN_LABEL },
                 { value: MERMAID_LANGUAGE, label: "Mermaid" },
@@ -119,7 +120,6 @@ export class CodeBlockView {
             ],
             onSelect: (value: string): void => this.setLanguage(value),
         });
-        initBasecoat();
 
         return dropdown;
     }

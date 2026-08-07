@@ -179,6 +179,12 @@ The page's own leading `---...---` YAML block, in the page body. Preserved and
 hidden from editing (ADR-047). Distinct from **sidecar metadata**.
 _Avoid_: header, metadata.
 
+**Callout**:
+A block that highlights a note, tip, important point, warning, or caution. A
+callout is either a fixed-title GFM alert or a MkDocs collapsible with an
+optional title and open state.
+_Avoid_: admonition (ambiguous), alert (the GFM variant only).
+
 **Badge**:
 An inline lozenge written as an inline code span with a `{.badge.<colour>}`
 attribute list, e.g. `` `TODO`{.badge.yellow} ``; rendered as a coloured pill

@@ -319,7 +319,7 @@ describe("MarkdownEditorElement", (): void => {
         expect(editor.toMarkdown()).toContain(["```mermaid", "flowchart TD", "    A --> B", "```"].join("\n"));
     });
 
-    it("given the code-block language picker, when a language is chosen, then the fence language changes (RFC-0033)", async (): Promise<void> => {
+    it("given the code-block language picker, when focused and a language is chosen, then its items load and the fence language changes (RFC-0033)", async (): Promise<void> => {
         const editor = document.createElement(elementName) as MarkdownEditorElement;
         editor.textContent = ["```", "x = 1", "```"].join("\n");
         document.body.append(editor);
@@ -330,6 +330,14 @@ describe("MarkdownEditorElement", (): void => {
         if (!dropdown) {
             throw new Error("Expected a code language dropdown.");
         }
+
+        expect(dropdown.classList.contains("dropdown-menu")).toBe(false);
+        expect(dropdown.querySelector("[data-popover]")).toBeNull();
+        expect(dropdown.querySelectorAll('[role="menuitem"]')).toHaveLength(0);
+        dropdown.querySelector("button")?.focus();
+        expect(dropdown.classList.contains("dropdown-menu")).toBe(true);
+        expect(dropdown.querySelector("[data-popover]")).toBeInstanceOf(HTMLElement);
+        expect(dropdown.querySelectorAll('[role="menuitem"]').length).toBeGreaterThan(0);
 
         clickMenuItem(dropdown, "python", "code language");
 

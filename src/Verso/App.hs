@@ -1671,7 +1671,7 @@ treePutDocument versioning maint root captures request = do
                 let author = Identity.currentIdentity (versioningIdentity versioning) request
                 -- BS.unpack is lazy and publishMessage reads only the frontmatter head,
                 -- so the whole page body is never widened to a String here.
-                _ <- Iteratee.liftIO (Git.commitAll root author (publishMessage path (BS.unpack bytes)))
+                _ <- Iteratee.liftIO (Git.commitPaths root author (publishMessage path (BS.unpack bytes)) [path])
                 Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) path)
             pure noContentResponse
 

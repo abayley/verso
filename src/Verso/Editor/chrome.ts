@@ -508,6 +508,8 @@ export type DropdownElOptions = {
     caret?: boolean;
     /** Lift the menu out of the flow, for a trigger inside a clipping scroll container (see pinPopover). */
     pinned?: boolean;
+    /** Keep the menu outside the DOM until the trigger is first focused or pressed. */
+    deferred?: boolean;
     items: { value: string; label: string; disabled?: boolean }[];
     onSelect: (value: string) => void;
 };
@@ -606,6 +608,9 @@ export function chromeDropdownEl(options: DropdownElOptions): ChromeDropdownElem
     menu.id = `${options.id}-menu`;
     menu.setAttribute("aria-labelledby", `${options.id}-trigger`);
 
+    let currentItems = options.items;
+    let checkedValue: string | undefined;
+    let materialised = options.deferred !== true;
     const buildItems = (items: { value: string; label: string; disabled?: boolean }[]): void => {
         menu.replaceChildren();
 
@@ -625,7 +630,7 @@ export function chromeDropdownEl(options: DropdownElOptions): ChromeDropdownElem
         }
     };
 
-    buildItems(options.items);
+    buildItems(materialised ? currentItems : []);
     popover.append(menu);
     root.append(trigger, popover);
 
@@ -638,16 +643,53 @@ export function chromeDropdownEl(options: DropdownElOptions): ChromeDropdownElem
     };
 
     root.syncChecked = (value: string): void => {
+        checkedValue = value;
+
         for (const entry of menu.querySelectorAll('[role="menuitem"]')) {
             entry.setAttribute("aria-checked", entry.getAttribute("data-value") === value ? "true" : "false");
         }
     };
 
     root.setItems = (items): void => {
-        buildItems(items);
+        currentItems = items;
+
+        if (!materialised) {
+            return;
+        }
+
+        buildItems(currentItems);
         // Basecoat caches the item list at init; refresh() re-scans for keyboard nav.
         (root as { refresh?: () => void }).refresh?.();
     };
+
+    if (!materialised) {
+        const materialise = (): void => {
+            if (materialised) {
+                return;
+            }
+
+            materialised = true;
+            root.classList.add("dropdown-menu");
+            root.style.removeProperty("position");
+            root.style.removeProperty("display");
+            root.append(popover);
+            buildItems(currentItems);
+
+            if (checkedValue !== undefined) {
+                root.syncChecked(checkedValue);
+            }
+
+            initBasecoat();
+        };
+
+        trigger.addEventListener("focus", materialise);
+        trigger.addEventListener("pointerdown", materialise);
+        // Preserve Basecoat's closed-root layout without matching its initialiser until the popover exists.
+        root.classList.remove("dropdown-menu");
+        root.style.position = "relative";
+        root.style.display = "inline-flex";
+        popover.remove();
+    }
 
     return root;
 }

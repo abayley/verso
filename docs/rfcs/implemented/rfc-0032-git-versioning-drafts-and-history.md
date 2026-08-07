@@ -484,7 +484,7 @@ browser-driven editor/visual slices follow).
 - [x] Phase 2 — Draft staging: `Verso.Draft` store, autosave-to-draft,
   edit-resumes-draft, the read-view "(unpublished draft)" marker, and the startup
   git check + import commit behind `versioning_enabled`.
-- [x] Phase 4 — Publish flow (commit on publish via `commitAll`), discard-draft,
+- [x] Phase 4 — Publish flow (commit on publish via `commitPaths`), discard-draft,
   and the Publish/Edit chrome replacing View/Edit. Verified end-to-end in the
   browser against a scratch versioned tree (publish writes + commits + clears the
   draft + returns to the read view; marker appears/clears correctly).

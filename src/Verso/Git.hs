@@ -105,10 +105,10 @@ commitPaths root author message paths = do
     commitStaged root author message
 
 {- | Stages every change in the tree (@git add -A@) and commits it as one
-revision. This is the "commit the resulting tree state" form used by Publish and
-structural operations, which can each touch a page plus its sidecar metadata,
-assets, and (for moves) rewritten referrers and listings. Returns
-'NothingToCommit' when nothing changed.
+revision. This is the "commit the resulting tree state" form used by structural
+operations, which can touch a page plus its sidecar metadata, assets, and (for
+moves) rewritten referrers and listings. Returns 'NothingToCommit' when nothing
+changed.
 -}
 commitAll :: FilePath -> Identity -> String -> IO CommitResult
 commitAll root author message = do

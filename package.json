@@ -3,12 +3,13 @@
     "type": "module",
     "scripts": {
         "editor:build": "bun scripts/build-editor.mjs",
-        "editor:check": "bun run editor:lint && bun run editor:typecheck && bun run editor:test && bun run editor:build",
-        "editor:format": "biome check --write src/Verso/Editor test/editor package.json tsconfig.json biome.json knip.json",
+        "editor:check": "bun run editor:lint && bun run editor:typecheck && bun run editor:moebius && bun run editor:test && bun run editor:build",
+        "editor:format": "biome check --write src/Verso/Editor test/editor scripts/moebius package.json tsconfig.json biome.json knip.json",
         "editor:knip": "knip",
-        "editor:lint": "biome check src/Verso/Editor test/editor package.json tsconfig.json biome.json knip.json && bun run editor:knip",
+        "editor:lint": "biome check src/Verso/Editor test/editor scripts/moebius package.json tsconfig.json biome.json knip.json && bun run editor:knip",
+        "editor:moebius": "bun scripts/moebius/port.ts --check",
         "editor:test": "vitest run --dom",
-        "editor:typecheck": "tsc --noEmit"
+        "editor:typecheck": "tsc --noEmit && tsc --noEmit -p scripts/moebius"
     },
     "devDependencies": {
         "@biomejs/biome": "^2.4.16",
@@ -22,6 +23,7 @@
         "@tiptap/markdown": "^3.26.0",
         "@tiptap/starter-kit": "^3.26.0",
         "@types/mdast": "^4.0.4",
+        "@types/node": "^26.2.0",
         "basecoat-css": "^1.0.2",
         "codemirror": "^6.0.2",
         "happy-dom": "^20.10.2",

@@ -8,7 +8,13 @@
         "scripts/remark-ast-spike.mjs",
         "test/editor/**/*.test.ts"
     ],
-    "project": ["src/Verso/Editor/**/*.ts", "test/editor/**/*.ts", "scripts/*.cjs", "scripts/*.mjs"],
+    "project": [
+        "src/Verso/Editor/**/*.ts",
+        "test/editor/**/*.ts",
+        "scripts/moebius/**/*.ts",
+        "scripts/*.cjs",
+        "scripts/*.mjs"
+    ],
     "ignoreDependencies": [
         "@fontsource-variable/roboto",
         "@fontsource-variable/roboto-mono",

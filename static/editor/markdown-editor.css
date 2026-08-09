@@ -3063,9 +3063,13 @@ markdown-editor[data-appearance-open]
      a night fade cannot simply interpolate toward its tint: #3d2a5c carries 4.1x the
      luminance of #12142f, so a plain fade to it bleaches the panel. Day needs no such
      care; its tints are already darker than the paper.
-     These are a bake, not a source. The tuning surface is
+     These are a bake, not a source, and so are the wash backgrounds on the rail, the top
+     bar, the content and the command toolbar. Both are written by
+     `bun scripts/moebius/port.ts`, which rebuilds them from scratch; a hand edit here is
+     reverted, silently, by the next run. `bun run editor:moebius` (part of `editor:check`)
+     fails if the file has drifted. The tuning surface is
      docs/mockups/markdown-editor-moebius-watercolour-prototype.html, at strength centre;
-     change it there, read the gradients off, and paste them here. */
+     change it there, read the numbers off, put them in scripts/moebius, and re-run. */
   --moebius-bar-hi: linear-gradient(90deg, #c7e2dc 0%, #cbe4df 24%, #cfe7e2 50%, #cfe0d7 76%, #cfd8cc 100%);
   --moebius-bar-lo: linear-gradient(90deg, #e2dcbd 0%, #e9debd 24%, #efe0bd 50%, #ecd9b5 76%, #e9d3ae 100%);
   /* Quiet chrome controls are ghost buttons -- transparent, so the sky band and the

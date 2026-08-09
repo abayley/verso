@@ -39,6 +39,17 @@ Two documents in the demo corpus are worth knowing about for UI work.
   that depends on document length, and expect screenshot tooling to struggle
   with a page that size.
 
+## Generated CSS
+
+The Moebius theme's watercolour wash — the four base-colour gradient tokens and
+the layered backgrounds on the rail, top bar, content and command toolbar — is
+generated, not hand-written. `bun scripts/moebius/port.ts` rebuilds it in place;
+`bun run editor:moebius` (part of `editor:check`) fails if
+`static/editor/markdown-editor.css` has drifted from what the generator would
+write. Edit that CSS by hand and the next run reverts it silently. The numbers
+are tuned in `docs/mockups/markdown-editor-moebius-watercolour-prototype.html`
+and then carried into `scripts/moebius/`.
+
 ## Running the Project Checks
 
 `make check` runs, in order: the docs build, the format check, the linters, the

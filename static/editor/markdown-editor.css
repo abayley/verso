@@ -474,15 +474,26 @@ markdown-editor {
 
 /* The top-level drop target. Its space is reserved permanently (so revealing it never reflows the
    list); only its visibility toggles while dragging an item that can move to the top level, so the
-   box never changes size -- a layout change during a drag would cancel it. */
+   box never changes size -- a layout change during a drag would cancel it.
+
+   It also PINS below the header rather than scrolling away with the tree. Dropping a page at the
+   top level is otherwise unreachable from anywhere down a long tree: you would have to break off
+   the drag, scroll up, and start again. Pinned, the target is always on screen for the whole drag.
+   It is invisible until a drag arms it, so in most themes this changes nothing that can be seen --
+   but a theme that paints the band (Moebius puts its sun and moon there) must give it an opaque
+   background of its own, or rows will scroll through the artwork. */
 .markdown-editor__nav-root-drop {
   border: 1px dashed var(--markdown-editor-divider);
   border-radius: 0.25rem;
   color: var(--markdown-editor-muted);
   font-size: 12px;
   padding: 0.4rem 0.5rem;
+  position: sticky;
   text-align: center;
+  /* Clears the sticky header above it. One place to change if that header's height moves. */
+  top: var(--markdown-editor-nav-header-height, 2.75rem);
   visibility: hidden;
+  z-index: 1;
 }
 
 .markdown-editor__nav-root-drop[data-active="true"] {
@@ -2985,15 +2996,20 @@ markdown-editor[data-appearance-open]
       saguaro by day; moon, stars and lit crystals by night. Each is an
       inline SVG data URI, so there is no extra request and no external
       reference to resolve.
-   3. Texture. The speckle is an SVG data URI too -- feTurbulence
-      thresholded to sparse dots and ramped by a gradient inside the same
-      SVG -- so the grain needs no filter reference. It gathers at the
-      foot of upright panels and the right-hand end of horizontal ones,
-      as light would settle. The hand-drawn wobble does need live
-      filters; the editor element injects those defs when this theme is
-      chosen (moebiusFilterDefs in markdown-editor-element.ts), and the
-      wobble is applied only to controls that hold no popover, since a
-      filter makes an element a containing block and would re-anchor one.
+   3. Texture: the wash. Four devices that stop the colour reading as
+      flat paint -- uneven mottling, a hue fade with a dithered
+      changeover, hatching for shadow and contour, and outlined paint
+      flecks. Each is an SVG data URI, so none needs a filter reference,
+      and each is a background layer rather than an overlay (an overlay
+      needs its host positioned, and repositioning this chrome unpins the
+      sticky bar). See the long note above the rules themselves, and
+      ADR-085. This layer replaced an earlier speckle; it is not additive
+      to it.
+   4. The hand-drawn wobble, which does need live filters. The editor
+      element injects those defs when this theme is chosen
+      (moebiusFilterDefs in markdown-editor-element.ts), and the wobble
+      is applied only to controls that hold no popover, since a filter
+      makes an element a containing block and would re-anchor one.
    =================================================================== */
 
 /* --- the day ------------------------------------------------------- */
@@ -3040,8 +3056,18 @@ markdown-editor[data-appearance-open]
   /* Theme-private roles: the two accents that mark state, and the grain. */
   --moebius-switch: #6fb3ab;
   --moebius-switch-text: #f7efdd;
-  --moebius-bar-hi: #cfe7e2;
-  --moebius-bar-lo: #efe0bd;
+  /* Each surface's colour WITH the hue fade already folded in, so nothing translucent
+     sits on top of it and nothing has to be blended. Cool where the light lands, warm
+     where it falls away. The night values are computed at constant luminance -- the tint
+     contributes hue and saturation while the surface keeps its own depth -- which is why
+     a night fade cannot simply interpolate toward its tint: #3d2a5c carries 4.1x the
+     luminance of #12142f, so a plain fade to it bleaches the panel. Day needs no such
+     care; its tints are already darker than the paper.
+     These are a bake, not a source. The tuning surface is
+     docs/mockups/markdown-editor-moebius-watercolour-prototype.html, at strength centre;
+     change it there, read the gradients off, and paste them here. */
+  --moebius-bar-hi: linear-gradient(90deg, #c7e2dc 0%, #cbe4df 24%, #cfe7e2 50%, #cfe0d7 76%, #cfd8cc 100%);
+  --moebius-bar-lo: linear-gradient(90deg, #e2dcbd 0%, #e9debd 24%, #efe0bd 50%, #ecd9b5 76%, #e9d3ae 100%);
   /* Quiet chrome controls are ghost buttons -- transparent, so the sky band and the
      rock showed straight through them. Under this theme every control is a drawn
      object with its own face, as the mockups have them. */
@@ -3052,9 +3078,13 @@ markdown-editor[data-appearance-open]
      neutral grey, which read as a smudge across the sand. */
   --sidebar-accent: #ecdcbb;
   --sidebar-accent-foreground: #4a3428;
-  --moebius-speck-bar: 0.18;
-  --moebius-speck-field: 0.12;
-  --moebius-speck-tool: 0.16;
+  /* The editing surface and the rail, taken from the day-and-night mockup. The rail is
+     hard-edged bands rather than a blend -- that flat banded sky is the look, and a
+     smooth ramp reads as a gradient wash instead. The theme previously ran both of
+     these off --markdown-editor-background, which is the colour OUTSIDE the frame in
+     the mockup, so the night page sat a full step too dark and the rail lost its sky. */
+  --moebius-page: linear-gradient(180deg, #d6e2d6 0%, #e8ebde 24%, #faf4e6 50%, #f0dfca 76%, #e7caad 100%);
+  --moebius-rail: linear-gradient(180deg, #bedbd6 0% 12%, #cee0cd 12% 24%, #f3eddc 24% 62%, #e4c79b 62% 84%, #d5a976 84% 100%);
 }
 
 /* --- the night ----------------------------------------------------- */
@@ -3098,16 +3128,15 @@ markdown-editor[data-appearance-open]
 
   --moebius-switch: #6f9fd0;
   --moebius-switch-text: #0f1230;
-  --moebius-bar-hi: #6d2f1e;
-  --moebius-bar-lo: #52210f;
+  --moebius-bar-hi: linear-gradient(90deg, #533736 0%, #60332a 24%, #6d2f1e 50%, #67302f 76%, #603240 100%);
+  --moebius-bar-lo: linear-gradient(90deg, #3e2724 0%, #482419 24%, #52210f 50%, #4d221d 76%, #48232b 100%);
   --moebius-face: #2a3068;
   --moebius-chip: #313877;
   --moebius-line-width: 2px;
   --sidebar-accent: #313877;
   --sidebar-accent-foreground: #e6e9f8;
-  --moebius-speck-bar: 0.55;
-  --moebius-speck-field: 0.4;
-  --moebius-speck-tool: 0.45;
+  --moebius-page: linear-gradient(180deg, #0d1722 0%, #101629 24%, #12142f 50%, #17132e 76%, #1c112d 100%);
+  --moebius-rail: linear-gradient(180deg, #10192b 0% 30%, #1b2048 30% 62%, #2f275a 62% 100%);
 }
 
 /* The active page and the on-state of the segmented controls take the theme's
@@ -3133,31 +3162,40 @@ markdown-editor[data-appearance-open]
    The night swaps in a haloed moon, stars, and the lit crystal outcrop. */
 :root[data-editor-theme="moebius"] .markdown-editor__nav > .markdown-editor__nav-list {
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='384' height='120' viewBox='0 0 384 120'%3E%3Cpath d='M0 78 C60 52 120 50 180 68 C240 86 300 84 384 60 L384 120 L0 120 Z' fill='%23d9b57e' stroke='%234a3428' stroke-width='1.5'/%3E%3Cpath d='M0 100 C80 78 176 80 256 94 C305 103 344 103 384 96 L384 120 L0 120 Z' fill='%23c4694a' stroke='%234a3428' stroke-width='1.5'/%3E%3Cpath d='M112 74 L112 34' stroke='%234a3428' stroke-width='3.5' stroke-linecap='round'/%3E%3Cpath d='M112 58 L100 58 Q94 58 94 52 L94 44' stroke='%234a3428' stroke-width='3' stroke-linecap='round' fill='none'/%3E%3Cpath d='M112 52 L124 52 Q130 52 130 46 L130 38' stroke='%234a3428' stroke-width='3' stroke-linecap='round' fill='none'/%3E%3C/svg%3E")
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='384' height='169' viewBox='0 0 218 96' fill='none'%3E %3Cdefs%3E %3Cpattern id='dune-hatch' width='4' height='4' patternUnits='userSpaceOnUse' patternTransform='rotate(-28)'%3E %3Cline x1='1' y1='0' x2='1' y2='4' stroke='%234a3428' stroke-width='1'/%3E %3C/pattern%3E %3C/defs%3E %3Cpath d='M0 66 C34 44 68 42 102 57 C136 72 170 70 218 51 L218 96 L0 96 Z' fill='%23d9b57e' stroke='%234a3428' stroke-width='1.5'/%3E %3Cpath d='M102 57 C136 72 170 70 218 51 L218 78 C170 84 136 80 102 70 Z' fill='url(%23dune-hatch)' opacity='0.4'/%3E %3Cpath d='M0 82 C45 65 100 67 145 78 C173 85 195 85 218 79 L218 96 L0 96 Z' fill='%23c4694a' stroke='%234a3428' stroke-width='1.5'/%3E %3Cpath d='M0 82 C45 65 100 67 145 78 C173 85 195 85 218 79 L218 88 C195 92 173 92 145 86 C100 76 45 74 0 90 Z' fill='url(%23dune-hatch)' opacity='0.45'/%3E %3Cpath d='M64 56 L64 24' stroke='%234a3428' stroke-width='3' stroke-linecap='round'/%3E %3Cpath d='M64 44 L56 44 Q52 44 52 40 L52 34' stroke='%234a3428' stroke-width='2.5' stroke-linecap='round' fill='none'/%3E %3Cpath d='M64 39 L72 39 Q76 39 76 35 L76 30' stroke='%234a3428' stroke-width='2.5' stroke-linecap='round' fill='none'/%3E %3C/svg%3E")
       bottom left no-repeat;
-  padding-bottom: 7.5rem;
+  padding-bottom: 10.75rem;
 }
 
 :root[data-editor-theme="moebius"].dark .markdown-editor__nav > .markdown-editor__nav-list {
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='384' height='120' viewBox='0 0 384 120'%3E%3Cg stroke='%237e86c2' stroke-width='1.5'%3E%3Cpath d='M0 104 C70 92 158 88 246 96 C300 101 345 101 384 94 L384 120 L0 120 Z' fill='%23141833'/%3E%3Cpath d='M148 100 L128 40 L114 100 Z' fill='%23b9dcf2'/%3E%3Cpath d='M182 102 L170 16 L150 100 Z' fill='%23dcecf8'/%3E%3Cpath d='M214 102 L204 50 L182 102 Z' fill='%238fb8dd'/%3E%3Cpath d='M244 100 L238 66 L220 102 Z' fill='%23b9dcf2'/%3E%3C/g%3E%3C/svg%3E")
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='384' height='211' viewBox='0 0 218 120' fill='none' stroke='%237e86c2' stroke-width='1.5'%3E %3Cdefs%3E %3Cpattern id='mound-hatch' width='4' height='4' patternUnits='userSpaceOnUse' patternTransform='rotate(-28)'%3E %3Cline x1='1' y1='0' x2='1' y2='4' stroke='%237e86c2' stroke-width='0.9'/%3E %3C/pattern%3E %3C/defs%3E %3Cpath d='M0 106 C40 96 90 92 140 98 C170 102 196 102 218 96 L218 120 L0 120 Z' fill='%23141833'/%3E %3Cpath d='M0 106 C40 96 90 92 140 98 C170 102 196 102 218 96 L218 104 C196 109 170 109 140 106 C90 100 40 104 0 113 Z' fill='url(%23mound-hatch)' stroke='none' opacity='0.3'/%3E %3Cpath d='M84 100 L70 46 L60 100 Z' fill='%23b9dcf2'/%3E %3Cpath d='M70 46 L66 100' stroke-opacity='0.5'/%3E %3Cpath d='M104 102 L96 22 L82 100 Z' fill='%23dcecf8'/%3E %3Cpath d='M96 22 L92 101' stroke-opacity='0.5'/%3E %3Cpath d='M124 102 L118 54 L104 102 Z' fill='%238fb8dd'/%3E %3Cpath d='M144 100 L140 70 L128 102 Z' fill='%23b9dcf2'/%3E %3C/svg%3E")
       bottom left no-repeat;
+  padding-bottom: 13.5rem;
 }
 
 /* The head art sits in the top-level drop target. That band is already reserved for the
    whole session -- the base chrome only toggles its visibility, so the box never resizes
    during a drag -- so it was empty space the scene can have. It has to stay visible to
    paint, so its own dashed border and label go transparent until a drag activates it. */
+/* Pinned now (see the base rule), so the tree scrolls beneath it and the band must be
+   opaque or rows show through the sun and the moon. The rail's own gradient goes behind
+   the art, viewport-attached exactly as the header's is: the nav's box is the viewport, so
+   it lands on the colour the rail has at that height and the join stays invisible. */
 :root[data-editor-theme="moebius"] .markdown-editor__nav-root-drop {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='384' height='88' viewBox='0 0 384 88'%3E%3Cdefs%3E%3ClinearGradient id='s' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23cfe7e2'/%3E%3Cstop offset='0.42' stop-color='%23dde8d2'/%3E%3Cstop offset='0.62' stop-color='%23efe9d6'/%3E%3Cstop offset='1' stop-color='%23f7efdd'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='384' height='88' fill='url(%23s)'/%3E%3Ccircle cx='320' cy='40' r='19' fill='%23edc96a' stroke='%234a3428' stroke-width='2'/%3E%3Ccircle cx='320' cy='40' r='11' fill='%23f4e9c8'/%3E%3Cg fill='none' stroke='%234a3428' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M28 44 Q33 39 38 44 Q43 39 48 44'/%3E%3Cpath d='M62 34 Q66 30 70 34 Q74 30 78 34'/%3E%3C/g%3E%3C/svg%3E") top left no-repeat;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='384' height='88' viewBox='0 0 384 88'%3E%3Cdefs%3E%3CradialGradient id='sun'%3E%3Cstop offset='0.34' stop-color='%23f4e9c8'/%3E%3Cstop offset='0.58' stop-color='%23edc96a'/%3E%3Cstop offset='1' stop-color='%23c4694a'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='320' cy='40' r='20' fill='url(%23sun)' stroke='%234a3428' stroke-width='2'/%3E%3Cg fill='none' stroke='%234a3428' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M28 44 Q33 39 38 44 Q43 39 48 44'/%3E%3Cpath d='M62 34 Q66 30 70 34 Q74 30 78 34'/%3E%3C/g%3E%3C/svg%3E") top left no-repeat, var(--moebius-rail) fixed;
   border-color: transparent;
   color: transparent;
   min-height: 5.5rem;
   visibility: visible;
 }
 
+/* Pinned now (see the base rule), so the tree scrolls beneath it and the band must be
+   opaque or rows show through the sun and the moon. The rail's own gradient goes behind
+   the art, viewport-attached exactly as the header's is: the nav's box is the viewport, so
+   it lands on the colour the rail has at that height and the join stays invisible. */
 :root[data-editor-theme="moebius"].dark .markdown-editor__nav-root-drop {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='384' height='88' viewBox='0 0 384 88'%3E%3Cdefs%3E%3ClinearGradient id='s' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23131637'/%3E%3Cstop offset='0.55' stop-color='%231a1e46'/%3E%3Cstop offset='1' stop-color='%2312142f'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='384' height='88' fill='url(%23s)'/%3E%3Ccircle cx='320' cy='40' r='19' fill='%23e8ecfb' stroke='%237e86c2' stroke-width='2'/%3E%3Cg fill='none' stroke='%234a5282' stroke-width='1.2' stroke-opacity='0.45'%3E%3Ccircle cx='314' cy='46' r='4'/%3E%3Ccircle cx='327' cy='35' r='2'/%3E%3C/g%3E%3Cg fill='%23f2f0ff'%3E%3Cpath d='M36 20 L37.6 26.4 L44 28 L37.6 29.6 L36 36 L34.4 29.6 L28 28 L34.4 26.4 Z'/%3E%3Cpath d='M74 38 L75.2 42.8 L80 44 L75.2 45.2 L74 50 L72.8 45.2 L68 44 L72.8 42.8 Z'/%3E%3Ccircle cx='56' cy='56' r='1.4'/%3E%3Ccircle cx='104' cy='24' r='1.6'/%3E%3Ccircle cx='150' cy='50' r='1.2'/%3E%3C/g%3E%3C/svg%3E") top left no-repeat;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='384' height='88' viewBox='0 0 384 88'%3E%3Cdefs%3E%3CradialGradient id='halo'%3E%3Cstop offset='0.5' stop-color='%23ced9ff' stop-opacity='0.42'/%3E%3Cstop offset='1' stop-color='%23ced9ff' stop-opacity='0'/%3E%3C/radialGradient%3E%3CradialGradient id='moon' cx='0.36' cy='0.32'%3E%3Cstop offset='0.58' stop-color='%23f6f5ff'/%3E%3Cstop offset='1' stop-color='%23ccd4f0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='320' cy='40' r='40' fill='url(%23halo)'/%3E%3Ccircle cx='320' cy='40' r='20' fill='url(%23moon)' stroke='%237e86c2' stroke-width='2'/%3E%3Cg fill='none' stroke='%234a5282' stroke-width='1.2' stroke-opacity='0.45'%3E%3Ccircle cx='314' cy='46' r='4'/%3E%3Ccircle cx='327' cy='35' r='2'/%3E%3C/g%3E%3Cg fill='%23f2f0ff'%3E%3Cpath d='M36 20 L37.6 26.4 L44 28 L37.6 29.6 L36 36 L34.4 29.6 L28 28 L34.4 26.4 Z'/%3E%3Cpath d='M74 38 L75.2 42.8 L80 44 L75.2 45.2 L74 50 L72.8 45.2 L68 44 L72.8 42.8 Z'/%3E%3Ccircle cx='56' cy='56' r='1.4'/%3E%3Ccircle cx='104' cy='24' r='1.6'/%3E%3Ccircle cx='150' cy='50' r='1.2'/%3E%3C/g%3E%3C/svg%3E") top left no-repeat, var(--moebius-rail) fixed;
 }
 
 /* Dragging restores the target's own chrome over the art. */
@@ -3166,44 +3204,107 @@ markdown-editor[data-appearance-open]
   color: var(--markdown-editor-muted);
 }
 
-/* --- the texture: grain that gathers where the light falls away ----- */
-/* The speckle is a self-contained SVG: turbulence thresholded to sparse dots,
-   ramped by a gradient and strength-set by a group opacity, all inside the same
-   document -- so it resolves nothing externally and can be a plain background
-   layer. Backgrounds, not overlays, on purpose: an overlay needs its host to be a
-   positioned element, and overriding `position` on this chrome breaks it (the top
-   bar and the footer are sticky, and a stray `position: relative` unpinned the top
-   bar). A background layer needs no positioning at all, and clips itself to the
-   element's own border radius.
+/* --- the texture: backgrounds, never overlays -----------------------
+   Every texture layer below is a self-contained SVG data URI used as a background
+   layer: it resolves nothing externally, needs no filter reference, and clips itself
+   to the element's own border radius. Backgrounds rather than overlays on purpose --
+   an overlay needs its host to be a positioned element, and overriding `position` on
+   this chrome breaks it (the top bar and the footer are sticky, and a stray
+   `position: relative` unpinned the top bar).
 
-   baseFrequency sets the dot size and is the knob to reach for when the grain reads as
-   too faint. It was first cut at 0.65, where the median dot was a single pixel -- most of
-   the grain was antialiasing rather than a dot, so no amount of opacity made it read.
-   Dropping it to 0.4 doubles the mean dot area (1.8 to 3.6 square px, measured by counting
-   connected components off a canvas) while coverage stays at ~21%, so the dots become
-   legible without the surface getting darker. Below about 0.3 the count falls far enough
-   that it stops reading as grain and starts reading as gravel.
+   A SPECKLE USED TO LIVE HERE and is deliberately gone (2026-08-09). It was sparse
+   dots banked against the edge where the light falls away, and it was the theme's
+   only answer to flat colour. The wash below replaces it rather than joining it: the
+   two are the same idea at the same frequency, so together they read as noise, and
+   the wash was judged with the speckle switched off. Do not reinstate it alongside.
+   Its tuning, if it is ever wanted back, is in the git history of this file and in
+   the day-and-night mockup, which still carries the original. */
 
-   Upright panels gather grain at the foot; the top bar gathers it at the right-hand
-   end; the command bar takes a thin edge along its bottom and right sides.
+/* --- the wash: colour that is not flat paint ------------------------
+   The speckle left every surface one uniform colour with dots on it. The
+   reference art (docs/mockups/images, the girl-on-bench hat and wall, the archer's cape
+   and bottle, the speeder's hull) is never uniform: the wash itself is blotchy, tone
+   changes hue as it crosses a shape, shadow is drawn as hatching, and paint chips off in
+   outlined flecks. Four devices, tuned round by round against those references in
+   docs/mockups/markdown-editor-moebius-watercolour-prototype.html, which is the record of
+   what was tried and rejected. Every layer below is that prototype's approved setting.
 
-   The ramp is what decides how far in from that edge the grain reaches, and it is three
-   stops rather than two on purpose. A plain two-stop gradient is linear, so a ramp that
-   reaches full strength at the edge is already at half strength halfway up the run: begun
-   at 0.55, the rail's grain was still legible level with the middle of the document and
-   read as haze over the page rather than as light falling off a panel. The mid stop holds
-   the ramp at 0.28 most of the way and puts the climb in the last tenth, so the grain
-   stays banked against the edge. Start offsets rise with how thin the surface is -- the
-   command bar, being shallow, needs the tightest (0.82 up its height, 0.87 across). */
+   Do not re-derive these numbers by eye at anything but 1:1 -- the whole tuning history is
+   in the prototype, and screenshots at other scales misjudge all four.
+
+   - MOTTLING. Two low-frequency turbulence fields per panel, one shading (sepia by day,
+     the sky's near-black at night), one lifting toward paper. baseFrequency 0.00205 and
+     0.00275, so a blotch is 488 user units across -- broad enough that a panel carries
+     only two or three of them, which is the point: a wash varies over the whole surface,
+     not in patches.
+
+     What that comes to ON SCREEN is (1/frequency) x (element / authored size), because
+     every layer stretches to its element. So the authored size is not free: it is the
+     prototype's, and copying the ELEMENT's size instead -- which looks like the tidy
+     choice, and was tried -- cancels the stretch the prototype depends on and shrinks the
+     grain, by a measured 1.75x on the rail. The content field is the exception: it is
+     viewport-attached, so its positioning area is the whole viewport rather than the
+     column, and its authored width absorbs the rail to land on the same scale
+     (780 x 1280/896 = 1114). That is also why each SVG is authored
+     at its real element's nominal pixel size: the layer stretches to the element, so
+     authoring at the element's size keeps the stretch near 1:1 and the blotch the same
+     physical size on every panel. Alpha carries a mild gamma (1.5) and nothing else -- an
+     earlier three-step posterise made contour bands rather than a wash, and read badly on
+     the dark scheme, where the tinting also had to shift off the near-black onto the
+     moonlit lift to stop the panels going muddy.
+   - HUE FADE. Cool where the light lands, warm where it falls away: teal to sand by day,
+     crystal blue to the sky's own purple at night. It is not an overlay: the fade is
+     folded into each surface's own gradient (--moebius-rail, --moebius-page,
+     --moebius-bar-hi, --moebius-bar-lo), so every stop is a literal colour and a panel's
+     appearance can be read straight off the token. Night first faded to the red-rock
+     ember, which against the indigo page was too big a step and read as a second colour
+     arriving rather than as light falling away; the purple sits close enough to read as
+     dusk. The top bar takes 40% of the fade the other surfaces get -- it is small and
+     strongly coloured, and the full-weight fade swamped it.
+     Between them sits a DITHERED band -- a luminance ramp added to turbulence and then
+     thresholded, so the changeover is carried by stipple rather than a smooth blend, as
+     the speeder's hull carries its blue-to-salmon. The stipple is at baseFrequency 2,
+     which is sub-pixel at 1:1. The command bar takes no fade: a small drawn object holds
+     one colour.
+   - HATCHING. Pen strokes at 4px, 28 degrees off vertical, wobbled by a displacement map
+     so they are not a screen tint. Hatching means shadow and contour, so it is never
+     spread over a working surface: only the lower third or so of each bar (the band
+     starts at 0.62 of the top bar's height and 0.50 of the command bar's, having been
+     tried at 0.85 and 0.75, where it was too thin a sliver to read at all -- on the top
+     bar most of it also sat behind the upper row's own opaque background), and -- drawn
+     into the scenery art itself -- the shaded flanks of
+     the dunes and of the night mound, always inside the ridge line and never in the sky
+     above it.
+     It TILES along the run at 240px instead of stretching, unlike every other layer here.
+     A hatch is directional: stretched to a panel of unknown width it would swing its angle
+     and fatten its strokes, where isotropic noise merely goes elliptical (which is why the
+     speckle can stretch and this cannot). 240 is the seam-safe width -- lines of
+     perpendicular spacing 4 at 28 degrees repeat along x every 4/cos(28) = 4.5303px, and
+     240 is 52.98 of those, a 0.09px step at the join.
+   - FLECKS. Chips of paint, not dots: the blob alpha is dilated by feMorphology to make an
+     ink rim, then filled inside, so each arrives outlined the way the reference's chips
+     are. Only on the two surfaces that read as objects -- the top bar and the command bar.
+     The rail is sky and takes none. Density was set by measuring coverage off a canvas
+     rather than by eye: 5.3% read as terrazzo, 1.75% was still too busy, and the threshold
+     now sits at 44/-35 for 0.43%.
+
+   Chromatic granulation was tried and dropped -- it is the retired speckle's idea at the
+   speckle's frequency, and grain of that kind is exactly what this layer is meant to
+   replace, not something to sit alongside it.
+
+   Layer order on each panel is mottling, flecks, fade, hatch, colour: the hatch sits
+   nearest the surface it shades, and the mottling floats over the rest. */
 :root[data-editor-theme="moebius"] .markdown-editor__nav {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.74' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.89' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.3'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
-    var(--markdown-editor-background);
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='660' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00205' numOctaves='3' seed='1'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%237a5c3e'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.036'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='660' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00275' numOctaves='3' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%23fffdf2'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.032'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    var(--moebius-rail);
   background-origin: padding-box, padding-box;
 }
 
 :root[data-editor-theme="moebius"].dark .markdown-editor__nav {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.74' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.89' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.5'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
-    var(--markdown-editor-background);
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='660' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00205' numOctaves='3' seed='1'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%2305061c'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.032'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='660' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00275' numOctaves='3' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%23aeb6e8'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.026'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    var(--moebius-rail);
   background-origin: padding-box, padding-box;
 }
 
@@ -3219,6 +3320,22 @@ markdown-editor[data-appearance-open]
   position: fixed;
   width: 8px;
   z-index: 2;
+}
+
+/* The rail's header pins while the tree scrolls under it, so it needs an opaque
+   background -- and the base chrome gives it --markdown-editor-background, which was
+   the rail's own colour until the rail became banded. Against the bands it read as a
+   patch of window showing through at the very top.
+
+   It takes the rail's own band and cool wash instead, ATTACHED TO THE VIEWPORT. The nav
+   is a full-height sidebar whose box is exactly the viewport (measured: top 0, height =
+   innerHeight), so a viewport-anchored layer on the header lands on precisely the same
+   colour as the element-anchored layer on the nav behind it, at any header height and
+   through any scroll position. Matching by hand-mixing a flat colour would have to be
+   redone every time the wash moves. The mottle and dither are left off: at the top of
+   the rail both are near zero, and neither would line up. */
+:root[data-editor-theme="moebius"] .markdown-editor__nav-header {
+  background: var(--moebius-rail) fixed;
 }
 
 /* Keep an open header popover above the decorative rail edge without changing
@@ -3237,22 +3354,30 @@ markdown-editor[data-appearance-open]
    box in half. */
 :root[data-editor-theme="moebius"] .markdown-editor__topbar {
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='8' viewBox='0 0 1200 8' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%234a3428' stroke-linecap='round'%3E%3Cpath d='M0 6.3 C40 7.0 110 7.07 155 6.3 C200 5.6 280 5.53 330 6.37 C380 6.79 440 6.86 490 6.3 C545 5.67 630 5.53 690 6.37 C710 6.65 735 6.72 760 6.37' stroke-width='1.7'/%3E%3Cpath d='M763.5 6.37 C800 5.6 880 5.53 940 6.3' stroke-width='1.35'/%3E%3Cpath d='M942.5 6.3 C990 7.07 1040 7.0 1090 6.37' stroke-width='1.95'/%3E%3Cpath d='M1093 6.37 C1130 5.6 1170 5.67 1200 6.3' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") left bottom / 100% 8px no-repeat,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='90' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.76' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.9' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.18'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='980' height='92' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00205' numOctaves='3' seed='11'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%237a5c3e'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.036'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='980' height='92' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00275' numOctaves='3' seed='15'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%23fffdf2'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.032'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='340'%3E%3Cdefs%3E%3Cfilter id='f' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.045' numOctaves='3' seed='13' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 44 -35' result='t'/%3E%3CfeMorphology in='t' operator='dilate' radius='1.1' result='td'/%3E%3CfeFlood flood-color='%234a3428'/%3E%3CfeComposite in2='td' operator='in' result='rim'/%3E%3CfeFlood flood-color='%23e9d3a8'/%3E%3CfeComposite in2='t' operator='in' result='core'/%3E%3CfeMerge%3E%3CfeMergeNode in='rim'/%3E%3CfeMergeNode in='core'/%3E%3C/feMerge%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23f)' opacity='0.75'/%3E%3C/svg%3E") left top / 340px 340px repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='980' height='92' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='dg' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='black'/%3E%3Cstop offset='0.45' stop-color='%23555555'/%3E%3Cstop offset='1' stop-color='white'/%3E%3C/linearGradient%3E%3Cfilter id='d' x='0' y='0' width='100%25' height='100%25'%3E%3CfeColorMatrix in='SourceGraphic' type='luminanceToAlpha' result='ramp'/%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2' numOctaves='2' seed='14' result='n'/%3E%3CfeColorMatrix in='n' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0' result='na'/%3E%3CfeComposite in='ramp' in2='na' operator='arithmetic' k1='0' k2='0.8' k3='0.75' k4='0' result='sum'/%3E%3CfeColorMatrix in='sum' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 16 -10.4' result='cut'/%3E%3CfeFlood flood-color='%23e9d3ae'/%3E%3CfeComposite in2='cut' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23dg)' filter='url(%23d)' opacity='0.19'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='92' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cpattern id='tp' width='4' height='4' patternUnits='userSpaceOnUse' patternTransform='rotate(-28)'%3E%3Cline x1='1' y1='0' x2='1' y2='4' stroke='%234a3428' stroke-width='1.1'/%3E%3C/pattern%3E%3ClinearGradient id='tg' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.62' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.82' stop-color='white' stop-opacity='0.3'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='tm'%3E%3Crect width='100%25' height='100%25' fill='url(%23tg)'/%3E%3C/mask%3E%3Cfilter id='tf' x='-5%25' y='-5%25' width='110%25' height='110%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.06' numOctaves='2' seed='18' stitchTiles='stitch' result='n'/%3E%3CfeDisplacementMap in='SourceGraphic' in2='n' scale='2.5'/%3E%3C/filter%3E%3C/defs%3E%3Cg mask='url(%23tm)' opacity='0.68'%3E%3Crect width='100%25' height='100%25' fill='url(%23tp)' filter='url(%23tf)'/%3E%3C/g%3E%3C/svg%3E") left bottom / 240px 100% repeat-x,
     var(--moebius-bar-lo);
   /* The drawn edge has to reach the element's own bottom, and backgrounds default to the
      padding box -- which stops short of the transparent 1px border-bottom this line
      replaces. Set per layer, and after the shorthand, which resets it. */
-  background-origin: border-box, padding-box, padding-box;
+  background-origin: border-box, padding-box, padding-box, padding-box, padding-box, padding-box, padding-box;
 }
 
 :root[data-editor-theme="moebius"].dark .markdown-editor__topbar {
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='8' viewBox='0 0 1200 8' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%237e86c2' stroke-linecap='round'%3E%3Cpath d='M0 6.3 C40 7.0 110 7.07 155 6.3 C200 5.6 280 5.53 330 6.37 C380 6.79 440 6.86 490 6.3 C545 5.67 630 5.53 690 6.37 C710 6.65 735 6.72 760 6.37' stroke-width='1.7'/%3E%3Cpath d='M763.5 6.37 C800 5.6 880 5.53 940 6.3' stroke-width='1.35'/%3E%3Cpath d='M942.5 6.3 C990 7.07 1040 7.0 1090 6.37' stroke-width='1.95'/%3E%3Cpath d='M1093 6.37 C1130 5.6 1170 5.67 1200 6.3' stroke-width='1.5'/%3E%3C/g%3E%3C/svg%3E") left bottom / 100% 8px no-repeat,
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='90' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.76' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.9' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.55'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='980' height='92' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00205' numOctaves='3' seed='11'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%2305061c'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.032'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='980' height='92' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00275' numOctaves='3' seed='15'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%23aeb6e8'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.026'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='340'%3E%3Cdefs%3E%3Cfilter id='f' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.045' numOctaves='3' seed='13' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 44 -35' result='t'/%3E%3CfeMorphology in='t' operator='dilate' radius='1.1' result='td'/%3E%3CfeFlood flood-color='%2305061c'/%3E%3CfeComposite in2='td' operator='in' result='rim'/%3E%3CfeFlood flood-color='%23313877'/%3E%3CfeComposite in2='t' operator='in' result='core'/%3E%3CfeMerge%3E%3CfeMergeNode in='rim'/%3E%3CfeMergeNode in='core'/%3E%3C/feMerge%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23f)' opacity='0.88'/%3E%3C/svg%3E") left top / 340px 340px repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='980' height='92' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='dg' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='black'/%3E%3Cstop offset='0.45' stop-color='%23555555'/%3E%3Cstop offset='1' stop-color='white'/%3E%3C/linearGradient%3E%3Cfilter id='d' x='0' y='0' width='100%25' height='100%25'%3E%3CfeColorMatrix in='SourceGraphic' type='luminanceToAlpha' result='ramp'/%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2' numOctaves='2' seed='14' result='n'/%3E%3CfeColorMatrix in='n' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0' result='na'/%3E%3CfeComposite in='ramp' in2='na' operator='arithmetic' k1='0' k2='0.8' k3='0.75' k4='0' result='sum'/%3E%3CfeColorMatrix in='sum' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 16 -10.4' result='cut'/%3E%3CfeFlood flood-color='%2348232b'/%3E%3CfeComposite in2='cut' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23dg)' filter='url(%23d)' opacity='0.4'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='92' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cpattern id='tp' width='4' height='4' patternUnits='userSpaceOnUse' patternTransform='rotate(-28)'%3E%3Cline x1='1' y1='0' x2='1' y2='4' stroke='%2305061c' stroke-width='1.1'/%3E%3C/pattern%3E%3ClinearGradient id='tg' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.62' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.82' stop-color='white' stop-opacity='0.3'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='tm'%3E%3Crect width='100%25' height='100%25' fill='url(%23tg)'/%3E%3C/mask%3E%3Cfilter id='tf' x='-5%25' y='-5%25' width='110%25' height='110%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.06' numOctaves='2' seed='18' stitchTiles='stitch' result='n'/%3E%3CfeDisplacementMap in='SourceGraphic' in2='n' scale='2.5'/%3E%3C/filter%3E%3C/defs%3E%3Cg mask='url(%23tm)' opacity='0.98'%3E%3Crect width='100%25' height='100%25' fill='url(%23tp)' filter='url(%23tf)'/%3E%3C/g%3E%3C/svg%3E") left bottom / 240px 100% repeat-x,
     var(--moebius-bar-lo);
   /* The drawn edge has to reach the element's own bottom, and backgrounds default to the
      padding box -- which stops short of the transparent 1px border-bottom this line
      replaces. Set per layer, and after the shorthand, which resets it. */
-  background-origin: border-box, padding-box, padding-box;
+  background-origin: border-box, padding-box, padding-box, padding-box, padding-box, padding-box, padding-box;
 }
 
 /* Full-bleed: the top bar insets its rows by its own inline padding, so a background on
@@ -3264,8 +3389,16 @@ markdown-editor[data-appearance-open]
    this toolbar class without a .markdown-editor__topbar around it, so the band was
    painting there too -- on a centred, narrow page, where it reached neither edge. Those
    pages take the theme's colours and control faces, and no rock. */
+/* The upper row is opaque, so it hides whatever the bar paints behind it and has to
+   carry its own texture -- otherwise the bar reads as flecked along its lower strip only.
+   Same fleck tile, same seeds, same origin as the bar, so the pattern runs on across the
+   two rows unbroken rather than meeting as two different noises at the join. */
 :root[data-editor-theme="moebius"] .markdown-editor__topbar .markdown-editor__toolbar--top {
-  background: var(--moebius-bar-hi);
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='980' height='46' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00205' numOctaves='3' seed='11'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%237a5c3e'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.036'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='980' height='46' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00275' numOctaves='3' seed='15'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%23fffdf2'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.032'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='340'%3E%3Cdefs%3E%3Cfilter id='f' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.045' numOctaves='3' seed='13' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 44 -35' result='t'/%3E%3CfeMorphology in='t' operator='dilate' radius='1.1' result='td'/%3E%3CfeFlood flood-color='%234a3428'/%3E%3CfeComposite in2='td' operator='in' result='rim'/%3E%3CfeFlood flood-color='%23e9d3a8'/%3E%3CfeComposite in2='t' operator='in' result='core'/%3E%3CfeMerge%3E%3CfeMergeNode in='rim'/%3E%3CfeMergeNode in='core'/%3E%3C/feMerge%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23f)' opacity='0.75'/%3E%3C/svg%3E") left top / 340px 340px repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='980' height='46' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='dg' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='black'/%3E%3Cstop offset='0.45' stop-color='%23555555'/%3E%3Cstop offset='1' stop-color='white'/%3E%3C/linearGradient%3E%3Cfilter id='d' x='0' y='0' width='100%25' height='100%25'%3E%3CfeColorMatrix in='SourceGraphic' type='luminanceToAlpha' result='ramp'/%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2' numOctaves='2' seed='14' result='n'/%3E%3CfeColorMatrix in='n' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0' result='na'/%3E%3CfeComposite in='ramp' in2='na' operator='arithmetic' k1='0' k2='0.8' k3='0.75' k4='0' result='sum'/%3E%3CfeColorMatrix in='sum' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 16 -10.4' result='cut'/%3E%3CfeFlood flood-color='%23cfd8cc'/%3E%3CfeComposite in2='cut' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23dg)' filter='url(%23d)' opacity='0.19'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    var(--moebius-bar-hi);
   margin-inline: -0.75rem;
   padding-inline: 0.75rem;
   /* The row carries an explicit width, so the negative margins alone could not stretch
@@ -3273,25 +3406,58 @@ markdown-editor[data-appearance-open]
   width: calc(100% + 1.5rem);
 }
 
-/* The editing field's grain belongs to the surface the reader is looking at, not to
-   the document's length: attached to the viewport, so it neither stretches into
-   streaks down a long page (the SVG carries preserveAspectRatio="none", and over a
-   46,000px column that smeared the dots) nor scrolls away from the light. */
+:root[data-editor-theme="moebius"].dark .markdown-editor__topbar .markdown-editor__toolbar--top {
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='980' height='46' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00205' numOctaves='3' seed='11'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%2305061c'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.032'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='980' height='46' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00275' numOctaves='3' seed='15'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%23aeb6e8'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.026'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='340'%3E%3Cdefs%3E%3Cfilter id='f' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.045' numOctaves='3' seed='13' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 44 -35' result='t'/%3E%3CfeMorphology in='t' operator='dilate' radius='1.1' result='td'/%3E%3CfeFlood flood-color='%2305061c'/%3E%3CfeComposite in2='td' operator='in' result='rim'/%3E%3CfeFlood flood-color='%23313877'/%3E%3CfeComposite in2='t' operator='in' result='core'/%3E%3CfeMerge%3E%3CfeMergeNode in='rim'/%3E%3CfeMergeNode in='core'/%3E%3C/feMerge%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23f)' opacity='0.88'/%3E%3C/svg%3E") left top / 340px 340px repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='980' height='46' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='dg' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0' stop-color='black'/%3E%3Cstop offset='0.45' stop-color='%23555555'/%3E%3Cstop offset='1' stop-color='white'/%3E%3C/linearGradient%3E%3Cfilter id='d' x='0' y='0' width='100%25' height='100%25'%3E%3CfeColorMatrix in='SourceGraphic' type='luminanceToAlpha' result='ramp'/%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2' numOctaves='2' seed='14' result='n'/%3E%3CfeColorMatrix in='n' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0' result='na'/%3E%3CfeComposite in='ramp' in2='na' operator='arithmetic' k1='0' k2='0.8' k3='0.75' k4='0' result='sum'/%3E%3CfeColorMatrix in='sum' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 16 -10.4' result='cut'/%3E%3CfeFlood flood-color='%23603240'/%3E%3CfeComposite in2='cut' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23dg)' filter='url(%23d)' opacity='0.4'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    var(--moebius-bar-hi);
+}
+
+/* The editing field's wash is anchored to the FIELD, exactly as the prototype anchors it,
+   so the fade spans the column the reader is in rather than the window. Viewport
+   attachment was tried and is wrong for matching: it compresses the whole fade into one
+   window height and pins it there, so the warm end lands at the bottom of the screen
+   while the prototype has only reached about two thirds of the way. Same colours, and
+   they still do not look alike.
+
+   All four layers must agree, whichever is chosen: this element is not a scroller, so its
+   box is the whole document, and a layer left on a different attachment ramps against a
+   different box -- which is how the stipple came to float free of the colour it belongs to
+   and read as loose grain.
+
+   The cost, stated plainly: on a very long document the wash spreads over the document's
+   height, so it fades toward invisible and the SVG textures stretch with it. The
+   ~46,000px fixture (hangrepro...pub.md) is the case to look at before deciding this is
+   settled. Matching the prototype was the instruction; this is the trade it carries.
+   */
 :root[data-editor-theme="moebius"] .markdown-editor__content {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1000' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.78' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.91' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.12'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat fixed;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='780' height='620' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00205' numOctaves='3' seed='21'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%237a5c3e'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.036'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='780' height='620' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00275' numOctaves='3' seed='25'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%23fffdf2'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.032'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='780' height='620' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='dg' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='black'/%3E%3Cstop offset='0.45' stop-color='%23555555'/%3E%3Cstop offset='1' stop-color='white'/%3E%3C/linearGradient%3E%3Cfilter id='d' x='0' y='0' width='100%25' height='100%25'%3E%3CfeColorMatrix in='SourceGraphic' type='luminanceToAlpha' result='ramp'/%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2' numOctaves='2' seed='24' result='n'/%3E%3CfeColorMatrix in='n' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0' result='na'/%3E%3CfeComposite in='ramp' in2='na' operator='arithmetic' k1='0' k2='0.8' k3='0.75' k4='0' result='sum'/%3E%3CfeColorMatrix in='sum' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 16 -10.4' result='cut'/%3E%3CfeFlood flood-color='%23e7caad'/%3E%3CfeComposite in2='cut' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23dg)' filter='url(%23d)' opacity='0.19'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    var(--moebius-page);
 }
 
 :root[data-editor-theme="moebius"].dark .markdown-editor__content {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1000' height='700' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='r' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.78' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.91' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23r)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.4'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat fixed;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='780' height='620' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00205' numOctaves='3' seed='21'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%2305061c'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.032'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='780' height='620' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00275' numOctaves='3' seed='25'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%23aeb6e8'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.026'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='780' height='620' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='dg' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='black'/%3E%3Cstop offset='0.45' stop-color='%23555555'/%3E%3Cstop offset='1' stop-color='white'/%3E%3C/linearGradient%3E%3Cfilter id='d' x='0' y='0' width='100%25' height='100%25'%3E%3CfeColorMatrix in='SourceGraphic' type='luminanceToAlpha' result='ramp'/%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2' numOctaves='2' seed='24' result='n'/%3E%3CfeColorMatrix in='n' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0' result='na'/%3E%3CfeComposite in='ramp' in2='na' operator='arithmetic' k1='0' k2='0.8' k3='0.75' k4='0' result='sum'/%3E%3CfeColorMatrix in='sum' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 16 -10.4' result='cut'/%3E%3CfeFlood flood-color='%231c112d'/%3E%3CfeComposite in2='cut' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23dg)' filter='url(%23d)' opacity='0.4'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    var(--moebius-page);
 }
 
 :root[data-editor-theme="moebius"] .markdown-editor__toolbar--commands {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='60' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.82' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.93' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3ClinearGradient id='e' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.87' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.95' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23b)'/%3E%3Crect width='100%25' height='100%25' fill='url(%23e)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.16'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='46' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00205' numOctaves='3' seed='31'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%237a5c3e'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.036'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='46' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00275' numOctaves='3' seed='35'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%23fffdf2'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.032'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='340'%3E%3Cdefs%3E%3Cfilter id='f' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.045' numOctaves='3' seed='33' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 44 -35' result='t'/%3E%3CfeMorphology in='t' operator='dilate' radius='1.1' result='td'/%3E%3CfeFlood flood-color='%234a3428'/%3E%3CfeComposite in2='td' operator='in' result='rim'/%3E%3CfeFlood flood-color='%23e9d3a8'/%3E%3CfeComposite in2='t' operator='in' result='core'/%3E%3CfeMerge%3E%3CfeMergeNode in='rim'/%3E%3CfeMergeNode in='core'/%3E%3C/feMerge%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23f)' opacity='0.75'/%3E%3C/svg%3E") left top / 340px 340px repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='46' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cpattern id='tp' width='4' height='4' patternUnits='userSpaceOnUse' patternTransform='rotate(-28)'%3E%3Cline x1='1' y1='0' x2='1' y2='4' stroke='%234a3428' stroke-width='1.1'/%3E%3C/pattern%3E%3ClinearGradient id='tg' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.50' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.74' stop-color='white' stop-opacity='0.3'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='tm'%3E%3Crect width='100%25' height='100%25' fill='url(%23tg)'/%3E%3C/mask%3E%3Cfilter id='tf' x='-5%25' y='-5%25' width='110%25' height='110%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.06' numOctaves='2' seed='38' stitchTiles='stitch' result='n'/%3E%3CfeDisplacementMap in='SourceGraphic' in2='n' scale='2.5'/%3E%3C/filter%3E%3C/defs%3E%3Cg mask='url(%23tm)' opacity='0.68'%3E%3Crect width='100%25' height='100%25' fill='url(%23tp)' filter='url(%23tf)'/%3E%3C/g%3E%3C/svg%3E") left bottom / 240px 100% repeat-x,
     var(--markdown-editor-pill-background);
 }
 
 :root[data-editor-theme="moebius"].dark .markdown-editor__toolbar--commands {
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='800' height='60' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='s' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.4' numOctaves='2' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 22 -12.6'/%3E%3C/filter%3E%3ClinearGradient id='b' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.82' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.93' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3ClinearGradient id='e' x1='0' y1='0' x2='1' y2='0'%3E%3Cstop offset='0.87' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.95' stop-color='white' stop-opacity='0.28'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='m'%3E%3Crect width='100%25' height='100%25' fill='url(%23b)'/%3E%3Crect width='100%25' height='100%25' fill='url(%23e)'/%3E%3C/mask%3E%3C/defs%3E%3Cg mask='url(%23m)' opacity='0.45'%3E%3Crect width='100%25' height='100%25' filter='url(%23s)'/%3E%3C/g%3E%3C/svg%3E") center / 100% 100% no-repeat,
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='46' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00205' numOctaves='3' seed='31'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%2305061c'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.032'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='46' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00275' numOctaves='3' seed='35'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%23aeb6e8'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.026'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='340'%3E%3Cdefs%3E%3Cfilter id='f' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.045' numOctaves='3' seed='33' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 44 -35' result='t'/%3E%3CfeMorphology in='t' operator='dilate' radius='1.1' result='td'/%3E%3CfeFlood flood-color='%2305061c'/%3E%3CfeComposite in2='td' operator='in' result='rim'/%3E%3CfeFlood flood-color='%23313877'/%3E%3CfeComposite in2='t' operator='in' result='core'/%3E%3CfeMerge%3E%3CfeMergeNode in='rim'/%3E%3CfeMergeNode in='core'/%3E%3C/feMerge%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23f)' opacity='0.88'/%3E%3C/svg%3E") left top / 340px 340px repeat,
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='46' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cpattern id='tp' width='4' height='4' patternUnits='userSpaceOnUse' patternTransform='rotate(-28)'%3E%3Cline x1='1' y1='0' x2='1' y2='4' stroke='%2305061c' stroke-width='1.1'/%3E%3C/pattern%3E%3ClinearGradient id='tg' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0.50' stop-color='white' stop-opacity='0'/%3E%3Cstop offset='0.74' stop-color='white' stop-opacity='0.3'/%3E%3Cstop offset='1' stop-color='white' stop-opacity='1'/%3E%3C/linearGradient%3E%3Cmask id='tm'%3E%3Crect width='100%25' height='100%25' fill='url(%23tg)'/%3E%3C/mask%3E%3Cfilter id='tf' x='-5%25' y='-5%25' width='110%25' height='110%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.06' numOctaves='2' seed='38' stitchTiles='stitch' result='n'/%3E%3CfeDisplacementMap in='SourceGraphic' in2='n' scale='2.5'/%3E%3C/filter%3E%3C/defs%3E%3Cg mask='url(%23tm)' opacity='0.98'%3E%3Crect width='100%25' height='100%25' fill='url(%23tp)' filter='url(%23tf)'/%3E%3C/g%3E%3C/svg%3E") left bottom / 240px 100% repeat-x,
     var(--markdown-editor-pill-background);
 }
 
@@ -3333,6 +3499,23 @@ markdown-editor[data-appearance-open]
 :root[data-editor-theme="moebius"] .chrome-segment-joined .btn[aria-selected="true"] {
   background-color: var(--moebius-switch);
   color: var(--moebius-switch-text);
+}
+
+/* --- readable labels over the banded rail ---------------------------
+   The base chrome sets the rail and the metadata panel to the muted tone, which is a
+   quiet grey-brown on a flat surface. This theme does not have a flat surface: the rail
+   runs from a pale sky at the top to deep sand at the foot, and the muted tone measured
+   2.09:1 against that sand -- page names, not incidental captions. The text tone instead
+   holds 5.99:1 on the worst band and 10:1 on the lightest, and the same override goes to
+   the metadata panel so the two columns read alike -- including the contents list, which
+   sets the muted tone on its own container and so would otherwise have stayed pale while
+   everything around it darkened. Rows that carry their own colour --
+   the active page, links, the accent marks -- are unaffected; they set colour themselves
+   and win on specificity. */
+:root[data-editor-theme="moebius"] .markdown-editor__nav,
+:root[data-editor-theme="moebius"] .markdown-editor__sidebar,
+:root[data-editor-theme="moebius"] .markdown-editor__toc {
+  color: var(--markdown-editor-text);
 }
 
 /* --- the metadata panel headings as lozenges -------------------------------

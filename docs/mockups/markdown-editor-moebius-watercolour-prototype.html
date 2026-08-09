@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="en" data-scheme="light">
+<head>
+<meta charset="utf-8">
+<title>PROTOTYPE: Moebius watercolour texture variants</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="../../static/editor/roboto.css">
+<style>
+/* =================================================================================================
+   PROTOTYPE -- THROWAWAY. Answers one question:
+
+   Can non-uniform colour (low-frequency wash mottling, chromatic grain, sparse flecks, edge
+   pooling) read as watercolour on the Moebius theme's panel surfaces, within ADR-081's constraint
+   that texture must be self-contained SVG data-URI background layers?
+
+   Six variants of the day/night Moebius mockup surfaces, switchable via ?variant= and the
+   floating bar at the bottom. The chrome is cribbed from
+   markdown-editor-moebius-desert-day-night.html; only the texture layers differ per variant.
+   Textures are built at runtime as parameterised SVG data URIs so the knobs are live; the
+   production theme would bake the chosen parameters into static URIs, exactly as the speckle
+   is baked today.
+
+   References: moebius-girl-on-bench.jpg (the hat's grainy fade, the pinkish grain on the purple
+   wall stripe), moebius-desert-archer.jpg (the cape's hue fade and shadow hatching, the flecked
+   bottle), moebius-desert-speeder.jpg (blue-to-salmon fade with a stippled transition, pitted
+   hull), moebius-desert-campervan.jpg (flatter colour, still uneven),
+   moebius-giant-pink-birds-forest-river.jpg (uneven wash on the birds and trees).
+
+   Round-one feedback (2026-08-08): wash mottling at large scale and middling strength roughly
+   right; flecks only on a couple of panels and the editor toolbar; edge pooling dropped.
+
+   Round-two feedback (2026-08-08): C is the clear winner -- mid strength, minimum scale, both
+   now baked as defaults. Hatching good at mid strength, tightened to 5px, and confined to
+   shadow and contour (the rail's foot and the scenery hills). Flecks gained drawn borders, as
+   the reference chips have. Mottle de-quantised (smooth gamma, no posterise) and night mottle
+   rebalanced toward the moonlit lift tint. Night granulation held at day strength.
+
+   Round-three feedback (2026-08-09): liked settings baked as defaults -- A strength 2/10 scale
+   max, B strength 5/10 scale 3/10, C strength 3/10 scale min, E (hatching) strength 5/10; D
+   combines the approved solo settings directly. Hatching tightened to 4px and confined to drawn
+   elements: inside the scenery hills (never the rail's sky), the bottom quarter of the editor
+   toolbar, the bottom 15% of the top bar. Flecks moved off the rail (it reads as sky) onto the
+   top bar. Chromatic granulation left out; if it returns, it replaces the base speckle.
+   ================================================================================================= */
+
+[data-scheme="light"] {
+  --line: #4a3428;
+  --line-soft: rgba(74, 52, 40, 0.35);
+  --body-sky: linear-gradient(180deg, #cfe7e2 0 14%, #d7e7da 14% 30%, #e3e5c9 30% 46%,
+    #efe0bd 46% 62%, #e9d3a8 62% 80%, #d9b57e 80% 100%);
+  --frame: #f1e6cd;
+  --rail: linear-gradient(180deg, #cfe7e2 0 12%, #dde8d2 12% 24%, #f7efdd 24% 62%,
+    #e9d3a8 62% 84%, #d9b57e 84% 100%);
+  --bar: linear-gradient(180deg, #cfe7e2 0 46%, #efe0bd 46% 100%);
+  --bar-hi: #cfe7e2;
+  --face: #f7efdd;
+  --face-text: #4a3428;
+  --page: #faf4e6;
+  --page-text: #4a3428;
+  --page-heading: #4a3428;
+  --callout: #cfe7e2;
+  --code-bg: #f1e6cd;
+  --code-border: #d8c49a;
+  --callout-cap: #6fb3ab;
+  --callout-cap-text: #f7efdd;
+  --accent: #c4694a;
+  --accent-text: #f7efdd;
+  --switch: #6fb3ab;
+  --switch-text: #f7efdd;
+  --badge: #9d86b5;
+  --badge-text: #f7efdd;
+  --muted: #8d7c66;
+  --chip: #e9d3a8;
+  --speck: #4a3428;
+  --speck-rail: 0.3;
+  --speck-bar: 0.18;
+  --speck-page: 0.12;
+  --speck-tool: 0.16;
+  --link: #b0563a;
+}
+
+[data-scheme="dark"] {
+  --line: #7e86c2;
+  --line-soft: rgba(126, 134, 194, 0.4);
+  --body-sky: linear-gradient(180deg, #12142f 0 58%, #1d2150 58% 76%, #3d2a5c 76% 84%,
+    #7e3a22 84% 88%, #52210f 88% 100%);
+  --frame: #232963;
+  --rail: linear-gradient(180deg, #131637 0 30%, #1b2049 30% 62%, #232963 62% 100%);
+  --bar: linear-gradient(180deg, #6d2f1e 0 55%, #52210f 55% 100%);
+  --bar-hi: #6d2f1e;
+  --face: #2a3068;
+  --face-text: #e6e9f8;
+  --page: #12142f;              /* the deep indigo the app uses for the night editing field */
+  --page-text: #dfe3f5;
+  --page-heading: #f4f2ff;
+  --callout: #272d66;
+  --code-bg: #262c5e;
+  --code-border: #454d95;
+  --callout-cap: #6f9fd0;
+  --callout-cap-text: #0f1230;
+  --accent: #dd7038;
+  --accent-text: #1a1130;
+  --switch: #6f9fd0;
+  --switch-text: #0f1230;
+  --badge: #8f7ab0;
+  --badge-text: #f4f2ff;
+  --muted: #98a0d0;
+  --chip: #313877;
+  --speck: #05061c;
+  --speck-rail: 0.5;
+  --speck-bar: 0.55;
+  --speck-page: 0.4;
+  --speck-tool: 0.45;
+  --link: #e08a52;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; color: var(--face-text); font-family: var(--sans); padding: 0;
+  background: var(--body-sky); }
+:root { --sans: "Roboto Variable", "Roboto", ui-sans-serif, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+/* Full bleed, like the app: no frame, no card, no gutter. The rail keeps the app's own
+   24rem so the panel proportions match too.
+
+   HEIGHT, not min-height, and the document scrolls inside the workspace -- which is how the
+   app is built, and it matters for more than layout. Every wash gradient is mapped onto its
+   panel, so a panel that grows with its content stretches the fade with it: at min-height
+   this column ran 1023px against a 900px window, which put the foot of the fade below the
+   fold and left the bottom-right corner 88% of the way along instead of at its end. The
+   prototype then looked different from the app for no better reason than how long its
+   sample text happens to be. Pinned to the viewport, the fade completes on screen in both,
+   and the same page reads the same whatever the document's length. */
+main { max-width: none; margin: 0; border: 0; border-radius: 0;
+  overflow: hidden; box-shadow: none;
+  display: grid; grid-template-columns: 24rem 1fr; height: 100vh; background: var(--frame); }
+[data-scheme="dark"] main {
+  background:
+    radial-gradient(1px 1px at 12% 22%, #f2f0ff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 38% 9%, #f2f0ff 50%, transparent 51%),
+    radial-gradient(1px 1px at 61% 31%, #f2f0ff 50%, transparent 51%),
+    radial-gradient(1px 1px at 83% 14%, #f2f0ff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 71% 47%, #f2f0ff 50%, transparent 51%),
+    radial-gradient(1px 1px at 24% 56%, #f2f0ff 50%, transparent 51%),
+    radial-gradient(1px 1px at 47% 73%, #f2f0ff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 9% 84%, #f2f0ff 50%, transparent 51%),
+    radial-gradient(1px 1px at 91% 68%, #f2f0ff 50%, transparent 51%),
+    linear-gradient(180deg, #171a3d 0 40%, var(--frame) 40% 100%); }
+
+[data-scheme="light"] .scene--night, [data-scheme="dark"] .scene--day { display: none; }
+
+/* --- page tree rail --- */
+.rail { border-right: 2px solid var(--line); display: flex; flex-direction: column; position: relative;
+  background: var(--rail); color: var(--muted); }
+.sun { position: absolute; right: 18px; top: 48px; width: 40px; height: 40px; border-radius: 50%;
+  border: 2px solid var(--line);
+  background: radial-gradient(circle, #f4e9c8 0 34%, #edc96a 34% 58%, #c4694a 58% 100%); }
+.birds { position: absolute; left: 16px; top: 62px; }
+.moon { position: absolute; right: 18px; top: 48px; width: 40px; height: 40px; border-radius: 50%;
+  border: 2px solid var(--line);
+  background: radial-gradient(circle at 36% 32%, #f6f5ff 0 58%, #ccd4f0 58% 100%);
+  box-shadow: 0 0 0 8px rgba(226, 233, 255, 0.08), 0 0 30px rgba(206, 219, 255, 0.45); }
+.moon::before, .moon::after { content: ""; position: absolute; border-radius: 50%;
+  border: 1.5px solid rgba(74, 82, 130, 0.55); }
+.moon::before { width: 11px; height: 11px; left: 8px; top: 17px; }
+.moon::after { width: 6px; height: 6px; left: 22px; top: 9px; }
+.stars { position: absolute; left: 14px; top: 56px; }
+.railhead { display: flex; align-items: center; gap: 6px; padding: 12px 12px 11px; z-index: 1; }
+.railhead h2 { flex: 1; margin: 0; font-size: 11px; letter-spacing: 0.22em; text-transform: uppercase;
+  font-weight: 700; color: var(--face-text); }
+.railhead i { font-size: 14px; color: var(--accent); width: 18px; height: 18px; display: inline-flex;
+  align-items: center; justify-content: center; }
+.tree { list-style: none; margin: 66px 0 0; padding: 0 8px; font-size: 13.5px; z-index: 1; }
+.tree ul { list-style: none; margin: 0; padding-left: 15px; }
+.row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px;
+  min-height: 30px; color: var(--face-text); }
+.row .lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .ops { display: flex; gap: 6px; font-size: 11px; color: var(--accent); }
+.row .disc { font-size: 13px; }
+.row.on { background: var(--accent); color: var(--accent-text); border: 1.5px solid var(--line); }
+.row.on .ops { color: var(--accent-text); }
+[data-scheme="dark"] .row.on { box-shadow: 0 0 14px rgba(221, 112, 56, 0.5); }
+.foot { margin-top: auto; }
+.foot svg { display: block; width: 100%; height: auto; }
+
+/* --- content column --- */
+.content { display: flex; flex-direction: column; min-width: 0; }
+.topbar { border-bottom: 2px solid var(--line); background: var(--bar); position: relative; }
+/* The upper row paints itself, as it does in the app, which frees the bar's own background
+   to carry the horizontal fade (see TARGETS). Being opaque, it hides whatever the bar
+   paints behind it, so it is a textured surface in its own right rather than a plain fill --
+   same fleck tile, same origin, so the pattern runs on across the two rows unbroken. */
+.controls { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
+  padding: 10px 14px; background: var(--bar-hi); }
+.slot { display: flex; align-items: center; gap: 8px; }
+.slot--end { justify-content: flex-end; }
+.iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px;
+  border: 1.5px solid var(--line); border-radius: 6px; background: var(--face); font-size: 15px;
+  color: var(--face-text); cursor: pointer; }
+.publish { border: 2px solid var(--line); border-radius: 7px; background: var(--accent);
+  color: var(--accent-text); font-family: var(--sans); font-size: 12.5px; letter-spacing: 0.04em;
+  font-weight: 600; padding: 6px 20px; cursor: pointer; box-shadow: 0 2px 0 var(--line); }
+.cancel { border: 2px solid var(--line); border-radius: 7px; background: var(--face);
+  color: var(--face-text); font-family: var(--sans); font-size: 12.5px; letter-spacing: 0.04em;
+  padding: 6px 14px; cursor: pointer; }
+.seg { display: flex; border: 2px solid var(--line); border-radius: 7px; overflow: hidden;
+  background: var(--face); }
+.seg button { display: flex; align-items: center; justify-content: center; padding: 4px 13px;
+  border: 0; border-right: 2px solid var(--line); font-family: var(--sans); font-size: 12px;
+  letter-spacing: 0.02em; background: transparent; color: var(--face-text); cursor: pointer; }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-selected="true"] { background: var(--switch); color: var(--switch-text);
+  font-weight: 600; }
+.seg--icons button { width: 32px; padding: 4px 0; font-size: 15px; }
+.themedrop { display: inline-flex; align-items: center; gap: 8px; border: 2px solid var(--line);
+  border-radius: 7px; background: var(--face); color: var(--face-text); font-family: var(--sans);
+  font-size: 12px; letter-spacing: 0.02em; padding: 5px 12px; cursor: pointer; }
+.toprow { display: flex; align-items: center; gap: 12px; padding: 9px 14px 11px;
+  border-bottom: 2px solid var(--line); color: var(--muted); }
+.crumb { flex: 1; min-width: 0; font-size: 12.5px; letter-spacing: 0.02em; }
+.crumb .sep { color: var(--accent); padding: 0 6px; }
+.crumb .here { font-weight: 600; color: var(--face-text); }
+.search { display: inline-flex; align-items: center; gap: 8px; width: 244px; border: 2px solid var(--line);
+  border-radius: 7px; background: var(--face); padding: 5px 11px; color: var(--muted); }
+.search i { font-size: 14px; }
+.search span { font-size: 12px; letter-spacing: 0.02em; }
+
+/* --- workspace --- */
+.content { background: var(--page); }
+.workspace { display: grid; grid-template-columns: 1fr 196px; gap: 26px; padding: 24px 24px 0;
+  flex: 1; min-height: 0; position: relative; overflow-y: auto; }
+.crystals-doc { position: absolute; top: -8px; right: -46px; }
+.doc { min-width: 0; max-width: 560px; margin: 0 auto; position: relative; padding: 6px 0 30px;
+  color: var(--page-text); }
+.title { font-weight: 700; font-size: 30px; line-height: 1.15; margin: 0 0 4px;
+  color: var(--page-heading); }
+.titlerule { width: 150px; border: 0; border-top: 2px solid var(--line); margin: 0 0 20px;
+  filter: url(#wob-b); }
+h2 { font-weight: 700; font-size: 18.5px; margin: 22px 0 8px; color: var(--page-heading); }
+p { font-size: 15.5px; line-height: 1.7; margin: 0 0 14px; }
+.badge { display: inline-block; border: 1.5px solid var(--line); border-radius: 6px;
+  background: var(--badge); color: var(--badge-text); font-size: 11px; letter-spacing: 0.12em;
+  text-transform: uppercase; padding: 1px 9px; }
+.callout { border: 0; background: none; padding: 13px 16px 12px; margin: 4px 0 16px;
+  position: relative; isolation: isolate; }
+.callout::before { content: ""; position: absolute; inset: 0; z-index: -1; border: 2px solid var(--line);
+  border-radius: 8px; background: var(--callout); box-shadow: 0 2px 0 var(--line);
+  filter: url(#wob-frame); }
+.callout .capn { position: absolute; top: -10px; left: 14px; border: 1.5px solid var(--line);
+  border-radius: 5px; background: var(--callout-cap); color: var(--callout-cap-text); padding: 0 9px;
+  font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; font-weight: 700; }
+.callout p { margin: 0; font-size: 14.5px; }
+.caret { display: inline-block; width: 2px; height: 18px; background: var(--accent);
+  vertical-align: -3px; }
+
+/* --- a code fence with a drawn frame ------------------------------------------------
+   The question this answers: can fences and callouts carry the hand-drawn line the
+   controls have? The frame is a FILTERED PSEUDO-ELEMENT, never the block itself, for two
+   reasons that are easy to see with the switch in the prototype bar:
+
+   1. Filtering the block wobbles the CODE as well. On a monospace grid that reads as a
+      rendering fault rather than as a drawn edge, and the block is editable in the app.
+   2. A filter makes its element a containing block, so a `position: fixed` descendant
+      anchors to the block instead of the viewport. The app's language picker is exactly
+      that -- chrome.ts pins it fixed -- so filtering the block would send its menu to the
+      wrong place. Open the picker below with the switch on to watch it happen.
+
+   A pseudo-element's filter does neither: it applies to the pseudo-element alone, so the
+   text stays crisp and the element never becomes a containing block. */
+.fence { position: relative; isolation: isolate; margin: 4px 0 18px; padding: 13px 15px 14px;
+  font-family: var(--mono); font-size: 13px; line-height: 1.6; color: var(--page-text); }
+.fence::before { content: ""; position: absolute; inset: 0; z-index: -1;
+  border: 2px solid var(--line); border-radius: 8px; background: var(--code-bg);
+  box-shadow: 0 2px 0 var(--line); filter: url(#wob-frame); }
+/* The switch moves the filter from the frame to the whole block, which is the version to
+   avoid -- kept so the failure is demonstrable rather than asserted. */
+main.drawn-whole .fence { filter: url(#wob-frame); }
+main.drawn-whole .fence::before { filter: none; }
+.fence .lang { position: absolute; top: -11px; right: 12px; display: inline-flex;
+  align-items: center; gap: 5px; border: 1.5px solid var(--line); border-radius: 5px;
+  background: var(--chip); color: var(--face-text); padding: 1px 8px; font-family: var(--sans);
+  font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; font-weight: 700;
+  cursor: pointer; }
+.langmenu { position: fixed; z-index: 40; min-width: 116px; border: 2px solid var(--line);
+  border-radius: 7px; background: var(--face); color: var(--face-text); padding: 4px;
+  font-family: var(--sans); font-size: 12px; box-shadow: 0 3px 0 var(--line); }
+.langmenu[hidden] { display: none; }
+.langmenu div { padding: 3px 9px; border-radius: 4px; }
+.langmenu div:hover { background: var(--chip); }
+
+/* --- sidebar --- */
+.sidebar { font-size: 13px; color: var(--muted); }
+.panetoggle { display: block; margin: 0 auto 14px 0; width: 24px; height: 24px;
+  border: 1.5px solid var(--line); border-radius: 5px; background: var(--face); color: var(--face-text);
+  font-size: 13px; cursor: pointer; }
+.panel { margin: 0 0 20px; }
+.panel h3 { display: inline-block; margin: 0 0 8px; border: 1.5px solid var(--line); border-radius: 5px;
+  background: var(--chip); color: var(--face-text); padding: 1px 9px; font-size: 10px; font-weight: 700;
+  letter-spacing: 0.22em; text-transform: uppercase; }
+.toc { list-style: none; margin: 0; padding: 0 0 0 11px; position: relative; }
+.toc::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 1.5px;
+  background: var(--line-soft); }
+.toc li { position: relative; padding: 5px 6px; }
+.toc li.here { color: var(--face-text); }
+.toc li.here::before { content: ""; position: absolute; left: -11px; top: 0; bottom: 0; width: 3px;
+  border-radius: 2px; background: var(--accent); }
+[data-scheme="dark"] .toc li.here::before { box-shadow: 0 0 8px rgba(221, 112, 56, 0.7); }
+.toc .l2 { padding-left: 21px; }
+.panel .quiet { font-style: italic; }
+.panel a { color: var(--link); font-weight: 600; text-decoration: underline;
+  text-decoration-thickness: 1.5px; text-underline-offset: 3px; }
+
+/* --- command bar and word count --- */
+.footer { padding: 18px 24px 20px; }
+.cmdbar { margin: 0 auto; width: fit-content; display: flex; align-items: center; gap: 2px;
+  border: 2px solid var(--line); border-radius: 10px; padding: 6px 12px; background: var(--face);
+  color: var(--face-text); box-shadow: 0 2px 0 var(--line); }
+.cmdbar i, .cmdbar .style, .cmdbar .badgebtn { height: 28px; display: inline-flex; align-items: center;
+  justify-content: center; font-size: 15px; border-radius: 6px; }
+.cmdbar i { width: 30px; }
+.cmdbar .style, .cmdbar .badgebtn { gap: 6px; padding: 0 10px; font-size: 12px; font-weight: 600;
+  letter-spacing: 0.02em; }
+.cmdbar .active { border: 1.5px solid var(--line); background: var(--accent); color: var(--accent-text); }
+.cmdbar .div { width: 1.5px; height: 22px; background: var(--line); margin: 0 7px; opacity: 0.5; }
+.cmdbar .save { display: inline-flex; align-items: center; margin-left: 8px;
+  border: 1.5px solid var(--muted); border-radius: 6px; background: transparent; color: var(--muted);
+  padding: 4px 15px; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  font-weight: 600; }
+.wordcount { display: block; margin-top: 10px; text-align: right; font-size: 11px; color: var(--muted);
+  letter-spacing: 0.12em; text-transform: uppercase; }
+
+/* --- the drawn hand and the base speckle (the theme as it stands today) --- */
+.publish, .badge, .themedrop, .cmdbar { filter: url(#wob-a); }
+.cancel, .search, .row.on, .seg, .panel h3 { filter: url(#wob-b); }
+.iconbtn, .seg--icons, .panetoggle { filter: url(#wob-c); }
+.rail::before { content: ""; position: absolute; inset: 0; background: var(--speck);
+  filter: url(#speckle); opacity: var(--speck-rail); pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0 55%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0 55%, #000 100%); }
+.topbar::before { content: ""; position: absolute; inset: 0; background: var(--speck);
+  filter: url(#speckle); opacity: var(--speck-bar); pointer-events: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0 60%, #000 100%);
+  mask-image: linear-gradient(90deg, transparent 0 60%, #000 100%); }
+.workspace::after { content: ""; position: absolute; inset: 0; background: var(--speck);
+  filter: url(#speckle); opacity: var(--speck-page); pointer-events: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0 58%, #000 100%);
+  mask-image: linear-gradient(180deg, transparent 0 58%, #000 100%); }
+.cmdbar { position: relative; }
+.cmdbar::after { content: ""; position: absolute; inset: 0; border-radius: 10px;
+  background: var(--speck); filter: url(#speckle); opacity: var(--speck-tool); pointer-events: none;
+  -webkit-mask-image: linear-gradient(to top, #000 0 8%, transparent 32%),
+    linear-gradient(to left, #000 0 5%, transparent 24%);
+  mask-image: linear-gradient(to top, #000 0 8%, transparent 32%),
+    linear-gradient(to left, #000 0 5%, transparent 24%);
+  -webkit-mask-composite: source-over; mask-composite: add; }
+/* The switcher can silence the base speckle so a variant can be judged alone. */
+main.no-speck .rail::before, main.no-speck .topbar::before,
+main.no-speck .workspace::after, main.no-speck .cmdbar::after { display: none; }
+
+/* The scenery hills' drawn hatching belongs to the hatch variants only. */
+.hatch-overlay { display: none; }
+main[data-variant="hatch"] .hatch-overlay,
+main[data-variant="full"] .hatch-overlay { display: inline; }
+
+.legend { max-width: 1220px; margin: 16px 16px 72px; font-size: 12.5px; line-height: 1.6;
+  color: var(--face-text); background: var(--face); border: 2px solid var(--line); border-radius: 8px;
+  padding: 12px 16px; }
+.legend b { letter-spacing: 0.04em; }
+
+/* --- the prototype switcher: deliberately not part of the design being judged --- */
+.proto-bar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 99;
+  display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 999px;
+  background: #111; color: #fff; font-family: ui-monospace, monospace; font-size: 12px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45); white-space: nowrap; }
+.proto-bar button { background: #333; color: #fff; border: 0; border-radius: 6px; width: 26px;
+  height: 26px; font-size: 14px; cursor: pointer; }
+.proto-bar button:hover { background: #555; }
+.proto-bar .vlabel { min-width: 230px; text-align: center; }
+.proto-bar label { display: inline-flex; align-items: center; gap: 5px; opacity: 0.85; }
+.proto-bar input[type="range"] { width: 80px; }
+</style>
+</head>
+<body>
+<h2 class="sr-only">Prototype: five watercolour texture treatments for the Moebius editor theme,
+switchable from the floating bar. Baseline is the theme's current banked speckle; the variants add
+wash mottling, chromatic granulation with selective flecks, a cool-to-warm hue fade with a
+grain-dithered transition, hatched shadow banks, and all of them combined quietly.</h2>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="wob-a" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012 0.018" numOctaves="2" seed="7" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wob-b" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.014 0.02" numOctaves="2" seed="13" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wob-c" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.016 0.022" numOctaves="2" seed="27" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="2" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="wob-frame" x="-6%" y="-16%" width="112%" height="132%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.008 0.012" numOctaves="2" seed="5" result="n"/>
+      <feDisplacementMap in="SourceGraphic" in2="n" scale="3" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="speckle" x="0%" y="0%" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="2" seed="5" result="fine"/>
+      <feColorMatrix in="fine" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 22 -12.6" result="dots"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.011 0.016" numOctaves="2" seed="9" result="cloud"/>
+      <feColorMatrix in="cloud" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1.7 -0.42" result="cloud-a"/>
+      <feComposite in="dots" in2="cloud-a" operator="arithmetic" k1="1" k2="0" k3="0" k4="0"
+        result="clumped"/>
+      <feComposite in="SourceGraphic" in2="clumped" operator="in"/>
+    </filter>
+  </defs>
+</svg>
+<main id="frame" class="no-speck">
+  <nav class="rail" data-tex="rail">
+    <div class="sun scene--day" aria-hidden="true"></div>
+    <svg class="birds scene--day" width="62" height="20" viewBox="0 0 62 20" fill="none"
+      stroke="#4a3428" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+      <path d="M4 10 Q9 5 14 10 Q19 5 24 10"/>
+      <path d="M32 6 Q36 2 40 6 Q44 2 48 6"/>
+      <path d="M44 16 Q47 13 50 16 Q53 13 56 16"/>
+    </svg>
+    <div class="moon scene--night" aria-hidden="true"></div>
+    <svg class="stars scene--night" width="70" height="34" viewBox="0 0 70 34" fill="none"
+      aria-hidden="true">
+      <path d="M10 0 L11.8 7.2 L19 9 L11.8 10.8 L10 18 L8.2 10.8 L1 9 L8.2 7.2 Z" fill="#f2f0ff"/>
+      <path d="M34 12 L35.2 16.8 L40 18 L35.2 19.2 L34 24 L32.8 19.2 L28 18 L32.8 16.8 Z" fill="#dfe4ff"/>
+      <path d="M56 2 L56.9 5.6 L60.5 6.5 L56.9 7.4 L56 11 L55.1 7.4 L51.5 6.5 L55.1 5.6 Z" fill="#f2f0ff"/>
+      <circle cx="24" cy="28" r="1.3" fill="#dfe4ff"/>
+      <circle cx="64" cy="22" r="1.6" fill="#f2f0ff"/>
+      <circle cx="45" cy="4" r="1.1" fill="#c9d2f5"/>
+    </svg>
+    <div class="railhead">
+      <h2>Pages</h2>
+      <i class="ti ti-chevrons-up" title="Collapse all" aria-hidden="true"></i>
+      <i class="ti ti-arrow-back-up" title="Undo a move" aria-hidden="true"></i>
+      <i class="ti ti-trash" title="Trash" aria-hidden="true"></i>
+      <i class="ti ti-plus" title="New top-level page or section" aria-hidden="true"></i>
+    </div>
+    <ul class="tree">
+      <li>
+        <div class="row">
+          <span class="lbl">Guides</span>
+          <span class="ops"><i class="ti ti-plus" aria-hidden="true"></i><i class="ti ti-x" aria-hidden="true"></i></span>
+          <i class="ti ti-chevron-down disc" aria-hidden="true"></i>
+        </div>
+        <ul>
+          <li><div class="row"><span class="lbl">Battery Replacement</span></div></li>
+          <li><div class="row on"><span class="lbl">Failover Guide</span>
+            <span class="ops"><i class="ti ti-x" aria-hidden="true"></i></span></div></li>
+        </ul>
+      </li>
+      <li>
+        <div class="row">
+          <span class="lbl">Projects</span>
+          <i class="ti ti-chevron-right disc" aria-hidden="true"></i>
+        </div>
+      </li>
+      <li><div class="row"><span class="lbl">Notes</span></div></li>
+      <li><div class="row"><span class="lbl">Archive</span></div></li>
+    </ul>
+    <div class="foot scene--day" aria-hidden="true">
+      <svg viewBox="0 0 218 96" fill="none">
+        <defs>
+          <pattern id="dune-hatch" width="4" height="4" patternUnits="userSpaceOnUse"
+            patternTransform="rotate(-28)">
+            <line x1="1" y1="0" x2="1" y2="4" stroke="#4a3428" stroke-width="1"/>
+          </pattern>
+        </defs>
+        <path d="M0 66 C34 44 68 42 102 57 C136 72 170 70 218 51 L218 96 L0 96 Z"
+          fill="#d9b57e" stroke="#4a3428" stroke-width="1.5"/>
+        <!-- Hatch on the far dune's shaded flank, gated to the hatch variants. -->
+        <path class="hatch-overlay" d="M102 57 C136 72 170 70 218 51 L218 78 C170 84 136 80 102 70 Z"
+          fill="url(#dune-hatch)" opacity="0.4"/>
+        <path d="M0 82 C45 65 100 67 145 78 C173 85 195 85 218 79 L218 96 L0 96 Z"
+          fill="#c4694a" stroke="#4a3428" stroke-width="1.5"/>
+        <!-- And along the near dune's ridge, under the cactus. -->
+        <path class="hatch-overlay" d="M0 82 C45 65 100 67 145 78 C173 85 195 85 218 79 L218 88 C195 92 173 92 145 86 C100 76 45 74 0 90 Z"
+          fill="url(#dune-hatch)" opacity="0.45"/>
+        <path d="M64 56 L64 24" stroke="#4a3428" stroke-width="3" stroke-linecap="round"/>
+        <path d="M64 44 L56 44 Q52 44 52 40 L52 34" stroke="#4a3428" stroke-width="2.5"
+          stroke-linecap="round" fill="none"/>
+        <path d="M64 39 L72 39 Q76 39 76 35 L76 30" stroke="#4a3428" stroke-width="2.5"
+          stroke-linecap="round" fill="none"/>
+      </svg>
+    </div>
+    <div class="foot scene--night" aria-hidden="true">
+      <svg viewBox="0 0 218 120" fill="none" stroke="#7e86c2" stroke-width="1.5">
+        <defs>
+          <pattern id="mound-hatch" width="4" height="4" patternUnits="userSpaceOnUse"
+            patternTransform="rotate(-28)">
+            <line x1="1" y1="0" x2="1" y2="4" stroke="#7e86c2" stroke-width="0.9"/>
+          </pattern>
+        </defs>
+        <path d="M0 106 C40 96 90 92 140 98 C170 102 196 102 218 96 L218 120 L0 120 Z" fill="#141833"/>
+        <!-- Moonlit hatch along the mound's crest, gated to the hatch variants. -->
+        <path class="hatch-overlay" d="M0 106 C40 96 90 92 140 98 C170 102 196 102 218 96 L218 104 C196 109 170 109 140 106 C90 100 40 104 0 113 Z"
+          fill="url(#mound-hatch)" stroke="none" opacity="0.3"/>
+        <path d="M84 100 L70 46 L60 100 Z" fill="#b9dcf2"/>
+        <path d="M70 46 L66 100" stroke-opacity="0.5"/>
+        <path d="M104 102 L96 22 L82 100 Z" fill="#dcecf8"/>
+        <path d="M96 22 L92 101" stroke-opacity="0.5"/>
+        <path d="M124 102 L118 54 L104 102 Z" fill="#8fb8dd"/>
+        <path d="M144 100 L140 70 L128 102 Z" fill="#b9dcf2"/>
+      </svg>
+    </div>
+  </nav>
+  <div class="content" data-tex="page">
+    <div class="topbar" data-tex="bar">
+      <div class="controls" data-tex="barhi">
+        <div class="slot">
+          <button class="iconbtn" title="Hide pages"><i class="ti ti-layout-sidebar" aria-hidden="true"></i></button>
+          <button class="publish">Publish</button>
+          <button class="cancel">Cancel</button>
+        </div>
+        <div class="slot">
+          <nav class="seg" aria-label="Editor view mode">
+            <button type="button" aria-selected="true">Visual</button>
+            <button type="button">Markdown</button>
+            <button type="button">Split</button>
+          </nav>
+          <nav class="seg seg--icons" aria-label="Editor width">
+            <button type="button" aria-selected="true" title="Narrow"><i class="ti ti-rectangle-vertical" aria-hidden="true"></i></button>
+            <button type="button" title="Medium"><i class="ti ti-square" aria-hidden="true"></i></button>
+            <button type="button" title="Full"><i class="ti ti-rectangle" aria-hidden="true"></i></button>
+          </nav>
+        </div>
+        <div class="slot slot--end">
+          <button class="themedrop" title="Visual theme">Desert <i class="ti ti-chevron-down" aria-hidden="true"></i></button>
+          <nav class="seg seg--icons" id="scheme" aria-label="Editor colour theme">
+            <button type="button" data-set="light" aria-selected="true" title="Light"><i class="ti ti-sun" aria-hidden="true"></i></button>
+            <button type="button" data-set="dark" title="Dark"><i class="ti ti-moon" aria-hidden="true"></i></button>
+            <button type="button" data-set="system" title="Match system"><i class="ti ti-device-desktop" aria-hidden="true"></i></button>
+          </nav>
+        </div>
+      </div>
+      <div class="toprow">
+        <nav class="crumb" aria-label="Breadcrumb">
+          Home <span class="sep">&#8250;</span> Guides <span class="sep">&#8250;</span>
+          <span class="here">Failover</span>
+        </nav>
+        <div class="search"><i class="ti ti-search" aria-hidden="true"></i><span>Search pages&#8230;</span></div>
+      </div>
+    </div>
+    <div class="workspace">
+      <div class="doc">
+        <svg class="crystals-doc scene--day" width="66" height="76" viewBox="0 0 66 76" fill="none"
+          stroke="#4a3428" stroke-width="1.5" aria-hidden="true">
+          <path d="M24 6 L37 17 L24 32 L11 17 Z" fill="#9d86b5"/>
+          <path d="M24 6 L24 32" stroke-opacity="0.6"/>
+          <path d="M50 32 L59 40 L50 51 L41 40 Z" fill="#cfe7e2"/>
+          <path d="M17 50 L24 56 L17 64 L10 56 Z" fill="#e9d3a8"/>
+        </svg>
+        <div class="title">Failover</div>
+        <hr class="titlerule">
+        <p>Edit this Markdown document. <span class="badge">beta</span></p>
+        <div class="callout">
+          <span class="capn">Note</span>
+          <p>Watch the flat colour: the question is whether these surfaces read as washed paper.</p>
+        </div>
+        <h2>Timeouts</h2>
+        <p>Configure the failover timeouts to thirty seconds.</p>
+        <div class="fence">
+          <span class="lang" id="langbtn" role="button" tabindex="0">bash
+            <i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+          <div>failover.timeout = 30</div>
+          <div>failover.retries = 3</div>
+          <!-- INSIDE the fence, as the app's picker rides inside the block's <pre>. That is
+               what makes the containing-block hazard real: a fixed descendant of a filtered
+               element anchors to the element, not the viewport. As a sibling it would be
+               unaffected, and the demo would prove nothing. -->
+          <div class="langmenu" id="langmenu" hidden>
+            <div>bash</div><div>haskell</div><div>json</div>
+          </div>
+        </div>
+        <h2>Fallback routes</h2>
+        <p>Static routes take over when the primary link drops.<span class="caret"></span></p>
+      </div>
+      <aside class="sidebar">
+        <button class="panetoggle" title="Collapse metadata panel"><i class="ti ti-layout-sidebar-right" aria-hidden="true"></i></button>
+        <nav class="panel" aria-label="Table of contents">
+          <h3>Contents</h3>
+          <ul class="toc">
+            <li class="here">Failover</li>
+            <li class="l2 here">Timeouts</li>
+            <li class="l2">Fallback routes</li>
+          </ul>
+        </nav>
+        <section class="panel">
+          <h3>Attachments</h3>
+          <p class="quiet">No attachments yet.</p>
+        </section>
+        <section class="panel">
+          <h3>History</h3>
+          <p><a href="#">Revision history</a></p>
+        </section>
+      </aside>
+    </div>
+    <div class="footer">
+      <div class="cmdbar" data-tex="tool">
+        <span class="style" title="Block style">Paragraph <i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+        <span class="div"></span>
+        <i class="ti ti-bold active" aria-hidden="true" title="Bold"></i>
+        <i class="ti ti-italic" aria-hidden="true" title="Italic"></i>
+        <i class="ti ti-strikethrough" aria-hidden="true" title="Strike"></i>
+        <i class="ti ti-code" aria-hidden="true" title="Code"></i>
+        <i class="ti ti-link" aria-hidden="true" title="Link"></i>
+        <span class="div"></span>
+        <i class="ti ti-list" aria-hidden="true" title="Bullet list"></i>
+        <i class="ti ti-list-numbers" aria-hidden="true" title="Ordered list"></i>
+        <i class="ti ti-blockquote" aria-hidden="true" title="Blockquote"></i>
+        <i class="ti ti-file-code" aria-hidden="true" title="Code block"></i>
+        <i class="ti ti-minus" aria-hidden="true" title="Horizontal rule"></i>
+        <span class="div"></span>
+        <span class="badgebtn" title="Badge">Badge <i class="ti ti-chevron-down" aria-hidden="true"></i></span>
+        <i class="ti ti-info-circle" aria-hidden="true" title="Insert callout"></i>
+        <span class="div"></span>
+        <i class="ti ti-table" aria-hidden="true" title="Insert table"></i>
+        <i class="ti ti-square-chevron-down" aria-hidden="true" title="Insert collapsible"></i>
+        <span class="div"></span>
+        <i class="ti ti-photo" aria-hidden="true" title="Insert image or file"></i>
+        <span class="save" title="Saved">Save</span>
+      </div>
+      <span class="wordcount">22 words</span>
+    </div>
+  </div>
+</main>
+<p class="legend"><b>PROTOTYPE.</b> Question: can non-uniform colour read as watercolour on the
+Moebius surfaces, within ADR-081's texture rules (self-contained SVG data-URI background layers
+only)? Flip variants with the bar below or the arrow keys; switch day and night with the sun and
+moon buttons. Reference: the hat, bench and wall in
+<code>docs/mockups/images/moebius-girl-on-bench.jpg</code>. Every texture here is a background
+layer built as a data URI at runtime; the winning recipe would be baked static in the real theme,
+exactly as the current speckle is.</p>
+
+<div class="proto-bar" role="toolbar" aria-label="Prototype variant switcher">
+  <button id="prev" title="Previous variant">&#8592;</button>
+  <span class="vlabel" id="vlabel"></span>
+  <button id="next" title="Next variant">&#8594;</button>
+  <!-- Both tracks are symmetric around 100, so the CENTRE position is the baked, approved
+       default for whichever variant is showing. The datalist puts a tick at that centre. -->
+  <label>strength <input type="range" id="strength" min="0" max="200" value="100" list="proto-centre"></label>
+  <label>scale <input type="range" id="scale" min="25" max="175" value="100" list="proto-centre"></label>
+  <datalist id="proto-centre"><option value="100"></option></datalist>
+  <!-- Off by default: the wash was judged with the speckle disabled, and the theme has
+       since dropped the speckle entirely (ADR-085). Tick it only to see what it replaced. -->
+  <label><input type="checkbox" id="speck"> base speckle</label>
+  <label><input type="checkbox" id="drawnwhole"> wobble whole block</label>
+</div>
+
+<script>
+"use strict";
+/* PROTOTYPE code: throwaway, no error handling, everything in one file on purpose. */
+
+const root = document.documentElement;
+const frame = document.getElementById("frame");
+
+/* --- texture builders: each returns one CSS background layer string ------------------------------ */
+
+const svgUri = (body, w, h, stretch) =>
+    `url("data:image/svg+xml,${encodeURIComponent(
+        `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}'` +
+        (stretch ? " preserveAspectRatio='none'" : "") + `>${body}</svg>`
+    )}")`;
+
+let uid = 0;
+
+// Soft low-frequency blotches in one tint: the wash itself is uneven. Round-two feedback: the
+// three-step posterise read as quantised contour bands, so the alpha now keeps its soft ramp
+// with only a mild gamma to firm the blotch cores.
+function mottleLayer(colour, opacity, freq, seed, w, h) {
+    const id = "m" + (uid++);
+    const body =
+        `<defs><filter id='${id}' x='0' y='0' width='100%' height='100%'>` +
+        `<feTurbulence type='fractalNoise' baseFrequency='${freq}' numOctaves='3' seed='${seed}'/>` +
+        `<feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/>` +
+        `<feComponentTransfer result='t'><feFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/></feComponentTransfer>` +
+        `<feFlood flood-color='${colour}'/>` +
+        `<feComposite in2='t' operator='in'/>` +
+        `</filter></defs>` +
+        `<rect width='100%' height='100%' filter='url(#${id})' opacity='${opacity}'/>`;
+    return `${svgUri(body, w, h, true)} center / 100% 100% no-repeat`;
+}
+
+// Mid-frequency pigment grain in a hue-shifted colour: granulation. RETIRED in round three
+// (left out; if it returns it replaces the base speckle) -- kept for reference.
+function grainLayer(colour, opacity, freq, seed, tile) {
+    const id = "g" + (uid++);
+    const body =
+        `<defs><filter id='${id}' x='0' y='0' width='100%' height='100%'>` +
+        `<feTurbulence type='fractalNoise' baseFrequency='${freq}' numOctaves='2' seed='${seed}' stitchTiles='stitch'/>` +
+        `<feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 7 -3.1' result='t'/>` +
+        `<feFlood flood-color='${colour}'/>` +
+        `<feComposite in2='t' operator='in'/>` +
+        `</filter></defs>` +
+        `<rect width='100%' height='100%' filter='url(#${id})' opacity='${opacity}'/>`;
+    return `${svgUri(body, tile, tile, false)} left top / ${tile}px ${tile}px repeat`;
+}
+
+// Sparse irregular flecks: the pits and chips. Low frequency, three octaves for ragged shapes,
+// hard threshold high up the range so only the peaks survive as isolated blobs.
+// Threshold chosen by measuring coverage off a canvas: 30/-20.4 gave 5.3% (read as terrazzo);
+// 34/-25 gave 1.75% at the baked frequency; round four asked for fewer twice over, and
+// 44/-35 lands at 0.43% coverage without changing the fleck size.
+// Round-two feedback: the reference flecks have DRAWN BORDERS (the speeder's paint chips are
+// pale shapes with an ink rim). The blob alpha is dilated for the ink, then the fill colour is
+// composited over the interior, so each fleck arrives outlined.
+function fleckLayer(fillColour, borderColour, opacity, freq, seed, tile) {
+    const id = "f" + (uid++);
+    const body =
+        `<defs><filter id='${id}' x='0' y='0' width='100%' height='100%'>` +
+        `<feTurbulence type='fractalNoise' baseFrequency='${freq}' numOctaves='3' seed='${seed}' stitchTiles='stitch'/>` +
+        `<feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 44 -35' result='t'/>` +
+        `<feMorphology in='t' operator='dilate' radius='1.1' result='td'/>` +
+        `<feFlood flood-color='${borderColour}'/>` +
+        `<feComposite in2='td' operator='in' result='rim'/>` +
+        `<feFlood flood-color='${fillColour}'/>` +
+        `<feComposite in2='t' operator='in' result='core'/>` +
+        `<feMerge><feMergeNode in='rim'/><feMergeNode in='core'/></feMerge>` +
+        `</filter></defs>` +
+        `<rect width='100%' height='100%' filter='url(#${id})' opacity='${opacity}'/>`;
+    return `${svgUri(body, tile, tile, false)} left top / ${tile}px ${tile}px repeat`;
+}
+
+// The speeder's transition: a tonal ramp carried by grain density rather than by smooth
+// interpolation. threshold(noise + ramp): where the ramp is high most noise passes the cut and
+// the tint is nearly solid; where it is low only the peaks pass, so the tone dissolves into dots.
+function ditherFadeLayer(colour, opacity, freq, seed, dir, w, h) {
+    const id = "d" + (uid++);
+    const grad = dir === "h"
+        ? `x1='0' y1='0' x2='1' y2='0'`
+        : `x1='0' y1='0' x2='0' y2='1'`;
+    const body =
+        `<defs>` +
+        `<linearGradient id='${id}g' ${grad}>` +
+        `<stop offset='0' stop-color='black'/><stop offset='0.45' stop-color='#555555'/>` +
+        `<stop offset='1' stop-color='white'/>` +
+        `</linearGradient>` +
+        `<filter id='${id}' x='0' y='0' width='100%' height='100%'>` +
+        `<feColorMatrix in='SourceGraphic' type='luminanceToAlpha' result='ramp'/>` +
+        `<feTurbulence type='fractalNoise' baseFrequency='${freq}' numOctaves='2' seed='${seed}' result='n'/>` +
+        `<feColorMatrix in='n' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0' result='na'/>` +
+        `<feComposite in='ramp' in2='na' operator='arithmetic' k1='0' k2='0.8' k3='0.75' k4='0' result='sum'/>` +
+        `<feColorMatrix in='sum' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 16 -10.4' result='cut'/>` +
+        `<feFlood flood-color='${colour}'/>` +
+        `<feComposite in2='cut' operator='in'/>` +
+        `</filter></defs>` +
+        `<rect width='100%' height='100%' fill='url(#${id}g)' filter='url(#${id})' opacity='${opacity}'/>`;
+    return `${svgUri(body, w, h, true)} center / 100% 100% no-repeat`;
+}
+
+/* --- the hue fade, as ONE opaque gradient per surface --------------------------------
+   Round six. The fade used to be two translucent layers laid over the surface, and at
+   night a background-blend-mode kept them from lifting it. That works but is hard to
+   read: you cannot tell what colour a panel will be without knowing how `color` blending
+   behaves. Here the fade is folded INTO the surface's own gradient, so every stop is a
+   literal colour and the stylesheet says exactly what it paints. A theme would carry the
+   output of this verbatim; it is computed here only so the sliders stay live.
+
+   The night result is identical to what the blend produced, because the same rule is
+   applied arithmetically: the tint contributes hue and saturation, and the surface keeps
+   its own luminance. That is the whole trick, and it is why a naive fade to a chosen
+   purple lightens -- #3d2a5c carries 4.1x the luminance of #12142f, so interpolating
+   toward it raises the surface whether you meant to or not. Scaling the tint down to the
+   surface's luminance first removes that, and leaves only the colour change. Day needs no
+   such care: its tints are already darker than the paper, so they shade as they go. */
+const srgbToLin = (c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+const linToSrgb = (c) => {
+    const x = Math.max(0, Math.min(1, c));
+    return x <= 0.0031308 ? x * 12.92 : 1.055 * Math.pow(x, 1 / 2.4) - 0.055;
+};
+const hexToRgb = (hex) => {
+    const n = parseInt(hex.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const rgbToHex = (rgb) =>
+    "#" + rgb.map((v) => Math.round(Math.max(0, Math.min(255, v)))
+        .toString(16).padStart(2, "0")).join("");
+const luminance = (rgb) => {
+    const [r, g, b] = rgb.map((v) => srgbToLin(v / 255));
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+/* The tint carried at a chosen multiple of the surface's own luminance. `lift` of 1 holds
+   the surface exactly where it is and moves only hue -- which turned out to be TOO still
+   at night: at #12142f's luminance of 0.008 there is almost no room for chroma, so the
+   whole gradient collapsed to a few units of colour. Letting the ends move a little in
+   luminance as well is what makes the fade legible. The head lifts slightly, as if lit
+   from above, and the foot DEEPENS rather than brightening -- so the panel gains contrast
+   without the washing-out that sent us here in the first place. A naive fade straight to
+   the tint would be lift 4.1, which is the version that looked bleached. */
+function atLuminance(tintHex, baseRgb, lift) {
+    const tint = hexToRgb(tintHex);
+    const lt = luminance(tint);
+    if (lt <= 0) return baseRgb.slice();
+    const k = (luminance(baseRgb) * lift) / lt;
+    return tint.map((v) => linToSrgb(srgbToLin(v / 255) * k) * 255);
+}
+const mixRgb = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+
+/* The two ramps: cool holds the first half, warm the last, with a gap between where the
+   surface is its own colour and the stipple carries the changeover. */
+const coolAt = (p) => Math.max(0, 1 - p / 0.48);
+const warmAt = (p) => Math.max(0, (p - 0.52) / 0.48);
+
+// The surface's colour at position p along the fade, as a literal.
+function fadedColour(baseHex, p, tint, op, scheme, s, weight = 1) {
+    let rgb = hexToRgb(baseHex);
+    /* The night fade has two separate knobs and the slider drives them in turn, so that
+       turning it up always increases the effect and CENTRE is the settled default:
+
+         below centre  hue depth, from nothing up to the full tint; luminance untouched
+         at centre     full hue shift, luminance exactly held -- the version to beat
+         above centre  luminance begins to travel too, head lifting and foot deepening
+
+       An earlier cut drove the lift from zero, which meant the slider's centre was already
+       carrying luminance travel and turning it DOWN improved the panel. That is the wrong
+       way round for a control, and it hid the fact that the liked setting was a pure hue
+       shift all along. Alpha alone saturates -- once the ends reach the tint there is
+       nowhere further to go -- which is why the lift has to be what the top half scales.
+       Day ignores all of this and scales its alphas: there the tint itself is the effect. */
+    const hue = scheme === "dark" ? Math.min(1, s) : s;
+    const travel = scheme === "dark" ? Math.max(0, s - 1) : 0;
+    const apply = (tintHex, alpha, lift) => {
+        if (alpha <= 0) return;
+        const target = scheme === "dark"
+            ? atLuminance(tintHex, rgb, Math.pow(lift, travel))
+            : hexToRgb(tintHex);                 // day: a plain tint, which darkens anyway
+        rgb = mixRgb(rgb, target, Math.min(1, alpha));
+    };
+    /* Some surfaces want less of it than others: the top bar is a small, strongly coloured
+       object and the full fade overwhelmed it. */
+    const w = weight;
+    apply(tint.fadeCool, Math.min(1, op.fadeCool * hue) * w * coolAt(p), op.liftCool);
+    apply(tint.fadeWarm, Math.min(1, op.fadeWarm * hue) * w * warmAt(p), op.liftWarm);
+    return rgbToHex(rgb);
+}
+
+/* A surface is either hard bands (the rail's flat Moebius sky) or one flat colour. Either
+   way the fade is sampled along it and the result is a plain gradient. */
+function fadedBase(target, scheme, tint, op, s, faded) {
+    const bands = target.bands[scheme];
+    const w = target.fadeWeight ?? 1;
+    const angle = target.dir === "h" ? "90deg" : "180deg";
+    if (!faded) {
+        if (bands.length === 1) return bands[0][0];
+        return `linear-gradient(${angle}, ` + bands
+            .map(([c, a, b]) => `${c} ${(a * 100).toFixed(0)}% ${(b * 100).toFixed(0)}%`)
+            .join(", ") + ")";
+    }
+    if (bands.length === 1) {
+        // Smooth: five samples are enough for a ramp with a flat middle.
+        const stops = [0, 0.24, 0.5, 0.76, 1].map((p) =>
+            `${fadedColour(bands[0][0], p, tint, op, scheme, s, w)} ${(p * 100).toFixed(0)}%`);
+        return `linear-gradient(${angle}, ${stops.join(", ")})`;
+    }
+    // Banded: each band takes the fade at its own midpoint, so the hard edges survive.
+    return `linear-gradient(${angle}, ` + bands.map(([c, a, b]) => {
+        const col = fadedColour(c, (a + b) / 2, tint, op, scheme, s, w);
+        return `${col} ${(a * 100).toFixed(0)}% ${(b * 100).toFixed(0)}%`;
+    }).join(", ") + ")";
+}
+
+// The cape's shadow hatching: fine parallel strokes banked against the shaded edge, wobbled a
+// little so they read as pen lines rather than a screen tint. The band pair sets where the
+// bank begins and shoulders (offsets along the run), so shallow bars can take a thin strip.
+function hatchLayer(colour, opacity, seed, dir, w, h, band) {
+    const id = "t" + (uid++);
+    const grad = dir === "h"
+        ? `x1='0' y1='0' x2='1' y2='0'`
+        : `x1='0' y1='0' x2='0' y2='1'`;
+    const body =
+        `<defs>` +
+        `<pattern id='${id}p' width='4' height='4' patternUnits='userSpaceOnUse' patternTransform='rotate(-28)'>` +
+        `<line x1='1' y1='0' x2='1' y2='4' stroke='${colour}' stroke-width='1.1'/>` +
+        `</pattern>` +
+        `<linearGradient id='${id}g' ${grad}>` +
+        `<stop offset='${band[0]}' stop-color='white' stop-opacity='0'/>` +
+        `<stop offset='${band[1]}' stop-color='white' stop-opacity='0.3'/>` +
+        `<stop offset='1' stop-color='white' stop-opacity='1'/>` +
+        `</linearGradient>` +
+        `<mask id='${id}m'><rect width='100%' height='100%' fill='url(#${id}g)'/></mask>` +
+        `<filter id='${id}f' x='-5%' y='-5%' width='110%' height='110%'>` +
+        `<feTurbulence type='fractalNoise' baseFrequency='0.06' numOctaves='2' seed='${seed}' result='n'/>` +
+        `<feDisplacementMap in='SourceGraphic' in2='n' scale='2.5'/>` +
+        `</filter></defs>` +
+        `<g mask='url(#${id}m)' opacity='${opacity}'>` +
+        `<rect width='100%' height='100%' fill='url(#${id}p)' filter='url(#${id}f)'/>` +
+        `</g>`;
+    return `${svgUri(body, w, h, true)} center / 100% 100% no-repeat`;
+}
+
+/* --- palettes: the tint each device paints with, per hour ---------------------------------------- */
+/* Chromatic on purpose: the artwork's grain is a hue-shifted neighbour of the surface (pink over
+   purple), not black. Day shades in sepia-ochre and lifts toward paper; night shades in the sky's
+   own near-black and lifts toward moonlit lilac. */
+const TINTS = {
+    light: { shade: "#7a5c3e", lift: "#fffdf2", warm: "#b0563a", cool: "#9d86b5",
+             fleckFill: "#e9d3a8", fleckInk: "#4a3428",
+             fadeCool: "#9fc6bf", fadeWarm: "#cf9668", hatch: "#4a3428" },
+    dark:  { shade: "#05061c", lift: "#aeb6e8", warm: "#dd7038", cool: "#6f9fd0",
+             fleckFill: "#313877", fleckInk: "#05061c",
+             fadeCool: "#6f9fd0", fadeWarm: "#3d2a5c", hatch: "#05061c" },
+};
+/* Night panels are darker, so most night opacities run higher -- same convention as the
+   theme's own --moebius-speck-* pairs. Exceptions from round-two feedback: night mottle runs
+   LIGHTER (the near-black blotches read as mud) and leans on the moonlit lift tint instead.
+
+   Round-three feedback baked in as the new defaults (slider positions read against the round-
+   three build; strength track 0-300, scale track 50-220):
+   - A at strength 2/10, scale max: mottle opacities x0.6, frequencies x1/2.2.
+   - B at strength 5/10, scale 3/10: fleck opacities x1.5, frequency unchanged.
+   - C at strength 3/10, scale min: fade opacities x0.9, dither frequency doubled again.
+   - Chromatic granulation left out entirely (warm/cool kept only for reference). */
+const OP = {
+    light: { mottle: 0.036, lift: 0.032, warm: 0.09, cool: 0.07, fleck: 0.75,
+             fadeCool: 0.4, fadeWarm: 0.45, dither: 0.19, hatch: 0.68,
+             liftCool: 1, liftWarm: 1 },
+    dark:  { mottle: 0.032, lift: 0.026, warm: 0.09, cool: 0.07, fleck: 0.88,
+             fadeCool: 1, fadeWarm: 1, dither: 0.4, hatch: 0.98,
+             liftCool: 2.2, liftWarm: 0.32 },
+};
+
+/* --- the surfaces and their variant layer stacks -------------------------------------------------- */
+/* dir: which way light falls off the surface (matches the banked speckle's directions).
+   w/h: rough panel proportions, so stretched layers keep sane aspect.
+   flecks: round-three feedback -- the rail is clearly sky, not a surface, so it takes none;
+   the top bar and the editor toolbar are the flecked surfaces, as on the archer's bottle and
+   the speeder's hull.
+   hatch: hatching shows shadow and contour, so it must sit inside a drawn element. The rail's
+   share lives in the scenery hills' .hatch-overlay paths (inside the dunes, never the sky);
+   the bars take a thin bank -- the bottom 15% of the top bar, the bottom quarter of the
+   toolbar -- via hatchBand [start, shoulder]. */
+/* `bands` is each surface's own colour written out per scheme, because the fade is folded
+   into it (see fadedBase) and a token could not carry the result. A pair of positions per
+   colour makes a hard edge; a single entry is a flat surface that takes a smooth ramp.
+   These are the same values as the [data-scheme] blocks at the top of the file -- --rail,
+   --bar, --page and --face -- and must be kept in step with them.
+
+   The top bar's own bands run vertically while its fade runs across, and one gradient
+   cannot do both. Its rows carry their own colour instead (as they do in the app, where
+   .markdown-editor__toolbar--top paints --moebius-bar-hi), which leaves the bar itself
+   free to be the horizontal fade. */
+const TARGETS = [
+    /* No dithered stipple on the rail: its bands already carry the colour, so the stipple
+       had no changeover to state and was just fine grain gathering at the foot -- the
+       retired speckle's effect in the retired speckle's place. */
+    { sel: "[data-tex='rail']", seed: 0, dir: "v", w: 220, h: 660, flecks: false, hatch: false,
+      noDither: true,
+      bands: {
+        light: [["#cfe7e2", 0, 0.12], ["#dde8d2", 0.12, 0.24], ["#f7efdd", 0.24, 0.62],
+                ["#e9d3a8", 0.62, 0.84], ["#d9b57e", 0.84, 1]],
+        dark:  [["#131637", 0, 0.30], ["#1b2049", 0.30, 0.62], ["#232963", 0.62, 1]],
+      } },
+    { sel: "[data-tex='barhi']", seed: 10, dir: "h", w: 980, h: 46, flecks: true, hatch: false,
+      fadeWeight: 0.4,
+      bands: { light: [["#cfe7e2", 0, 1]], dark: [["#6d2f1e", 0, 1]] } },
+    { sel: "[data-tex='bar']", seed: 10, dir: "h", w: 980, h: 92, flecks: true, hatch: true,
+      hatchBand: [0.62, 0.82], fadeWeight: 0.4,
+      bands: { light: [["#efe0bd", 0, 1]], dark: [["#52210f", 0, 1]] } },
+    { sel: "[data-tex='page']", seed: 20, dir: "v", w: 780, h: 620, flecks: false, hatch: false,
+      bands: { light: [["#faf4e6", 0, 1]], dark: [["#12142f", 0, 1]] } },
+    /* Round four: the toolbar keeps its flecks and hatch band but takes no hue fade -- a small
+       drawn object holds one colour. */
+    { sel: "[data-tex='tool']", seed: 30, dir: "h", w: 560, h: 46, flecks: true, hatch: true,
+      hatchBand: [0.50, 0.74], noFade: true,
+      bands: { light: [["#f7efdd", 0, 1]], dark: [["#2a3068", 0, 1]] } },
+];
+/* The hatch bank always gathers at the BOTTOM of its element ("along the bottom quarter"),
+   regardless of which way the surface's fade runs, so it takes its own direction. */
+const HATCH_DIR = "v";
+
+const VARIANTS = ["current", "wash", "grain", "fade", "hatch", "full"];
+const NAMES = {
+    current: "0 — current speckle (baseline)",
+    wash: "A — wash mottling",
+    grain: "B — bordered flecks",
+    fade: "C — hue fade, dithered transition",
+    hatch: "E — hatched shadow banks",
+    full: "D — full wash (A+B+C+E)",
+};
+
+/* Layer stacks per variant. s = global strength multiplier, k = 1/scale on frequencies.
+   Round-three: every effect's liked solo setting is baked into OP and the frequencies below,
+   so D now combines the approved settings verbatim (no per-effect quieting factors), and the
+   granulation layers are gone -- if they ever return, they replace the base speckle. */
+function layersFor(variant, target, tint, op, s, k, seedBase) {
+    const L = [];
+    const cap = (x) => Math.min(1, x * s);
+    if (variant === "wash" || variant === "full") {
+        /* Scale doubled again in round five, so a blotch spans most of a panel rather than
+           dappling it: 0.009 -> 0.0041 -> 0.00205, and 0.012 -> 0.0055 -> 0.00275. */
+        L.push(mottleLayer(tint.shade, cap(op.mottle), 0.00205 * k, seedBase + 1, target.w, target.h));
+        L.push(mottleLayer(tint.lift, cap(op.lift), 0.00275 * k, seedBase + 5, target.w, target.h));
+    }
+    if ((variant === "grain" || variant === "full") && target.flecks) {
+        L.push(fleckLayer(tint.fleckFill, tint.fleckInk, cap(op.fleck), 0.045 * k,
+            seedBase + 3, 340));
+    }
+    if ((variant === "fade" || variant === "full") && !target.noFade) {
+        /* The two ramps are gone from here: they are folded into the surface's own gradient
+           by fadedBase. What is left is the stippled changeover, which is a texture rather
+           than a wash and so stays a layer of its own. It is drawn in the colour the fade
+           reaches at the far end, computed at the surface's luminance, so the stipple states
+           the transition early without lifting anything -- the speeder's hull again.
+           C liked at minimum scale twice running: the dither frequency has doubled each
+           round, 0.5 -> 1 -> 2, so the transition grain is now single-pixel stipple. */
+        const scheme = root.dataset.scheme === "dark" ? "dark" : "light";
+        if (!target.noDither) {
+            const far = fadedColour(target.bands[scheme][target.bands[scheme].length - 1][0],
+                1, tint, op, scheme, s, target.fadeWeight ?? 1);
+            L.push(ditherFadeLayer(far, cap(op.dither), 2 * k, seedBase + 4,
+                target.dir, target.w, target.h));
+        }
+    }
+    if ((variant === "hatch" || variant === "full") && target.hatch) {
+        L.push(hatchLayer(tint.hatch, cap(op.hatch), seedBase + 8,
+            HATCH_DIR, target.w, target.h, target.hatchBand));
+    }
+    return L;
+}
+
+/* --- state and wiring ------------------------------------------------------------------------------ */
+const params = new URLSearchParams(location.search);
+let variant = VARIANTS.includes(params.get("variant")) ? params.get("variant") : "current";
+let strength = 1;
+let scale = 1;
+
+function retexture() {
+    const scheme = root.dataset.scheme === "dark" ? "dark" : "light";
+    const tint = TINTS[scheme];
+    const op = OP[scheme];
+    TARGETS.forEach((t) => {
+        const el = document.querySelector(t.sel);
+        const layers = layersFor(variant, t, tint, op, strength, 1 / scale, t.seed);
+        const faded = (variant === "fade" || variant === "full") && !t.noFade;
+        const base = fadedBase(t, scheme, tint, op, strength, faded);
+        el.style.background = layers.length || faded ? [...layers, base].join(", ") : "";
+    });
+    frame.dataset.variant = variant;
+    document.getElementById("vlabel").textContent = NAMES[variant];
+    const url = new URL(location);
+    url.searchParams.set("variant", variant);
+    history.replaceState(null, "", url);
+}
+
+function step(delta) {
+    const i = (VARIANTS.indexOf(variant) + delta + VARIANTS.length) % VARIANTS.length;
+    variant = VARIANTS[i];
+    retexture();
+}
+
+document.getElementById("prev").addEventListener("click", () => step(-1));
+document.getElementById("next").addEventListener("click", () => step(1));
+document.addEventListener("keydown", (e) => {
+    const t = e.target;
+    if (t.closest && t.closest("input, textarea, [contenteditable]")) return;
+    if (e.key === "ArrowLeft") step(-1);
+    if (e.key === "ArrowRight") step(1);
+});
+document.getElementById("strength").addEventListener("input", (e) => {
+    strength = e.target.value / 100;
+    retexture();
+});
+document.getElementById("scale").addEventListener("input", (e) => {
+    scale = e.target.value / 100;
+    retexture();
+});
+document.getElementById("speck").addEventListener("change", (e) => {
+    frame.classList.toggle("no-speck", !e.target.checked);
+});
+
+/* The language picker, pinned the way the app pins it: `position: fixed`, placed from the
+   trigger's own rect. With "wobble whole block" off it lands under the trigger; with it on
+   the fence has become a containing block and the same arithmetic puts the menu somewhere
+   else entirely. That is the whole argument against filtering the block, made visible. */
+const langBtn = document.getElementById("langbtn");
+const langMenu = document.getElementById("langmenu");
+langBtn.addEventListener("click", () => {
+    if (!langMenu.hidden) { langMenu.hidden = true; return; }
+    const r = langBtn.getBoundingClientRect();
+    langMenu.style.left = `${Math.round(r.left)}px`;
+    langMenu.style.top = `${Math.round(r.bottom + 6)}px`;
+    langMenu.hidden = false;
+});
+document.addEventListener("click", (e) => {
+    if (!langMenu.hidden && !langMenu.contains(e.target) && e.target !== langBtn) {
+        langMenu.hidden = true;
+    }
+});
+document.getElementById("drawnwhole").addEventListener("change", (e) => {
+    frame.classList.toggle("drawn-whole", e.target.checked);
+    langMenu.hidden = true;
+});
+
+/* The scheme switch, as the day/night mockup wires it. */
+const group = document.getElementById("scheme");
+const media = window.matchMedia("(prefers-color-scheme: dark)");
+let choice = "light";
+
+function apply() {
+    root.dataset.scheme = choice === "system" ? (media.matches ? "dark" : "light") : choice;
+    for (const button of group.querySelectorAll("button")) {
+        button.setAttribute("aria-selected", String(button.dataset.set === choice));
+    }
+    retexture();
+}
+
+group.addEventListener("click", (event) => {
+    const button = event.target.closest("button");
+    if (!button) return;
+    choice = button.dataset.set;
+    apply();
+});
+
+media.addEventListener("change", () => { if (choice === "system") apply(); });
+apply();
+</script>
+</body>
+</html>

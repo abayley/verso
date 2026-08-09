@@ -9,7 +9,7 @@ distinct from the others and from the first round. A third round (designs N to
 R) was added on 2026-07-03, alongside a refresh of design L to match the
 editor as it now is. Designs L, P, and R were relaid out on 2026-08-03 against
 the editor's current control layout (see below). A fourth round (designs S
-and T) and a fifth (designs U and V) were added on 2026-08-04 -- four further
+and T) and a fifth (designs U and V) were added on 2026-08-05 -- four further
 Moebius directions, each distinct from R and from each other, drawn from the
 reference art in `images/`. They are design references only; they are not
 served by Verso and are not part of the editor build.
@@ -425,7 +425,7 @@ palette needs care in dark scheme, the decorative SVGs (sun, dunes, crystals)
 are fixed art that must be drawn per breakpoint, and the sepia-on-cream
 contrast sits close to accessibility limits for small text.
 
-## Fourth Round (2026-08-04)
+## Fourth Round (2026-08-05)
 
 Two further Moebius directions, deliberately different from design R's warm
 daylight desert and from each other, drawn from the reference art collected
@@ -436,7 +436,7 @@ where both deserts are hard-edged and banded, T is soft, rounded, and hazy.
 ### Moebius Hand-Drawn Texture Pass
 
 All three Moebius mockups (R, S, T) carry a hand-drawn texture pass, applied
-on 2026-08-04 with two SVG filters used from CSS:
+on 2026-08-05 with two SVG filters used from CSS:
 
 - The not-quite-straight line: `feTurbulence` plus `feDisplacementMap` at
   scale 2, in three seeds so neighbouring controls do not bend identically,
@@ -480,7 +480,7 @@ controls hold the campfire's ember orange (with a soft glow), crystal blue
 picks out the switch states, and the contents rail marks the on-screen
 sections as an ember segment. This is the darkest design in the set: chrome
 and reading surface both go to night, and the only lit things are the
-crystals, the moon, and the ember accents. (Revised on 2026-08-04: the page
+crystals, the moon, and the ember accents. (Revised on 2026-08-05: the page
 was first a fire-lit parchment card floating in the dark, which made a
 handsome figure-ground statement but a bright one; the deep sky reads better
 as a surface to work on after dark.)
@@ -514,7 +514,7 @@ with scalloped cloud-trees at its foot, and every control is a rounded pill.
 The terracotta pink marks the active page and the contents rail's on-screen
 segment; one saturated swallow blue -- the bird crossing the top of the
 document -- is spent only on the active mark in the command bar; the callout
-is a scalloped cloud holding its text. (Retuned on 2026-08-04: the first cut
+is a scalloped cloud holding its text. (Retuned on 2026-08-05: the first cut
 sat too lavender; the palette now follows the clearing painting's greys,
 blues, and pink terracotta, and the sky gained its stars.)
 
@@ -531,7 +531,7 @@ everywhere, and anything sitting on the sky strip has to go pale), the dusk
 framing sits oddly beside a bright-white system light scheme, and the charm
 depends on restraint -- one more colour and it tips into Candy Pop.
 
-## Fifth Round (2026-08-04)
+## Fifth Round (2026-08-05)
 
 Two more Moebius directions, again distinct from R, S, T, and each other,
 from the new reference art: a sandcastle city under a noon sky, and a coral
@@ -600,7 +600,7 @@ The mockups below stay as the design record.
 
 The Moebius designs each depict a scene, and a scene has an hour of day baked
 into it -- which does not fit the editor's model, where a visual theme and a
-light/dark scheme are orthogonal. This prototype, built on 2026-08-04,
+light/dark scheme are orthogonal. This prototype, built on 2026-08-05,
 resolves that for designs R and S: they are not two themes but **one theme at
 two hours**, and the light/dark switch in the top bar is wired up and works.
 
@@ -634,3 +634,48 @@ night city (Norah's Home under stars); V is the one case where re-lighting
 the same scene works, since the coral field re-tints plausibly to deep water.
 The type here is Roboto, the production font, because the prototype is aimed
 at the real theme system rather than at the illustration.
+
+## Moebius Watercolour Texture Study
+
+Prototype: [markdown-editor-moebius-watercolour-prototype.html](markdown-editor-moebius-watercolour-prototype.html)
+
+This one shipped too, as the Moebius theme's wash (ADR-085). Keep the file:
+it is the tuning record, and the place to start from for any change to the
+numbers, not a design that has been superseded.
+
+The question it answered was whether colour could stop reading as flat paint
+without breaking ADR-081's rule that texture is background layers only. The
+speckle that shipped with the theme left every surface one uniform colour with
+dots on it; the Giraud reference art in `images/` never does that. The wash
+replaced that speckle rather than joining it -- the two are the same idea at
+the same frequency, and the settings here were judged with the speckle off,
+which is why the toggle on the page starts unticked. The study
+took the surfaces apart into four devices and tuned each against a named piece
+of art -- the hat and wall in `moebius-girl-on-bench.jpg`, the cape and bottle
+in `moebius-desert-archer.jpg`, the hull in `moebius-desert-speeder.jpg`.
+
+The page carries the whole set as switchable variants (`?variant=`, or the
+arrow keys), with strength and scale sliders whose centre position is the
+approved setting, so any of it can be re-judged in place:
+
+- **A, wash mottling.** Low-frequency blotches, one shading tint and one
+  lifting toward paper. An early cut posterised the alpha into three steps and
+  read as contour banding; it is a smooth ramp with a mild gamma now.
+- **B, bordered flecks.** Chips of paint with a drawn ink rim, from an
+  `feMorphology` dilate. Only on surfaces that read as objects -- the rail is
+  sky and takes none.
+- **C, hue fade.** Cool where the light lands, warm where it falls away, with
+  the changeover carried by stipple rather than a blend, as the speeder's hull
+  carries its blue-to-salmon.
+- **E, hatching.** 4px pen strokes for shadow and contour, confined to the
+  bars' lower edges and to the insides of the scenery hills.
+
+**D** combines the four. Two devices were tried and dropped: chromatic
+granulation (it is the speckle's idea at the speckle's frequency, so the two
+together read as noise) and pigment edge pooling (it never read as anything
+but a border).
+
+Two things worth knowing before touching it. Judge at 1:1 only -- every one of
+these is misjudged at any other scale. And densities were set by measuring
+coverage off a canvas rather than by eye: the flecks sit at 0.43% because 5.3%
+read as terrazzo and 1.75% was still too busy.

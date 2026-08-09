@@ -38,26 +38,9 @@ backend:
 
 frontend:
 
-- editor toolbar: styling buttons do not highlight or stay down to indicate
-  which styles are currently in effect
-- editor toolbar: can click on the "create link" button with no text selected.
-  The link dialogue opens, but Save appears to do nothing.
-- bold and italic styling does not round-trip correctly:
-  - `***bold italic ***` renders as literal text in Visual mode, not as bold and
-    italic
-  - `***bold italic***` renders as expected
-  - In Visual mode, click Bold, type `b` and a space, click Italic, type `i` and
-    a space, click Code, then type `c`. Switching to Markdown mode renders
-    `**b *i ***` followed by a code-formatted `c`. Switching back to Visual mode
-    shows literal text, not formatting.
+- default and studio themes have no top-level drop-zone for page moves, once we scroll down
+- change light/dark selector to single toggle
 - test with no javascript
-- investigate watercolour effects for moebius
-    the colours have a watercolour feel IMO.
-    i want to imitate they way that surfaces look a bit rough and pitted.
-    see moebius-girl-on-bench.pjg. look at her hat; how it fades from white to blue, and it has spots on it.
-    and the bench and wall behing her do not look clean.
-    that's what i was trying for with the speckle.
-    can we get a watercolur effect, so that colours are not uniform and flat?
 - test pasting in tables from word or excel
 - review code structure
 - can we bundle as desktop app?
@@ -66,6 +49,20 @@ frontend:
 
 done:
 
+- 2026-08-09: the page tree's top-level drop target pins below the rail header instead
+  of scrolling away, so a page can be dropped at the top level from anywhere in a long
+  tree without breaking off the drag to scroll up. Invisible until a drag arms it, so
+  only Moebius (which paints its sun and moon there) shows a change
+- 2026-08-09: Moebius surfaces are no longer flat colour with dots on them.
+  The speckle is gone, replaced (not joined) by four wash devices tuned
+  against the reference art (ADR-085): uneven
+  low-frequency mottling, a cool-to-warm hue fade whose changeover is dithered
+  into stipple, 4px hatching for shadow and contour (the bars' lower edges and
+  the scenery hills, never a working surface), and outlined paint-chip flecks
+  on the two surfaces that read as objects. Chromatic granulation and edge
+  pooling were tried and dropped. The tuning record, and the place to start
+  from for any change to the numbers, is
+  docs/mockups/markdown-editor-moebius-watercolour-prototype.html
 - 2026-08-07: Publish stages only the current page instead of scanning and
   committing every change in the document tree
 - 2026-08-07: code-language picker menus materialise on first interaction, so

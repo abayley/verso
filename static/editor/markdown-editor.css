@@ -3418,31 +3418,39 @@ markdown-editor[data-appearance-open]
     var(--moebius-bar-hi);
 }
 
-/* The editing field's wash is anchored to the FIELD, exactly as the prototype anchors it,
-   so the fade spans the column the reader is in rather than the window. Viewport
-   attachment was tried and is wrong for matching: it compresses the whole fade into one
-   window height and pins it there, so the warm end lands at the bottom of the screen
-   while the prototype has only reached about two thirds of the way. Same colours, and
-   they still do not look alike.
+/* The editing field's wash is pinned to the VIEWPORT, so the fade completes in one window
+   height whatever the document's length. Anchoring it to the field was tried first, to match
+   the prototype's panel: on a long document that spreads the ramp over the document's height,
+   and at ~20,000px you see about four per cent of it at a time -- a flat wash with no fade in
+   it at all.
 
-   All four layers must agree, whichever is chosen: this element is not a scroller, so its
-   box is the whole document, and a layer left on a different attachment ramps against a
-   different box -- which is how the stipple came to float free of the colour it belongs to
-   and read as loose grain.
+   It is pinned with a fixed-position backdrop, NOT with `background-attachment: fixed`.
+   Attachment gives the same picture and cannot ride the scrolling layer, so every frame
+   repaints the whole wash and re-runs its feTurbulence: measured on the ~46,000px fixture,
+   6,500ms of raster across a 120-frame scroll against 18ms unpinned, and 9,000ms if only some
+   layers are pinned. A fixed element does not move relative to the viewport, so the compositor
+   rasters it once and reuses it -- 14ms, cheaper than the unpinned original.
 
-   The cost, stated plainly: on a very long document the wash spreads over the document's
-   height, so it fades toward invisible and the SVG textures stretch with it. The
-   ~46,000px fixture (hangrepro...pub.md) is the case to look at before deciding this is
-   settled. Matching the prototype was the instruction; this is the trade it carries.
-   */
-:root[data-editor-theme="moebius"] .markdown-editor__content {
+   All four layers stay on this one element. The stipple states the changeover the fade makes,
+   so the two must ramp against the same box; splitting them across boxes is how the stipple
+   came to float free of the colour it belongs to and read as loose grain.
+
+   The trade this carries: the paper texture is now pinned too, so the grain holds still while
+   the text scrolls over it. That is the same light-on-a-surface reading the fade has, and it
+   also stops the blotches being stretched to the document's height. */
+:root[data-editor-theme="moebius"] .markdown-editor__content::before {
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='780' height='620' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00205' numOctaves='3' seed='21'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%237a5c3e'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.036'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='780' height='620' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00275' numOctaves='3' seed='25'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%23fffdf2'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.032'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='780' height='620' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='dg' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='black'/%3E%3Cstop offset='0.45' stop-color='%23555555'/%3E%3Cstop offset='1' stop-color='white'/%3E%3C/linearGradient%3E%3Cfilter id='d' x='0' y='0' width='100%25' height='100%25'%3E%3CfeColorMatrix in='SourceGraphic' type='luminanceToAlpha' result='ramp'/%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2' numOctaves='2' seed='24' result='n'/%3E%3CfeColorMatrix in='n' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0' result='na'/%3E%3CfeComposite in='ramp' in2='na' operator='arithmetic' k1='0' k2='0.8' k3='0.75' k4='0' result='sum'/%3E%3CfeColorMatrix in='sum' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 16 -10.4' result='cut'/%3E%3CfeFlood flood-color='%23e7caad'/%3E%3CfeComposite in2='cut' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23dg)' filter='url(%23d)' opacity='0.19'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
     var(--moebius-page);
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: fixed;
+  z-index: -1;
 }
 
-:root[data-editor-theme="moebius"].dark .markdown-editor__content {
+:root[data-editor-theme="moebius"].dark .markdown-editor__content::before {
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='780' height='620' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00205' numOctaves='3' seed='21'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%2305061c'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.032'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='780' height='620' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='m' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.00275' numOctaves='3' seed='25'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 2.4 -0.85'/%3E%3CfeComponentTransfer result='t'%3E%3CfeFuncA type='gamma' amplitude='1' exponent='1.5' offset='0'/%3E%3C/feComponentTransfer%3E%3CfeFlood flood-color='%23aeb6e8'/%3E%3CfeComposite in2='t' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' filter='url(%23m)' opacity='0.026'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='780' height='620' preserveAspectRatio='none'%3E%3Cdefs%3E%3ClinearGradient id='dg' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='black'/%3E%3Cstop offset='0.45' stop-color='%23555555'/%3E%3Cstop offset='1' stop-color='white'/%3E%3C/linearGradient%3E%3Cfilter id='d' x='0' y='0' width='100%25' height='100%25'%3E%3CfeColorMatrix in='SourceGraphic' type='luminanceToAlpha' result='ramp'/%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2' numOctaves='2' seed='24' result='n'/%3E%3CfeColorMatrix in='n' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0' result='na'/%3E%3CfeComposite in='ramp' in2='na' operator='arithmetic' k1='0' k2='0.8' k3='0.75' k4='0' result='sum'/%3E%3CfeColorMatrix in='sum' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 16 -10.4' result='cut'/%3E%3CfeFlood flood-color='%231c112d'/%3E%3CfeComposite in2='cut' operator='in'/%3E%3C/filter%3E%3C/defs%3E%3Crect width='100%25' height='100%25' fill='url(%23dg)' filter='url(%23d)' opacity='0.4'/%3E%3C/svg%3E") center / 100% 100% no-repeat,
@@ -3642,4 +3650,133 @@ markdown-editor[data-appearance-open]
    floating bar sits on the page the way the mockups' does. */
 :root[data-editor-theme="moebius"] .markdown-editor__toolbar--commands {
   box-shadow: 0 2px 0 var(--border);
+}
+
+/* --- the hand: drawn frames on content blocks ----------------------
+   The chrome is drawn; the content was not, so fences and callouts read as machine-ruled
+   against the rest of the theme. The frame is a FILTERED PSEUDO-ELEMENT carrying both the
+   border and the fill, with the block itself going borderless -- as the prototype has it
+   (its .fence::before and .callout::before). Never filter the block:
+
+   1. It wobbles the block's own text. On a monospace grid that reads as a rendering fault,
+      and the block is editable.
+   2. A filter makes its element a containing block, so a `position: fixed` descendant
+      anchors to the block instead of the viewport. The fence's language menu is exactly
+      that -- chrome.ts pins it fixed -- and filtering the <pre> moves the open menu a
+      measured 408px across and 622px down.
+
+   Cost was profiled before this went in: the frames add no measurable raster, and the cost
+   does not grow with the document, because only what is on screen rasters. See
+   docs/design/drawn-frames-paint-profile.md. */
+
+/* The base rule gives <pre> `overflow-x: auto`, which makes it a scroll container on both
+   axes and clips an inset frame away to nothing -- silently, so the first profile of this
+   treatment measured a filter that never painted. Long lines still scroll: on the <code>,
+   where the base design already puts them (see the note on `pre > code`). */
+:root[data-editor-theme="moebius"] .markdown-editor__surface pre {
+  background: none;
+  border: 0;
+  isolation: isolate;
+  overflow: visible;
+  position: relative;
+}
+
+:root[data-editor-theme="moebius"] .markdown-editor__surface pre::before {
+  background: var(--markdown-editor-code-background);
+  border: var(--moebius-line-width) solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 2px 0 var(--border);
+  content: "";
+  filter: url(#moebius-wobble-a);
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: -1;
+}
+
+/* Callouts keep their per-kind accent as the fill; only the rule down the side becomes a
+   drawn frame all the way round. The accent is read through the cascade, so every kind --
+   and any future one -- picks this up without its own rule. */
+:root[data-editor-theme="moebius"] .markdown-editor__surface .markdown-alert {
+  background: none;
+  border-inline-start: 0;
+  isolation: isolate;
+  /* The kind's name leaves the flow to become the cap below, so the body would otherwise sit
+     hard against the top edge, under the cap's overlap. */
+  padding-top: 0.75rem;
+  position: relative;
+}
+
+:root[data-editor-theme="moebius"] .markdown-editor__surface .markdown-alert::before {
+  background: color-mix(in srgb, var(--markdown-alert-accent, var(--markdown-editor-quote-border)) 12%, transparent);
+  border: var(--moebius-line-width) solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 2px 0 var(--border);
+  content: "";
+  filter: url(#moebius-wobble-b);
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: -1;
+}
+
+/* The kind's name becomes a drawn cap straddling the top edge, as the mockup has it (its
+   `.callout .capn`), rather than a line of bold text inside the box.
+
+   The mockup shows a single teal cap because it shows a single kind. Here the cap takes the
+   kind's own accent instead, so a warning and a caution stay apart at a glance, and the
+   accent's paired text token carries the contrast in both schemes -- pale on the day accents,
+   near-black on the lighter night ones.
+
+   The cap is not filtered, which is also the mockup's choice: it reads as drawn from the
+   wobbled frame behind it, and displacing type at 10px only blurs it. */
+:root[data-editor-theme="moebius"] .markdown-editor__surface .markdown-alert-title {
+  background: var(--markdown-alert-accent, var(--markdown-editor-quote-border));
+  border: 1.5px solid var(--border);
+  border-radius: 5px;
+  color: var(--moebius-switch-text);
+  font-size: 10px;
+  font-weight: 700;
+  left: 14px;
+  letter-spacing: 0.22em;
+  padding: 0 9px;
+  position: absolute;
+  text-transform: uppercase;
+  top: -10px;
+}
+
+/* Collapsibles (ADR-054) share the callouts' accent palette, so they take the same frame --
+   without it they kept the old rule down the side and read as a different component sitting
+   next to a framed one. The summary stays in the flow: it is the control that opens the
+   block, not a label, so it keeps its hit area and its rotating arrow. The frame is a
+   pseudo-element at `inset: 0`, so it follows the block's height as it opens and closes with
+   nothing to keep in step. */
+:root[data-editor-theme="moebius"] .markdown-editor__surface .markdown-collapsible {
+  background: none;
+  border-inline-start: 0;
+  isolation: isolate;
+  position: relative;
+}
+
+:root[data-editor-theme="moebius"] .markdown-editor__surface .markdown-collapsible::before {
+  background: color-mix(in srgb, var(--markdown-collapsible-accent, var(--markdown-editor-quote-border)) 12%, transparent);
+  border: var(--moebius-line-width) solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 2px 0 var(--border);
+  content: "";
+  filter: url(#moebius-wobble-b);
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: -1;
+}
+
+/* A badge is filtered whole, unlike the blocks above: it is inline and can wrap, and a
+   pseudo-element would give one rect around the union of its line fragments rather than a
+   frame per fragment. Its text is short and not on a grid, so the wobble reads as drawn
+   rather than as a fault. The colour filter it already carries has to be repeated here --
+   `filter` is one property, so naming the wobble alone would drop it. */
+:root[data-editor-theme="moebius"] .markdown-editor__surface .badge {
+  border: 1.5px solid var(--border);
+  filter: saturate(0.7) brightness(0.95) url(#moebius-wobble-b);
 }

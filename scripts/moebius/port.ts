@@ -67,8 +67,6 @@ interface Target {
     scheme: Scheme;
     /** The opaque base the wash sits on -- the fade is folded into this token's gradient. */
     colour: string;
-    /** Pin every layer to the viewport. See the note in rebuild(). */
-    fixed: boolean;
     /** Keep the existing hand-drawn edge layer, which this script does not generate. */
     keepDrawnEdge: boolean;
 }
@@ -80,7 +78,6 @@ const TARGETS: readonly Target[] = [
         fade: "rail",
         scheme: "light",
         colour: "var(--moebius-rail)",
-        fixed: false,
         keepDrawnEdge: false,
     },
     {
@@ -89,7 +86,6 @@ const TARGETS: readonly Target[] = [
         fade: "rail",
         scheme: "dark",
         colour: "var(--moebius-rail)",
-        fixed: false,
         keepDrawnEdge: false,
     },
     {
@@ -98,7 +94,6 @@ const TARGETS: readonly Target[] = [
         fade: "bar",
         scheme: "light",
         colour: "var(--moebius-bar-lo)",
-        fixed: false,
         keepDrawnEdge: true,
     },
     {
@@ -107,25 +102,22 @@ const TARGETS: readonly Target[] = [
         fade: "bar",
         scheme: "dark",
         colour: "var(--moebius-bar-lo)",
-        fixed: false,
         keepDrawnEdge: true,
     },
     {
-        selector: ':root[data-editor-theme="moebius"] .markdown-editor__content',
+        selector: ':root[data-editor-theme="moebius"] .markdown-editor__content::before',
         panel: "content",
         fade: "page",
         scheme: "light",
         colour: "var(--moebius-page)",
-        fixed: false,
         keepDrawnEdge: false,
     },
     {
-        selector: ':root[data-editor-theme="moebius"].dark .markdown-editor__content',
+        selector: ':root[data-editor-theme="moebius"].dark .markdown-editor__content::before',
         panel: "content",
         fade: "page",
         scheme: "dark",
         colour: "var(--moebius-page)",
-        fixed: false,
         keepDrawnEdge: false,
     },
     {
@@ -134,7 +126,6 @@ const TARGETS: readonly Target[] = [
         fade: null,
         scheme: "light",
         colour: "var(--markdown-editor-pill-background)",
-        fixed: false,
         keepDrawnEdge: false,
     },
     {
@@ -143,7 +134,6 @@ const TARGETS: readonly Target[] = [
         fade: null,
         scheme: "dark",
         colour: "var(--markdown-editor-pill-background)",
-        fixed: false,
         keepDrawnEdge: false,
     },
 ];
@@ -245,16 +235,13 @@ function rebuild(css: string): string {
     let s = rebuildTokens(css);
     for (const target of TARGETS) {
         const head = target.keepDrawnEdge ? [drawnEdge(s, target.selector)] : [];
-        let layers = [...head, ...washLayers(target.panel, target.scheme, target.fade), target.colour];
-        if (target.fixed) {
-            // EVERY layer, the colour included. This element is not a scroller, so its box is the
-            // whole document: a layer left on the default attachment is stretched over the
-            // document's length instead of the panel's, and then the fade and the stipple ramp
-            // against different boxes and stop lining up. Applying this to the wash only -- which
-            // an earlier cut did -- puts the colour back on `scroll` every time this script runs,
-            // quietly undoing the fix.
-            layers = layers.map((layer) => `${layer} fixed`);
-        }
+        // No layer carries `background-attachment: fixed`. The content wash is pinned to the
+        // viewport by painting it on a fixed-position backdrop instead; attachment gives the
+        // same picture at roughly 350x the raster cost, because a fixed background cannot ride
+        // the scrolling layer and so re-runs its feTurbulence every frame. The measurements are
+        // in the CSS comment above that rule, and in
+        // docs/design/drawn-frames-paint-profile.md.
+        const layers = [...head, ...washLayers(target.panel, target.scheme, target.fade), target.colour];
         const expected = EXPECT[target.panel];
         if (layers.length !== expected) {
             throw new Error(`${target.selector}: built ${layers.length} layers, expected ${expected}`);

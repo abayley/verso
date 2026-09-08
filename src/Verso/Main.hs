@@ -25,7 +25,7 @@ main = do
     startedAt <- TimeMilli.getTimeMilli
     Log.consoleLog "MicroHTTP startup"
     configPath <- Maybe.fromMaybe defaultConfigPath <$> Environment.lookupEnv "MICROHTTP_CONFIG"
-    loaded <- Log.timed "startup: config" (VConfig.loadConfig configPath)
+    loaded <- Log.timed "startup: read config" (VConfig.loadConfig configPath)
     case loaded >>= prepare of
         Left err -> failWith err
         Right (settings, versoCfg) -> do

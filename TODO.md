@@ -23,6 +23,8 @@ backend:
 - automatic tag classification - create set of canonical tags
 - generate image descriptions - gemma4?
 - test with ghc
+- profile memory use
+- add CLI for agents to edit pages
 - load testing - simulate actual users fetching and saving pages
 - would like to notify user when page they are viewing or editing has been modified by someone else; how?
   needs to handle when other users update too - what is the notification mechanism? websockets?
@@ -38,6 +40,9 @@ backend:
 
 frontend:
 
+- editing collapsible heading makes with toggle between expanded and collapsed states
+- adding a code fence inside a collapsible is awkward - it tends to want to capture everything already in there
+- if i have a callout then a code block, or multiple code blocks, there's no way to insert empty lines between them.
 - default and studio themes have no top-level drop-zone for page moves, once we scroll down
 - change light/dark selector to single toggle
 - test with no javascript

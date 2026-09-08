@@ -130,7 +130,6 @@ startSearch cfg = do
                             warmEmbedder runtime
                             _ <- Concurrent.forkIO (workerLoop runtime)
                             enqueueReconcile runtime
-                            searchLog cfg "search: enabled"
                             pure (Just runtime)
 
 {- | Pays the embedder's one-off lazy initialisation now, at startup, so the
@@ -144,13 +143,12 @@ warmEmbedder :: SearchRuntime -> IO ()
 warmEmbedder runtime = do
     let cfg = srConfig runtime
         profile = searchProfile cfg
-    _ <-
-        Embedding.embedText
-            (srEmbedder runtime)
-            (srVocab runtime)
-            profile
-            (textBytes (Embedding.profileQueryPrefix profile ++ "warmup"))
-    searchLog cfg "search: embedder warmed"
+    Embedding.embedText
+        (srEmbedder runtime)
+        (srVocab runtime)
+        profile
+        (textBytes (Embedding.profileQueryPrefix profile ++ "warmup"))
+    return ()
 
 {- | Compares the configured model id with the one recorded beside the
 index; a mismatch means every stored vector is invalid. Records the

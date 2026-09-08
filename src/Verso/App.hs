@@ -74,14 +74,14 @@ appFromConfig settings vc = do
     -- with only a start and an end to go on there was no telling which phase owned a long
     -- gap -- the trash catalogue once held it for 28 seconds and looked like the link
     -- index's doing. Each phase forces its result, so the numbers are the real cost.
-    (accessLogger, clientErrorSink) <- Log.timed "startup: logs" $ do
+    (accessLogger, clientErrorSink) <- Log.timed "startup: open logger" $ do
         accessLogger <- Log.rotatingFileLogfmtLogger (VConfig.logMaxBytes vc) (VConfig.logKeep vc) (VConfig.accessLog vc)
         clientErrorSink <- Log.rotatingAppender (VConfig.logMaxBytes vc) (VConfig.logKeep vc) (VConfig.clientErrorLog vc)
         pure (accessLogger, clientErrorSink)
     operationStore <-
-        Log.timed "startup: operation log" (OperationStore.openOperationStore (VConfig.operationLog vc))
+        Log.timed "startup: index operation log" (OperationStore.openOperationStore (VConfig.operationLog vc))
     trashStore <-
-        Log.timed "startup: trash" (TrashStore.openTrashStore (VConfig.trashRoot vc) operationStore)
+        Log.timed "startup: index trash" (TrashStore.openTrashStore (VConfig.trashRoot vc) operationStore)
     -- Open the link index at startup in tree mode (RFC-0029): load the persisted index if
     -- its fingerprint still matches the tree, else build and persist. Move/delete then read
     -- it warm with no per-request walk, and re-export calls POST /index/refresh. When
@@ -93,7 +93,7 @@ appFromConfig settings vc = do
                 indexStore <- LinkIndexStore.newLinkIndexStore
                 opened <-
                     Log.timed
-                        "startup: link index"
+                        "startup: build link index"
                         (LinkIndexStore.openLinkIndex (VConfig.documentTreeRoot vc) (VConfig.linkIndex vc) indexStore)
                 Log.consoleLog (either ("link index FAILED (move/delete degraded until refresh): " ++) (const "link index ready") opened)
                 pure (Just indexStore)
@@ -109,7 +109,7 @@ appFromConfig settings vc = do
             else do
                 outcome <-
                     Log.timed
-                        "startup: git"
+                        "startup: check for git"
                         (Git.ensureRepository (VConfig.documentTreeRoot vc) (importIdentity vc))
                 Log.consoleLog (case outcome of Git.Initialised -> "git repository initialised (import commit)"; Git.AlreadyPresent -> "git repository present")
     -- Serialize structural tree mutations across the server's connection threads (see 'WriteLock').

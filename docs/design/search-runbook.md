@@ -10,7 +10,7 @@ Operating notes for Concordance search (RFC-0034, ADR-072..074).
 2. Configure: `search_enabled = true`, `search_model` and `search_vocab`
    pointing at the files under `vendor/search/<platform>/model/`, and
    optionally `search_index` (default `data/search_index`).
-3. Start the server. The log reports `search: enabled` and the startup
+3. Start the server. The log reports `startup: search nnnms` and the startup
    reconcile enqueues every unindexed page; first-time indexing of a large
    tree takes minutes in the background (the `/search` page shows the
    pending count meanwhile).

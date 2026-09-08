@@ -110,9 +110,10 @@ force their results before returning, which is what makes these numbers mean any
 timed :: String -> IO a -> IO a
 timed label action = do
     started <- TimeMilli.getTimeMilli
+    consoleLog label
     result <- action
     finished <- TimeMilli.getTimeMilli
-    consoleLog (label ++ " " ++ show (finished - started) ++ "ms")
+    consoleLog (label ++ ": " ++ show (finished - started) ++ "ms")
     pure result
 
 -- | As 'localTimestamp' for an arbitrary epoch-milli instant (e.g. a retention cutoff).

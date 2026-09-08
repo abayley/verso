@@ -5,20 +5,20 @@ const rejectAll = (): boolean => false;
 const acceptAll = (): boolean => true;
 
 describe("isAllowedLinkUri", (): void => {
-    it("allows a page-relative link even when the default validation would reject it", (): void => {
+    it("given a page-relative link the default validation rejects, when it is checked, then it is allowed", (): void => {
         expect(isAllowedLinkUri("assets/Spec_Sheet.pdf", rejectAll)).toBe(true);
     });
 
-    it("allows a dot-relative link", (): void => {
+    it("given a dot-relative link, when it is checked, then it is allowed", (): void => {
         expect(isAllowedLinkUri("./notes.md", rejectAll)).toBe(true);
     });
 
-    it("defers to the default validation for an absolute URL", (): void => {
+    it("given an absolute URL, when it is checked, then the default validation decides", (): void => {
         expect(isAllowedLinkUri("https://example.com", acceptAll)).toBe(true);
         expect(isAllowedLinkUri("https://example.com", rejectAll)).toBe(false);
     });
 
-    it("blocks a dangerous scheme by deferring to the default validation", (): void => {
+    it("given a dangerous scheme, when it is checked, then the default validation blocks it", (): void => {
         expect(isAllowedLinkUri("javascript:alert(1)", rejectAll)).toBe(false);
     });
 });

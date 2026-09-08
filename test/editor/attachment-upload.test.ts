@@ -26,20 +26,20 @@ describe("inline-image classification", (): void => {
         expect(isInlineImage(fileLike(name, type))).toBe(false);
     });
 
-    it("falls back to the MIME type when the name has no extension", (): void => {
+    it("given a name with no extension, when the file is classified, then its MIME type decides", (): void => {
         expect(isInlineImage(fileLike("clipboard", "image/png"))).toBe(true);
         expect(isInlineImage(fileLike("clipboard", "image/svg+xml"))).toBe(false);
     });
 });
 
 describe("attachment Markdown", (): void => {
-    it("embeds an inline image with the filename as alt text", (): void => {
+    it("given an inline image, when its Markdown is built, then it is embedded with the filename as alt text", (): void => {
         expect(attachmentMarkdown(fileLike("cat.png", "image/png"), "/attachments/h/cat.png")).toBe(
             "![cat.png](/attachments/h/cat.png)",
         );
     });
 
-    it("links a non-image attachment with the filename as link text", (): void => {
+    it("given a non-image attachment, when its Markdown is built, then it is linked with the filename as link text", (): void => {
         expect(attachmentMarkdown(fileLike("report.pdf", "application/pdf"), "/attachments/h/report.pdf")).toBe(
             "[report.pdf](/attachments/h/report.pdf)",
         );

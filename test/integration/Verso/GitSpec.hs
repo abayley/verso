@@ -41,7 +41,7 @@ isCommitted _ = False
 spec :: Spec
 spec =
     describe "Verso.Git" $ do
-        it "initialises a repository and is idempotent" $ do
+        it "given a directory with no repository, when one is ensured twice, then it is initialised once and the second call is a no-op" $ do
             root <- freshDir
             first <- Git.ensureRepository root importer
             first `shouldBe` Git.Initialised
@@ -50,7 +50,7 @@ spec =
             second <- Git.ensureRepository root importer
             second `shouldBe` Git.AlreadyPresent
 
-        it "commits a page and reads it back from the log" $ do
+        it "given a page, when it is committed, then it can be read back from the log" $ do
             root <- freshRepo
             writeText (root ++ "/page.md") "# Hello"
             result <- Git.commitPaths root author "Add page" ["page.md"]
@@ -60,7 +60,7 @@ spec =
             fmap Git.revAuthor (listToMaybe revs) `shouldBe` Just "Test Author"
             fmap Git.revSubject (listToMaybe revs) `shouldBe` Just "Add page"
 
-        it "commits all tree changes in one revision (commitAll)" $ do
+        it "given several changed pages, when the tree is committed, then all of them land in one revision" $ do
             root <- freshRepo
             writeText (root ++ "/x.md") "x body"
             writeText (root ++ "/y.md") "y body"
@@ -71,14 +71,14 @@ spec =
             length rx `shouldBe` 1
             length ry `shouldBe` 1
 
-        it "reports nothing to commit when there is no change" $ do
+        it "given no change, when a commit is attempted, then nothing to commit is reported" $ do
             root <- freshRepo
             writeText (root ++ "/page.md") "# Hello"
             _ <- Git.commitPaths root author "Add page" ["page.md"]
             again <- Git.commitPaths root author "No change" ["page.md"]
             again `shouldBe` Git.NothingToCommit
 
-        it "reads a page at a revision and diffs two revisions" $ do
+        it "given two revisions of a page, when they are read and diffed, then each revision's content and their difference are returned" $ do
             root <- freshRepo
             writeText (root ++ "/p.md") "alpha beta\n"
             c1 <- Git.commitPaths root author "v1" ["p.md"]
@@ -89,7 +89,7 @@ spec =
             diff <- Git.diffBetween root (hashOf c1) (hashOf c2) "p.md"
             (("beta" `isIn` diff) && ("gamma" `isIn` diff)) `shouldBe` True
 
-        it "follows a page's history across a rename" $ do
+        it "given a page that has been renamed, when its history is read, then it is followed across the rename" $ do
             root <- freshRepo
             writeText (root ++ "/a.md") "stable content"
             _ <- Git.commitPaths root author "Add a" ["a.md"]

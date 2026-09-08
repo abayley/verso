@@ -23,39 +23,39 @@ spec :: Spec
 spec =
     describe "MicroHttp.Process" $ do
         describe "runProcess" $ do
-            it "captures stdout and a success exit (resolving the executable via PATH)" $ do
+            it "given a program on PATH, when it is run, then its stdout and a success exit are captured" $ do
                 res <- Process.runProcess "echo" ["hello"] Nothing Nothing
                 Process.procExit res `shouldBe` Exit.ExitSuccess
                 Process.procOut res `shouldBe` BS.pack "hello\n"
                 Process.procErr res `shouldBe` BS.empty
 
-            it "reports a non-zero exit code" $ do
+            it "given a program that fails, when it is run, then its non-zero exit code is reported" $ do
                 res <- Process.runProcess "false" [] Nothing Nothing
                 Process.procExit res `shouldBe` Exit.ExitFailure 1
 
-            it "reports exit 127 when the executable does not exist" $ do
+            it "given an executable that does not exist, when it is run, then exit 127 is reported" $ do
                 res <- Process.runProcess "micro-http-no-such-program" [] Nothing Nothing
                 Process.procExit res `shouldBe` Exit.ExitFailure 127
 
-            it "captures stderr separately on failure" $ do
+            it "given a program that writes to stderr and fails, when it is run, then stderr is captured separately" $ do
                 res <- Process.runProcess "ls" ["/no/such/path/here"] Nothing Nothing
                 (Process.procExit res == Exit.ExitSuccess) `shouldBe` False
                 BS.null (Process.procErr res) `shouldBe` False
                 Process.procOut res `shouldBe` BS.empty
 
-            it "passes arguments verbatim, with no shell interpretation" $ do
+            it "given an argument containing shell metacharacters, when the program is run, then the argument arrives verbatim and nothing is interpreted" $ do
                 let nasty = "$(touch /tmp/micro-http-pwned); a b 'c'"
                 res <- Process.runProcess "echo" [nasty] Nothing Nothing
                 Process.procExit res `shouldBe` Exit.ExitSuccess
                 -- the literal argument comes back unchanged: the shell never saw it
                 Process.procOut res `shouldBe` BS.pack (nasty ++ "\n")
 
-            it "feeds supplied bytes to the child's stdin" $ do
+            it "given input bytes, when a program is run, then they are fed to its stdin" $ do
                 res <- Process.runProcess "cat" [] Nothing (Just (BS.pack "piped input"))
                 Process.procExit res `shouldBe` Exit.ExitSuccess
                 Process.procOut res `shouldBe` BS.pack "piped input"
 
-            it "runs the child in the requested working directory" $ do
+            it "given a working directory, when a program is run, then it starts there" $ do
                 freshDir
                 BS.writeFile (ioDir ++ "/marker.txt") (BS.pack "in-cwd")
                 -- a relative path only resolves if the child chdir'd into ioDir

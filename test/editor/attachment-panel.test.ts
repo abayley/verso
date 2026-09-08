@@ -7,7 +7,7 @@ import {
 } from "../../src/Verso/Editor/attachment-panel.js";
 
 describe("attachmentLinkMarkdown", (): void => {
-    it("builds a Markdown link from the name and local path", (): void => {
+    it("given a name and a local path, when a link is built, then it is Markdown pointing at that path", (): void => {
         expect(attachmentLinkMarkdown({ name: "My Report.pdf", localPath: "assets/My_Report.pdf" })).toBe(
             "[My Report.pdf](assets/My_Report.pdf)",
         );
@@ -15,7 +15,7 @@ describe("attachmentLinkMarkdown", (): void => {
 });
 
 describe("parseEmbeddedAttachments", (): void => {
-    it("parses a JSON array of attachments", (): void => {
+    it("given a JSON array of attachments, when parsed, then each attachment is returned", (): void => {
         const json = '[{"name":"A.pdf","localPath":"assets/A.pdf"},{"name":"B.pdf","localPath":"assets/B.pdf"}]';
 
         expect(parseEmbeddedAttachments(json)).toEqual([
@@ -24,15 +24,15 @@ describe("parseEmbeddedAttachments", (): void => {
         ]);
     });
 
-    it("returns no attachments for a missing attribute", (): void => {
+    it("given a missing attribute, when parsed, then no attachments are returned", (): void => {
         expect(parseEmbeddedAttachments(null)).toEqual([]);
     });
 
-    it("returns no attachments for malformed JSON", (): void => {
+    it("given malformed JSON, when parsed, then no attachments are returned", (): void => {
         expect(parseEmbeddedAttachments("{not json")).toEqual([]);
     });
 
-    it("skips entries missing a name or local path", (): void => {
+    it("given entries missing a name or local path, when parsed, then those entries are skipped", (): void => {
         const json = '[{"name":"A.pdf"},{"localPath":"assets/B.pdf"},{"name":"C.pdf","localPath":"assets/C.pdf"}]';
 
         expect(parseEmbeddedAttachments(json)).toEqual([{ name: "C.pdf", localPath: "assets/C.pdf" }]);
@@ -45,7 +45,7 @@ describe("AttachmentPanel", (): void => {
         { name: "B.pdf", localPath: "assets/B.pdf" },
     ];
 
-    it("lists each attachment as a link to its file", (): void => {
+    it("given several attachments, when the panel renders, then each is listed as a link to its file", (): void => {
         const panel = new AttachmentPanel(() => {});
         panel.setAttachments(sample);
 
@@ -54,14 +54,14 @@ describe("AttachmentPanel", (): void => {
         expect(links[0]?.getAttribute("href")).toBe("assets/A.pdf");
     });
 
-    it("marks the panel empty when there are no attachments", (): void => {
+    it("given no attachments, when the panel renders, then it is marked empty", (): void => {
         const panel = new AttachmentPanel(() => {});
         panel.setAttachments([]);
 
         expect(panel.element().dataset["empty"]).toBe("true");
     });
 
-    it("calls back with the attachment when its insert action is used", (): void => {
+    it("given a listed attachment, when its insert action is used, then the callback receives that attachment", (): void => {
         const onInsert = vi.fn();
         const panel = new AttachmentPanel(onInsert);
         panel.setAttachments(sample);
@@ -71,7 +71,7 @@ describe("AttachmentPanel", (): void => {
         expect(onInsert).toHaveBeenCalledWith(sample[0]);
     });
 
-    it("appends a new attachment and dedupes by local path", (): void => {
+    it("given an attachment already listed, when the same local path is added, then it is not duplicated", (): void => {
         const panel = new AttachmentPanel(() => {});
         panel.setAttachments([]);
 
@@ -83,7 +83,7 @@ describe("AttachmentPanel", (): void => {
         expect(panel.element().dataset["empty"]).toBe("false");
     });
 
-    it("in read-only mode lists open links but omits the insert action and dragging", (): void => {
+    it("given read-only mode, when the panel renders, then open links are listed and the insert action and dragging are omitted", (): void => {
         const panel = new AttachmentPanel(() => {}, true);
         panel.setAttachments(sample);
 

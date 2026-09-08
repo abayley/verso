@@ -36,21 +36,21 @@ describe("SearchPanel", (): void => {
         vi.useRealTimers();
     });
 
-    it("hides itself when the server has search disabled", async (): Promise<void> => {
+    it("given the server reports search disabled, when the panel connects, then it hides itself", async (): Promise<void> => {
         const client = fakeClient({ ok: true, value: { enabled: false, pending: 0, results: [] } });
         const panel = new SearchPanel(undefined, client);
         await panel.connect();
         expect(panel.element().hidden).toBe(true);
     });
 
-    it("shows itself when the server has search enabled", async (): Promise<void> => {
+    it("given the server reports search enabled, when the panel connects, then it shows itself", async (): Promise<void> => {
         const client = fakeClient(enabledResult([]));
         const panel = new SearchPanel(undefined, client);
         await panel.connect();
         expect(panel.element().hidden).toBe(false);
     });
 
-    it("debounces typing into one query and renders title, anchor, and excerpt rows", async (): Promise<void> => {
+    it("given several keystrokes in quick succession, when the debounce elapses, then one query runs and title, anchor and excerpt rows render", async (): Promise<void> => {
         const client = fakeClient(enabledResult([aResult]));
         const panel = new SearchPanel(undefined, client);
         const input = panel.element().querySelector("input") as HTMLInputElement;
@@ -70,7 +70,7 @@ describe("SearchPanel", (): void => {
         expect(row.querySelector(".markdown-editor__search-excerpt")?.textContent).toContain("failover timeouts");
     });
 
-    it("renders rows as page links, leaving modified clicks (new tab) to the browser", async (): Promise<void> => {
+    it("given a result row, when it is clicked with a modifier, then the browser handles the link and no navigation is requested", async (): Promise<void> => {
         const client = fakeClient(enabledResult([aResult]));
         const navigations: string[] = [];
         const panel = new SearchPanel((path: string): void => {
@@ -96,7 +96,7 @@ describe("SearchPanel", (): void => {
         expect(navigations).toEqual(["guides/failover.md"]);
     });
 
-    it("navigates to the clicked result's page", async (): Promise<void> => {
+    it("given a result row, when it is clicked plainly, then the panel navigates to that page", async (): Promise<void> => {
         const client = fakeClient(enabledResult([aResult]));
         const navigations: string[] = [];
         const panel = new SearchPanel((path: string): void => {
@@ -111,7 +111,7 @@ describe("SearchPanel", (): void => {
         expect(navigations).toEqual(["guides/failover.md"]);
     });
 
-    it("closes the dropdown on Escape and when the query is too short", async (): Promise<void> => {
+    it("given an open dropdown, when Escape is pressed or the query falls too short, then it closes", async (): Promise<void> => {
         const client = fakeClient(enabledResult([aResult]));
         const panel = new SearchPanel(undefined, client);
         const input = panel.element().querySelector("input") as HTMLInputElement;
@@ -145,7 +145,7 @@ describe("SearchPanel", (): void => {
         );
     });
 
-    it("shows the indexing-pending note when the queue is busy", async (): Promise<void> => {
+    it("given the indexing queue is busy, when results render, then the pending note is shown", async (): Promise<void> => {
         const client = fakeClient(enabledResult([aResult], 42));
         const panel = new SearchPanel(undefined, client);
         const input = panel.element().querySelector("input") as HTMLInputElement;

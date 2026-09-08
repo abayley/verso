@@ -41,17 +41,17 @@ spec :: Spec
 spec =
     describe "Verso.OperationLog" $ do
         describe "render/parse round-trip" $ do
-            it "round-trips a move operation" $
+            it "given a move operation, when it is rendered and parsed back, then the original is returned" $
                 OperationLog.parseOperation (OperationLog.renderOperation moveOp) `shouldBe` Just moveOp
 
-            it "round-trips a delete operation with a trash id and no 'to'" $
+            it "given a delete operation with a trash id and no destination, when it is rendered and parsed back, then the original is returned" $
                 OperationLog.parseOperation (OperationLog.renderOperation deleteOp) `shouldBe` Just deleteOp
 
-            it "is Nothing for a malformed line" $
+            it "given a malformed line, when it is parsed, then nothing is returned" $
                 OperationLog.parseOperation "{not json}" `shouldBe` Nothing
 
         describe "append/read and nextSeq" $ do
-            it "appends operations and reads them back in order" $ do
+            it "given several operations, when they are appended, then they read back in order" $ do
                 createParent
                 cleanLog
                 OperationLog.appendOperation logPath moveOp
@@ -59,7 +59,7 @@ spec =
                 ops <- OperationLog.readOperations logPath
                 ops `shouldBe` [moveOp, deleteOp]
 
-            it "gives seq 0 for an empty log and one past the maximum otherwise" $ do
+            it "given an empty log and then a populated one, when the next sequence number is asked for, then it is 0 and then one past the maximum" $ do
                 createParent
                 cleanLog
                 empty <- OperationLog.nextSeq logPath

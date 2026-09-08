@@ -38,34 +38,34 @@ spec :: Spec
 spec =
     describe "Verso.LinkIndex" $ do
         describe "buildIndex" $ do
-            it "records each page's resolved in-tree .md link targets (no asset edges)" $ do
+            it "given pages linking to other pages and to assets, when the index is built, then only the resolved in-tree .md targets are recorded" $ do
                 let ix = LinkIndex.buildIndex pages
                 List.sort (LinkIndex.outboundOf "guide/index.md" ix)
                     `shouldBe` List.sort ["guide/intro.md", "guide/setup.md", "ref/api.md"]
                 -- the asset reference is not an edge
                 List.sort (LinkIndex.outboundOf "ref/api.md" ix) `shouldBe` ["guide/intro.md"]
 
-            it "inverts the graph into a referrer map" $ do
+            it "given a set of pages, when the index is built, then the graph is inverted into a referrer map" $ do
                 let ix = LinkIndex.buildIndex pages
                 List.sort (LinkIndex.inboundOf "ref/api.md" ix)
                     `shouldBe` List.sort ["guide/index.md", "guide/intro.md", "ref/index.md"]
                 List.sort (LinkIndex.inboundOf "guide/intro.md" ix)
                     `shouldBe` List.sort ["guide/index.md", "guide/setup.md", "ref/api.md"]
 
-            it "yields no inbound entry for a never-linked or asset target" $ do
+            it "given a never-linked page and an asset target, when the index is built, then neither has an inbound entry" $ do
                 let ix = LinkIndex.buildIndex pages
                 LinkIndex.inboundOf "assets/diagram.png" ix `shouldBe` []
                 LinkIndex.inboundOf "index.md" ix `shouldBe` []
 
         describe "updatePage" $ do
-            it "patches the inverse when a page's links change" $ do
+            it "given a page whose links change, when it is updated, then the inverse is patched" $ do
                 let ix = LinkIndex.updatePage "guide/setup.md" (bs "now links [API](../ref/api.md)\n") (LinkIndex.buildIndex pages)
                 -- setup no longer links to intro, now links to api
                 List.sort (LinkIndex.inboundOf "guide/intro.md" ix) `shouldBe` List.sort ["guide/index.md", "ref/api.md"]
                 List.sort (LinkIndex.inboundOf "ref/api.md" ix)
                     `shouldBe` List.sort ["guide/index.md", "guide/intro.md", "guide/setup.md", "ref/index.md"]
 
-            it "rebuilds equal to incremental updates (no drift)" $ do
+            it "given a series of incremental updates, when compared with a rebuild, then the two indexes agree" $ do
                 let incremental =
                         LinkIndex.updatePage "ref/api.md" (bs "[Guide](../guide/index.md)\n") $
                             LinkIndex.updatePage "guide/setup.md" (bs "[API](../ref/api.md)\n") (LinkIndex.buildIndex pages)
@@ -78,20 +78,20 @@ spec =
                 incremental `shouldBe` rebuilt
 
         describe "removePage" $ do
-            it "drops the page's outbound edges from the inverse" $ do
+            it "given an indexed page, when it is removed, then its outbound edges leave the inverse" $ do
                 let ix = LinkIndex.removePage "guide/intro.md" (LinkIndex.buildIndex pages)
                 LinkIndex.outboundOf "guide/intro.md" ix `shouldBe` []
                 -- intro's outbound edges withdrawn, but guide/index.md still links to setup and api
                 List.sort (LinkIndex.inboundOf "guide/setup.md" ix) `shouldBe` ["guide/index.md"]
                 List.sort (LinkIndex.inboundOf "ref/api.md" ix) `shouldBe` List.sort ["guide/index.md", "ref/index.md"]
 
-            it "equals a rebuild without the removed page as a source" $ do
+            it "given a page removed from the index, when compared with a rebuild omitting it, then the two agree" $ do
                 let removed = LinkIndex.removePage "guide/intro.md" (LinkIndex.buildIndex pages)
                     rebuilt = LinkIndex.buildIndex (filter ((/= "guide/intro.md") . fst) pages)
                 removed `shouldBe` rebuilt
 
         describe "relocatePage" $ do
-            it "re-keys a moved page to its new path and body" $ do
+            it "given a moved page, when it is relocated, then it is re-keyed to its new path and body" $ do
                 let ix =
                         LinkIndex.relocatePage
                             "guide/intro.md"
@@ -105,21 +105,21 @@ spec =
                     `shouldBe` List.sort ["guide/index.md", "ref/index.md", "ref/intro.md"]
 
         describe "relocateIndex" $ do
-            it "equals a rebuild from the relocated edges (no drift)" $ do
+            it "given a relocated index, when compared with a rebuild from the relocated edges, then the two agree" $ do
                 let ix = LinkIndex.buildIndex pages
                     reloc p = Maybe.fromMaybe p (DocumentLinks.relocatePath "guide" "ref/guide" p)
                     oracle = LinkIndex.indexFromEdges [(reloc p, map reloc ts) | (p, ts) <- LinkIndex.outboundEdges ix]
                 LinkIndex.relocateIndex "guide" "ref/guide" ix `shouldBe` oracle
 
         describe "referrers (agrees with referrersMatching)" $ do
-            it "finds the referrers of a page delete target" $ do
+            it "given a page delete target, when its referrers are queried, then the linking pages are returned" $ do
                 let ix = LinkIndex.buildIndex pages
                     matches = (== "ref/api.md")
                     excluded = ["ref/index.md", "ref/api.md"]
                 List.sort (LinkIndex.referrers matches excluded ix)
                     `shouldBe` List.sort (dedup (map fst (DocumentLinks.referrersMatching matches excluded pages)))
 
-            it "finds the referrers into a section delete subtree" $ do
+            it "given a section delete subtree, when its referrers are queried, then the pages linking into it are returned" $ do
                 let ix = LinkIndex.buildIndex pages
                     matches = inSubtree "ref"
                     excluded = "index.md" : ["ref/index.md", "ref/api.md"]
@@ -127,7 +127,7 @@ spec =
                     `shouldBe` List.sort (dedup (map fst (DocumentLinks.referrersMatching matches excluded pages)))
 
         describe "rewriteCandidates (agrees with planMoveRewrites)" $ do
-            it "is a superset that drops no page planMoveRewrites changes" $ do
+            it "given a planned move, when candidates are drawn from the index, then they include every page the byte scan would rewrite" $ do
                 let ix = LinkIndex.buildIndex pages
                     move = ("guide", "ref/guide")
                     candidates = LinkIndex.rewriteCandidates (inSubtree "guide") ix

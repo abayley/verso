@@ -30,11 +30,11 @@ sectionManifest =
 spec :: Spec
 spec =
     describe "Verso.Trash" $ do
-        it "round-trips a page manifest with multiple items" $
+        it "given a page manifest with several items, when it is rendered and parsed back, then the original is returned" $
             Trash.parseManifest (Trash.renderManifest pageManifest) `shouldBe` Just pageManifest
 
-        it "round-trips a section manifest" $
+        it "given a section manifest, when it is rendered and parsed back, then the original is returned" $
             Trash.parseManifest (Trash.renderManifest sectionManifest) `shouldBe` Just sectionManifest
 
-        it "is Nothing when a required header is missing" $
+        it "given a manifest missing a required header, when it is parsed, then nothing is returned" $
             Trash.parseManifest "kind: page\nseq: 1\n" `shouldBe` Nothing

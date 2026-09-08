@@ -126,7 +126,7 @@ skip reason = putStrLn ("      [skipped: " ++ reason ++ "]")
 spec :: Spec
 spec =
     describe "Verso search end to end (RFC-0034)" $
-        it "indexes at startup, on save, and across reconcile; /search answers" $ do
+        it "given pages present at startup, saved later and reconciled, when each is indexed, then /search answers for all of them" $ do
             ready <- setup
             case ready of
                 Nothing -> skip "search shim or model not built"

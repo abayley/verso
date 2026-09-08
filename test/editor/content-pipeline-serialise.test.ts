@@ -6,7 +6,7 @@ const parseMarkdown = (markdown: string) => parseMarkdownWithRemark(markdown, co
 const { documentFromElements, documentToMarkdown } = commonContentPipeline;
 
 describe("commonContentPipeline DOM conversion", (): void => {
-    it("serialises supported DOM blocks into an editor document", (): void => {
+    it("given DOM blocks the pipeline supports, when converted, then they become an editor document", (): void => {
         const root = document.createElement("div");
 
         root.innerHTML = [
@@ -91,7 +91,7 @@ describe("commonContentPipeline DOM conversion", (): void => {
         });
     });
 
-    it("serialises horizontal-rule elements into editor blocks", (): void => {
+    it("given horizontal-rule elements, when converted, then they become editor rule blocks", (): void => {
         const root = document.createElement("div");
         root.innerHTML = "<hr>";
 
@@ -104,7 +104,7 @@ describe("commonContentPipeline DOM conversion", (): void => {
         });
     });
 
-    it("serialises heading elements of every level into editor headings", (): void => {
+    it("given heading elements of every level, when converted, then they become editor headings", (): void => {
         const root = document.createElement("div");
         root.innerHTML = ["<h4>Four</h4>", "<h5>Five</h5>", "<h6>Six</h6>"].join("");
 
@@ -123,7 +123,7 @@ describe("commonContentPipeline DOM conversion", (): void => {
         expect(documentToMarkdown(parseMarkdown(markdown))).toBe(markdown);
     });
 
-    it("serialises preformatted code elements into editor code blocks", (): void => {
+    it("given preformatted code elements, when converted, then they become editor code blocks", (): void => {
         const root = document.createElement("div");
         root.innerHTML = '<pre><code class="language-typescript">const value = 1;</code></pre>';
 
@@ -138,7 +138,7 @@ describe("commonContentPipeline DOM conversion", (): void => {
         });
     });
 
-    it("serialises blockquote elements into editor blockquote blocks", (): void => {
+    it("given blockquote elements, when converted, then they become editor blockquote blocks", (): void => {
         const root = document.createElement("div");
         root.innerHTML = "<blockquote><p>Quoted <strong>text</strong>.</p></blockquote>";
 
@@ -161,7 +161,7 @@ describe("commonContentPipeline DOM conversion", (): void => {
         });
     });
 
-    it("serialises line break elements into editor break inline nodes", (): void => {
+    it("given line break elements, when converted, then they become editor break inline nodes", (): void => {
         const root = document.createElement("div");
         root.innerHTML = "<p>First line<br>second line.</p>";
 
@@ -181,7 +181,7 @@ describe("commonContentPipeline DOM conversion", (): void => {
 });
 
 describe("documentToMarkdown", (): void => {
-    it("serialises an editor document to Markdown", (): void => {
+    it("given an editor document, when serialised, then it becomes Markdown", (): void => {
         expect(
             documentToMarkdown({
                 blocks: [
@@ -238,7 +238,7 @@ describe("documentToMarkdown", (): void => {
         expect(documentToMarkdown(documentFromElements(root.children))).toBe("**b *i*** `c`");
     });
 
-    it("serialises horizontal-rule blocks to Markdown", (): void => {
+    it("given horizontal-rule blocks, when serialised, then they become Markdown rules", (): void => {
         expect(
             documentToMarkdown({
                 blocks: [
@@ -250,7 +250,7 @@ describe("documentToMarkdown", (): void => {
         ).toBe("---");
     });
 
-    it("serialises code blocks to fenced Markdown", (): void => {
+    it("given code blocks, when serialised, then they become fenced Markdown", (): void => {
         expect(
             documentToMarkdown({
                 blocks: [
@@ -264,7 +264,7 @@ describe("documentToMarkdown", (): void => {
         ).toBe(["```typescript", "const value = 1;", "```"].join("\n"));
     });
 
-    it("serialises blockquote blocks to quoted Markdown", (): void => {
+    it("given blockquote blocks, when serialised, then they become quoted Markdown", (): void => {
         expect(
             documentToMarkdown({
                 blocks: [
@@ -380,7 +380,7 @@ describe("documentToMarkdown", (): void => {
         );
     });
 
-    it("serialises break inline nodes to Markdown hard breaks", (): void => {
+    it("given break inline nodes, when serialised, then they become Markdown hard breaks", (): void => {
         expect(
             documentToMarkdown({
                 blocks: [

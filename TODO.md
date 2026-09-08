@@ -45,6 +45,9 @@ frontend:
 - if i have a callout then a code block, or multiple code blocks, there's no way to insert empty lines between them.
 - default and studio themes have no top-level drop-zone for page moves, once we scroll down
 - change light/dark selector to single toggle
+- review editor design/architecture - use archify
+  compare with fumadocs editor design
+- how much bigger would react make it?
 - test with no javascript
 - test pasting in tables from word or excel
 - review code structure

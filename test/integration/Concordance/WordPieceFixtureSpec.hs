@@ -24,7 +24,7 @@ readProbes = do
 spec :: Spec
 spec =
     describe "Concordance.WordPiece against HuggingFace reference fixtures" $
-        it "reproduces the reference tokenisation of every probe" $ do
+        it "given the HuggingFace probe fixtures, when they are tokenised, then every reference tokenisation is reproduced" $ do
             vocab <- WordPiece.mkVocab <$> BS.readFile (fixtureDir ++ "/vocab.txt")
             probes <- readProbes
             length probes `shouldBe` 11

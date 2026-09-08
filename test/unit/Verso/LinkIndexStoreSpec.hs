@@ -51,7 +51,7 @@ removeAt rel = Directory.removeFile (root ++ "/" ++ rel)
 spec :: Spec
 spec =
     describe "Verso.LinkIndexStore" $ do
-        it "builds the index from the tree and answers referrer queries with no walk" $ do
+        it "given a tree of pages, when the index is built, then referrer queries are answered without walking it" $ do
             freshTree
             writeAt "a.md" "[B](./b.md) [C](./c.md)\n"
             writeAt "b.md" "leaf b\n"
@@ -62,7 +62,7 @@ spec =
             List.sort (LinkIndex.inboundOf "b.md" ix) `shouldBe` ["a.md"]
             List.sort (LinkIndex.inboundOf "c.md" ix) `shouldBe` ["a.md"]
 
-        it "persists and reloads, and rebuilds when the persisted file is stale" $ do
+        it "given a persisted index, when it is reloaded, then it is reused, and rebuilt when its fingerprint is stale" $ do
             freshTree
             writeAt "a.md" "[B](./b.md)\n"
             writeAt "b.md" "leaf b\n"
@@ -83,7 +83,7 @@ spec =
             LinkIndex.inboundOf "b.md" ix3 `shouldBe` []
             List.sort (LinkIndex.inboundOf "c.md" ix3) `shouldBe` ["a.md"]
 
-        it "applyChanges patches a modified, added, or removed page (no walk)" $ do
+        it "given a modified, an added and a removed page, when the changes are applied, then the index is patched without a walk" $ do
             freshTree
             writeAt "a.md" "[B](./b.md)\n"
             writeAt "b.md" "leaf b\n"
@@ -100,7 +100,7 @@ spec =
             List.sort (LinkIndex.inboundOf "c.md" ix) `shouldBe` ["a.md"]
             LinkIndex.outboundOf "c.md" ix `shouldBe` []
 
-        it "relocateInIndex relocates a moved subtree's keys and targets" $ do
+        it "given a moved subtree, when the index is relocated, then its keys and targets follow" $ do
             freshTree
             writeAt "index.md" "[Guide](./guide/index.md)\n"
             writeAt "guide/index.md" "# Guide\n"
@@ -115,7 +115,7 @@ spec =
             -- the inbound to index.md now comes from the relocated page
             List.sort (LinkIndex.inboundOf "index.md" ix) `shouldBe` ["manual/page.md"]
 
-        it "removeSubtreeInIndex drops every page under a deleted section" $ do
+        it "given a deleted section, when its subtree is removed, then every page under it leaves the index" $ do
             freshTree
             writeAt "index.md" "root\n"
             writeAt "sec/index.md" "# Sec\n"
@@ -127,7 +127,7 @@ spec =
             LinkIndex.outboundOf "sec/a.md" ix `shouldBe` []
             LinkIndex.inboundOf "index.md" ix `shouldBe` []
 
-        it "addSubtreeToIndex re-reads a restored subtree's pages" $ do
+        it "given a restored subtree, when it is added, then its pages are read back into the index" $ do
             freshTree
             writeAt "index.md" "root\n"
             store <- LinkIndexStore.newLinkIndexStore

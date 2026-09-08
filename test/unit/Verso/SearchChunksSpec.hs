@@ -15,7 +15,7 @@ texts = map (BS.unpack . SearchChunks.chunkText)
 spec :: Spec
 spec =
     describe "Verso.SearchChunks" $ do
-        it "chunks a page with no headings as one preamble chunk" $ do
+        it "given a page with no headings, when it is chunked, then it yields one preamble chunk" $ do
             let content = "---\nname: My Page\n---\nFirst line.\n\nSecond line.\n"
                 chunks = chunk "My Page" content
             map SearchChunks.chunkAnchor chunks `shouldBe` [""]
@@ -23,7 +23,7 @@ spec =
             texts chunks
                 `shouldBe` ["My Page\nFirst line.\n\nSecond line."]
 
-        it "chunks heading sections with title and ancestor context" $ do
+        it "given a page with nested headings, when it is chunked, then each section carries its title and ancestor context" $ do
             let content =
                     "Intro.\n\n# Alpha\nA text.\n\n## Beta\nB text.\n\n# Gamma\nG text.\n"
                 chunks = chunk "T" content
@@ -37,7 +37,7 @@ spec =
                            , "T\n# Gamma\nG text."
                            ]
 
-        it "keeps code fences intact: a # inside a fence is not a heading" $ do
+        it "given a # inside a code fence, when the page is chunked, then it is not treated as a heading" $ do
             let content =
                     "# Alpha\ntext\n```bash\n# not a heading\necho hi\n```\nmore\n"
                 chunks = chunk "T" content
@@ -45,7 +45,7 @@ spec =
             texts chunks
                 `shouldBe` ["T\n# Alpha\ntext\n```bash\n# not a heading\necho hi\n```\nmore"]
 
-        it "splits an oversize section at paragraph boundaries with contiguous seq" $ do
+        it "given an oversize section, when it is chunked, then it splits at paragraph boundaries with contiguous sequence numbers" $ do
             let content =
                     "# A\nfirst paragraph here\n\nsecond paragraph here\n\nthird paragraph here\n"
                 chunks = SearchChunks.chunkPage 50 "T" (BS.pack content)
@@ -56,7 +56,7 @@ spec =
                            , "T > A\nthird paragraph here"
                            ]
 
-        it "never splits inside a code fence, even at blank lines" $ do
+        it "given blank lines inside a code fence, when the page is chunked, then no split falls inside the fence" $ do
             let fence =
                     "```bash\nfirst command aaaaaaaaaaaaaaaaaaaa\n\nsecond command bbbbbbbbbbbbbbbbbbbb\n```"
                 content = "# A\n" ++ fence ++ "\n\nafter paragraph text\n"

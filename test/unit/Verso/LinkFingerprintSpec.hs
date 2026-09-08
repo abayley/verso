@@ -55,24 +55,24 @@ spec :: Spec
 spec =
     describe "Verso.LinkFingerprint" $ do
         describe "markdownFiles" $ do
-            it "enumerates only the .md pages, skipping assets, meta, and dot-dirs" $ do
+            it "given a tree with assets, meta and dot-directories, when it is walked, then only the .md pages are enumerated" $ do
                 seedTree
                 files <- LinkFingerprint.markdownFiles root
                 List.sort (map fst files) `shouldBe` ["a.md", "sub/b.md"]
 
         describe "fingerprintTree" $ do
-            it "fingerprints every page the walk yields" $ do
+            it "given a walked tree, when it is fingerprinted, then every page the walk yields is covered" $ do
                 seedTree
                 fp <- LinkFingerprint.fingerprintTree root
                 Map.keys fp `shouldBe` ["a.md", "sub/b.md"]
 
-            it "is unchanged when the tree is unchanged" $ do
+            it "given an unchanged tree, when it is fingerprinted again, then the fingerprint is unchanged" $ do
                 seedTree
                 fp1 <- LinkFingerprint.fingerprintTree root
                 fp2 <- LinkFingerprint.fingerprintTree root
                 (fp1 == fp2) `shouldBe` True
 
-            it "changes on an out-of-band equal-length edit" $ do
+            it "given an out-of-band edit that keeps the length, when the tree is fingerprinted again, then the fingerprint changes" $ do
                 seedTree
                 fp1 <- LinkFingerprint.fingerprintTree root
                 -- same byte length, different content: only the sub-second mtime moves

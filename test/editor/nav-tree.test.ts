@@ -361,7 +361,7 @@ describe("NavTreePanel navigation (RFC-0026)", () => {
 });
 
 describe("parseTreeChildren", () => {
-    it("parses well-formed nodes, defaulting hasChildren", () => {
+    it("given well-formed nodes, when parsed, then each is returned with hasChildren defaulted", () => {
         const json = JSON.stringify([
             { name: "Alpha", path: "alpha", kind: "section", hasChildren: true },
             { name: "Home", path: "home.md", kind: "page", hasChildren: false },
@@ -372,7 +372,7 @@ describe("parseTreeChildren", () => {
         ]);
     });
 
-    it("drops entries with a missing field or unknown kind, and coerces hasChildren to a boolean", () => {
+    it("given entries with a missing field or an unknown kind, when parsed, then they are dropped and hasChildren is coerced to a boolean", () => {
         const json = JSON.stringify([
             { name: "Good", path: "good", kind: "section" },
             { name: "No path", kind: "page" },
@@ -382,7 +382,7 @@ describe("parseTreeChildren", () => {
         expect(parseTreeChildren(json)).toEqual([{ name: "Good", path: "good", kind: "section", hasChildren: false }]);
     });
 
-    it("returns [] for null, malformed JSON, or a non-array", () => {
+    it("given null, malformed JSON or a non-array, when parsed, then no nodes are returned", () => {
         expect(parseTreeChildren(null)).toEqual([]);
         expect(parseTreeChildren("{not json")).toEqual([]);
         expect(parseTreeChildren('{"path":"x"}')).toEqual([]);
@@ -390,7 +390,7 @@ describe("parseTreeChildren", () => {
 });
 
 describe("parseTreeSpine", () => {
-    it("parses ancestor entries with their children", () => {
+    it("given ancestor entries, when the spine is parsed, then each is returned with its children", () => {
         const json = JSON.stringify([
             { path: "", children: [{ name: "Alpha", path: "alpha", kind: "section", hasChildren: true }] },
             {
@@ -407,7 +407,7 @@ describe("parseTreeSpine", () => {
         ]);
     });
 
-    it("tolerates entries with missing children and returns [] on malformed input", () => {
+    it("given entries with missing children and then malformed input, when the spine is parsed, then the entries survive and the malformed input yields none", () => {
         expect(parseTreeSpine(JSON.stringify([{ path: "a" }]))).toEqual([{ path: "a", children: [] }]);
         expect(parseTreeSpine(null)).toEqual([]);
         expect(parseTreeSpine("nope")).toEqual([]);
@@ -415,17 +415,17 @@ describe("parseTreeSpine", () => {
 });
 
 describe("activeNodePath", () => {
-    it("maps a folder index.md to its section path (the index is folded into the section)", () => {
+    it("given a folder's index.md, when the active node is resolved, then it maps to the section path", () => {
         expect(activeNodePath("engineering/index.md")).toBe("engineering");
         expect(activeNodePath("a/b/index.md")).toBe("a/b");
     });
 
-    it("maps the root index.md (or empty) to no node", () => {
+    it("given the root index.md or an empty path, when the active node is resolved, then there is no node", () => {
         expect(activeNodePath("index.md")).toBe("");
         expect(activeNodePath("")).toBe("");
     });
 
-    it("maps any other page to its own path", () => {
+    it("given any other page, when the active node is resolved, then it maps to its own path", () => {
         expect(activeNodePath("engineering/runbook.md")).toBe("engineering/runbook.md");
         expect(activeNodePath("home.md")).toBe("home.md");
     });

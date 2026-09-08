@@ -49,7 +49,7 @@ describe("rawHtmlSpans", (): void => {
         expect(rawHtmlSpans("# H\n\n<!-- c -->").map((span): string => span.value)).toEqual(["<!-- c -->"]);
     });
 
-    it("classifies block-level HTML (own line) as block and inline tags as inline", (): void => {
+    it("given HTML on its own line and inline tags, when spans are classified, then the first is block and the rest inline", (): void => {
         const spans = rawHtmlSpans("![a](x.png)\n<!-- c -->\n\nsome <strong>x</strong> text");
 
         expect(
@@ -70,7 +70,7 @@ describe("rawHtmlSpans", (): void => {
 });
 
 describe("badgeSpans", (): void => {
-    it("finds a badge's text, colour and source span", (): void => {
+    it("given a badge, when spans are collected, then its text, colour and source span are returned", (): void => {
         const markdown = "x `TODO`{.badge.yellow} y";
         const spans = badgeSpans(markdown);
 

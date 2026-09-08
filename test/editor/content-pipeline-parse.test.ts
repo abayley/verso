@@ -5,7 +5,7 @@ import { parseMarkdownWithRemark } from "../../src/Verso/Editor/remark-adapter.j
 const parseMarkdown = (markdown: string) => parseMarkdownWithRemark(markdown, commonContentPipeline);
 
 describe("commonContentPipeline Markdown parsing", (): void => {
-    it("parses supported block and inline nodes into an editor document", (): void => {
+    it("given Markdown using the supported block and inline nodes, when parsed, then it becomes an editor document", (): void => {
         const markdown = [
             "# Heading",
             "",
@@ -99,7 +99,7 @@ describe("commonContentPipeline Markdown parsing", (): void => {
         }).toThrow("Unsupported Markdown node for editor subset: html");
     });
 
-    it("parses horizontal rules into editor blocks", (): void => {
+    it("given Markdown horizontal rules, when parsed, then they become editor rule blocks", (): void => {
         expect(parseMarkdown("---")).toEqual({
             blocks: [
                 {

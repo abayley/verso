@@ -42,7 +42,7 @@ spec :: Spec
 spec =
     describe "MicroHttp.FileSystem" $ do
         describe "renamePath" $ do
-            it "renames an existing file and reports success" $ do
+            it "given an existing file, when it is renamed, then it moves and success is reported" $ do
                 freshDir
                 let from = ioDir ++ "/a.md"
                     to = ioDir ++ "/b.md"
@@ -54,13 +54,13 @@ spec =
                 fromExists `shouldBe` False
                 BS.unpack toContent `shouldBe` "hello"
 
-            it "reports ENOENT when the source does not exist" $ do
+            it "given a missing source, when a rename is attempted, then ENOENT is reported" $ do
                 freshDir
                 outcome <- FileSystem.renamePath (ioDir ++ "/missing.md") (ioDir ++ "/x.md")
                 outcome `shouldBe` Left (FileSystem.Errno 2)
 
         describe "removeFilePath" $ do
-            it "removes an existing file and reports success" $ do
+            it "given an existing file, when it is removed, then it is gone and success is reported" $ do
                 freshDir
                 let f = ioDir ++ "/gone.md"
                 writeText f "x"
@@ -69,13 +69,13 @@ spec =
                 exists <- Directory.doesFileExist f
                 exists `shouldBe` False
 
-            it "reports ENOENT when the file is absent" $ do
+            it "given an absent file, when a remove is attempted, then ENOENT is reported" $ do
                 freshDir
                 outcome <- FileSystem.removeFilePath (ioDir ++ "/absent.md")
                 outcome `shouldBe` Left (FileSystem.Errno 2)
 
         describe "removeEmptyDir" $ do
-            it "removes an empty directory and reports success" $ do
+            it "given an empty directory, when it is removed, then it is gone and success is reported" $ do
                 freshDir
                 let d = ioDir ++ "/sub"
                 Directory.createDirectoryIfMissing True d
@@ -84,7 +84,7 @@ spec =
                 exists <- Directory.doesDirectoryExist d
                 exists `shouldBe` False
 
-            it "reports ENOTEMPTY for a non-empty directory" $ do
+            it "given a non-empty directory, when a remove is attempted, then ENOTEMPTY is reported" $ do
                 freshDir
                 let d = ioDir ++ "/full"
                 Directory.createDirectoryIfMissing True d
@@ -94,14 +94,14 @@ spec =
                 outcome `shouldBe` Left (FileSystem.Errno 66)
 
         describe "fileStat" $ do
-            it "reports a file's byte size" $ do
+            it "given a file, when it is stat-ed, then its byte size is reported" $ do
                 freshDir
                 let f = ioDir ++ "/sized.md"
                 writeText f "hello"
                 st <- FileSystem.fileStat f
                 fmap FileSystem.fsSize st `shouldBe` Right 5
 
-            it "moves the modification time on an equal-length edit (sub-second)" $ do
+            it "given an edit that keeps the length, when the file is stat-ed again, then the modification time has moved" $ do
                 freshDir
                 let f = ioDir ++ "/edited.md"
                 writeText f "aaaa"
@@ -112,11 +112,11 @@ spec =
                 fmap FileSystem.fsSize before `shouldBe` fmap FileSystem.fsSize after
                 (before == after) `shouldBe` False
 
-            it "reports ENOENT for a missing path" $ do
+            it "given a missing path, when it is stat-ed, then ENOENT is reported" $ do
                 freshDir
                 FileSystem.fileStat (ioDir ++ "/absent.md") `shouldReturn` Left (FileSystem.Errno 2)
 
-            it "reports EACCES (not ENOENT) for a path inside an unsearchable directory" $ do
+            it "given a path inside an unsearchable directory, when it is stat-ed, then EACCES is reported rather than ENOENT" $ do
                 freshDir
                 let d = ioDir ++ "/locked"
                     f = d ++ "/secret.md"
@@ -128,7 +128,7 @@ spec =
                 outcome `shouldBe` Left (FileSystem.Errno 13)
 
         describe "isDoesNotExist" $ do
-            it "is True only for ENOENT" $ do
+            it "given each errno, when tested for does-not-exist, then only ENOENT matches" $ do
                 FileSystem.isDoesNotExist (FileSystem.Errno 2) `shouldBe` True
                 FileSystem.isDoesNotExist (FileSystem.Errno 13) `shouldBe` False
                 FileSystem.isDoesNotExist (FileSystem.Errno 66) `shouldBe` False

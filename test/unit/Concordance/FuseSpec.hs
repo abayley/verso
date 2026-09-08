@@ -10,15 +10,15 @@ hit page n = Store.Hit page ("h" ++ show n) n 0.5 "text"
 spec :: Spec
 spec =
     describe "Concordance.Fuse" $ do
-        it "ranks a member shared by both lists above equal-rank singletons" $ do
+        it "given a member appearing in both lists, when the lists are fused, then it outranks the equal-rank singletons" $ do
             let fused = Fuse.rrf 60 [["a", "b", "c"], ["b", "d"]]
             map fst fused `shouldBe` ["b", "a", "d", "c"]
 
-        it "preserves the other list's order when one side is empty" $ do
+        it "given one empty list, when the lists are fused, then the other list's order is preserved" $ do
             let fused = Fuse.rrf 60 [["x", "y", "z"], []]
             map fst fused `shouldBe` ["x", "y", "z"]
 
-        it "groups ranked hits to one per page, keeping the best chunk" $ do
+        it "given several ranked hits from one page, when they are grouped, then one hit per page survives, the best chunk" $ do
             let hits = [hit "a.md" 0, hit "b.md" 1, hit "a.md" 2, hit "c.md" 0]
             map Store.hitAnchor (Fuse.groupByPage hits)
                 `shouldBe` ["h0", "h1", "h0"]

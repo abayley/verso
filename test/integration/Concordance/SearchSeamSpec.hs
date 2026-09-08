@@ -73,7 +73,7 @@ skip reason = putStrLn ("      [skipped: " ++ reason ++ "]")
 spec :: Spec
 spec =
     describe "Concordance search seams (real shim)" $ do
-        it "embeds the reference tokens close to the fp32 reference vector" $ do
+        it "given the reference tokens, when they are embedded, then the vector is close to the fp32 reference" $ do
             setup <- searchSetup
             case setup of
                 Nothing -> skip "search shim or model not built"
@@ -92,7 +92,7 @@ spec =
                                     (cosine vec reference > 0.98) `shouldBe` True
                             Embedding.closeEmbedder
 
-        it "lists every page when the listing outgrows one result buffer" $ do
+        it "given more pages than one result buffer holds, when they are listed, then every page is returned" $ do
             available <- Store.searchAvailable
             if not available
                 then skip "search shim not built"
@@ -170,7 +170,7 @@ spec =
                     Store.closeStore
                     Monad.void (Process.runProcess "rm" ["-rf", dir] Nothing Nothing)
 
-        it "round-trips upsert, hybrid search, re-upsert, and delete" $ do
+        it "given a store, when a row is upserted, searched, re-upserted and deleted, then each step reports what was stored" $ do
             setup <- searchSetup
             case setup of
                 Nothing -> skip "search shim or model not built"

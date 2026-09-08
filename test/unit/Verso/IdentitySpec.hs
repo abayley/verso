@@ -27,28 +27,28 @@ spec :: Spec
 spec =
     describe "Verso.Identity" $ do
         describe "deriveIdentity" $ do
-            it "uses the header value as the name and synthesises an email" $ do
+            it "given an identity header, when an identity is derived, then the header is the name and an email is synthesised" $ do
                 Identity.deriveIdentity cfg (Just "Alice")
                     `shouldBe` Git.Identity "Alice" "alice@verso.local"
 
-            it "falls back to the default name when the header is absent" $ do
+            it "given no identity header, when an identity is derived, then the default name is used" $ do
                 Identity.deriveIdentity cfg Nothing
                     `shouldBe` Git.Identity "anonymous" "anonymous@verso.local"
 
-            it "falls back to the default name when the header is blank" $ do
+            it "given a blank identity header, when an identity is derived, then the default name is used" $ do
                 Identity.deriveIdentity cfg (Just "   ")
                     `shouldBe` Git.Identity "anonymous" "anonymous@verso.local"
 
-            it "slugs a multi-word name into the email local-part" $ do
+            it "given a multi-word name, when an identity is derived, then the name is slugged into the email local-part" $ do
                 Git.identityEmail (Identity.deriveIdentity cfg (Just "Test Author"))
                     `shouldBe` "test-author@verso.local"
 
         describe "currentIdentity" $ do
-            it "reads the configured header from the request, case-insensitively" $ do
+            it "given the configured header in any case, when the current identity is read, then it is found" $ do
                 let req = headWith [("x-remote-user", "Bob")]
                 Identity.currentIdentity cfg req
                     `shouldBe` Git.Identity "Bob" "bob@verso.local"
 
-            it "uses the default when the request has no identity header" $ do
+            it "given a request with no identity header, when the current identity is read, then the default is used" $ do
                 Identity.currentIdentity cfg (headWith [("user-agent", "curl")])
                     `shouldBe` Git.Identity "anonymous" "anonymous@verso.local"

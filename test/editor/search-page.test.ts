@@ -63,7 +63,7 @@ describe("installSearchPage", (): void => {
         document.body.innerHTML = "";
     });
 
-    it("debounces typing into one query and renders result cards", async (): Promise<void> => {
+    it("given several keystrokes in quick succession, when the debounce elapses, then one query runs and its result cards render", async (): Promise<void> => {
         const client = fakeClient(searchResult([aResult]));
         uninstall = installSearchPage(client);
 
@@ -83,7 +83,7 @@ describe("installSearchPage", (): void => {
         expect(card.querySelector(".verso-search-excerpt")?.textContent).toContain("SmartWAN");
     });
 
-    it("does not query below the minimum length and clears stale output", async (): Promise<void> => {
+    it("given a query below the minimum length, when it is typed, then no query runs and stale output is cleared", async (): Promise<void> => {
         const client = fakeClient(searchResult([aResult]));
         uninstall = installSearchPage(client);
         output().innerHTML = "<p>stale</p>";
@@ -95,7 +95,7 @@ describe("installSearchPage", (): void => {
         expect(output().textContent).toBe("");
     });
 
-    it("shows the clear button while there is text, and clears everything on click", async (): Promise<void> => {
+    it("given text in the field, when the clear button is clicked, then the field and the results are cleared", async (): Promise<void> => {
         const client = fakeClient(searchResult([aResult]));
         uninstall = installSearchPage(client);
 
@@ -110,7 +110,7 @@ describe("installSearchPage", (): void => {
         expect(output().textContent).toBe("");
     });
 
-    it("renders the unreachable-server notice when the query fails", async (): Promise<void> => {
+    it("given a query that fails, when it returns, then the unreachable-server notice is rendered", async (): Promise<void> => {
         const client = fakeClient({ ok: false, message: "Couldn’t reach the server." });
         uninstall = installSearchPage(client);
 
@@ -120,7 +120,7 @@ describe("installSearchPage", (): void => {
         expect(output().querySelector(".verso-search-error")?.textContent).toContain("Couldn’t reach the server");
     });
 
-    it("renders the indexing-pending notice ahead of the results", async (): Promise<void> => {
+    it("given results with indexing still pending, when they render, then the pending notice appears ahead of them", async (): Promise<void> => {
         const client = fakeClient(searchResult([aResult], 3));
         uninstall = installSearchPage(client);
 
@@ -131,7 +131,7 @@ describe("installSearchPage", (): void => {
         expect(output().querySelector(".verso-search-result")).not.toBeNull();
     });
 
-    it("prevents the form submit and searches immediately instead", async (): Promise<void> => {
+    it("given the form is submitted, when the event fires, then the submit is prevented and the search runs immediately", async (): Promise<void> => {
         const client = fakeClient(searchResult([aResult]));
         uninstall = installSearchPage(client);
 
@@ -144,7 +144,7 @@ describe("installSearchPage", (): void => {
         expect(client.searchPages).toHaveBeenCalledTimes(1);
     });
 
-    it("keeps the page URL in step with the query", async (): Promise<void> => {
+    it("given a query, when it runs, then the page URL follows it", async (): Promise<void> => {
         const client = fakeClient(searchResult([aResult]));
         uninstall = installSearchPage(client);
 
@@ -153,7 +153,7 @@ describe("installSearchPage", (): void => {
         expect(window.location.search).toBe("?q=failover");
     });
 
-    it("stops responding once uninstalled", async (): Promise<void> => {
+    it("given the page has been uninstalled, when typing continues, then nothing responds", async (): Promise<void> => {
         const client = fakeClient(searchResult([aResult]));
         uninstall = installSearchPage(client);
         uninstall();

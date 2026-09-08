@@ -16,7 +16,7 @@ fresh = Monad.void (Process.runProcess "rm" ["-rf", root] Nothing Nothing)
 spec :: Spec
 spec =
     describe "Verso.Draft" $ do
-        it "stages a draft and reads it back" $ do
+        it "given a draft, when it is staged, then it reads back" $ do
             fresh
             Draft.writeDraft root "sec/page.md" (BS.pack "draft body")
             has <- Draft.hasDraft root "sec/page.md"
@@ -24,19 +24,19 @@ spec =
             got <- Draft.readDraft root "sec/page.md"
             got `shouldBe` Just (BS.pack "draft body")
 
-        it "reports no draft when none is staged" $ do
+        it "given no staged draft, when one is read, then none is reported" $ do
             fresh
             has <- Draft.hasDraft root "missing.md"
             has `shouldBe` False
             got <- Draft.readDraft root "missing.md"
             got `shouldBe` Nothing
 
-        it "deletes a staged draft" $ do
+        it "given a staged draft, when it is deleted, then it is gone" $ do
             fresh
             Draft.writeDraft root "p.md" (BS.pack "x")
             Draft.deleteDraft root "p.md"
             has <- Draft.hasDraft root "p.md"
             has `shouldBe` False
 
-        it "maps a tree path to a draft path under the root" $
+        it "given a tree path, when it is mapped, then it lands under the draft root" $
             Draft.draftFsPath "data/drafts" "a/b.md" `shouldBe` "data/drafts/a/b.md"

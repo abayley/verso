@@ -674,7 +674,7 @@ spec = do
             fmap (bodyContains (BS.pack "Back to the wiki")) noReferer `shouldBe` Right True
 
     describe "Verso.App revision history and rollback (RFC-0032)" $ do
-        it "lists a page's revisions in the history view" $ do
+        it "given a page with several revisions, when the history view is requested, then its revisions are listed" $ do
             root <- setupVersionedFixture
             _ <-
                 Server.respondToRequestBytes
@@ -700,7 +700,7 @@ spec = do
             fmap (bodyContains (BS.pack "verso-history-scroll")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "verso-diff-pane")) history `shouldBe` Right True
             fmap (bodyContains (BS.pack "?at=")) history `shouldBe` Right True
-        it "renders a side-by-side diff between two revisions, and a bare fragment for the diff pane" $ do
+        it "given two revisions, when a diff is requested, then a side-by-side diff is rendered, and a bare fragment for the diff pane" $ do
             root <- setupVersionedFixture
             _ <-
                 Server.respondToRequestBytes
@@ -723,7 +723,7 @@ spec = do
             -- the pane variant is a bare fragment (no page shell) carrying the side-by-side table
             fmap (bodyContains (BS.pack "verso-diff-side")) pane `shouldBe` Right True
             fmap (bodyContains (BS.pack "<html")) pane `shouldBe` Right False
-        it "views a page at a past revision, read-only, showing that revision's content" $ do
+        it "given a past revision, when the page is viewed at it, then that revision's content is shown read-only" $ do
             root <- setupVersionedFixture
             _ <-
                 Server.respondToRequestBytes
@@ -742,7 +742,7 @@ spec = do
             fmap (bodyContains (BS.pack "data-readonly")) atFirst `shouldBe` Right True
             fmap (bodyContains (BS.pack "First version")) atFirst `shouldBe` Right True
 
-        it "rolls a page back to an earlier revision as a new commit" $ do
+        it "given an earlier revision, when the page is rolled back to it, then the rollback lands as a new commit" $ do
             root <- setupVersionedFixture
             _ <-
                 Server.respondToRequestBytes

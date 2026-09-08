@@ -14,3 +14,11 @@ const refuse = (input: RequestInfo | URL): Promise<Response> =>
     Promise.reject(new Error(`unstubbed fetch in a test: ${String(input)}`));
 
 globalThis.fetch = refuse as unknown as typeof globalThis.fetch;
+
+// Lit's development build warns "Lit is in dev mode" once per window, which under vitest is
+// once per test file. Seeding its warning set with the code is the escape hatch Lit
+// documents for exactly this ("disabling via `code` can be done by users"), and it has to
+// happen before Lit loads -- which is why it lives in a setup file rather than a test.
+const litGlobal = globalThis as typeof globalThis & { litIssuedWarnings?: Set<string> };
+litGlobal.litIssuedWarnings ??= new Set<string>();
+litGlobal.litIssuedWarnings.add("dev-mode");

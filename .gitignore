@@ -3,6 +3,7 @@ node_modules/
 data/
 logs/
 micro-http.conf
+static/editor/appearance-bootstrap.js
 static/editor/markdown-editor.js
 static/editor/mermaid.js
 static/editor/webawesome.css

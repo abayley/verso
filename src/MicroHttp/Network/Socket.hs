@@ -19,6 +19,7 @@ module MicroHttp.Network.Socket (
     isTimeoutError,
     listenTcp,
     openFileRead,
+    probeListener,
     recv,
     recvWithin,
     sendAll,
@@ -103,7 +104,34 @@ data SocketError = SocketError String Error.Errno
     deriving (Eq)
 
 instance Show SocketError where
-    show (SocketError operation _) = "SocketError " ++ show operation
+    show (SocketError operation errno) = "SocketError " ++ show operation ++ " " ++ renderErrno errno
+
+{- | Names the errnos a caller can act on, falling back to the number.
+
+The errno used to be dropped here, which made every failed bind report the bare word
+"bind": address-in-use, permission denied and a bad address all read the same, though the
+thing to do about each is different. Named rather than passed to 'show' because GHC (the
+coverage builds) has no 'Show' instance for 'Error.Errno' -- only MicroHs does, and it
+prints the number.
+-}
+renderErrno :: Error.Errno -> String
+renderErrno errno
+    | errno == Error.eADDRINUSE = "EADDRINUSE"
+    | errno == Error.eADDRNOTAVAIL = "EADDRNOTAVAIL"
+    | errno == Error.eACCES = "EACCES"
+    | errno == Error.eCONNREFUSED = "ECONNREFUSED"
+    | errno == Error.eCONNRESET = "ECONNRESET"
+    | errno == Error.ePIPE = "EPIPE"
+    | errno == Error.eTIMEDOUT = "ETIMEDOUT"
+    | errno == Error.eAGAIN = "EAGAIN"
+    | errno == Error.eINPROGRESS = "EINPROGRESS"
+    | errno == Error.eISCONN = "EISCONN"
+    | errno == Error.eNOTCONN = "ENOTCONN"
+    | errno == Error.eINTR = "EINTR"
+    | errno == Error.eBADF = "EBADF"
+    | errno == Error.eMFILE = "EMFILE"
+    | errno == Error.eNFILE = "ENFILE"
+    | otherwise = case errno of Error.Errno number -> "errno " ++ show number
 
 {- | Creates a listening TCP socket bound to a host and port with the given
 backlog, set non-blocking, closing the descriptor on any mid-setup failure.
@@ -158,6 +186,26 @@ connectTcp host port =
         closingOnError fd $ do
             Except.ExceptT (setNonBlocking fd)
             Except.ExceptT (withSockAddrIn host port (connectLoop fd))
+
+{- | Whether something is already accepting connections at this address and port.
+
+This exists because a port clash is not always a bind failure. 'listenTcp' sets
+@SO_REUSEADDR@, and on BSD/macOS that lets a wildcard bind succeed while another process
+holds the same port on a specific address such as 127.0.0.1 -- and then loopback traffic
+goes to that process, because the more specific bind wins. @bind@ reports success, so the
+only way to see the clash is to ask the port whether anyone answers before binding it.
+
+Probe loopback. A refused connection there is immediate, whereas a filtered address
+elsewhere would leave the non-blocking connect parked on write readiness.
+-}
+probeListener :: Host -> Port -> IO Bool
+probeListener host port = do
+    attempt <- connectTcp host port
+    case attempt of
+        Left _ -> return False
+        Right client -> do
+            _ <- closeClientSocket client
+            return True
 
 {- | Drives the non-blocking connect, retrying on connect-pending errors by
 parking on write readiness until the socket reports connected.

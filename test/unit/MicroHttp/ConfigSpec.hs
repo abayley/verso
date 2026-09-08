@@ -49,6 +49,18 @@ spec =
                         Server.settingsHost settings `shouldBe` Socket.HostIPv4 127 0 0 1
             it "given a bad integer for a server key, when mapping, then it fails" $
                 isLeft (Config.toSettings (parsed "port = abc")) `shouldBe` True
+            -- The default binds loopback only. Binding the wildcard by default hid a port
+            -- clash: another process holding 127.0.0.1:PORT still let the wildcard bind
+            -- succeed, so the server started, said so, and never saw a request, because a
+            -- more specific bind wins for loopback traffic. Loopback fails loudly instead.
+            it "given no host key, when mapping, then the default is loopback" $
+                case Config.toSettings (parsed "port = 9090") of
+                    Left err -> expect ("unexpected config error: " ++ show err) False
+                    Right settings -> Server.settingsHost settings `shouldBe` Socket.HostIPv4 127 0 0 1
+            it "given host 0.0.0.0, when mapping, then the wildcard is still selectable" $
+                case Config.toSettings (parsed "host = 0.0.0.0") of
+                    Left err -> expect ("unexpected config error: " ++ show err) False
+                    Right settings -> Server.settingsHost settings `shouldBe` Socket.HostAny
 
 parsed :: String -> Config.Config
 parsed text =

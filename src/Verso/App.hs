@@ -70,9 +70,15 @@ appFromConfig settings vc = do
     mapM_
         (Directory.createDirectoryIfMissing True . parentDirectory)
         [VConfig.accessLog vc, VConfig.clientErrorLog vc, VConfig.operationLog vc, VConfig.linkIndex vc]
+    Log.consoleLog "opening logs..."
     accessLogger <- Log.rotatingFileLogfmtLogger (VConfig.logMaxBytes vc) (VConfig.logKeep vc) (VConfig.accessLog vc)
     clientErrorSink <- Log.rotatingAppender (VConfig.logMaxBytes vc) (VConfig.logKeep vc) (VConfig.clientErrorLog vc)
+    -- Phase logs: startup does several seconds of work before the link index, and with
+    -- only "MicroHTTP startup" and "opening link index..." to go on, a long gap gave no
+    -- clue which phase owned it.
+    Log.consoleLog "opening operation log..."
     operationStore <- OperationStore.openOperationStore (VConfig.operationLog vc)
+    Log.consoleLog "opening trash..."
     trashStore <- TrashStore.openTrashStore (VConfig.trashRoot vc) operationStore
     -- Open the link index at startup in tree mode (RFC-0029): load the persisted index if
     -- its fingerprint still matches the tree, else build and persist. Move/delete then read

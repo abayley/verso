@@ -1,6 +1,7 @@
 module MicroHttp.Network.SocketSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
+import qualified Foreign.C.Error as Error
 import qualified MicroHttp.Network.Socket as Socket
 import qualified System.Directory as Directory
 import Test.Hspec
@@ -127,6 +128,57 @@ spec =
                                 Right client -> do
                                     _ <- Socket.closeClientSocket client
                                     expect "expected connect failure" False
+        it "given a port already bound on the same address, when listening again, then it fails with EADDRINUSE" $ do
+            opened <- Socket.listenTcp loopback (Socket.Port 0) 1
+            case opened of
+                Left err -> expect ("listenTcp failed: " ++ show err) False
+                Right socket -> do
+                    queried <- Socket.boundPort socket
+                    case queried of
+                        Left err -> expect ("boundPort failed: " ++ show err) False
+                        Right port -> do
+                            again <- Socket.listenTcp loopback port 1
+                            case again of
+                                Right second -> do
+                                    _ <- Socket.closeListenSocket second
+                                    expect "expected the second bind to fail" False
+                                Left (Socket.SocketError operation errno) -> do
+                                    operation `shouldBe` "bind"
+                                    errno `shouldBe` Error.eADDRINUSE
+                    closed <- Socket.closeListenSocket socket
+                    closed `shouldBe` Right ()
+        -- The probe exists because a clash is not always a bind failure: with SO_REUSEADDR
+        -- a wildcard bind succeeds alongside a listener on 127.0.0.1, and then loopback
+        -- traffic goes to the other process. Nothing in bind() reports that, so the only
+        -- way to see it is to ask the port whether anyone answers.
+        it "given a listener on the probed address, when probing, then it reports occupied" $ do
+            opened <- Socket.listenTcp loopback (Socket.Port 0) 1
+            case opened of
+                Left err -> expect ("listenTcp failed: " ++ show err) False
+                Right socket -> do
+                    queried <- Socket.boundPort socket
+                    case queried of
+                        Left err -> expect ("boundPort failed: " ++ show err) False
+                        Right port -> do
+                            busy <- Socket.probeListener loopback port
+                            busy `shouldBe` True
+                    closed <- Socket.closeListenSocket socket
+                    closed `shouldBe` Right ()
+        it "given no listener on the probed address, when probing, then it reports free" $ do
+            -- Bind to claim a port, read it, then release it: the kernel picked it, so
+            -- nothing else is expected to be there once it is closed.
+            opened <- Socket.listenTcp loopback (Socket.Port 0) 1
+            case opened of
+                Left err -> expect ("listenTcp failed: " ++ show err) False
+                Right socket -> do
+                    queried <- Socket.boundPort socket
+                    closed <- Socket.closeListenSocket socket
+                    closed `shouldBe` Right ()
+                    case queried of
+                        Left err -> expect ("boundPort failed: " ++ show err) False
+                        Right port -> do
+                            busy <- Socket.probeListener loopback port
+                            busy `shouldBe` False
 
 loopback :: Socket.Host
 loopback = Socket.HostIPv4 127 0 0 1
@@ -180,6 +232,9 @@ withConnectedPair use =
                                 _ <- Socket.closeClientSocket client
                                 return ()
 
+-- A second bind on the SAME address and port must fail, and must say why. The
+-- errno is the whole message: EADDRINUSE means "one is already running", which is
+-- a different instruction to the caller than a permission error.
 withListeningSocket :: (Socket.ListenSocket -> IO ()) -> IO ()
 withListeningSocket use = do
     opened <- Socket.listenTcp Socket.HostAny (Socket.Port 0) 1

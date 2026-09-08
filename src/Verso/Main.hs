@@ -1,5 +1,6 @@
 module Main (main) where
 
+import qualified Control.Monad as Monad
 import qualified Data.Maybe as Maybe
 import qualified MicroHttp.Config as Config
 import qualified MicroHttp.Log as Log
@@ -26,15 +27,50 @@ main = do
     case loaded >>= prepare of
         Left err -> failWith err
         Right (settings, versoCfg) -> do
+            warnIfShadowed settings
             -- Build the application (which warms the link index, RFC-0029) before
             -- announcing the listen address, so "listening on" appears once the server
-            -- is actually about to accept connections, after the index is ready.
+            -- is actually about to accept connections, after the index is ready. The
+            -- announcement itself is made from the ready callback, once the socket is
+            -- bound: printed before, it claimed success and was then followed by a bind
+            -- failure.
             application <- App.appFromConfig settings versoCfg
-            Log.consoleLog ("listening on " ++ listenAddress settings)
-            result <- Server.serve settings application
+            result <- Server.serveWithReady settings (announce settings) application
             case result of
-                Left err -> Log.consoleLog ("server failed: " ++ show err)
+                Left err -> do
+                    Log.consoleLog ("failed to listen on " ++ listenAddress settings ++ ": " ++ show err)
+                    Exit.exitFailure
                 Right () -> return ()
+
+-- | Reports the address the bound socket is accepting on.
+announce :: Server.Settings -> Socket.Port -> IO ()
+announce settings port =
+    Log.consoleLog ("listening on " ++ renderHost (Server.settingsHost settings) ++ ":" ++ renderPort port)
+
+{- | Warns when another process already answers on the loopback address of the configured
+port, which a wildcard bind does not report.
+
+With @host = 0.0.0.0@ the bind still succeeds while a listener on 127.0.0.1 keeps the
+loopback traffic, because the more specific bind wins: the server starts, says it is
+listening, and nothing ever reaches it through @localhost@. The default host is loopback,
+where this is an outright bind failure instead, so the warning is for the wildcard case.
+-}
+warnIfShadowed :: Server.Settings -> IO ()
+warnIfShadowed settings =
+    case Server.settingsHost settings of
+        Socket.HostAny -> do
+            let port = Server.settingsPort settings
+            busy <- Socket.probeListener (Socket.HostIPv4 127 0 0 1) port
+            Monad.when busy $
+                Log.consoleLog
+                    ( "warning: 127.0.0.1:"
+                        ++ renderPort port
+                        ++ " is already served by another process; this server binds the wildcard, so"
+                        ++ " http://localhost:"
+                        ++ renderPort port
+                        ++ "/ will reach that one, not this"
+                    )
+        _ -> return ()
 
 {- | The framework settings and the application config, both mapped from the
 loaded config and failing fast on a bad value.
@@ -55,7 +91,12 @@ failWith (Config.ConfigError message) = do
 listenAddress :: Server.Settings -> String
 listenAddress settings =
     renderHost (Server.settingsHost settings) ++ ":" ++ renderPort (Server.settingsPort settings)
-  where
-    renderHost Socket.HostAny = "0.0.0.0"
-    renderHost (Socket.HostIPv4 a b c d) = show a ++ "." ++ show b ++ "." ++ show c ++ "." ++ show d
-    renderPort (Socket.Port p) = show p
+
+-- | A host as dotted-quad text; the any-host renders as the wildcard it binds.
+renderHost :: Socket.Host -> String
+renderHost Socket.HostAny = "0.0.0.0"
+renderHost (Socket.HostIPv4 a b c d) = show a ++ "." ++ show b ++ "." ++ show c ++ "." ++ show d
+
+-- | A port as decimal text.
+renderPort :: Socket.Port -> String
+renderPort (Socket.Port p) = show p

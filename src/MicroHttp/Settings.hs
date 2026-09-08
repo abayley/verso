@@ -30,13 +30,19 @@ data Settings = Settings
     }
     deriving (Eq, Show)
 
-{- | Sensible defaults: bind to any host on port 8080 with conservative framing
+{- | Sensible defaults: bind loopback on port 8080 with conservative framing
 limits, handler cap, read buffer, and idle read/write timeouts.
+
+Loopback, not the wildcard, so a port clash is reported. The wildcard hid one: another
+process holding 127.0.0.1:PORT still let a wildcard bind succeed, because a more specific
+bind wins for loopback traffic -- so the server started, announced itself, and never saw a
+request. Binding loopback turns that into an EADDRINUSE at startup. Set @host = 0.0.0.0@
+to serve other machines.
 -}
 defaultSettings :: Settings
 defaultSettings =
     Settings
-        { settingsHost = Socket.HostAny
+        { settingsHost = Socket.HostIPv4 127 0 0 1
         , settingsPort = Socket.Port 8080
         , settingsBacklog = 16
         , settingsMaxActiveHandlers = 32

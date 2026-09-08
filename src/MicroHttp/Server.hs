@@ -8,6 +8,7 @@ module MicroHttp.Server (
     respondToRequestBytes,
     serve,
     serveOne,
+    serveWithReady,
 ) where
 
 import qualified Control.Concurrent as Concurrent
@@ -49,7 +50,17 @@ ignoreSigpipe = do
 
 -- | Open the listening socket and serve connections concurrently, capped by the handler semaphore.
 serve :: Settings.Settings -> Http.Application -> IO (Either ServerError ())
-serve settings app = do
+serve settings = serveWithReady settings (\_ -> return ())
+
+{- | 'serve', with an action run once the socket is bound and about to accept.
+
+The caller announces the listen address from there rather than before calling, so a failed
+bind is not preceded by a line claiming the server is up. The bound port is passed because
+it is not always the configured one: port 0 asks the kernel to choose.
+-}
+serveWithReady ::
+    Settings.Settings -> (Socket.Port -> IO ()) -> Http.Application -> IO (Either ServerError ())
+serveWithReady settings ready app = do
     ignoreSigpipe
     opened <-
         Socket.listenTcp
@@ -59,6 +70,9 @@ serve settings app = do
     case opened of
         Left err -> return (Left (ServerListenFailed err))
         Right socket -> do
+            queried <- Socket.boundPort socket
+            -- MicroHs has no Data.Either.fromRight, so this stays a case.
+            ready (case queried of Right bound -> bound; Left _ -> Settings.settingsPort settings)
             sem <- QSem.newQSem (Settings.settingsMaxActiveHandlers settings)
             acceptLoop settings app sem socket
 

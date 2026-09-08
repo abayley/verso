@@ -70,16 +70,18 @@ appFromConfig settings vc = do
     mapM_
         (Directory.createDirectoryIfMissing True . parentDirectory)
         [VConfig.accessLog vc, VConfig.clientErrorLog vc, VConfig.operationLog vc, VConfig.linkIndex vc]
-    Log.consoleLog "opening logs..."
-    accessLogger <- Log.rotatingFileLogfmtLogger (VConfig.logMaxBytes vc) (VConfig.logKeep vc) (VConfig.accessLog vc)
-    clientErrorSink <- Log.rotatingAppender (VConfig.logMaxBytes vc) (VConfig.logKeep vc) (VConfig.clientErrorLog vc)
-    -- Phase logs: startup does several seconds of work before the link index, and with
-    -- only "MicroHTTP startup" and "opening link index..." to go on, a long gap gave no
-    -- clue which phase owned it.
-    Log.consoleLog "opening operation log..."
-    operationStore <- OperationStore.openOperationStore (VConfig.operationLog vc)
-    Log.consoleLog "opening trash..."
-    trashStore <- TrashStore.openTrashStore (VConfig.trashRoot vc) operationStore
+    -- Every startup phase is timed. Startup does seconds of work before it can serve, and
+    -- with only a start and an end to go on there was no telling which phase owned a long
+    -- gap -- the trash catalogue once held it for 28 seconds and looked like the link
+    -- index's doing. Each phase forces its result, so the numbers are the real cost.
+    (accessLogger, clientErrorSink) <- Log.timed "startup: logs" $ do
+        accessLogger <- Log.rotatingFileLogfmtLogger (VConfig.logMaxBytes vc) (VConfig.logKeep vc) (VConfig.accessLog vc)
+        clientErrorSink <- Log.rotatingAppender (VConfig.logMaxBytes vc) (VConfig.logKeep vc) (VConfig.clientErrorLog vc)
+        pure (accessLogger, clientErrorSink)
+    operationStore <-
+        Log.timed "startup: operation log" (OperationStore.openOperationStore (VConfig.operationLog vc))
+    trashStore <-
+        Log.timed "startup: trash" (TrashStore.openTrashStore (VConfig.trashRoot vc) operationStore)
     -- Open the link index at startup in tree mode (RFC-0029): load the persisted index if
     -- its fingerprint still matches the tree, else build and persist. Move/delete then read
     -- it warm with no per-request walk, and re-export calls POST /index/refresh. When
@@ -89,8 +91,10 @@ appFromConfig settings vc = do
         if VConfig.linkIndexEnabled vc
             then do
                 indexStore <- LinkIndexStore.newLinkIndexStore
-                Log.consoleLog "opening link index..."
-                opened <- LinkIndexStore.openLinkIndex (VConfig.documentTreeRoot vc) (VConfig.linkIndex vc) indexStore
+                opened <-
+                    Log.timed
+                        "startup: link index"
+                        (LinkIndexStore.openLinkIndex (VConfig.documentTreeRoot vc) (VConfig.linkIndex vc) indexStore)
                 Log.consoleLog (either ("link index FAILED (move/delete degraded until refresh): " ++) (const "link index ready") opened)
                 pure (Just indexStore)
             else do
@@ -103,15 +107,17 @@ appFromConfig settings vc = do
         if not available
             then Log.consoleLog "versioning ON but git not found on PATH (history/publish degraded)"
             else do
-                Log.consoleLog "ensuring git repository..."
-                outcome <- Git.ensureRepository (VConfig.documentTreeRoot vc) (importIdentity vc)
+                outcome <-
+                    Log.timed
+                        "startup: git"
+                        (Git.ensureRepository (VConfig.documentTreeRoot vc) (importIdentity vc))
                 Log.consoleLog (case outcome of Git.Initialised -> "git repository initialised (import commit)"; Git.AlreadyPresent -> "git repository present")
     -- Serialize structural tree mutations across the server's connection threads (see 'WriteLock').
     writeLock <- MVar.newMVar ()
     -- Concordance search (RFC-0034): optional; absent shim/model degrades to disabled.
     search <-
         if VConfig.searchEnabled vc
-            then SearchIndex.startSearch (searchConfigFrom vc)
+            then Log.timed "startup: search" (SearchIndex.startSearch (searchConfigFrom vc))
             else pure Nothing
     pure
         ( Middleware.logRequests

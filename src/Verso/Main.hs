@@ -9,6 +9,7 @@ import qualified MicroHttp.Server as Server
 import qualified System.Environment as Environment
 import qualified System.Exit as Exit
 import qualified System.IO as IO
+import qualified System.IO.TimeMilli as TimeMilli
 import qualified Verso.App as App
 import qualified Verso.Config as VConfig
 
@@ -21,9 +22,10 @@ defaultConfigPath = "micro-http.conf"
 -- | Start the server: load config, build the application, then serve.
 main :: IO ()
 main = do
+    startedAt <- TimeMilli.getTimeMilli
     Log.consoleLog "MicroHTTP startup"
     configPath <- Maybe.fromMaybe defaultConfigPath <$> Environment.lookupEnv "MICROHTTP_CONFIG"
-    loaded <- VConfig.loadConfig configPath
+    loaded <- Log.timed "startup: config" (VConfig.loadConfig configPath)
     case loaded >>= prepare of
         Left err -> failWith err
         Right (settings, versoCfg) -> do
@@ -35,16 +37,22 @@ main = do
             -- bound: printed before, it claimed success and was then followed by a bind
             -- failure.
             application <- App.appFromConfig settings versoCfg
-            result <- Server.serveWithReady settings (announce settings) application
+            result <- Server.serveWithReady settings (announce startedAt settings) application
             case result of
                 Left err -> do
                     Log.consoleLog ("failed to listen on " ++ listenAddress settings ++ ": " ++ show err)
                     Exit.exitFailure
                 Right () -> return ()
 
--- | Reports the address the bound socket is accepting on.
-announce :: Server.Settings -> Socket.Port -> IO ()
-announce settings port =
+{- | Reports the address the bound socket is accepting on, and how long getting here took.
+
+The total is the one number worth watching: the per-phase lines say which phase to blame
+when it grows.
+-}
+announce :: Int -> Server.Settings -> Socket.Port -> IO ()
+announce startedAt settings port = do
+    readyAt <- TimeMilli.getTimeMilli
+    Log.consoleLog ("startup: total " ++ show (readyAt - startedAt) ++ "ms")
     Log.consoleLog ("listening on " ++ renderHost (Server.settingsHost settings) ++ ":" ++ renderPort port)
 
 {- | Warns when another process already answers on the loopback address of the configured

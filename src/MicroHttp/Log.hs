@@ -16,6 +16,7 @@ module MicroHttp.Log (
     nullLogger,
     formatLogfmt,
     consoleLog,
+    timed,
     localTimestamp,
     localTimestampAtMillis,
     logfmtTo,
@@ -97,6 +98,22 @@ zone and DST.
 -}
 localTimestamp :: IO String
 localTimestamp = TimeMilli.getTimeMilli >>= localTimestampAtMillis
+
+{- | Runs an action, logging its label and how long it took.
+
+For startup phases, so a slow one is obvious without subtracting timestamps by hand.
+
+Times only what the action actually evaluates: a phase that returns a thunk and defers
+its work will report a time that belongs to whoever forces it later. The startup phases
+force their results before returning, which is what makes these numbers mean anything.
+-}
+timed :: String -> IO a -> IO a
+timed label action = do
+    started <- TimeMilli.getTimeMilli
+    result <- action
+    finished <- TimeMilli.getTimeMilli
+    consoleLog (label ++ " " ++ show (finished - started) ++ "ms")
+    pure result
 
 -- | As 'localTimestamp' for an arbitrary epoch-milli instant (e.g. a retention cutoff).
 localTimestampAtMillis :: Int -> IO String

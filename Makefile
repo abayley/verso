@@ -15,6 +15,14 @@ DOCS = docs
 DOC_FILES = README.md INSTALL.md STANDARDS.md TODO.md "$(DOCS)/**/*.md"
 HS_FILES = $(shell find $(SRC) $(TEST) -name '*.hs' | sort)
 
+# Prerequisites for the mhs binaries. mhs is a whole-program compiler, so every
+# binary depends on the whole of src/; the test binaries add their own tree. These
+# exist so `make check` stops recompiling all three unconditionally -- that was 57
+# of its 122 seconds, and none of it was needed when nothing had changed.
+SRC_HS = $(shell find $(SRC) -name '*.hs' | sort)
+UNIT_HS = $(shell find $(UNIT_TEST) -name '*.hs' | sort)
+INTEGRATION_HS = $(shell find $(INTEGRATION_TEST) -name '*.hs' | sort)
+
 # --- Concordance search shim (RFC-0034) ---------------------------------
 # The Haskell code has foreign imports of cn_* symbols, so every mhs link
 # needs an implementation. `make search-shim` builds the real one (ONNX
@@ -55,6 +63,7 @@ PROC_OBJ = $(BUILD)/microhttp_process.o
 CBITS_OBJS = $(FS_OBJ) $(PROC_OBJ)
 MHS_SEARCH = -optc -I$(CBITS) $(SEARCH_LINK) $(foreach o,$(CBITS_OBJS),-optl $(o))
 SEARCH_DEP += $(CBITS_OBJS)
+LINK_OBJS = $(SEARCH_DEP) $(wildcard $(SEARCH_OBJS))
 
 $(SEARCH_BUILD)/concordance_stub.o: $(CBITS)/concordance_stub.c $(CBITS)/concordance_shim.h
 	mkdir -p $(SEARCH_BUILD)
@@ -148,9 +157,11 @@ format-check:
 lint:
 	hlint $(SRC) $(TEST)
 
-run-verso: editor-build $(SEARCH_DEP)
+$(BUILD)/verso: $(SRC_HS) $(LINK_OBJS)
 	mkdir -p $(BUILD)
-	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) $(SRC)/Verso/Main.hs -o $(BUILD)/verso
+	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) $(SRC)/Verso/Main.hs -o $@
+
+run-verso: editor-build $(BUILD)/verso
 	$(BUILD)/verso
 
 # Replay the operation log onto the tree (RFC-0028), after a corpus refresh. Reads
@@ -160,19 +171,21 @@ replay-tool: $(SEARCH_DEP)
 	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) $(SRC)/Verso/ReplayTool.hs -o $(BUILD)/replay-tool
 	$(BUILD)/replay-tool
 
-test-editor-browser: editor-build $(SEARCH_DEP)
-	mkdir -p $(BUILD)
-	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) $(SRC)/Verso/Main.hs -o $(BUILD)/verso
+test-editor-browser: editor-build $(BUILD)/verso
 	bun scripts/editor-smoke.cjs
 
-test-unit: $(SEARCH_DEP)
+$(BUILD)/unit-test: $(SRC_HS) $(UNIT_HS) $(LINK_OBJS)
 	mkdir -p $(BUILD)
-	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -o $(BUILD)/unit-test
+	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -o $@
+
+test-unit: $(BUILD)/unit-test
 	$(BUILD)/unit-test
 
-test-integration: $(SEARCH_DEP)
+$(BUILD)/integration-test: $(SRC_HS) $(INTEGRATION_HS) $(LINK_OBJS)
 	mkdir -p $(BUILD)
-	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -o $(BUILD)/integration-test
+	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -o $@
+
+test-integration: $(BUILD)/integration-test
 	$(BUILD)/integration-test
 
 test: test-unit test-integration

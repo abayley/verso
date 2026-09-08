@@ -38,9 +38,10 @@ async function claimPort() {
 }
 
 /**
- * Whether nothing is listening on a port. By connecting, not by binding: the server listens on 0.0.0.0
- * and BSD lets a more specific 127.0.0.1 bind succeed beside it when either socket carries SO_REUSEADDR,
- * so a bind probe reported a port that was plainly in use as free.
+ * Whether nothing is listening on a port. By connecting, not by binding: BSD lets a wildcard bind
+ * succeed beside a more specific 127.0.0.1 one when either socket carries SO_REUSEADDR, so a bind
+ * probe reported a port that was plainly in use as free. (The server binds loopback by default now,
+ * but a connect probe is right either way, and `host = 0.0.0.0` still selects the wildcard.)
  */
 function portIsFree(candidate) {
   return new Promise((resolve) => {

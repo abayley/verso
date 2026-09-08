@@ -53,7 +53,9 @@ announce :: Int -> Server.Settings -> Socket.Port -> IO ()
 announce startedAt settings port = do
     readyAt <- TimeMilli.getTimeMilli
     Log.consoleLog ("startup: total " ++ show (readyAt - startedAt) ++ "ms")
-    Log.consoleLog ("listening on " ++ renderHost (Server.settingsHost settings) ++ ":" ++ renderPort port)
+    -- With the scheme, so the terminal makes it a link worth clicking.
+    Log.consoleLog
+        ("listening on http://" ++ renderHost (Server.settingsHost settings) ++ ":" ++ renderPort port)
 
 {- | Warns when another process already answers on the loopback address of the configured
 port, which a wildcard bind does not report.

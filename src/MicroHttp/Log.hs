@@ -16,6 +16,7 @@ module MicroHttp.Log (
     nullLogger,
     formatLogfmt,
     consoleLog,
+    silenceConsoleLog,
     timed,
     localTimestamp,
     localTimestampAtMillis,
@@ -28,6 +29,7 @@ module MicroHttp.Log (
 import qualified Control.Concurrent.MVar as MVar
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.IORef as IORef
 import qualified Foreign.C.String as CStr
 import qualified Foreign.Marshal.Alloc as Alloc
 import qualified Foreign.Ptr as Ptr
@@ -38,6 +40,7 @@ import qualified MicroHttp.Network.Socket as Socket
 import qualified System.Directory as Directory
 import qualified System.IO as IO
 import qualified System.IO.TimeMilli as TimeMilli
+import qualified System.IO.Unsafe as Unsafe
 
 -- Log rotation reuses the libc rename/unlink wrappers from MicroHttp.FileSystem
 -- (MicroHs has no atomic renameFile/removeFile in System.Directory). Rotation is
@@ -132,9 +135,27 @@ each step is timestamped and slow steps are visible.
 -}
 consoleLog :: String -> IO ()
 consoleLog message = do
-    ts <- localTimestamp
-    putStrLn (ts ++ " " ++ message)
-    IO.hFlush IO.stdout
+    quiet <- IORef.readIORef consoleQuiet
+    Monad.unless quiet $ do
+        ts <- localTimestamp
+        putStrLn (ts ++ " " ++ message)
+        IO.hFlush IO.stdout
+
+{-# NOINLINE consoleQuiet #-}
+
+-- | Whether 'consoleLog' writes anything. Off by default: a server should chatter.
+consoleQuiet :: IORef.IORef Bool
+consoleQuiet = Unsafe.unsafePerformIO (IORef.newIORef False)
+
+{- | Silences 'consoleLog', and so 'timed' with it.
+
+For test binaries. They build applications directly, so the startup phase logging lands in
+the middle of the test runner's own output -- a line per phase per test, wrapped around the
+result lines. Nothing asserts on console output (access logging goes to a file through an
+injected 'Logger'), so there is nothing to lose by turning it off.
+-}
+silenceConsoleLog :: IO ()
+silenceConsoleLog = IORef.writeIORef consoleQuiet True
 
 -- | Renders a broken-down time with a strftime format into a fresh buffer.
 strftimeWith :: String -> Ptr.Ptr () -> IO String

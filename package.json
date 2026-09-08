@@ -4,9 +4,9 @@
     "scripts": {
         "editor:build": "bun scripts/build-editor.mjs",
         "editor:check": "bun run editor:lint && bun run editor:typecheck && bun run editor:moebius && bun run editor:test && bun run editor:build",
-        "editor:format": "biome check --write src/Verso/Editor test/editor scripts/moebius package.json tsconfig.json biome.json knip.json",
+        "editor:format": "biome check --write src/Verso/Editor test/editor scripts/moebius package.json tsconfig.json biome.json knip.json vitest.config.ts",
         "editor:knip": "knip",
-        "editor:lint": "biome check src/Verso/Editor test/editor scripts/moebius package.json tsconfig.json biome.json knip.json && bun run editor:knip",
+        "editor:lint": "biome check src/Verso/Editor test/editor scripts/moebius package.json tsconfig.json biome.json knip.json vitest.config.ts && bun run editor:knip",
         "editor:moebius": "bun scripts/moebius/port.ts --check",
         "editor:test": "vitest run --dom",
         "editor:typecheck": "tsc --noEmit && tsc --noEmit -p scripts/moebius"

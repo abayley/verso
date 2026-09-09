@@ -3,7 +3,8 @@
 # Copy to micro-http.conf (or point MICROHTTP_CONFIG at it) and edit. A missing
 # file means built-in defaults; a malformed file refuses to start. Any key can
 # be overridden by an environment variable named MICROHTTP_<KEY> (uppercased),
-# which wins over the file.
+# which wins over the file. Every key is catalogued in
+# docs/reference/configuration.md.
 
 # --- server (mapped to Settings) ---
 host = 0.0.0.0

@@ -154,8 +154,6 @@ Individual targets:
 - `make coverage` — developer-only GHC/HPC coverage reports under
   `build/coverage/*/report/`. Coverage is a secondary signal; the
   compatibility gate remains the MicroHs-based `make check`.
-- `make all-spikes` — compile the retained spikes (historical design
-  evidence, not part of the gate).
 - `make clean` — remove generated binaries.
 
 Unit tests must not perform filesystem, socket, subprocess, environment,
@@ -207,6 +205,7 @@ Useful entry points:
 
 - [Starter Design](docs/architecture/starter-design.md)
 - [Module Design Index](docs/reference/module-index.md)
+- [Configuration Reference](docs/reference/configuration.md)
 - [ADR Registry](docs/adrs/index.md)
 - [Project Organisation](docs/architecture/project-organisation.md)
 - [Build Automation Design](docs/architecture/build-automation.md)

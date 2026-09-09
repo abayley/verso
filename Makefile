@@ -4,7 +4,6 @@ MHSFLAGS = -a$(MHS_PACKAGE_DB)
 GHC = ghc
 HPC = hpc
 BUILD = build
-SPIKE = spike
 BENCH = test/bench
 EDITOR = packages/verso-editor
 # The framework is a MicroCabal package (RFC-0038): its modules and its cbits are
@@ -101,53 +100,8 @@ $(PROC_OBJ): $(MICROHTTP_CBITS)/microhttp_process.c $(MICROHTTP_INCLUDE)/microht
 	mkdir -p $(BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(MICROHTTP_INCLUDE)
 
-.PHONY: chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder bench-link-parse bench-search-chunk spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11 all-spikes search-lancedb search-nanoarrow search-model search-shim check clean
+.PHONY: chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder bench-link-parse bench-search-chunk search-lancedb search-nanoarrow search-model search-shim check clean
 
-spike1:
-	mkdir -p $(BUILD)
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike1.hs -o $(BUILD)/spike1
-
-spike2:
-	mkdir -p $(BUILD)
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike2.hs -o $(BUILD)/spike2
-
-spike3:
-	mkdir -p $(BUILD)
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike3.hs -o $(BUILD)/spike3
-
-spike4:
-	mkdir -p $(BUILD)
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike4.hs -o $(BUILD)/spike4
-
-spike5:
-	mkdir -p $(BUILD)
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike5.hs -o $(BUILD)/spike5
-
-spike6:
-	mkdir -p $(BUILD)
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike6.hs -o $(BUILD)/spike6
-
-spike7:
-	mkdir -p $(BUILD)
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike7.hs -o $(BUILD)/spike7
-
-spike8:
-	mkdir -p $(BUILD)
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike8.hs -o $(BUILD)/spike8
-
-spike9:
-	mkdir -p $(BUILD)
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike9.hs -o $(BUILD)/spike9
-
-spike10:
-	mkdir -p $(BUILD)
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike10.hs -o $(BUILD)/spike10
-
-spike11:
-	mkdir -p $(BUILD)
-	$(MHS) -i$(SPIKE) $(SPIKE)/MicroHttp/Spike11.hs -o $(BUILD)/spike11
-
-all-spikes: spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11
 
 docs:
 	markdownlint-cli2 $(DOC_FILES)
@@ -274,9 +228,6 @@ bench-egress:
 
 bench-http:
 	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash $(BENCH)/http-bench.sh
-
-spike-remark-ast:
-	bun scripts/remark-ast-spike.mjs
 
 # --- Concordance search build targets (RFC-0034; all optional) ----------
 # search-lancedb: build the patched lancedb-c dylib (needs Rust + the

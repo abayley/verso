@@ -1,0 +1,364 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Verso editor architecture",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1280,
+      620
+    ],
+    "views": [
+      {
+        "id": "content-pipeline",
+        "label": "Content pipeline",
+        "focus": [
+          "host",
+          "remark",
+          "pipeline",
+          "model",
+          "visual"
+        ],
+        "note": "Markdown is parsed by remark, converted through the content extensions into the editor model, and projected into Tiptap."
+      },
+      {
+        "id": "editing-surfaces",
+        "label": "Editing surfaces",
+        "focus": [
+          "host",
+          "visual",
+          "source",
+          "floating"
+        ],
+        "note": "The host drives two EditingSurface adapters: the Tiptap visual editor and the CodeMirror source editor."
+      },
+      {
+        "id": "server-io",
+        "label": "Server I/O",
+        "focus": [
+          "host",
+          "savestate",
+          "client",
+          "server",
+          "panels"
+        ],
+        "note": "Autosave and tree operations go through one ServerClient adapter over fetch; panels read its validated JSON."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "server",
+      "type": "external",
+      "label": "Verso server",
+      "sublabel": "HTTP resources",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "client",
+      "type": "backend",
+      "label": "ServerClient",
+      "sublabel": "fetch + validation",
+      "pos": [
+        250,
+        300
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "host",
+      "type": "frontend",
+      "label": "<markdown-editor>",
+      "sublabel": "web component host",
+      "pos": [
+        460,
+        300
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "remark",
+      "type": "backend",
+      "label": "remark parser",
+      "sublabel": "remark-parse + GFM",
+      "pos": [
+        670,
+        300
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "pipeline",
+      "type": "backend",
+      "label": "Content pipeline",
+      "sublabel": "8 extensions + base",
+      "pos": [
+        880,
+        300
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "model",
+      "type": "database",
+      "label": "EditorDocument",
+      "sublabel": "blocks + inlines",
+      "pos": [
+        1090,
+        300
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "panels",
+      "type": "frontend",
+      "label": "Side panels",
+      "sublabel": "tree, TOC, search",
+      "pos": [
+        250,
+        140
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "savestate",
+      "type": "backend",
+      "label": "SaveStateController",
+      "sublabel": "autosave states",
+      "pos": [
+        460,
+        140
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "chrome",
+      "type": "frontend",
+      "label": "Chrome + appearance",
+      "sublabel": "Lit + Basecoat",
+      "pos": [
+        670,
+        140
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "source",
+      "type": "frontend",
+      "label": "CodeMirror source",
+      "sublabel": "raw Markdown text",
+      "pos": [
+        460,
+        460
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "floating",
+      "type": "frontend",
+      "label": "Floating surfaces",
+      "sublabel": "bubble bar + popovers",
+      "pos": [
+        880,
+        460
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "visual",
+      "type": "frontend",
+      "label": "Tiptap visual editor",
+      "sublabel": "ProseMirror views",
+      "pos": [
+        1090,
+        460
+      ],
+      "size": [
+        136,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Browser: markdown-editor.js bundle",
+      "wraps": [
+        "client",
+        "host",
+        "remark",
+        "pipeline",
+        "model",
+        "panels",
+        "savestate",
+        "chrome",
+        "source",
+        "floating",
+        "visual"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "host-to-remark",
+      "from": "host",
+      "to": "remark",
+      "label": "Markdown",
+      "variant": "emphasis"
+    },
+    {
+      "id": "remark-to-pipeline",
+      "from": "remark",
+      "to": "pipeline",
+      "label": "mdast"
+    },
+    {
+      "id": "pipeline-to-model",
+      "from": "pipeline",
+      "to": "model",
+      "label": "parse",
+      "variant": "emphasis"
+    },
+    {
+      "id": "model-to-visual",
+      "from": "model",
+      "to": "visual",
+      "label": "ProseMirror doc",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "visual-to-pipeline",
+      "from": "visual",
+      "to": "pipeline",
+      "label": "serialise",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "bottom"
+    },
+    {
+      "id": "visual-to-floating",
+      "from": "visual",
+      "to": "floating",
+      "label": "selection",
+      "labelDy": 20
+    },
+    {
+      "id": "host-to-source",
+      "from": "host",
+      "to": "source",
+      "label": "raw text",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "host-to-savestate",
+      "from": "host",
+      "to": "savestate",
+      "label": "save lifecycle",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelDy": -24,
+      "labelDx": -44
+    },
+    {
+      "id": "chrome-to-host",
+      "from": "chrome",
+      "to": "host",
+      "label": "templates",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "host-to-client",
+      "from": "host",
+      "to": "client",
+      "label": "save, tree ops",
+      "variant": "emphasis"
+    },
+    {
+      "id": "client-to-server",
+      "from": "client",
+      "to": "server",
+      "label": "fetch"
+    },
+    {
+      "id": "client-to-panels",
+      "from": "client",
+      "to": "panels",
+      "label": "tree, search, trash",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelDy": -24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Content model",
+      "items": [
+        "remark parses; content extensions own their block and inline payloads",
+        "One EditorDocument feeds Tiptap and is serialised back to Markdown",
+        "Badges, footnotes, tables, images, alerts, collapsibles, raw HTML, reference links"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Editing",
+      "items": [
+        "Visual and source surfaces share the EditingSurface command set",
+        "Floating surfaces and side panels are Lit elements styled with Basecoat",
+        "Mermaid is a separately loaded lazy bundle"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Server I/O",
+      "items": [
+        "Autosave debounces, then PUTs raw Markdown to /drafts",
+        "One ServerClient validates every JSON response before the UI sees it",
+        "Network failure collapses to a single retry state"
+      ]
+    }
+  ]
+}

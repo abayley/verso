@@ -1,0 +1,333 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Verso wiki architecture",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1280,
+      620
+    ],
+    "views": [
+      {
+        "id": "request-path",
+        "label": "Request path",
+        "focus": [
+          "browser",
+          "server",
+          "router",
+          "app",
+          "fs"
+        ],
+        "note": "A browser request enters the MicroHttp server, is routed, and is handled by Verso.App against the document tree."
+      },
+      {
+        "id": "durable-state",
+        "label": "Durable state",
+        "focus": [
+          "app",
+          "fs",
+          "git",
+          "oplog",
+          "linkindex"
+        ],
+        "note": "Documents live in a git working tree; moves and deletes are journalled and the link index is refreshed from disk."
+      },
+      {
+        "id": "search",
+        "label": "Hybrid search",
+        "focus": [
+          "app",
+          "searchqueue",
+          "concordance",
+          "lancedb"
+        ],
+        "note": "Document changes are queued, tokenised and embedded by Concordance, and stored in lancedb for /search."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "frontend",
+      "label": "Editor bundle",
+      "sublabel": "Lit + Tiptap + CodeMirror",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "server",
+      "type": "backend",
+      "label": "MicroHttp.Server",
+      "sublabel": "iteratee HTTP/1.1",
+      "pos": [
+        250,
+        300
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "router",
+      "type": "backend",
+      "label": "Router + Middleware",
+      "sublabel": "static files, logging",
+      "pos": [
+        460,
+        300
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "app",
+      "type": "backend",
+      "label": "Verso.App",
+      "sublabel": "handlers + views",
+      "pos": [
+        670,
+        300
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "fs",
+      "type": "database",
+      "label": "Document tree",
+      "sublabel": "Markdown + sidecar meta",
+      "pos": [
+        880,
+        300
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "git",
+      "type": "external",
+      "label": "git",
+      "sublabel": "drafts, history, rollback",
+      "pos": [
+        1090,
+        300
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "oplog",
+      "type": "database",
+      "label": "Operation log + trash",
+      "sublabel": "move / delete / undo",
+      "pos": [
+        670,
+        460
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "linkindex",
+      "type": "database",
+      "label": "Link index",
+      "sublabel": "persisted, refresh-based",
+      "pos": [
+        880,
+        460
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "searchqueue",
+      "type": "messagebus",
+      "label": "Search queue",
+      "sublabel": "background worker",
+      "pos": [
+        670,
+        140
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "concordance",
+      "type": "backend",
+      "label": "Concordance",
+      "sublabel": "WordPiece + embeddings",
+      "pos": [
+        880,
+        140
+      ],
+      "size": [
+        136,
+        60
+      ]
+    },
+    {
+      "id": "lancedb",
+      "type": "external",
+      "label": "lancedb",
+      "sublabel": "vectors + FTS via cbits",
+      "pos": [
+        1090,
+        140
+      ],
+      "size": [
+        136,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "MicroHttp framework",
+      "wraps": [
+        "server",
+        "router"
+      ]
+    },
+    {
+      "kind": "region",
+      "label": "Verso application",
+      "wraps": [
+        "app",
+        "fs",
+        "git",
+        "oplog",
+        "linkindex",
+        "searchqueue",
+        "concordance",
+        "lancedb"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "browser-to-server",
+      "from": "browser",
+      "to": "server",
+      "label": "HTTP",
+      "variant": "emphasis"
+    },
+    {
+      "id": "server-to-router",
+      "from": "server",
+      "to": "router",
+      "label": "request"
+    },
+    {
+      "id": "router-to-app",
+      "from": "router",
+      "to": "app",
+      "label": "dispatch"
+    },
+    {
+      "id": "app-to-fs",
+      "from": "app",
+      "to": "fs",
+      "label": "read / write",
+      "variant": "emphasis"
+    },
+    {
+      "id": "fs-to-git",
+      "from": "fs",
+      "to": "git",
+      "label": "commit / rollback",
+      "variant": "dashed",
+      "labelDy": -24
+    },
+    {
+      "id": "app-to-oplog",
+      "from": "app",
+      "to": "oplog",
+      "label": "journal op",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "fs-to-linkindex",
+      "from": "fs",
+      "to": "linkindex",
+      "label": "refresh scan",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 24
+    },
+    {
+      "id": "app-to-searchqueue",
+      "from": "app",
+      "to": "searchqueue",
+      "label": "enqueue change",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "searchqueue-to-concordance",
+      "from": "searchqueue",
+      "to": "concordance",
+      "label": "index chunks"
+    },
+    {
+      "id": "concordance-to-lancedb",
+      "from": "concordance",
+      "to": "lancedb",
+      "label": "upsert / query"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Framework",
+      "items": [
+        "MicroHttp.* has no dependency on Verso.*",
+        "Iteratee-based streaming HTTP on plain sockets",
+        "Router serves the editor bundle as static files"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Storage",
+      "items": [
+        "Document tree is a git working tree; publish commits it",
+        "Moves and deletes are journalled for undo and replay",
+        "Link index is rebuilt on demand, never per operation"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Search",
+      "items": [
+        "Changes are queued and indexed off the request path",
+        "Concordance tokenises and embeds in Haskell",
+        "lancedb is linked in-process through a C shim"
+      ]
+    }
+  ]
+}

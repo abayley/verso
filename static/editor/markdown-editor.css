@@ -1160,8 +1160,7 @@ a.markdown-editor__crumb:hover {
 }
 
 .markdown-editor__mode-group,
-.markdown-editor__width-group,
-.markdown-editor__theme-group {
+.markdown-editor__width-group {
   inline-size: auto;
 }
 

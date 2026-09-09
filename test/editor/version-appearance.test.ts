@@ -44,13 +44,10 @@ describe("standalone page appearance controls", (): void => {
                 document.querySelectorAll<HTMLElement>("#verso-theme-menu [data-value]"),
                 (item) => item.dataset["value"],
             ),
-            schemes: Array.from(
-                document.querySelectorAll<HTMLElement>("#verso-scheme-group [data-value]"),
-                (item) => item.dataset["value"],
-            ),
+            schemeToggles: document.querySelectorAll("#verso-scheme-toggle").length,
         }).toEqual({
             themes: ["shadcn", "studio", "moebius"],
-            schemes: ["light", "dark", "match-system"],
+            schemeToggles: 1,
         });
         uninstall();
     });
@@ -66,26 +63,38 @@ describe("standalone page appearance controls", (): void => {
         uninstall();
     });
 
-    it("given a colour scheme button, when clicked, then the page applies and stores the scheme", (): void => {
+    it("given the light scheme, when the toggle is pressed, then the page applies and stores dark", (): void => {
+        window.localStorage.setItem("editor-color-scheme", "light");
         const uninstall = installVersionAppearance();
 
-        document.querySelector<HTMLElement>('#verso-scheme-group [data-value="dark"]')?.click();
+        document.querySelector<HTMLElement>("#verso-scheme-toggle")?.click();
 
         expect(document.documentElement.classList.contains("dark")).toBe(true);
         expect(window.localStorage.getItem("editor-color-scheme")).toBe("dark");
-        expect(document.querySelector('[data-value="dark"]')?.getAttribute("aria-selected")).toBe("true");
-        expect(document.querySelector('[data-value="light"]')?.getAttribute("aria-selected")).toBe("false");
         uninstall();
     });
 
-    it("given stored appearance preferences, when installed, then the controls reflect them", (): void => {
+    it("given the dark scheme, when the toggle is installed, then it offers the light theme with a sun", (): void => {
         window.localStorage.setItem("editor-theme", "studio");
         window.localStorage.setItem("editor-color-scheme", "dark");
 
         const uninstall = installVersionAppearance();
 
+        const toggle = document.querySelector("#verso-scheme-toggle");
         expect(document.querySelector("#verso-theme-menu-trigger span")?.textContent).toBe("Studio");
-        expect(document.querySelector('[data-value="dark"]')?.getAttribute("aria-selected")).toBe("true");
+        expect(toggle?.getAttribute("aria-label")).toBe("Switch to light theme");
+        expect(toggle?.querySelector("use")?.getAttribute("href")).toBe("/static/editor/icons.svg#i-sun");
+        uninstall();
+    });
+
+    it("given the light scheme, when the toggle is installed, then it offers the dark theme with a moon", (): void => {
+        window.localStorage.setItem("editor-color-scheme", "light");
+
+        const uninstall = installVersionAppearance();
+
+        const toggle = document.querySelector("#verso-scheme-toggle");
+        expect(toggle?.getAttribute("aria-label")).toBe("Switch to dark theme");
+        expect(toggle?.querySelector("use")?.getAttribute("href")).toBe("/static/editor/icons.svg#i-moon");
         uninstall();
     });
 });

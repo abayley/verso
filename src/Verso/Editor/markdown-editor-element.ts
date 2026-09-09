@@ -1,3 +1,4 @@
+import { applyColourScheme, type ColourScheme, effectiveColourScheme, storedColourScheme } from "./appearance.js";
 import {
     ATTACHMENT_DRAG_TYPE,
     AttachmentPanel,
@@ -23,6 +24,7 @@ import {
 import { type ClientErrorKind, ClientErrorReporter } from "./client-error-reporter.js";
 import { CodeMirrorSourceEditor, type CodeMirrorSourceSelection } from "./codemirror-source-editor.js";
 import type { CollapsibleKind } from "./collapsible-extension.js";
+import { type ColourSchemeToggle, createColourSchemeToggle } from "./colour-scheme-toggle.js";
 import {
     type CommandBadgeEventDetail,
     CommandBarElement,
@@ -64,11 +66,9 @@ import {
 } from "./visual-theme-registry.js";
 
 type EditorMode = "visual" | "source" | "split";
-type EditorTheme = "light" | "dark" | "match-system";
 type BodyWidth = "narrow" | "medium" | "full";
 type ActivePane = "source" | "visual";
 
-const colorSchemeStorageKey = "editor-color-scheme";
 const bodyWidthStorageKey = "editor-body-width";
 const modeStorageKey = "editor-mode";
 const sidebarCollapsedStorageKey = "editor-sidebar-collapsed";
@@ -168,14 +168,18 @@ export class MarkdownEditorElement extends HTMLElement {
      * must not mark the document dirty (which would otherwise autosave on load and on every mode switch).
      */
     private buildingEditors = false;
-    private theme: EditorTheme = "match-system";
-    private themeGroup: ChromeSegmentElement | null = null;
+    private theme: ColourScheme = "light";
+    private themeToggle: ColourSchemeToggle | null = null;
     private themeDropdown: ChromeDropdownElement | null = null;
     private visualTheme: VisualThemeState = resolveStoredVisualTheme();
     /** A faster (200 ms) tooltip just for the navigation tree's truncated labels (RFC-0026). */
     private readonly handleSystemThemeChange = (): void => {
-        if (this.theme === "match-system") {
+        // Only while nothing is stored: once the toggle has been pressed the choice is pinned,
+        // and the system moving underneath it must not undo that.
+        if (storedColourScheme() === null) {
+            this.theme = effectiveColourScheme();
             this.applyDocumentTheme();
+            this.themeToggle?.sync();
         }
     };
     // Catch-all error surfacing (RFC-0022): an uncaught error or rejection anywhere on the editor page
@@ -888,8 +892,8 @@ export class MarkdownEditorElement extends HTMLElement {
             "markdown-editor__toolbar-slot markdown-editor__toolbar-slot--end markdown-editor__appearance";
         this.themeDropdown = this.createThemeDropdown();
         appearance.append(this.themeDropdown);
-        this.themeGroup = this.createThemeGroup();
-        appearance.append(this.themeGroup);
+        this.themeToggle = this.createThemeToggle();
+        appearance.append(this.themeToggle);
 
         // The presentation controls (mode, width, light/dark, theme) are wrapped so a narrow
         // toolbar can lift them out as one panel. The wrapper is `display: contents` at full
@@ -1232,29 +1236,15 @@ export class MarkdownEditorElement extends HTMLElement {
         return this.mode === "split" ? "full" : this.bodyWidth;
     }
 
-    /** Creates the colour-scheme segmented control (joined outline icon buttons). */
-    private createThemeGroup(): ChromeSegmentElement {
-        const group = chromeSegmentEl({
-            className: "markdown-editor__theme-group",
-            ariaLabel: "Editor colour theme",
-            joined: true,
-            entries: [
-                { value: "light", label: "Light", icon: "sun", iconOnly: true },
-                { value: "dark", label: "Dark", icon: "moon", iconOnly: true },
-                { value: "match-system", label: "Match system", icon: "monitor", iconOnly: true },
-            ],
-        });
-        group.addEventListener("change", (): void => {
-            const theme = elementValue(group);
-
-            if (isEditorTheme(theme) && theme !== this.theme) {
-                this.theme = theme;
-                writeStoredPreference(colorSchemeStorageKey, theme);
-                this.updateToolbarState();
-            }
+    /** Creates the colour-scheme toggle: one button, light or dark. */
+    private createThemeToggle(): ColourSchemeToggle {
+        const toggle = createColourSchemeToggle("markdown-editor__theme-toggle");
+        toggle.addEventListener("click", (): void => {
+            this.theme = effectiveColourScheme();
+            this.updateToolbarState();
         });
 
-        return group;
+        return toggle;
     }
 
     /** Creates the visual-theme dropdown shown in the top bar. */
@@ -1670,21 +1660,9 @@ export class MarkdownEditorElement extends HTMLElement {
         return this.hasAttribute("data-readonly");
     }
 
-    /** Returns the initial colour scheme: stored preference, then attribute, else match-system. */
-    private editorTheme(): EditorTheme {
-        const stored = readStoredPreference(colorSchemeStorageKey);
-
-        if (stored !== null && isEditorTheme(stored)) {
-            return stored;
-        }
-
-        const theme = this.getAttribute("theme");
-
-        if (theme === "light" || theme === "dark" || theme === "match-system") {
-            return theme;
-        }
-
-        return "match-system";
+    /** The colour scheme to open in: the stored preference if there is one, else the system's. */
+    private editorTheme(): ColourScheme {
+        return effectiveColourScheme();
     }
 
     /** Loads Markdown from the `src` attribute, or from inline element text. */
@@ -2130,7 +2108,7 @@ export class MarkdownEditorElement extends HTMLElement {
         this.applyVisualTheme();
         this.syncThemeDropdown();
 
-        this.themeGroup?.sync(this.theme);
+        this.themeToggle?.sync();
 
         if (this.commandBar) {
             this.commandBar.commandsDisabled = !this.visualEditor && !this.sourceEditor;
@@ -2244,23 +2222,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /** Applies the editor theme selection to the document-level colour scheme class. */
     private applyDocumentTheme(): void {
-        const root = document.documentElement;
-        const theme = this.resolvedEditorTheme();
-
-        root.classList.toggle("dark", theme === "dark");
-    }
-
-    /** Resolves match-system to the current browser colour preference. */
-    private resolvedEditorTheme(): "light" | "dark" {
-        if (this.theme === "dark") {
-            return "dark";
-        }
-
-        if (this.theme === "light") {
-            return "light";
-        }
-
-        return this.systemThemeQuery()?.matches ? "dark" : "light";
+        applyColourScheme(this.theme);
     }
 
     /** Returns the browser colour-scheme media query when available. */
@@ -2308,11 +2270,6 @@ function isVisualBlockStyle(style: string): style is VisualBlockStyle {
 /** Checks whether a value is an editor mode. */
 function isEditorMode(mode: string): mode is EditorMode {
     return mode === "visual" || mode === "source" || mode === "split";
-}
-
-/** Checks whether a value is an editor colour theme. */
-function isEditorTheme(theme: string): theme is EditorTheme {
-    return theme === "light" || theme === "dark" || theme === "match-system";
 }
 
 /** Returns the current non-empty selection rectangle, if the browser can provide one. */

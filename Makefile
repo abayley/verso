@@ -26,7 +26,7 @@ UNIT_TEST = $(TEST)/unit
 INTEGRATION_TEST = $(TEST)/integration
 GHC_COMPAT_TEST = $(TEST)/ghc-compat
 DOCS = docs
-DOC_FILES = README.md INSTALL.md STANDARDS.md TODO.md "$(DOCS)/**/*.md"
+DOC_FILES = README.md INSTALL.md STANDARDS.md TODO.md AGENTS.md CLAUDE.md "$(DOCS)/**/*.md"
 # Benchmarks under $(BENCH) are measurement code, deliberately outside the
 # format and lint gate (as they were when they lived in a top-level bench/).
 HS_FILES = $(shell find $(SRC) $(MICROHTTP_SRC) $(TEST) -name '*.hs' -not -path '$(BENCH)/*' | sort)

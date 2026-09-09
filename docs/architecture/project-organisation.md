@@ -5,7 +5,7 @@
 Use a conventional Haskell layout, adapted for MicroHs. The web framework lives
 under the `MicroHttp` namespace and the Verso wiki application under `Verso`
 (RFC-0030); `Verso.*` depends on `MicroHttp.*`, never the reverse. The
-application's TypeScript editor source lives under `src/Verso/Editor/`:
+application's TypeScript editor source lives under `packages/verso-editor/src/`:
 
 ```text
 micro-http/
@@ -60,11 +60,11 @@ readers and leaves room for `mcabal` integration.
 
 The Markdown editor follows the same source-vs-asset distinction:
 
-- `src/Verso/Editor/` contains TypeScript source for the application's web
-  components.
+- `packages/verso-editor/src/` contains TypeScript source for the application's
+  web components.
 - `static/editor/` contains files the application serves directly, including the
   generated JavaScript bundle and CSS.
-- `test/editor/` contains TypeScript tests for editor source modules.
+- `packages/verso-editor/test/` contains TypeScript tests for editor source modules.
 
 Do not put TypeScript source under `static/`; that directory is for served
 assets.

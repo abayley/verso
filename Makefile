@@ -6,6 +6,7 @@ HPC = hpc
 BUILD = build
 SPIKE = spike
 BENCH = test/bench
+EDITOR = packages/verso-editor
 SRC = src
 TEST = test
 UNIT_TEST = $(TEST)/unit
@@ -134,22 +135,22 @@ docs:
 	bun run check:rfc-index
 
 editor-build:
-	bun run editor:build
+	cd $(EDITOR) && bun run build
 
 editor-format:
-	bun run editor:format
+	cd $(EDITOR) && bun run format
 
 editor-lint:
-	bun run editor:lint
+	cd $(EDITOR) && bun run lint
 
 editor-knip:
-	bun run editor:knip
+	cd $(EDITOR) && bun run knip
 
 editor-test:
-	bun run editor:test
+	cd $(EDITOR) && bun run test
 
 editor-typecheck:
-	bun run editor:typecheck
+	cd $(EDITOR) && bun run typecheck
 
 editor-check: editor-lint editor-typecheck editor-test editor-build
 
@@ -179,7 +180,7 @@ replay-tool: $(SEARCH_DEP)
 	$(BUILD)/replay-tool
 
 test-editor-browser: editor-build $(BUILD)/verso
-	bun scripts/editor-smoke.cjs
+	bun $(EDITOR)/editor-smoke.cjs
 
 $(BUILD)/unit-test: $(SRC_HS) $(UNIT_HS) $(LINK_OBJS)
 	mkdir -p $(BUILD)
@@ -308,15 +309,15 @@ search-shim: search-nanoarrow
 # only in the chrome helper pair; App.hs constructs no markup (views live in
 # Verso.View/Verso.Chrome); no Web Awesome remains anywhere in src/.
 chrome-gates:
-	@if grep -rn 'data-variant' src --include='*.hs' --include='*.ts' | grep -v 'src/Verso/Chrome.hs:\|src/Verso/Editor/chrome.ts:'; then echo "chrome-gates FAILED: data-variant outside the chrome modules"; exit 1; fi
+	@if grep -rn 'data-variant' src $(EDITOR)/src --include='*.hs' --include='*.ts' | grep -v 'src/Verso/Chrome.hs:\|$(EDITOR)/src/chrome.ts:'; then echo "chrome-gates FAILED: data-variant outside the chrome modules"; exit 1; fi
 	@if grep -nE 'Html\.(el|custom|div|button_?|input|attr|class_|form_|span|nav|section|header) ' src/Verso/App.hs; then echo "chrome-gates FAILED: markup construction in App.hs"; exit 1; fi
-	@if grep -rn 'wa-' src --include='*.hs' --include='*.ts'; then echo "chrome-gates FAILED: Web Awesome reference in src/"; exit 1; fi
+	@if grep -rn 'wa-' src $(EDITOR)/src --include='*.hs' --include='*.ts'; then echo "chrome-gates FAILED: Web Awesome reference in src/"; exit 1; fi
 	@dead_classes=$$( \
 		grep -oE '\.markdown-editor__[[:alnum:]_-]+' static/editor/markdown-editor.css \
 		| cut -c 2- \
 		| sort -u \
 		| while IFS= read -r class_name; do \
-			if ! grep -rFq "$$class_name" src --include='*.hs' --include='*.ts'; then echo "$$class_name"; fi; \
+			if ! grep -rFq "$$class_name" src $(EDITOR)/src --include='*.hs' --include='*.ts'; then echo "$$class_name"; fi; \
 		done \
 	); \
 		if [ -n "$$dead_classes" ]; then echo "chrome-gates FAILED: CSS classes without a source producer:"; echo "$$dead_classes"; exit 1; fi

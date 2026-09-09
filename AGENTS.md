@@ -43,12 +43,12 @@ Two documents in the demo corpus are worth knowing about for UI work.
 
 The Moebius theme's watercolour wash — the four base-colour gradient tokens and
 the layered backgrounds on the rail, top bar, content and command toolbar — is
-generated, not hand-written. `bun scripts/moebius/port.ts` rebuilds it in place;
-`bun run editor:moebius` (part of `editor:check`) fails if
+generated, not hand-written. `bun run moebius` in `packages/verso-editor` rebuilds it in place; the same
+check (part of that package's `bun run check`) fails if
 `static/editor/markdown-editor.css` has drifted from what the generator would
 write. Edit that CSS by hand and the next run reverts it silently. The numbers
 are tuned in `docs/mockups/markdown-editor-moebius-watercolour-prototype.html`
-and then carried into `scripts/moebius/`.
+and then carried into `packages/verso-editor/moebius/`.
 
 ## Running the Project Checks
 
@@ -64,4 +64,4 @@ make check
 A preview left running does not collide with the smoke. The smoke claims the
 first free port from 8125 upwards and names its scratch tree, operation log and
 config after whichever port it took, so a manual run and a `make check` can
-proceed side by side (`scripts/editor-smoke.cjs`).
+proceed side by side (`packages/verso-editor/editor-smoke.cjs`).

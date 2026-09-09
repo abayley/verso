@@ -1,0 +1,21 @@
+{
+    "$schema": "https://unpkg.com/knip@6/schema.json",
+    "entry": [
+        "src/index.ts",
+        "src/appearance-bootstrap.ts",
+        "src/mermaid-entry.ts",
+        "build-editor.mjs",
+        "editor-smoke.cjs",
+        "moebius/port.ts",
+        "test/**/*.test.ts"
+    ],
+    "project": ["src/**/*.ts", "test/**/*.ts", "moebius/**/*.ts"],
+    "ignoreDependencies": [
+        "@fontsource-variable/roboto",
+        "@fontsource-variable/roboto-mono",
+        "basecoat-css",
+        "rehype-stringify",
+        "remark-rehype",
+        "remark-stringify"
+    ]
+}

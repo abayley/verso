@@ -83,7 +83,7 @@ architecture rather than adopting React wholesale.
 ## Measured Cost of React and shadcn
 
 Measured 2026-09-09 by installing the packages and bundling them the way
-`scripts/build-editor.mjs` does: minified, `NODE_ENV=production`, browser target.
+`packages/verso-editor/build-editor.mjs` does: minified, `NODE_ENV=production`, browser target.
 The Radix set matches the component vocabulary the chrome modules expose.
 
 | Stack                             | Raw     | Gzip    | Added over previous row |

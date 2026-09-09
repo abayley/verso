@@ -219,9 +219,17 @@ with `make check` green.
   so the benches stay ungated as before. The `hang-repro.sh` stress script also moved to `test/bench/`, and
   its references (including two ADRs) were updated to the new path. The `editor-smoke.cjs` browser smoke
   stayed put: it moves with the editor in Phase 2. `make check` stayed green.
-- **Phase 2 — TypeScript editor extraction.** Move the editor tree, its tests, the Moebius generator, and
-  the TypeScript toolchain into `packages/verso-editor`; point its build output at the Verso app's served
-  assets; leave a root `package.json` for the doc tooling.
+- **Phase 2 — TypeScript editor extraction. Done (2026-09-09).** Moved the editor source
+  (`src/Verso/Editor` -> `packages/verso-editor/src`), its tests (`test/editor` -> `packages/verso-editor/
+  test`), the Moebius generator, the build script, the browser smoke, and the TypeScript toolchain
+  (`package.json`, `biome.json`, `knip.json`, `tsconfig.json`, `vitest.config.ts`) into
+  `packages/verso-editor`, with its own `bun install`. The root keeps a small `package.json` for the doc
+  tooling; there are now two independent installs by design. `build-editor.mjs` resolves paths from its own
+  location so its bundles still land in the repo-root `static/editor`, and the Makefile `editor-*` targets
+  `cd` into the package. The editor dependency versions were pinned to the exact set the working build used
+  (via `overrides` for the whole `@tiptap`/`prosemirror` tree): a fresh install otherwise drifted tiptap
+  from 3.26.x to 3.31.x, which broke the Bold command the browser smoke checks. This was a move, not an
+  upgrade. `make check` stayed green.
 - **Phase 3 — Haskell package split.** Introduce `packages/micro-http` (with its `.cabal`, its cbits, and
   the headers moved to `include/`) and `packages/verso` (holding `Verso.*` and `Concordance.*` with its
   existing native linking). Convert the Makefile to install `micro-http` and build `verso` against it. This

@@ -38,6 +38,7 @@ micro-http/
   src/MicroHttp/     The web framework (HTTP, sockets, server, router, ...).
   src/Concordance/   The hybrid search engine (tokeniser, embedding, store).
   src/Verso/         The Verso wiki application (built on MicroHttp).
+  packages/verso-editor/  The TypeScript editor, built into static/editor/.
   cbits/             The Concordance C shim and its no-dependency stub.
   test/unit/         Unit specs with no filesystem or socket effects.
   test/integration/  Integration specs that use filesystem or socket effects.
@@ -87,7 +88,7 @@ server -- saves carry it as the raw request body -- and the server never
 parses Markdown (ADR-0019). A plain form post remains the no-JavaScript floor.
 
 The editor is a `<markdown-editor>` web component, written in TypeScript under
-`src/Verso/Editor/`:
+`packages/verso-editor/src/`:
 
 - Tiptap/ProseMirror provides the visual editing surface (ADR-0020); custom
   nodes and marks cover tables, images, footnotes, admonitions, collapsible

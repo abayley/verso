@@ -260,7 +260,7 @@ work (ADR-0078) is unrelated and stays.
 - Internal only: the editor is the sole client of the removed POST routes
   (`?publish`, `?discard-draft`, `?delete`); they are removed without
   aliases. Any personal scripts driving those routes must switch verbs.
-- `scripts/hang-repro.sh` drives publishes via `?publish` and must be updated
+- `test/bench/hang-repro.sh` drives publishes via `?publish` and must be updated
   with the new verb in the same change.
 - The urlencoded form POST to `/documents/*path` (the no-JS floor) is
   unchanged, including CRLF normalisation. The raw-HTML save guard retires
@@ -283,7 +283,7 @@ work (ADR-0078) is unrelated and stays.
 - `bun run editor:test` for the save-controller rewrite;
   `make test-editor-browser` for an end-to-end autosave/publish smoke pass.
 - `make bench-form-decode` still builds after the C strategy is removed.
-- A `scripts/hang-repro.sh` storm run (search-enabled rig) as the perf
+- A `test/bench/hang-repro.sh` storm run (search-enabled rig) as the perf
   acceptance check: no HANG, no CRASH, and no SLOW (GC pause) events.
 
 ## Rollout Plan
@@ -357,7 +357,7 @@ work (ADR-0078) is unrelated and stays.
       and the `HX-Redirect` arm of `clientRedirect`; `treeSave` keeps only
       the form branch.
 - [x] `make test-editor-browser` autosave/publish smoke passes without htmx.
-- [x] Update `scripts/hang-repro.sh` to the new verbs; storm run shows no
+- [x] Update `test/bench/hang-repro.sh` to the new verbs; storm run shows no
       HANG/CRASH/SLOW.
 
 ### Phase 6: Supersede the C Decode Layer and Record Decisions

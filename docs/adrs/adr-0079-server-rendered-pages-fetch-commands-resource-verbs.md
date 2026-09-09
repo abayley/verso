@@ -50,4 +50,4 @@ question closes by deletion), and the interim C form-decode shim was
 never needed -- nothing on the save hot path decodes at all. Old
 `?publish`/`?discard-draft`/`?delete` routes were removed without
 aliases (the editor is the only client). The browser smoke drives the
-tree mode on its own port; scripts/hang-repro.sh uses the new verbs.
+tree mode on its own port; test/bench/hang-repro.sh uses the new verbs.

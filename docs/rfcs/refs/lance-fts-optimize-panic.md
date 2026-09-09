@@ -38,7 +38,7 @@ while merging FTS segments.
 
 ## Reproduction
 
-`scripts/hang-repro.sh` (the RFC-0036-era storm: 20 publishes plus rounds of
+`test/bench/hang-repro.sh` (the RFC-0036-era storm: 20 publishes plus rounds of
 create+delete against the search-demo rig) reproduces it at roughly 1 in 3
 runs against an index directory with accumulated version churn. It is not
 purely index-state determined: a rerun from the same on-disk index state was
@@ -72,8 +72,8 @@ not. Full backtrace attached.
 ## Local evidence
 
 - Crash logs: two full backtraces captured 2026-07-14 (identical site).
-- The storm harness: `scripts/hang-repro.sh` (GREEN/RED/CRASH classification).
-- `HANG_REPRO_FRESH=1 scripts/hang-repro.sh` wipes and rebuilds the demo
+- The storm harness: `test/bench/hang-repro.sh` (GREEN/RED/CRASH classification).
+- `HANG_REPRO_FRESH=1 test/bench/hang-repro.sh` wipes and rebuilds the demo
   index; whether a fresh index also crashes has not been established (the
   observed crashes were against churned index state).
 

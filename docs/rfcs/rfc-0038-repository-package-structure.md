@@ -41,8 +41,8 @@ one-way dependency (`Verso.* -> MicroHttp.*`; `Concordance.*` depends on neither
 Several things now sit in places that do not match how they are used:
 
 - `bench/` holds Haskell benchmark sources, which are test-adjacent, not top-level application code.
-- Bench and stress scripts (`scripts/*-bench.sh`, `scripts/hang-repro.sh`) and the browser smoke
-  (`scripts/editor-smoke.cjs`) are test harnesses living beside genuine dev tooling.
+- The bench and stress scripts and the browser smoke (`scripts/editor-smoke.cjs`) are test harnesses that
+  were living in `scripts/` beside genuine dev tooling.
 - `cbits/` holds C FFI implementations for three different owners (MicroHttp filesystem and process, and the
   Concordance search shim) in one flat directory.
 - The TypeScript editor lives at `src/Verso/Editor` with its own package manager (bun), linter (biome),
@@ -199,7 +199,7 @@ change (there are now packages to install before the app builds); a preview left
   `micro-http`'s FFI through the package database.
 - The editor package builds, lints, typechecks, and tests in isolation, and its bundle still loads in the
   browser smoke against the served assets.
-- The search-enabled build still links the real shim and passes `scripts/hang-repro.sh`; the default build
+- The search-enabled build still links the real shim and passes `test/bench/hang-repro.sh`; the default build
   still links the stub and reports search unavailable.
 - The GHC coverage builds still run.
 
@@ -216,9 +216,9 @@ with `make check` green.
 - **Phase 1 — bench and test-script moves. Done (2026-09-09).** Moved the Haskell benches and their four
   driver shell scripts from `bench/` and `scripts/` into `test/bench/`, pointed the Makefile `BENCH`
   variable and the bench targets at the new location, and kept `test/bench` out of the format and lint gate
-  so the benches stay ungated as before. The `hang-repro.sh` stress script and the `editor-smoke.cjs`
-  browser smoke stayed put: the former is referenced by frozen ADRs, and the latter moves with the editor in
-  Phase 2. `make check` stayed green.
+  so the benches stay ungated as before. The `hang-repro.sh` stress script also moved to `test/bench/`, and
+  its references (including two ADRs) were updated to the new path. The `editor-smoke.cjs` browser smoke
+  stayed put: it moves with the editor in Phase 2. `make check` stayed green.
 - **Phase 2 — TypeScript editor extraction.** Move the editor tree, its tests, the Moebius generator, and
   the TypeScript toolchain into `packages/verso-editor`; point its build output at the Verso app's served
   assets; leave a root `package.json` for the doc tooling.

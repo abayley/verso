@@ -46,7 +46,7 @@ in the child is gone by construction. The fix is not regression-testable
 at a deterministic in-suite seam (it would need the real tokio runtime
 plus a one-scheduler-quantum race), so the guard is behavioural: the
 `MicroHttp.Process` unit seam pins the runProcess contract (including
-exit 127 for a missing executable), and scripts/hang-repro.sh drives a
+exit 127 for a missing executable), and test/bench/hang-repro.sh drives a
 live search-enabled server through publish/create/delete storms and
 fails on any wedge, crash, or leftover fork child.
 `posix_spawn_file_actions_addchdir_np` requires macOS 10.15+ / glibc

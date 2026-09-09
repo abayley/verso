@@ -32,7 +32,7 @@
 # Only touches the scratch rig under build/search-demo; never touches a verso
 # on any other port.
 set -u
-cd "$(dirname "$0")/.." || exit 2
+cd "$(dirname "$0")/../.." || exit 2
 
 PORT=8081
 BASE="http://127.0.0.1:$PORT"

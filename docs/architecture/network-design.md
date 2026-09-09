@@ -13,7 +13,7 @@ Change plans referenced here:
 - [RFC-0005](../rfcs/implemented/rfc-0005-socket-readiness-manager.md) covers socket
   readiness waiting (replacing the 1 ms poll with the runtime poll queue).
 - Portability backends and GHC support described under future direction do
-  not have RFCs yet; the performance harness is the `bench/` suite.
+  not have RFCs yet; the performance harness is the `test/bench/` suite.
 
 ## Network Design Constraints
 

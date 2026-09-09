@@ -50,7 +50,7 @@ Common Haskell package conventions are:
 - `src/` for library modules.
 - `app/` for executable entry points.
 - `test/` or `tests/` for test suites.
-- `bench/` for benchmarks when needed.
+- `test/bench/` for benchmarks when needed.
 - One `.cabal` file at the package root.
 - Module names mirror file paths.
 

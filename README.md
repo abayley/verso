@@ -41,7 +41,7 @@ micro-http/
   cbits/             The Concordance C shim and its no-dependency stub.
   test/unit/         Unit specs with no filesystem or socket effects.
   test/integration/  Integration specs that use filesystem or socket effects.
-  bench/             Throughput and rendering benchmarks.
+  test/bench/        Throughput and rendering benchmarks.
   spike/             Exploratory compile spikes retained for design evidence.
   docs/              Design documents, RFCs, and the decision register.
 ```

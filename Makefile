@@ -5,7 +5,7 @@ GHC = ghc
 HPC = hpc
 BUILD = build
 SPIKE = spike
-BENCH = bench
+BENCH = test/bench
 SRC = src
 TEST = test
 UNIT_TEST = $(TEST)/unit
@@ -13,7 +13,9 @@ INTEGRATION_TEST = $(TEST)/integration
 GHC_COMPAT_TEST = $(TEST)/ghc-compat
 DOCS = docs
 DOC_FILES = README.md INSTALL.md STANDARDS.md TODO.md "$(DOCS)/**/*.md"
-HS_FILES = $(shell find $(SRC) $(TEST) -name '*.hs' | sort)
+# Benchmarks under $(BENCH) are measurement code, deliberately outside the
+# format and lint gate (as they were when they lived in a top-level bench/).
+HS_FILES = $(shell find $(SRC) $(TEST) -name '*.hs' -not -path '$(BENCH)/*' | sort)
 
 # Prerequisites for the mhs binaries. mhs is a whole-program compiler, so every
 # binary depends on the whole of src/; the test binaries add their own tree. These
@@ -159,7 +161,8 @@ format-check:
 
 lint:
 	# -j0 uses every core: 11.8s single-threaded against 2.7s here, measured on 12 cores.
-	hlint -j0 $(SRC) $(TEST)
+	# $(BENCH) is excluded to match the format gate: benchmarks are measurement code.
+	hlint -j0 $(SRC) $(UNIT_TEST) $(INTEGRATION_TEST) $(GHC_COMPAT_TEST)
 
 $(BUILD)/verso: $(SRC_HS) $(LINK_OBJS)
 	mkdir -p $(BUILD)
@@ -224,7 +227,7 @@ bench-socket: $(FS_OBJ)
 	$(BUILD)/socket-bench
 
 bench-socket-saturated:
-	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash scripts/socket-saturated-bench.sh
+	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash $(BENCH)/socket-saturated-bench.sh
 
 bench-html-builder:
 	mkdir -p $(BUILD)
@@ -242,13 +245,13 @@ bench-search-chunk:
 	$(BUILD)/search-chunk-bench
 
 bench-iteratee:
-	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash scripts/iteratee-bench.sh
+	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash $(BENCH)/iteratee-bench.sh
 
 bench-egress:
-	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash scripts/egress-bench.sh
+	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash $(BENCH)/egress-bench.sh
 
 bench-http:
-	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash scripts/http-bench.sh
+	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash $(BENCH)/http-bench.sh
 
 spike-remark-ast:
 	bun scripts/remark-ast-spike.mjs

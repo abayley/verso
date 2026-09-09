@@ -6,7 +6,7 @@ handles, and how the in-memory builder path compares with the zero-copy
 
 ```sh
 make bench-http
-# or: bash scripts/http-bench.sh
+# or: bash test/bench/http-bench.sh
 ```
 
 Knobs (environment variables): `MICROHTTP_BENCH_PORT` (default 8099),

@@ -20,6 +20,6 @@
   application `s "..."`, so when an `s` is in scope it compiles clean and yields
   the literal text `a=${x}` instead of the interpolated value -- a silent
   behaviour difference, not a build failure. MicroHs-only syntax is fine in
-  `bench/` and `spike/`, which GHC never compiles. A MicroHs-only *module* is
+  `test/bench/` and `spike/`, which GHC never compiles. A MicroHs-only *module* is
   usable from shared code only with a GHC stand-in in `test/ghc-compat/` (see
   `System.IO.TimeMilli`); GHC is not a superset of MicroHs

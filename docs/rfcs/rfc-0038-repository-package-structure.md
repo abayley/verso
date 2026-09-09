@@ -213,8 +213,12 @@ with `make check` green.
   runtime, and that local non-snapshot resolution needs no path or git dependency. Established the header
   and `build-depends` requirements. Because Concordance now stays in the Verso package, its native linking
   did not need to be packaged. Record: `docs/rfcs/refs/rfc-0038-mcabal-packaging-spike-20260909.md`.
-- **Phase 1 — bench and test-script moves.** Relocate `bench/` and the bench/stress/smoke scripts to their
-  test homes; update only the affected Makefile targets. Small and isolated.
+- **Phase 1 — bench and test-script moves. Done (2026-09-09).** Moved the Haskell benches and their four
+  driver shell scripts from `bench/` and `scripts/` into `test/bench/`, pointed the Makefile `BENCH`
+  variable and the bench targets at the new location, and kept `test/bench` out of the format and lint gate
+  so the benches stay ungated as before. The `hang-repro.sh` stress script and the `editor-smoke.cjs`
+  browser smoke stayed put: the former is referenced by frozen ADRs, and the latter moves with the editor in
+  Phase 2. `make check` stayed green.
 - **Phase 2 — TypeScript editor extraction.** Move the editor tree, its tests, the Moebius generator, and
   the TypeScript toolchain into `packages/verso-editor`; point its build output at the Verso app's served
   assets; leave a root `package.json` for the doc tooling.

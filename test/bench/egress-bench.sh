@@ -6,7 +6,7 @@
 # the GHC drainer connects once per method.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD="$ROOT/build"
 # The package database is normally passed by the Makefile bench target so
 # the version is defined in one place.
@@ -18,11 +18,11 @@ mkdir -p "$BUILD"
 
 # Sender: MicroHs, the subject under test.
 cc -O2 -Wall -c "$ROOT/cbits/microhttp_fs.c" -o "$BUILD/microhttp_fs.o" -I"$ROOT/cbits"
-mhs -a"$DB" -optc -I"$ROOT/cbits" -optl "$BUILD/microhttp_fs.o" -i"$ROOT/src" -i"$ROOT/bench" "$ROOT/bench/EgressSender.hs" -o "$BUILD/egress-sender"
+mhs -a"$DB" -optc -I"$ROOT/cbits" -optl "$BUILD/microhttp_fs.o" -i"$ROOT/src" -i"$ROOT/test/bench" "$ROOT/test/bench/EgressSender.hs" -o "$BUILD/egress-sender"
 
 # Drainer: GHC + network, blocking reads.
-(cd "$ROOT/bench/sender" && cabal build >/dev/null 2>&1)
-DRAIN="$(cd "$ROOT/bench/sender" && cabal list-bin socket-drain)"
+(cd "$ROOT/test/bench/sender" && cabal build >/dev/null 2>&1)
+DRAIN="$(cd "$ROOT/test/bench/sender" && cabal list-bin socket-drain)"
 
 "$BUILD/egress-sender" &
 SEND_PID=$!

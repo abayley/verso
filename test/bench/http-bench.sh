@@ -8,7 +8,7 @@
 # figures. See docs/http-benchmark.md.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD="$ROOT/build"
 # The package database is normally passed by the bench-http Makefile target so
 # the version is defined in one place.

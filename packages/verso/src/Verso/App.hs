@@ -292,7 +292,7 @@ treeRoutesWithStores operationStore trashStore writeLock indexStore search versi
     [ Router.get "/" (redirectTo "/documents/")
     , Router.get "/index.html" (redirectTo "/documents/")
     , Router.get "/search" (treeSearchHandler search)
-    , Static.static "/static/editor" "static/editor"
+    , Static.static "/static/editor" "packages/verso/static/editor"
     , Router.get "/tree/*path" (treeChildrenHandler root)
     , Router.post "/tree/*path" (treePostDispatch versioning writeLock findRelevant maint operationStore root)
     , Router.get "/trash" (treeTrashListHandler writeLock trashStore trashRetentionDays trashRoot)

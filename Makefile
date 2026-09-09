@@ -16,7 +16,12 @@ MICROHTTP_HS = $(shell find $(MICROHTTP_SRC) -name '*.hs' | sort)
 MICROHTTP_CBITS = $(MICROHTTP)/cbits
 MICROHTTP_INCLUDE = $(MICROHTTP)/include
 MICROHTTP_PKG = $(MHS_PACKAGE_DB)/packages/micro-http-0.1.0.0.pkg
-SRC = src
+# The Verso application (Verso.* and Concordance.*), its Concordance cbits, and its
+# served static assets live in the verso package (RFC-0038). SRC is that package's
+# Haskell source root; the framework it depends on is the micro-http package above.
+VERSO = packages/verso
+SRC = $(VERSO)/src
+STATIC = $(VERSO)/static
 TEST = test
 UNIT_TEST = $(TEST)/unit
 INTEGRATION_TEST = $(TEST)/integration
@@ -40,7 +45,7 @@ INTEGRATION_HS = $(shell find $(INTEGRATION_TEST) -name '*.hs' | sort)
 # needs an implementation. `make search-shim` builds the real one (ONNX
 # Runtime + patched lancedb-c dylib + nanoarrow); otherwise a no-dependency
 # stub is linked and search reports itself unavailable at runtime.
-CBITS = cbits
+CBITS = $(VERSO)/cbits
 SEARCH_BUILD = $(BUILD)/search
 VENDOR_SEARCH = vendor/search
 SEARCH_PLATFORM := $(shell uname -s | tr A-Z a-z)-$(shell uname -m)
@@ -325,15 +330,15 @@ search-shim: search-nanoarrow
 # only in the chrome helper pair; App.hs constructs no markup (views live in
 # Verso.View/Verso.Chrome); no Web Awesome remains anywhere in src/.
 chrome-gates:
-	@if grep -rn 'data-variant' src $(EDITOR)/src --include='*.hs' --include='*.ts' | grep -v 'src/Verso/Chrome.hs:\|$(EDITOR)/src/chrome.ts:'; then echo "chrome-gates FAILED: data-variant outside the chrome modules"; exit 1; fi
-	@if grep -nE 'Html\.(el|custom|div|button_?|input|attr|class_|form_|span|nav|section|header) ' src/Verso/App.hs; then echo "chrome-gates FAILED: markup construction in App.hs"; exit 1; fi
-	@if grep -rn 'wa-' src $(EDITOR)/src --include='*.hs' --include='*.ts'; then echo "chrome-gates FAILED: Web Awesome reference in src/"; exit 1; fi
+	@if grep -rn 'data-variant' $(SRC) $(EDITOR)/src --include='*.hs' --include='*.ts' | grep -v '$(SRC)/Verso/Chrome.hs:\|$(EDITOR)/src/chrome.ts:'; then echo "chrome-gates FAILED: data-variant outside the chrome modules"; exit 1; fi
+	@if grep -nE 'Html\.(el|custom|div|button_?|input|attr|class_|form_|span|nav|section|header) ' $(SRC)/Verso/App.hs; then echo "chrome-gates FAILED: markup construction in App.hs"; exit 1; fi
+	@if grep -rn 'wa-' $(SRC) $(EDITOR)/src --include='*.hs' --include='*.ts'; then echo "chrome-gates FAILED: Web Awesome reference in src/"; exit 1; fi
 	@dead_classes=$$( \
-		grep -oE '\.markdown-editor__[[:alnum:]_-]+' static/editor/markdown-editor.css \
+		grep -oE '\.markdown-editor__[[:alnum:]_-]+' $(STATIC)/editor/markdown-editor.css \
 		| cut -c 2- \
 		| sort -u \
 		| while IFS= read -r class_name; do \
-			if ! grep -rFq "$$class_name" src $(EDITOR)/src --include='*.hs' --include='*.ts'; then echo "$$class_name"; fi; \
+			if ! grep -rFq "$$class_name" $(SRC) $(EDITOR)/src --include='*.hs' --include='*.ts'; then echo "$$class_name"; fi; \
 		done \
 	); \
 		if [ -n "$$dead_classes" ]; then echo "chrome-gates FAILED: CSS classes without a source producer:"; echo "$$dead_classes"; exit 1; fi
@@ -343,4 +348,4 @@ check: docs format-check lint test editor-check test-editor-browser chrome-gates
 
 clean:
 	rm -rf $(BUILD)
-	rm -f static/editor/markdown-editor.js
+	rm -f $(STATIC)/editor/markdown-editor.js

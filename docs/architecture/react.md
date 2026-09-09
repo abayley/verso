@@ -154,7 +154,7 @@ Measurement does not support that.
 A document page fetched with no JavaScript is 5,666 bytes. It contains a
 `<textarea>` holding the raw Markdown including its frontmatter, and a
 `<noscript>` Save button. It contains no rendered headings and no chrome, and
-there is no server-side Markdown rendering anywhere in `src/Verso/*.hs`. Without
+there is no server-side Markdown rendering anywhere in `packages/verso/src/Verso/*.hs`. Without
 JavaScript a reader gets the document's source in a text box, not a readable
 document.
 

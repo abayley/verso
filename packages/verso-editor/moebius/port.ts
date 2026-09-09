@@ -19,7 +19,7 @@ import process from "node:process";
 import { build as buildFade, type SurfaceName } from "./fade.ts";
 import { dither, fleck, hatch, mottle, OP, PANELS, type PanelName, type Scheme, TINT } from "./wash.ts";
 
-const CSS = new URL("../../../static/editor/markdown-editor.css", import.meta.url).pathname;
+const CSS = new URL("../../../packages/verso/static/editor/markdown-editor.css", import.meta.url).pathname;
 
 const FADE = buildFade();
 

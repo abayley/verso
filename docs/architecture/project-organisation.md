@@ -62,7 +62,7 @@ The Markdown editor follows the same source-vs-asset distinction:
 
 - `packages/verso-editor/src/` contains TypeScript source for the application's
   web components.
-- `static/editor/` contains files the application serves directly, including the
+- `packages/verso/static/editor/` contains files the application serves directly, including the
   generated JavaScript bundle and CSS.
 - `packages/verso-editor/test/` contains TypeScript tests for editor source modules.
 

@@ -35,12 +35,12 @@ mhs -a"$DB" -optc -I"$ROOT/cbits" -optl "$BUILD/microhttp_fs.o" -optl "$BUILD/co
 
 # A private config so the user's micro-http.conf and port 8080 are untouched.
 CONF="$(mktemp)"
-SNAPSHOT="$ROOT/static/editor/_bench-snapshot.html"
+SNAPSHOT="$ROOT/packages/verso/static/editor/_bench-snapshot.html"
 cat >"$CONF" <<EOF
 host = $HOST
 port = $PORT
 document_root = data/documents
-static_mounts = /static/editor static/editor
+static_mounts = /static/editor packages/verso/static/editor
 EOF
 
 cleanup() {

@@ -3,10 +3,10 @@ node_modules/
 data/
 logs/
 micro-http.conf
-static/editor/appearance-bootstrap.js
-static/editor/markdown-editor.js
-static/editor/mermaid.js
-static/editor/webawesome.css
+packages/verso/static/editor/appearance-bootstrap.js
+packages/verso/static/editor/markdown-editor.js
+packages/verso/static/editor/mermaid.js
+packages/verso/static/editor/webawesome.css
 dist-newstyle/
 spike/editor-studio/bundle.js
 spike/editor-lit/bundle.js

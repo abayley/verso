@@ -35,17 +35,19 @@ The project deliberately avoids:
 
 ```text
 micro-http/
-  packages/micro-http/    The web framework, a MicroCabal package (HTTP,
-                          sockets, server, router, and its cbits).
-  src/Concordance/   The hybrid search engine (tokeniser, embedding, store).
-  src/Verso/         The Verso wiki application (built on MicroHttp).
-  packages/verso-editor/  The TypeScript editor, built into static/editor/.
-  cbits/             The Concordance C shim and its no-dependency stub.
-  test/unit/         Unit specs with no filesystem or socket effects.
-  test/integration/  Integration specs that use filesystem or socket effects.
-  test/bench/        Throughput and rendering benchmarks.
-  spike/             Exploratory compile spikes retained for design evidence.
-  docs/              Design documents, RFCs, and the decision register.
+  packages/micro-http/     The web framework, a MicroCabal package (HTTP,
+                           sockets, server, router, and its cbits).
+  packages/verso/          The Verso wiki application: src/Verso and
+                           src/Concordance, the Concordance C shim (cbits),
+                           and the served static assets (static/). Depends on
+                           the micro-http package.
+  packages/verso-editor/   The TypeScript editor, built into
+                           packages/verso/static/editor/.
+  test/unit/               Unit specs with no filesystem or socket effects.
+  test/integration/        Integration specs that use filesystem or socket effects.
+  test/bench/              Throughput and rendering benchmarks.
+  spike/                   Exploratory compile spikes retained for design evidence.
+  docs/                    Design documents, RFCs, and the decision register.
 ```
 
 The framework lives under the `MicroHttp` namespace, the wiki application
@@ -61,7 +63,7 @@ top-level modules (`Config`, `FileSystem`, `Log`, `Process`, `Settings`,
 
 ## Verso Wiki Application
 
-Verso is a filesystem-backed Markdown wiki assembled in `src/Verso/App.hs`:
+Verso is a filesystem-backed Markdown wiki assembled in `packages/verso/src/Verso/App.hs`:
 
 - Documents under `/documents/:id` render read-only by default; `?edit` opens
   the editor and `?raw` serves the Markdown source.
@@ -104,7 +106,7 @@ The editor is a `<markdown-editor>` web component, written in TypeScript under
   diagrams from a lazily loaded separate bundle (RFC-0033).
 
 Bun bundles the editor into the generated, untracked
-`static/editor/markdown-editor.js`. Biome (four-space indent, 120-character
+`packages/verso/static/editor/markdown-editor.js`. Biome (four-space indent, 120-character
 lines), tsc, Vitest, and Knip gate the TypeScript via `make editor-check`.
 
 ## MicroHttp Installation

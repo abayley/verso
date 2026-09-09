@@ -236,10 +236,18 @@ with `make check` green.
   they resolve `MicroHttp.*` and its cbits from the package database through the existing
   `-a$(MHS_PACKAGE_DB)`, no preload flag needed (confirmed in Phase 0). The framework source now lives in
   the package and joins the format and lint gate from there. `Verso.*` and `Concordance.*`, the Concordance
-  cbits, and `static/` were left in `src/` and the repository root: nesting them under `packages/verso/` is
-  a directory move whose one real snag is the served-`static/` runtime path (`src/Verso/App.hs` defaults the
-  editor mount to `static/editor`), and it earns its own phase. The GHC coverage builds compile the
-  framework source directly and were repointed at its new location. `make check` stayed green.
+  cbits, and `static/` were initially left in `src/` and the repository root, then nested in Phase 3b below.
+  The GHC coverage builds compile the framework source directly and were repointed at its new location.
+  `make check` stayed green.
+- **Phase 3b — nest the Verso application under `packages/verso`. Done (2026-09-10).** Moved `src/Verso`
+  and `src/Concordance` to `packages/verso/src`, the Concordance cbits to `packages/verso/cbits`, and
+  `static/` to `packages/verso/static`. The one real snag, the served-`static/` runtime path, was handled
+  by repointing the built-in editor mount in `Verso.App` and the example and smoke configs to
+  `packages/verso/static/editor` while the `/static/editor` URL prefix stayed put; the editor bundle now
+  builds into `packages/verso/static/editor`. The Makefile's `SRC`, `CBITS`, and a new `STATIC` variable
+  carry the new locations, so the mhs and coverage builds and the chrome gates followed. `make check` stayed
+  green, including the browser smoke that loads the bundles from the moved directory. All application code
+  now lives under `packages/`.
 - **Phase 4 (out of scope here, listed for continuity) — repo extraction.** With `micro-http` a package
   Verso only depends on, its extraction to a separate repository becomes a directory move plus a published
   or vendored dependency. A later RFC owns it.

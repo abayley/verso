@@ -5,10 +5,10 @@ import { checkVisualThemeCss } from "./src/visual-theme-registry.ts";
 
 // Resolve paths against this file's location so the build works from any cwd:
 // entrypoints and node_modules are package-local, the served bundles land in
-// the Verso app's static/editor at the repository root.
+// the Verso app's packages/verso/static/editor.
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..");
-const staticDir = join(repoRoot, "static", "editor");
+const staticDir = join(repoRoot, "packages", "verso", "static", "editor");
 const nodeModule = (relative) => join(here, "node_modules", relative);
 const staticOut = (name) => join(staticDir, name);
 const entry = (name) => join(here, "src", name);

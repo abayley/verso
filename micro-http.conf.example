@@ -21,7 +21,7 @@ access_log = build/access.log
 client_error_log = build/client-errors.log
 
 # A comma-separated list of "<url-prefix> <filesystem-root>" mounts.
-static_mounts = /static/editor static/editor
+static_mounts = /static/editor packages/verso/static/editor
 
 # --- document tree (RFC-0026+) ---
 # document_tree_root (REQUIRED) is the MkDocs-style tree served and edited in

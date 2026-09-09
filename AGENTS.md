@@ -1,5 +1,16 @@
 # Agent Instructions
 
+## Repository Layout
+
+The code is split into packages under `packages/` (RFC-0038): `micro-http` is the
+framework, a MicroCabal package; `verso` is the wiki application (Haskell under
+`src/Verso` and `src/Concordance`, the Concordance cbits, and the served
+`static/`); `verso-editor` is the TypeScript editor. The Verso build resolves the
+framework from the MicroHs package database, and `make` reinstalls it with `mcabal
+install` whenever `packages/micro-http` sources change, so an ordinary `make check`
+picks up framework edits with no manual step. The full tree is in the top-level
+`README.md`.
+
 ## Visual Work
 
 Do not use strict TDD for exploratory visual work, including styling changes,
@@ -45,8 +56,8 @@ The Moebius theme's watercolour wash — the four base-colour gradient tokens an
 the layered backgrounds on the rail, top bar, content and command toolbar — is
 generated, not hand-written. `bun run moebius` in `packages/verso-editor` rebuilds it in place; the same
 check (part of that package's `bun run check`) fails if
-`static/editor/markdown-editor.css` has drifted from what the generator would
-write. Edit that CSS by hand and the next run reverts it silently. The numbers
+`packages/verso/static/editor/markdown-editor.css` has drifted from what the
+generator would write. Edit that CSS by hand and the next run reverts it silently. The numbers
 are tuned in `docs/mockups/markdown-editor-moebius-watercolour-prototype.html`
 and then carried into `packages/verso-editor/moebius/`.
 
@@ -65,3 +76,24 @@ A preview left running does not collide with the smoke. The smoke claims the
 first free port from 8125 upwards and names its scratch tree, operation log and
 config after whichever port it took, so a manual run and a `make check` can
 proceed side by side (`packages/verso-editor/editor-smoke.cjs`).
+
+## Editor Toolchain
+
+The editor package (`packages/verso-editor`) has its own `bun install`, separate
+from the root install that serves the documentation tooling. On a fresh checkout,
+run `bun install` in both, and `bun x playwright install chromium` inside the
+editor package for the smoke.
+
+The editor's dependency versions are pinned deliberately, including an `overrides`
+block that holds the whole `@tiptap`/`prosemirror` tree at a known-good version.
+Do not upgrade them as a side effect of an install: a newer Tiptap changed the
+Bold command the browser smoke checks. Treat editor installs as reproduce, not
+upgrade.
+
+## Documentation
+
+`docs/README.md` maps what each `docs/` directory holds and where a new document
+goes; read it before adding one. The ADR and RFC indexes are generated, so after
+adding or editing a record run `bun run adr:index` or `bun run rfc:index` (`make
+check` fails when they are stale). Every configuration key is catalogued in
+`docs/reference/configuration.md`.

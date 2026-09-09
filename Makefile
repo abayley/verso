@@ -1,6 +1,14 @@
 MHS = mhs
 MHS_PACKAGE_DB = $(HOME)/.mcabal/mhs-0.16.5.0
 MHSFLAGS = -a$(MHS_PACKAGE_DB)
+# The MicroHs heap is a fixed, non-growable arena of this many 16-byte cells,
+# allocated once at process start (its default, 50,000,000 cells, is ~763MB and
+# becomes resident under the link-index build's allocation churn). run-verso
+# passes it as +RTS -H<cells>; 16M cells (~256MB) holds the real corpus with
+# headroom. Raise it if the server ever dies with "heap exhausted" under load;
+# lower it to trade a smaller footprint for more frequent GC. Override on the
+# command line: `make run-verso VERSO_HEAP_CELLS=24000000`.
+VERSO_HEAP_CELLS ?= 16000000
 GHC = ghc
 HPC = hpc
 BUILD = build
@@ -145,7 +153,7 @@ $(BUILD)/verso: $(SRC_HS) $(MICROHTTP_PKG) $(LINK_OBJS)
 	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) $(SRC)/Verso/Main.hs -o $@
 
 run-verso: editor-build $(BUILD)/verso
-	$(BUILD)/verso
+	$(BUILD)/verso +RTS -H$(VERSO_HEAP_CELLS) -RTS
 
 # Replay the operation log onto the tree (RFC-0028), after a corpus refresh. Reads
 # the same config as the server (MICROHTTP_CONFIG, default micro-http.conf).

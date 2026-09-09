@@ -17,13 +17,12 @@ backend:
   <https://givemeyourdata.org/>
   <https://mysysinfo.com/>
 
-- reorganise project docs to match standard in aria-evals
+- test with ghc
+- profile memory use
 - refactor src/Verso/App.hs
   some functions have very large parameter lists: treeRoutes, treePostDispatch, treeDelete, treeDeleteHandler
 - automatic tag classification - create set of canonical tags
 - generate image descriptions - gemma4?
-- test with ghc
-- profile memory use
 - add CLI for agents to edit pages
 - load testing - simulate actual users fetching and saving pages
 - would like to notify user when page they are viewing or editing has been modified by someone else; how?

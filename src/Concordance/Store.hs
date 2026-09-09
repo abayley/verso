@@ -6,7 +6,7 @@ UTF-8; hit and page records come back in a packed buffer the shim fills
 (records separated by 0x1e, fields by 0x1f).
 
 Store mutations (upsert, delete, optimise) run on the shim's worker thread
-(ADR-080): the submit copies its arguments and returns immediately, the
+(ADR-0080): the submit copies its arguments and returns immediately, the
 calling green thread parks on the completion pipe like any descriptor, and
 the rest of the runtime keeps serving. A mutation can take from tens of
 milliseconds to several seconds (optimise's version cleanup), which would
@@ -74,7 +74,7 @@ foreign import ccall "concordance_shim.h cn_async_collect"
 
 {- | An open store handle (the shim holds the actual connection). The lock
 serialises mutations across green threads -- the shim has one async job slot
--- and the descriptor is the shim's completion pipe (ADR-080).
+-- and the descriptor is the shim's completion pipe (ADR-0080).
 -}
 data Store = Store
     { storeDims :: Int
@@ -264,7 +264,7 @@ withVectors store chunks action =
             (zip [0 ..] (concatMap storeChunkVector chunks))
         action vecsC
 
-{- | Runs a store mutation off-thread (ADR-080): submits the job to the
+{- | Runs a store mutation off-thread (ADR-0080): submits the job to the
 shim's worker, parks this green thread on the completion descriptor (the
 rest of the runtime keeps running), then collects the outcome. The lock
 serialises green threads over the shim's single job slot.

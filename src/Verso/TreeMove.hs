@@ -205,7 +205,7 @@ relocateListing root srcRel srcParentRel destParentRel newPrefix = do
 {- | Moves the page at @srcRel@ (a @.md@ tree path) under @destParentRel@ with slug
 @slug@ (the source's own base name when empty), previewing when @confirm@ is 'False'.
 A same-folder change is a rename; a cross-folder move additionally co-moves the
-sidecar meta directory and runs the asset shared/exclusive analysis (ADR-062),
+sidecar meta directory and runs the asset shared/exclusive analysis (ADR-0062),
 relocating exclusive assets and copying shared ones. Refuses the root-of-page
 edge cases: an unsafe path, a missing source/destination parent, a destination
 collision, a no-op (destination is the source), or a destination asset name that
@@ -286,7 +286,7 @@ dropDotMd name
     | ".md" `List.isSuffixOf` name = take (length name - length ".md") name
     | otherwise = name
 
--- | The shared/exclusive classification of the moving page's assets against its source-folder peers (ADR-062).
+-- | The shared/exclusive classification of the moving page's assets against its source-folder peers (ADR-0062).
 classifyMovingAssets :: FilePath -> String -> String -> IO [(String, DocumentLinks.AssetClass)]
 classifyMovingAssets root srcRel srcDir = do
     movingBody <- fmap (Maybe.fromMaybe BS.empty) (readRel root srcRel)
@@ -404,9 +404,9 @@ data DeleteOutcome
 The target's parent index.md listing entry is not counted as a referrer (it is
 removed as part of the delete); if any /other/ page still links to the target (for a
 section, any page outside the subtree links into it) the delete is 'Refused' with the
-referrer list and nothing is written (ADR-063). Otherwise the target -- a page's
+referrer list and nothing is written (ADR-0063). Otherwise the target -- a page's
 @.md@, sidecar meta dir, and exclusive assets, or a whole section folder -- is moved
-into the trash entry @trashId@ with a provenance manifest (ADR-065), the listing
+into the trash entry @trashId@ with a provenance manifest (ADR-0065), the listing
 entry removed, and 'Deleted' returned for the caller to log. @findRelevant@ supplies the
 pages scanned for referrers ('scanRelevant' or 'indexRelevant').
 -}
@@ -659,7 +659,7 @@ applyReplayOp root trashRoot op = case OperationLog.opType op of
         let from = Maybe.fromMaybe "" (OperationLog.opFrom op)
             to = Maybe.fromMaybe "" (OperationLog.opTo op)
             move = if OperationLog.opKind op == "page" then movePage else moveSection
-        -- replay-tool is a separate process with no warm index, so it uses the scan (ADR-066).
+        -- replay-tool is a separate process with no warm index, so it uses the scan (ADR-0066).
         result <- move scanRelevant root from (parentRel to) (slugOfPath (OperationLog.opKind op) to) True
         pure (movePlanStatus result)
     OperationLog.OpDelete -> do
@@ -710,7 +710,7 @@ dot-entries and @assets@/@meta@ folders. A page is returned only when its raw by
 @hint@ -- the target's name, which any relative link to it must contain -- or when it lies within
 @subtreePrefix@ (the moved subtree, whose own pages must be rewritten even when they do not mention
 the hint). Files matching neither are skipped __without unpacking or link-parsing__, which is the
-difference between a sub-second and a ~90-second scan on a large corpus (no index, ADR-059). The
+difference between a sub-second and a ~90-second scan on a large corpus (no index, ADR-0059). The
 byte pre-filter never drops a real referrer (false positives only cost a parse), since a relative
 link's path always contains the slug/filename of what it points at.
 -}

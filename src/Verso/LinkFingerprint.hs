@@ -3,7 +3,7 @@ over every @.md@ in the document tree, held alongside the graph so the server ca
 cheaply detect an out-of-band change before relying on the index. Before a move/delete
 the server re-fingerprints the tree and compares: an equal fingerprint means the graph
 is provably consistent with the filesystem, an unequal one means rebuild first
-(ADR-067).
+(ADR-0067).
 
 The walk ('markdownFiles') enumerates the same @.md@ pages the whole-tree scan
 considers -- skipping dot-entries and the @assets@/@meta@ folders, exactly as

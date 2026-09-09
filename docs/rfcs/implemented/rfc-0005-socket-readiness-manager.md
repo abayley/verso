@@ -64,7 +64,7 @@ unused:
   compiled in. On that path the primitive returns `0` on wake and never
   returns `-1` (the `-1`/`EINVAL` result is only the compile-time
   no-poll fallback), so `waitForReadFD` does not throw and the
-  `Either`-based error discipline (ADR-009) is preserved.
+  `Either`-based error discipline (ADR-0009) is preserved.
 
 This keeps the single-OS-thread cooperative model that RFC-0003 required:
 no individual operation blocks in a syscall; only the scheduler blocks, in
@@ -86,7 +86,7 @@ mark it as complete in the phase checklist.
 
 ## Non-Goals
 
-- No change to the one-thread-per-connection model or ADR-011.
+- No change to the one-thread-per-connection model or ADR-0011.
 - No idle-read timeout yet; this RFC gives time-based waiting its home but
   the timeout policy is a later slice.
 - No fix for the MicroHs forked-thread ByteString-corruption bug recorded
@@ -173,7 +173,7 @@ benches.
          ~50 MB/s to ~1.0-1.5 GB/s (median per recv buffer size), toward
          the ~2.3 GB/s saturated ceiling. Integration suite unchanged at
          17 examples.
-   - [x] ADR-026 accepted; result recorded here and in the network design
+   - [x] ADR-0026 accepted; result recorded here and in the network design
          document.
 
 ### Rollout Plan Escape Hatch

@@ -42,7 +42,7 @@ application architecture. Progressive enhancement reconciles the two: the
 server renders a meaningful, working page for every client, and capable
 browsers upgrade it.
 
-ADR-019 is unchanged by this design. A textarea of raw Markdown keeps the
+ADR-0019 is unchanged by this design. A textarea of raw Markdown keeps the
 server contract as Markdown text; the server still performs no Markdown
 parsing or rendering beyond the existing save validation.
 
@@ -65,8 +65,8 @@ mark it as complete in the phase checklist.
 
 ## Non-Goals
 
-- No server-side Markdown rendering (ADR-019 stands).
-- No templating engine (ADR-022 defers templates).
+- No server-side Markdown rendering (ADR-0019 stands).
+- No templating engine (ADR-0022 defers templates).
 - No visual design investment in the fallback page beyond legibility.
 - No change to the `GET /documents/:id` raw `text/markdown` contract.
 - No offline or conflict-resolution behaviour.
@@ -108,7 +108,7 @@ Browser changes in `src/TestApp/Editor/`:
 - Keep the hidden input and `src` fetch (status quo): no fallback for
   script-less browsers, an avoidable fetch round trip, and custom plumbing
   duplicating what the platform now provides.
-- Render the rich editor markup server-side: contradicts ADR-019 and pulls
+- Render the rich editor markup server-side: contradicts ADR-0019 and pulls
   editor logic into the server.
 - A separate raw-editing route (for example `?raw=1`): two pages to keep in
   sync; enhancement-in-place avoids the drift.
@@ -197,7 +197,7 @@ three-phase split.
          complement to `ElementInternals`.
    - [x] Added a JavaScript-disabled browser smoke pass (textarea form posts,
          redirects, round-trips) and a JS pass asserting the value via `FormData`.
-   - [x] Flipped RFC status; recorded the outcome (ADR-039).
+   - [x] Flipped RFC status; recorded the outcome (ADR-0039).
 
 ### Rollout Plan Escape Hatch
 

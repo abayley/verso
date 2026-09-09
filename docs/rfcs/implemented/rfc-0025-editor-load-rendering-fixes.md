@@ -30,7 +30,7 @@ Two independent editor-load fixes found while reviewing real corpus pages.
   fenced code block before the visual editor's Markdown loader, restoring each as
   a code-block node after load.
 - **B. Native-details collapsibles.** Render collapsibles as semantic
-  `<details>`/`<summary>` instead of a `<div>` with a custom toggle (ADR-054).
+  `<details>`/`<summary>` instead of a `<div>` with a custom toggle (ADR-0054).
 
 ## Context
 
@@ -50,7 +50,7 @@ must keep fence *content* out of that converter, not change `marked`.
 
 ### B. Collapsibles as `<details>`
 
-See ADR-054. RFC-0017's `<div>` is incidental (it avoided the paid Tiptap
+See ADR-0054. RFC-0017's `<div>` is incidental (it avoided the paid Tiptap
 `Details` Pro extension); the `???` source syntax and the raw-HTML ban are
 unchanged. `<details>`/`<summary>` is the semantic element and is accessible by
 default.
@@ -97,7 +97,7 @@ pre-extracted before `setContent`).
    existing serialise seam; verify content with blank lines and indentation
    round-trips byte-for-byte.
 
-### Part B -- render collapsibles as `<details>` (ADR-054)
+### Part B -- render collapsibles as `<details>` (ADR-0054)
 
 - `Collapsible` node `renderHTML` and node view emit
   `<details><summary contenteditable="false">title</summary><div
@@ -127,12 +127,12 @@ pre-extracted before `setContent`).
 ## Security Impact
 
 - No change to the raw-HTML ban: the editor renders `<details>` and code blocks
-  but still never accepts raw HTML as Markdown input (ADR-040/041).
+  but still never accepts raw HTML as Markdown input (ADR-0040/0041).
 
 ## Reliability Impact
 
 - Part A removes a silent content-loss bug (fence content escaping) -- a
-  round-trip-stability fix (ADR-051): a load that drops content then saves would
+  round-trip-stability fix (ADR-0051): a load that drops content then saves would
   lose it. Golden round-trip tests guard it.
 
 ## Compatibility Impact
@@ -156,7 +156,7 @@ pre-extracted before `setContent`).
 
 ### Rollout Plan Escape Hatch
 
-- If implementation reaches behaviour this RFC or ADR-054 does not cover, stop,
+- If implementation reaches behaviour this RFC or ADR-0054 does not cover, stop,
   add the smallest missing decision to `## Open Questions` (or the owning ADR),
   with evidence, impact, options, and a recommendation, and continue only after
   explicit approval.

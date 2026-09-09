@@ -209,7 +209,7 @@ mark it as complete in the phase checklist.
          sanitisation, the extension map, and the 404-before-head check.
    - [x] Migrate `TestApp` off `staticEditorAsset` onto `static`.
    - [x] Unit and integration tests above; `make check` green.
-   - [x] Flip ADR-030 to accepted; note it in the relevant design document.
+   - [x] Flip ADR-0030 to accepted; note it in the relevant design document.
 
 ### Rollout Plan Escape Hatch
 

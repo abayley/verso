@@ -271,7 +271,7 @@ eligible for a future keep-alive RFC.
          `StrictBody` send suffices. Add `ChunksBody [ByteString]` only if a real
          page later exceeds the buffer.
 4. Phase four: document and close.
-   - [x] ADR-038 records the builder + coalescing decision; the spike is noted.
+   - [x] ADR-0038 records the builder + coalescing decision; the spike is noted.
          This RFC is Completed. `make bench-html-builder` (the `current` vs
          `dlist-coalesce` rows) captures the before/after.
 

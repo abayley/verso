@@ -53,7 +53,7 @@ identified:
 This builds on RFC-0027: its move/delete operations are what the log records and
 what replay/undo/restore re-apply. The log and trash live outside the tree (a
 server-owned, configurable location), keeping the corpus clean -- consistent with
-the navigation tree reading the filesystem live (ADR-059) and never writing
+the navigation tree reading the filesystem live (ADR-0059) and never writing
 generated state into the tree.
 
 ## Phase Item Completion Instructions
@@ -375,10 +375,10 @@ preferred.)
 
 ## Implied Decision Records (to add on acceptance)
 
-- **ADR-064**: Structural reorganisation is captured as an append-only logical
+- **ADR-0064**: Structural reorganisation is captured as an append-only logical
   **operation log** outside the corpus, replayable onto a refreshed source export;
   undo is append-inverse, not a popped stack.
-- **ADR-065**: Deletes move to an outside-the-corpus **trash** with provenance
+- **ADR-0065**: Deletes move to an outside-the-corpus **trash** with provenance
   (restore via the move machinery), rather than hard-deleting; refuse-if-referenced
   still applies.
 

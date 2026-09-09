@@ -40,7 +40,7 @@ throws on an unknown type. Adding one block type today edits all of:
 2. `remark-adapter.ts` -- mdast node to editor block (the parse path; the right
    remark plugin must also produce the mdast node).
 3. `markdown-render.ts` -- editor block to HTML (preview and mode-switch
-   validation, browser-owned per ADR-019/ADR-040).
+   validation, browser-owned per ADR-0019/ADR-0040).
 4. `markdown-serialise.ts` -- two functions: DOM element to editor block (reading
    Tiptap's rendered DOM) and editor block to Markdown text.
 5. `tiptap-visual-editor.ts` -- the Tiptap node/extension, its commands, and the
@@ -48,7 +48,7 @@ throws on an unknown type. Adding one block type today edits all of:
 6. The toolbar / slash-menu UI and the block-command routing in
    `markdown-editor-element.ts`.
 7. `MicroHttp.TestApp` (Haskell) -- the `supportedBlock` save-time validation
-   guard (ADR-040), which rejects Markdown outside the editor's subset.
+   guard (ADR-0040), which rejects Markdown outside the editor's subset.
 8. CodeMirror source mode, when the syntax is exotic enough to need highlighting.
 
 So features added ad hoc mean scattered edits across six TypeScript files plus
@@ -82,14 +82,14 @@ it as complete in the phase checklist.
 - A coherent answer for the Haskell save-time guard under an open, client-defined
   subset (it cannot track arbitrary extensions across the language boundary).
 - Graceful degradation: an extension's Markdown should remain readable (ideally
-  valid GFM) when an extension is absent or scripting is off (ADR-040: no-JS
+  valid GFM) when an extension is absent or scripting is off (ADR-0040: no-JS
   reading is raw Markdown).
 
 ## Non-Goals
 
 - Not a general CMS or plugin marketplace; extensions are code-defined and
   in-tree, not user-authored or runtime-loaded.
-- No server-side Markdown rendering; rendering stays browser-owned (ADR-040). The
+- No server-side Markdown rendering; rendering stays browser-owned (ADR-0040). The
   server guard is validation only.
 - No arbitrary raw HTML; it stays uniformly rejected. Collapsibles use mkdocs
   syntax, not `<details>`, so no allowlist exception is introduced.
@@ -214,19 +214,19 @@ reusable for a family of callout types if more are added.
 
 Degradation: a `??? note` block read by a renderer without the extension shows
 the body as a code block (poor) -- but for this project that does not arise on the
-no-JavaScript path, where ADR-040 serves *raw* Markdown (readable source), not
+no-JavaScript path, where ADR-0040 serves *raw* Markdown (readable source), not
 rendered HTML. The degradation cost is portability to other renderers, not the
 local fallback.
 
 ### The Haskell save-time guard under an open subset
 
-`supportedBlock` (ADR-040) validates posted Markdown against a hardcoded subset.
+`supportedBlock` (ADR-0040) validates posted Markdown against a hardcoded subset.
 With a client-extensible, open subset, keeping the Haskell recogniser in sync is
-the cross-language dual-implementation trap ADR-040 rejected for rendering.
+the cross-language dual-implementation trap ADR-0040 rejected for rendering.
 Decided: narrow the server guard to its security purpose -- keep raw-HTML
 rejection -- and drop the block-structure validation entirely. The editor becomes
 the authority on its own (now open) subset; the server defends the trust
-boundary, not the grammar. This is the ADR-040 framing carried to its conclusion
+boundary, not the grammar. This is the ADR-0040 framing carried to its conclusion
 and gets a short ADR. No raw-HTML allowlist is needed: collapsibles use mkdocs
 syntax, not `<details>`, so raw HTML stays uniformly rejected.
 
@@ -251,12 +251,12 @@ table phase (the spike's "when table editing arrives" trigger).
   larger, riskier change orthogonal to extensions. Out of scope.
 - **Raw HTML (`<details>`) for collapsibles, or a uniform `remark-directive`
   (`:::`) grammar for all extensions.** `<details>` is GitHub-portable but reopens
-  the raw-HTML trust hole ADR-040 closed; directives give one parser for every
+  the raw-HTML trust hole ADR-0040 closed; directives give one parser for every
   extension but a non-portable syntax. Both rejected in favour of native syntaxes
   per feature (decided): tables/alerts stay portable GFM, collapsibles use the
   mkdocs `???` syntax the team uses, raw HTML stays banned.
 - **Keep the Haskell subset validation in lockstep with extensions.** The
-  cross-language sync trap; rejected for the same reason ADR-040 rejected a server
+  cross-language sync trap; rejected for the same reason ADR-0040 rejected a server
   renderer.
 
 ## Security Impact
@@ -384,7 +384,7 @@ table phase (the spike's "when table editing arrives" trigger).
        round-trip tests rather than a registry-disabled test, since the registry
        is process-global).
      - `renderMarkdown` is currently a mode-switch validation step, not a live
-       preview pane (ADR-040), so the callout chrome is visible via the Tiptap
+       preview pane (ADR-0040), so the callout chrome is visible via the Tiptap
        node in the visual surface, not a preview.
      - Deferred: switching an existing admonition's kind in the editor (insert
        is note-only; other kinds round-trip from source). 125 editor tests
@@ -517,9 +517,9 @@ table phase (the spike's "when table editing arrives" trigger).
      `MicroHttp.TestApp.validateMarkdown` now rejects raw HTML and accepts
      everything else (the ~110-line block-structure helper cluster removed; the
      `unsupported block syntax` test repurposed to assert a previously-rejected
-     unterminated fence now saves). ADR-041 records the content-extension
+     unterminated fence now saves). ADR-0041 records the content-extension
      registry, the Lit view-layer adoption, and the guard narrowing (refining
-     ADR-040, whose retained "supported-block subset check" is now dropped). The
+     ADR-0040, whose retained "supported-block subset check" is now dropped). The
      38 Haskell examples and 161 editor tests pass; `make check` green.
 
 ### Rollout Plan Escape Hatch
@@ -538,7 +538,7 @@ Resolved with the owner (2026-06-16):
   no GitHub `<details>` path ever; separate from the GFM-alert admonitions, the
   two sharing rendered callout chrome.
 - **Server guard scope:** narrow to raw-HTML rejection only; drop block-structure
-  validation. Accepted as the conclusion of ADR-040.
+  validation. Accepted as the conclusion of ADR-0040.
 - **Lit adoption:** adopt for the view layer, landing with the table phase.
 - **Inline extensions:** in scope. Footnotes require an inline reference node and a
   document-level definition set, so the registry and model cover inline (not only

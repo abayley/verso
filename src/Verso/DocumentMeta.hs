@@ -1,4 +1,4 @@
-{- | Per-page sidecar metadata for the document tree (RFC-0019, ADR-049). A tree
+{- | Per-page sidecar metadata for the document tree (RFC-0019, ADR-0049). A tree
 page @\<dir>/\<base>.md@ records its assets in the meta directory
 @\<dir>/meta/\<base>.meta/@: @attachments.yaml@ lists the page's attachments,
 @images.yaml@ its inline images (a third file, @meta.yaml@, is untouched here).
@@ -34,7 +34,7 @@ import qualified Data.Maybe as Maybe
 import qualified MicroHttp.Static as Static
 import qualified System.Directory as Directory
 
--- | An attachment record as written for a new upload: the legacy @id@/@path@ are omitted (ADR-049).
+-- | An attachment record as written for a new upload: the legacy @id@/@path@ are omitted (ADR-0049).
 data AttachmentEntry = AttachmentEntry
     { attachmentName :: String
     -- ^ The original (human-readable) filename, spaces and case intact.
@@ -48,7 +48,7 @@ data AttachmentEntry = AttachmentEntry
 {- | The meta directory of a tree document, or 'Nothing' if the document path is
 unsafe. For @\<dir>/\<base>.md@ it is @\<dir>/meta/\<base>.meta@ (an @index.md@
 page yields @\<dir>/meta/index.meta@). The path is validated as a tree-relative
-file via 'Static.resolveStaticPath' (ADR-030), so traversal is rejected.
+file via 'Static.resolveStaticPath' (ADR-0030), so traversal is rejected.
 -}
 metaDirectoryFor :: FilePath -> String -> Maybe FilePath
 metaDirectoryFor root path =
@@ -113,7 +113,7 @@ setImageShortTitle existing localPath newTitle =
             Just value -> value == localPath
             Nothing -> inTarget
 
--- | The @(name, local_path)@ of each attachment entry, for the metadata panel (ADR-049).
+-- | The @(name, local_path)@ of each attachment entry, for the metadata panel (ADR-0049).
 parseAttachments :: String -> [(String, String)]
 parseAttachments contents = Maybe.mapMaybe blockToAttachment (splitBlocks (lines contents))
   where

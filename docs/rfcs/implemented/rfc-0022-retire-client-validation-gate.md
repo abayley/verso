@@ -31,11 +31,11 @@ split views unreachable) and silently dropping rejected edits. This RFC retires
 the runtime gate, deletes the dead Markdown-to-HTML render half, keeps the
 `remark` parse pipeline as a test-only subset spec, and replaces the narrow
 parse-error UI with a general client-side error boundary. The saved-page contract
-becomes round-trip stability under offline trust (ADR-051).
+becomes round-trip stability under offline trust (ADR-0051).
 
 ## Context
 
-See ADR-051 for the full decision and rationale, and `CONTEXT.md` for the
+See ADR-0051 for the full decision and rationale, and `CONTEXT.md` for the
 **round-trip stability**, **Visual/Markdown/Split view**, and "no preview pane"
 language. Key production facts established during design:
 
@@ -61,9 +61,9 @@ language. Key production facts established during design:
 ## Non-Goals
 
 - Closing the `marked`-DOM -> `documentFromElements` test gap (stays manual,
-  Chrome; recorded as residual risk in ADR-051).
-- Any server-side change: the raw-HTML save guard (ADR-041) is untouched, and no
-  server-side renderer is added (ADR-019/ADR-040 hold).
+  Chrome; recorded as residual risk in ADR-0051).
+- Any server-side change: the raw-HTML save guard (ADR-0041) is untouched, and no
+  server-side renderer is added (ADR-0019/ADR-0040 hold).
 - Server-side error telemetry (deferred to RFC-0023).
 - Reconciling `marked` vs `remark` vs MkDocs rendering of the same source.
 
@@ -122,7 +122,7 @@ Three independently shippable slices; `make check` green after each.
   doubles load/serialise work per edit for a signal it cannot act on.
 - **Delete the `remark` parse pipeline entirely:** rejected. It is the only
   executable definition of the supported subset and the serialiser's
-  inverse-check; cheap to keep as a test fixture (ADR-051 decision 3).
+  inverse-check; cheap to keep as a test fixture (ADR-0051 decision 3).
 - **Keep the gate and keep patching divergences:** rejected. Whack-a-mole; the
   gate validates the wrong artifact and fails invisibly.
 - **Adopt Effect.ts for error handling:** rejected. Too large a paradigm for a
@@ -131,7 +131,7 @@ Three independently shippable slices; `make check` green after each.
 ## Security Impact
 
 - No new server surface. The server's raw-HTML rejection trust boundary
-  (ADR-041) is unchanged.
+  (ADR-0041) is unchanged.
 - The error banner must not leak document content or stack internals to the
   user-facing message; the detail goes to the console only.
 
@@ -140,7 +140,7 @@ Three independently shippable slices; `make check` green after each.
 - Removes a silent show-vs-save divergence (edits rejected by the gate were
   never saved).
 - Adds a general silent-failure backstop (the error boundary).
-- Residual risk (ADR-051): `marked` DOM -> `documentFromElements` remains
+- Residual risk (ADR-0051): `marked` DOM -> `documentFromElements` remains
   manually verified in Chrome; this RFC does not change that.
 
 ## Compatibility Impact
@@ -164,7 +164,7 @@ Three independently shippable slices; `make check` green after each.
 
 ### Rollout Plan Escape Hatch
 
-- If implementation reaches behaviour this RFC or ADR-051 does not cover, stop
+- If implementation reaches behaviour this RFC or ADR-0051 does not cover, stop
   changing the affected scope before inventing a contract. Add the smallest
   missing decision to `## Open Questions` (or the owning ADR), with evidence,
   impact, options, and a recommendation, and continue only after explicit

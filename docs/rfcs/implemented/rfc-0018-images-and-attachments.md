@@ -39,19 +39,19 @@ The editor has no images today: the Markdown subset rejects `image` mdast nodes
 no way to get a binary file from the user to the server -- the only `POST` body
 the app parses is `application/x-www-form-urlencoded` (`markdown=...`), read
 strictly with a 1 MiB bound (`readBodyStrict`). Documents are filesystem-backed
-(`DocumentStore`, ADR-014); static files are already served safely and zero-copy
+(`DocumentStore`, ADR-0014); static files are already served safely and zero-copy
 (`Static.static`, path-traversal-safe, `FileBody` + `sendfile`, `contentTypeFor`
-extension mapping -- ADR-018/030/034). So the serving half of "attachments"
+extension mapping -- ADR-0018/0030/0034). So the serving half of "attachments"
 largely exists as a pattern to reuse; the missing pieces are *receiving* bytes,
 *storing* them, *rendering* images, and the *editor UX* to add them.
 
 Three project constraints shape the design:
 
-- **Raw HTML is uniformly rejected** (ADR-040/041, the server's only save-time
+- **Raw HTML is uniformly rejected** (ADR-0040/0041, the server's only save-time
   guard). Images must therefore use Markdown `![]()`, not `<img>`, and the served
   bytes are untrusted content that must not become an injection vector.
 - **Rendering is browser-owned and the no-JavaScript path is raw Markdown**
-  (ADR-040, progressive enhancement ADR-039). Upload is inherently a scripted
+  (ADR-0040, progressive enhancement ADR-0039). Upload is inherently a scripted
   interaction; the no-JS experience degrades to referencing already-uploaded URLs
   by typing Markdown, not uploading.
 - **The content-extension registry (RFC-0017)** is the contract for new
@@ -66,7 +66,7 @@ it as complete in the phase checklist.
 ## Goals
 
 - A server attachment store: upload bytes once, address them by content hash,
-  store on the filesystem (ADR-014 lineage), and serve them safely and zero-copy.
+  store on the filesystem (ADR-0014 lineage), and serve them safely and zero-copy.
 - Images rendered inline from `![alt](url)` (a new content extension + Tiptap
   node); other files referenced as `[name](url)` download links.
 - Editor UX to add images and attachments: a file picker, drag-and-drop, and
@@ -88,7 +88,7 @@ it as complete in the phase checklist.
 - No attachment garbage collection in the first cut (orphaned blobs are
   tolerated; a mark-sweep is a later concern, see Open Questions).
 - No authentication/authorization model change; this rides whatever the fronting
-  proxy provides (ADR-031). Quotas/rate-limiting are out of scope for v1.
+  proxy provides (ADR-0031). Quotas/rate-limiting are out of scope for v1.
 
 ## Proposal
 
@@ -116,7 +116,7 @@ handler enforces the attachment limit explicitly via `readBodyStrict`, returning
 
 ### Storage: a content-addressed blob store
 
-A new `AttachmentStore` mirrors `DocumentStore` (filesystem-backed, ADR-014).
+A new `AttachmentStore` mirrors `DocumentStore` (filesystem-backed, ADR-0014).
 Bytes are addressed by their SHA-256 hex hash and written once to
 `data/attachments/<hash>` (configurable root, like `document_root`). Writing is
 idempotent: an identical upload dedups to the same blob. The original filename is
@@ -135,7 +135,7 @@ a pure content-addressed blob directory with no parallel index to keep in sync.
 
 `GET /attachments/:hash/:name` resolves `data/attachments/<hash>` and serves it as
 a `FileBody` (size resolved once, exact `Content-Length`, zero-copy `sendfile` --
-ADR-034), reusing the path-safety discipline of `Static` (the hash is validated
+ADR-0034), reusing the path-safety discipline of `Static` (the hash is validated
 as lowercase hex; `name` is cosmetic and never touches the filesystem path, so no
 traversal is possible). Response headers:
 
@@ -183,7 +183,7 @@ path (the Markdown already carries the URL).
 
 ### Security model
 
-- Raw HTML stays uniformly rejected (ADR-040/041): images use `![]()`, so no
+- Raw HTML stays uniformly rejected (ADR-0040/0041): images use `![]()`, so no
   `<img>`/`<a>`/`<svg>` tags enter the document; the save-time guard is unchanged.
 - Uploaded bytes are untrusted and served sandboxed: `nosniff`, the `default-src
   'none'; sandbox` CSP, correct `Content-Type`, and download disposition for
@@ -214,7 +214,7 @@ path (the Markdown already carries the URL).
   coupling to documents. Content-addressed blobs chosen for dedup, immutability,
   and trivial cacheable serving; document<->blob ownership (for GC) is deferred.
 - **Allowing raw `<img>`/`<details>`-style HTML for media.** Reopens the raw-HTML
-  trust hole ADR-040/041 closed. Rejected; Markdown `![]()` only.
+  trust hole ADR-0040/0041 closed. Rejected; Markdown `![]()` only.
 - **Storing declared MIME in a sidecar.** Avoided for v1 by deriving type from the
   URL filename extension (reusing `contentTypeFor`); a sidecar is a later add if
   richer metadata is needed.
@@ -229,7 +229,7 @@ path (the Markdown already carries the URL).
   the filesystem, so the `Static` path-safety guarantees are preserved.
 - New denial-of-service surface (disk fill via many uploads): bounded per-upload;
   global quota/rate-limiting is out of scope for v1 and called out as a follow-up
-  (a fronting proxy, ADR-031, can also rate-limit `POST /attachments`).
+  (a fronting proxy, ADR-0031, can also rate-limit `POST /attachments`).
 
 ## Reliability Impact
 
@@ -239,7 +239,7 @@ path (the Markdown already carries the URL).
 - Orphaned blobs (a document edited to drop an image) are tolerated; they waste
   disk but never break serving. A mark-sweep GC (scan all documents' Markdown for
   referenced hashes) is a deferred follow-up.
-- Serving reuses the proven zero-copy `sendfile` path (ADR-034); a missing blob is
+- Serving reuses the proven zero-copy `sendfile` path (ADR-0034); a missing blob is
   a `404` decided before the head is written, as in `Static`.
 
 ## Compatibility Impact
@@ -388,7 +388,7 @@ path (the Markdown already carries the URL).
      `webp` (an inline image type) fell through to `application/octet-stream`.
      Added `webp`, `pdf`, `md`, `csv`, and `zip` mappings, with `StaticSpec`
      tests. The store, upload transport, and serving security model are recorded
-     in ADR-042. `make check` green.
+     in ADR-0042. `make check` green.
 
 ### Rollout Plan Escape Hatch
 
@@ -426,4 +426,4 @@ Resolved during phase two (2026-06-17):
 Still open:
 
 - **Quotas / rate-limiting:** per-document or global storage caps and upload rate
-  limits -- in-app or delegated to the fronting proxy (ADR-031)? Deferred.
+  limits -- in-app or delegated to the fronting proxy (ADR-0031)? Deferred.

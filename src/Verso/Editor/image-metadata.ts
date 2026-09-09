@@ -1,5 +1,5 @@
 // Extracts the `short_title` each page-relative image should carry in its sidecar `images.yaml`
-// (RFC-0019, ADR-049). The editor owns Markdown understanding (ADR-040), so it derives the value here
+// (RFC-0019, ADR-0049). The editor owns Markdown understanding (ADR-0040), so it derives the value here
 // and sends `{localPath, shortTitle}` pairs with the save; the server only applies them. The rule is
 // "the image's alt text, or the filename when the alt is empty" -- matching what the editor inserts on
 // upload, so a freshly uploaded image's title is stable until the author edits its alt.

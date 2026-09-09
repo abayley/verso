@@ -56,7 +56,7 @@ are Verso code.
   struct of function pointers (`OrtGetApiBase()`), which MicroHs cannot call
   through. A C shim is therefore required for embedding regardless of any
   other choice, which satisfies the decision register's "C helpers only when
-  direct imports cannot work" bar (ADR-004).
+  direct imports cannot work" bar (ADR-0004).
 - HuggingFace `tokenizers` is Rust with official Python/Node bindings only.
   The candidate models (`bge-small-en-v1.5`, `gte-small`,
   `all-MiniLM-L6-v2`, `snowflake-arctic-embed-xs`) all use plain BERT
@@ -441,7 +441,7 @@ Compile-and-call evidence in `spike/search/`, with measurements recorded in
       -- after which BM25 FTS, **native hybrid with default RRF**, and
       **FTS freshness (new rows searchable immediately, no optimize)** are
       all demonstrated. Findings and measurements in
-      [search-spike-notes.md](../design/search-spike-notes.md).
+      [search-spike-notes.md](../refs/search-spike-notes.md).
 - [x] Spike: minimal shim + MicroHs program calling it end-to-end
       (open, upsert, search, close) to prove the FFI shape and measure
       call latencies from inside the interpreter.
@@ -457,7 +457,7 @@ Compile-and-call evidence in `spike/search/`, with measurements recorded in
       per 384-token chunk (bge-small int8), 2-3 ms per query embed. The
       shim defaults to the quantised variant and exposes the thread count.
       Measurements in
-      [search-spike-notes.md](../design/search-spike-notes.md).
+      [search-spike-notes.md](../refs/search-spike-notes.md).
 - [x] Spike: A/B sanity check `bge-small-en-v1.5` against
       `all-MiniLM-L6-v2` on a handful of real corpus queries (fall back to
       MiniLM if bge-small does not win).
@@ -472,7 +472,7 @@ Compile-and-call evidence in `spike/search/`, with measurements recorded in
       no FTS query API in upstream lancedb-c -- is closed by our patch,
       prepared as an upstream PR (`spike/search/lancedb-c-pr.md`); the
       artefact build applies the patch until it merges. Full evidence in
-      [search-spike-notes.md](../design/search-spike-notes.md).
+      [search-spike-notes.md](../refs/search-spike-notes.md).
 
 ### Phase 1: WordPiece Tokeniser (pure Haskell)
 
@@ -630,8 +630,8 @@ fixtures:
 
 ### Phase 8: Documentation and Decisions
 
-- [x] ADRs: ADR-072 (Concordance behind the C shim), ADR-073 (in-process
-      embedding with a model profile), ADR-074 (queue plus reconcile
+- [x] ADRs: ADR-0072 (Concordance behind the C shim), ADR-0073 (in-process
+      embedding with a model profile), ADR-0074 (queue plus reconcile
       freshness)
 - [x] README feature and build-target mentions; runbook
       `docs/design/search-runbook.md` (the module index is

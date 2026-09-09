@@ -76,7 +76,7 @@ mark it as complete in the phase checklist.
 - Keep-alive itself stays out (RFC-0012 non-goal); `FileBody` merely becomes
   eligible by gaining a `Content-Length`. `Connection: close` is still sent.
 - No in-process body transforms (compression) at all; that is the proxy's job
-  (ADR-031). An `egress` stage cannot rewrite a `FileBody` in place, but it may
+  (ADR-0031). An `egress` stage cannot rewrite a `FileBody` in place, but it may
   replace the body to opt out of zero-copy if it ever needs to.
 - Non-macOS platforms are out of initial scope; the `sendfile` signature
   differs and lives behind the portability seam (RFC-0007).
@@ -166,7 +166,7 @@ counting and no extra syscall. The body type the writer finally sees decides the
 send path:
 still a `FileBody` -> `sendfile`; swapped -> the normal copy/stream path. (In
 practice MicroHttp compresses nothing in process -- that is the proxy's job,
-ADR-031 -- so this is a capability, not a planned use.)
+ADR-0031 -- so this is a capability, not a planned use.)
 
 ### Static serving
 
@@ -254,9 +254,9 @@ the body an `egress` stage swaps a `FileBody` for when it wants the content).
          `FileBody path size`; tests above; `make check` green.
    - [x] Graceful close (`closeClientSocketGraceful`) drains the receive buffer
          before close, so an unread request does not turn the close into an
-         `RST` that truncates the response (ADR-035).
-   - [x] ADR-034 (zero-copy file body, size carried, `egress` opacity) and
-         ADR-035 (graceful close); note in the request-lifecycle walkthrough.
+         `RST` that truncates the response (ADR-0035).
+   - [x] ADR-0034 (zero-copy file body, size carried, `egress` opacity) and
+         ADR-0035 (graceful close); note in the request-lifecycle walkthrough.
 
 ### Rollout Plan Escape Hatch
 
@@ -304,7 +304,7 @@ the body an `egress` stage swaps a `FileBody` for when it wants the content).
   invisible to earlier tests, which only asserted the status line. The fix is a
   graceful close (`closeClientSocketGraceful`): a non-blocking sweep that drains
   whatever is in the receive buffer, then `close`, so the close is an orderly
-  `FIN`. Applied to every response, not just `FileBody`; recorded as ADR-035.
+  `FIN`. Applied to every response, not just `FileBody`; recorded as ADR-0035.
   This was diagnosed by instrumenting `sendfile` (which reliably reported the
   full byte count and showed the bytes in the send buffer via `SO_NWRITE`),
   ruling out the syscall and the file-fd close, and isolating the `RST`.

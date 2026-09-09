@@ -8,7 +8,7 @@ function idAttribute(element: HTMLElement): string {
 /**
  * The editor-side inline footnote reference: an atom superscript carrying the footnote id, matching the
  * `sup.markdown-footnote-ref` markup the render and serialise seams use. It shows the id (numbering is a
- * document-level render concern, ADR-040 validation only, not the editor surface).
+ * document-level render concern, ADR-0040 validation only, not the editor surface).
  */
 export const FootnoteReference = Node.create({
     name: "footnoteReference",

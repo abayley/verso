@@ -28,7 +28,7 @@ path**: on the real corpus the per-operation stat-fingerprint walk made operatio
 *slower* than the scan it replaced, and the whole-tree graph build is ~80-130 s of
 `String` processing in the mhs interpreter (a lazy-build bug additionally made the first
 operation appear to hang). The measured cost model is in
-[link-index-performance.md](../design/link-index-performance.md).
+[link-index-performance.md](../refs/link-index-performance.md).
 
 Two load-bearing decisions are reversed in the revised design (the sections below are
 annotated **(revised)** where they no longer hold):
@@ -39,7 +39,7 @@ annotated **(revised)** where they no longer hold):
   in-server mutations, and rebuilt on an **explicit refresh** after a re-export -- no
   per-operation walk, so an operation is the O(1) lookup. This accepts a bounded
   staleness window for *ad-hoc* on-disk edits between refreshes, which the original
-  per-op check eliminated (ADR-067 is amended accordingly).
+  per-op check eliminated (ADR-0067 is amended accordingly).
 - **The index is persisted** (graph + fingerprint), reload-and-validated on startup, so
   the build is a one-off rather than paid on every restart. Persistence was an original
   Non-Goal; it is now in scope.
@@ -61,7 +61,7 @@ rebuilds first. In-server mutations update the graph and the fingerprint togethe
 they never look like drift. Expected outcome: move/delete drop from a whole-tree
 read-and-parse to a cheap stat check plus an index lookup, while the index stays
 **always correct** -- it never serves a stale answer on the correctness-critical
-path, preserving ADR-059's guarantee rather than weakening it.
+path, preserving ADR-0059's guarantee rather than weakening it.
 
 ## Context
 
@@ -76,17 +76,17 @@ slug/filename), bringing it to **~3.5 s**, now dominated by the unavoidable read
 every `.md`. That is acceptable today but grows linearly with the document tree, and
 every move/delete pays it.
 
-ADR-059 (RFC-0026) deliberately chose a **live filesystem read with no cached
+ADR-0059 (RFC-0026) deliberately chose a **live filesystem read with no cached
 index**, reasoning that the tree is the source of truth, is edited out-of-band, and
 that a materialised index is a cache that drifts and needs a
 persistence/reconciliation story. Two things have changed: (1) RFC-0027 added
-whole-tree operations whose cost ADR-059 did not weigh (it considered only per-folder
+whole-tree operations whose cost ADR-0059 did not weigh (it considered only per-folder
 expansion, which stays cheap), and (2) the read-everything floor is now the binding
 constraint on those operations. RFC-0026 anticipated an index would be "its own RFC".
-This is that RFC. It **amends** ADR-059 for whole-tree queries while keeping the nav
+This is that RFC. It **amends** ADR-0059 for whole-tree queries while keeping the nav
 tree's lazy per-folder live read unchanged.
 
-The drift concern ADR-059 raised is the crux, and this design answers it head-on
+The drift concern ADR-0059 raised is the crux, and this design answers it head-on
 rather than living with it: the served document tree is **periodically re-exported
 from an authoritative source in its original layout** (RFC-0028) and may be edited
 directly out-of-band, so the server **detects** such changes (a stat-based
@@ -118,7 +118,7 @@ as complete in the phase checklist.
   held with the graph, so the server can cheaply detect out-of-band change.
 - **Always correct on the critical path**: before a move/delete, re-stat the tree;
   trust the index when the fingerprint matches, rebuild first when it does not. The
-  index never serves a stale referrer/rewrite answer (preserves ADR-059's
+  index never serves a stale referrer/rewrite answer (preserves ADR-0059's
   always-correct property; no staleness window).
 - **Incremental maintenance**: each in-server mutation (save, create, move, delete,
   restore) updates the graph *and* the fingerprint for exactly the pages it wrote, so
@@ -141,7 +141,7 @@ as complete in the phase checklist.
   system (an embedding-vector + full-text store), not this link graph. No titles, no
   body text.
 - **Replacing the nav tree's lazy live read.** Per-folder expansion stays a live
-  `GET /tree` read (ADR-059); the index serves only the whole-tree link queries.
+  `GET /tree` read (ADR-0059); the index serves only the whole-tree link queries.
 - **Asset edges / non-link metadata.** Asset ownership (exclusive/shared) is settled
   folder-locally and needs no whole-tree index.
 - **Cross-platform `stat`.** macOS-first; other platforms are the portability RFC's
@@ -178,8 +178,8 @@ prefix query over `inbound` keys (S and its descendants), exactly the predicate
 > request path -- build at startup, maintain incrementally for in-server mutations,
 > rebuild on an explicit refresh after a re-export -- because the server owns the tree
 > (no ad-hoc out-of-band writers). The fingerprint is retained only to *validate a
-> persisted index* on load. See [link-index-performance.md](../design/link-index-performance.md)
-> and ADR-067 (amended).
+> persisted index* on load. See [link-index-performance.md](../refs/link-index-performance.md)
+> and ADR-0067 (amended).
 
 Held alongside the graph is a **fingerprint** of the tree the graph was built from:
 each `.md`'s `(tree path, mtime, size)`. `mtime` uses sub-second precision
@@ -278,7 +278,7 @@ how a link resolves.
 - **Persist the index to disk.** Saves a build on restart. Rejected for v1: it adds a
   serialise/validate path for a ~3.5 s saving on an infrequent event; the lazy
   build-on-first-use keeps startup instant without it.
-- **Materialised index as the tree's source for listing too.** Rejected: ADR-059's
+- **Materialised index as the tree's source for listing too.** Rejected: ADR-0059's
   reasoning still holds for per-folder expansion (cheap live, always correct); only
   whole-tree queries justify the index.
 - **A search index instead** (titles/text). Rejected: does not address the move/delete
@@ -313,8 +313,8 @@ how a link resolves.
 
 ## Compatibility Impact
 
-- **Amends ADR-059**: adds an in-memory index for whole-tree queries while keeping the
-  lazy per-folder live read, and *preserves* ADR-059's always-correct property via the
+- **Amends ADR-0059**: adds an in-memory index for whole-tree queries while keeping the
+  lazy per-folder live read, and *preserves* ADR-0059's always-correct property via the
   fingerprint check.
 - Internal only: move/delete change *how* they find candidates, not their observable
   contract (same refusals, same rewrites). The scan path is retained.
@@ -394,16 +394,16 @@ how a link resolves.
 
 ## Implied Decision Records (to add on acceptance)
 
-- **ADR-066**: Whole-tree link queries (move/delete referrers and rewrite sets) are
+- **ADR-0066**: Whole-tree link queries (move/delete referrers and rewrite sets) are
   served by an in-memory **link index** (resolved `.md`->`.md` link graph + inverted
   referrer map), built from the document tree and maintained by in-server mutations;
-  amends ADR-059, which deferred an index, while keeping the nav tree's lazy per-folder
+  amends ADR-0059, which deferred an index, while keeping the nav tree's lazy per-folder
   live read. The byte-prefiltered scan (RFC-0027) is its build path, cold-index
   fallback, and `replay-tool`'s mechanism.
-- **ADR-067**: The index is kept correct by a **per-operation stat fingerprint**
+- **ADR-0067**: The index is kept correct by a **per-operation stat fingerprint**
   (`path, mtime, size` over every `.md`): a move/delete re-stats the tree and trusts the
   index only when the fingerprint matches, else rebuilds first. This **preserves**
-  ADR-059's always-correct property (no staleness window) and removes the cron,
+  ADR-0059's always-correct property (no staleness window) and removes the cron,
   persistence, operational-rebuild contract, and delete back-stop a never-checked cache
   would require. It depends on an **FFI `stat(2)` binding, macOS-first**; cross-platform
   support is deferred to the portability RFC.
@@ -417,5 +417,5 @@ how a link resolves.
   per-operation freshness check -- a `(path, mtime, size)` fingerprint of every `.md`;
   an operation re-stats the tree and rebuilds the index if it changed out-of-band --
   so it never serves a stale answer (preserving the **navigation tree**'s
-  always-correct contract, ADR-059). Not a search index (a separate future system);
+  always-correct contract, ADR-0059). Not a search index (a separate future system);
   carries no titles or asset edges.

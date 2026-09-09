@@ -213,7 +213,7 @@ workerLoop runtime = do
                 drain
     swap (a, b) = (b, a)
 
-{- | Optimises the store when the policy says so (RFC-0034/ADR-075 follow-up;
+{- | Optimises the store when the policy says so (RFC-0034/ADR-0075 follow-up;
 'SearchQueue.optimiseDue'): as soon as the queue drains in normal operation,
 and in batches during a bulk backlog. The delete-then-add upserts fragment
 the Lance dataset, and optimisation also folds fresh rows into the vector

@@ -31,7 +31,7 @@ unchanged.
 
 ## Context
 
-ADR-084 accepts the complete design for architecture review item 8. The current
+ADR-0084 accepts the complete design for architecture review item 8. The current
 registry stores process-wide mutable state, and extensions register through
 import side effects or call timing. Production and tests therefore select
 extension policy through hidden initialisation order. Every extension also
@@ -172,7 +172,7 @@ the base blockquote and GFM alert serialisers.
 ## Security Impact
 
 - The raw HTML extension remains part of the production document-tree pipeline.
-- The server's raw HTML trust boundary from ADR-041 is unchanged.
+- The server's raw HTML trust boundary from ADR-0041 is unchanged.
 - The pipeline does not load runtime extensions or accept external payload
   descriptors.
 
@@ -281,7 +281,7 @@ the base blockquote and GFM alert serialisers.
 
 ### Rollout Plan Escape Hatch
 
-- If implementation reaches behaviour that this RFC or ADR-084 does not cover,
+- If implementation reaches behaviour that this RFC or ADR-0084 does not cover,
   stop changing the affected scope before inventing a contract.
 - Add the smallest missing decision to `## Open Questions`, or to the owning
   RFC if another RFC owns the contract.
@@ -291,5 +291,5 @@ the base blockquote and GFM alert serialisers.
 
 ## Open Questions
 
-- None. ADR-084 records the accepted design, and the user accepted this RFC for
+- None. ADR-0084 records the accepted design, and the user accepted this RFC for
   implementation on 2026-08-07.

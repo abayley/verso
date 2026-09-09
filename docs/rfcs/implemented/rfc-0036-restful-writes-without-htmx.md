@@ -143,11 +143,11 @@ management (create, move) already lives.
 `PUT /drafts/*path` and `PUT /documents/*path` take the markdown as the raw
 request body (`Content-Type: text/markdown; charset=utf-8`), read via the
 existing `readBodyStrict` under `formBodyLimit`, and store it verbatim --
-byte-exactness per ADR-038, no newline normalisation (the editor emits LF).
+byte-exactness per ADR-0038, no newline normalisation (the editor emits LF).
 CRLF normalisation remains a property of the urlencoded form path only, where
 HTML form submission mandates CRLF.
 
-The image-title sidecar sync (RFC-0019, ADR-049) leaves the save payload: the
+The image-title sidecar sync (RFC-0019, ADR-0049) leaves the save payload: the
 editor calls the small `?image-titles` controller (urlencoded
 `image_count`/`image_path_<i>`/`image_title_<i>` fields, handled by the
 String pipeline) after a successful publish, and only when the page has
@@ -201,7 +201,7 @@ seam test (it pins the form path), the ByteString-native handler plumbing
 where it is verb-agnostic (`writeDocumentBytes`, `saveStatusFragment` removal
 makes this moot), and `bench/FormDecodeBench.hs` with its C strategy removed
 (the C numbers live in this RFC's Context). The `spawnAndWait`/`posix_spawn`
-work (ADR-078) is unrelated and stays.
+work (ADR-0078) is unrelated and stays.
 
 ## Alternatives Considered
 
@@ -236,7 +236,7 @@ work (ADR-078) is unrelated and stays.
   unchanged and applies to `PUT`/`DELETE` exactly as to POST.
 - Raw bodies remove urlencoding ambiguity; the body size limit
   (`formBodyLimit`) still bounds every write. Argument-vector process
-  execution (ADR-070/ADR-078) is unaffected.
+  execution (ADR-0070/ADR-0078) is unaffected.
 - CSRF exposure is unchanged (no cookies or sessions; single-user tool).
 - Path handling continues through `resolveStaticPath`; the new `/drafts/`
   routes must apply the same traversal validation as `/documents/`.

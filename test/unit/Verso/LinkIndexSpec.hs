@@ -13,7 +13,7 @@ bs = BS.pack
 
 {- | A small document tree as @(treePath, body)@ pairs, with the in-tree cross-links
 the index and the scan must agree on. Links are @.md@ page links (the graph) plus one
-same-folder asset reference (excluded from the graph, ADR-066).
+same-folder asset reference (excluded from the graph, ADR-0066).
 -}
 pages :: [(String, BS.ByteString)]
 pages =

@@ -4,10 +4,10 @@ move/delete and incremental maintenance need. It reuses the RFC-0027 link engine
 ('Verso.DocumentLinks') to resolve targets, so the index resolves a link exactly
 as the whole-tree scan does; it is purely a performance layer that narrows /which/
 pages an operation must process, never a second implementation of /what/ a link means
-(ADR-066).
+(ADR-0066).
 
 The graph holds only @.md@ link edges: external and asset references are excluded.
-This rests on the corpus's folder-local asset convention (ADR-062): an asset is
+This rests on the corpus's folder-local asset convention (ADR-0062): an asset is
 referenced by a same-folder @assets/\<name\>@ token, which resolves inside the
 referrer's own folder, so no page /outside/ a moved or deleted subtree links to an
 asset /inside/ it. Under that convention the @.md@ graph is complete for the
@@ -137,7 +137,7 @@ inboundOf target = Map.findWithDefault [] target . idxInbound
 
 {- | A page's resolved in-tree @.md@ link targets (tree-absolute), deduplicated and in
 body order. External and non-@.md@ (asset) targets are excluded -- the graph is
-@.md@->@.md@ only (ADR-066). Resolution reuses 'Verso.DocumentLinks', so it matches
+@.md@->@.md@ only (ADR-0066). Resolution reuses 'Verso.DocumentLinks', so it matches
 the scan.
 -}
 pageTargets :: PagePath -> BS.ByteString -> [TreePath]
@@ -186,7 +186,7 @@ referrers :: (TreePath -> Bool) -> [PagePath] -> LinkIndex -> [PagePath]
 referrers matches excluded ix =
     List.nub [page | page <- linkersInto matches ix, page `notElem` excluded]
 
-{- | The pages a move must consider rewriting (ADR-066): the only pages whose links a
+{- | The pages a move must consider rewriting (ADR-0066): the only pages whose links a
 section move changes are those with a link that /crosses the subtree boundary/ --
 (1) a page inside the subtree that links /out/ of it (the page moves deeper, so the relative
 link to an outside target changes), and (2) a page outside the subtree that links /into/ it
@@ -198,7 +198,7 @@ still a superset of the pages 'Verso.DocumentLinks.planMoveRewrites' actually ch
 (a crossing link may happen to need no textual edit), so restricting the plan to these
 candidates drops no rewrite. Earlier this returned /every/ subtree page; narrowing it to the
 out-linkers avoids reading and parsing the (often many) subtree pages with only internal
-links. Asset edges are excluded from the index (ADR-066/062, folder-local assets travel with
+links. Asset edges are excluded from the index (ADR-0066/0062, folder-local assets travel with
 the page), which is why an asset link never makes a subtree page a candidate.
 -}
 rewriteCandidates :: (TreePath -> Bool) -> LinkIndex -> [PagePath]

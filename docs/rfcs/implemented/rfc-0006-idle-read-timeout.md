@@ -66,7 +66,7 @@ mark it as complete in the phase checklist.
   flowing and arms a timer only when a read would block.
 - Disabled by a non-positive setting, preserving the previous behaviour
   exactly.
-- The public socket interface keeps its `Either` error contract (ADR-009).
+- The public socket interface keeps its `Either` error contract (ADR-0009).
 
 ## Non-Goals
 
@@ -76,7 +76,7 @@ mark it as complete in the phase checklist.
   intended behaviour.
 - No total-request-time budget; the bound is per idle wait, not on the whole
   request.
-- No keep-alive; ADR-011 stands.
+- No keep-alive; ADR-0011 stands.
 
 ## Proposal
 
@@ -156,7 +156,7 @@ which depends on the feature (it hangs with the timeout disabled).
    - [x] Stalled-peer integration test (a partial request then silence
          yields a 408 within the bound, not a hang); `make check` green at
          18 integration examples.
-   - [x] ADR-027 accepted; noted in the network design document.
+   - [x] ADR-0027 accepted; noted in the network design document.
 
 ### Rollout Plan Escape Hatch
 

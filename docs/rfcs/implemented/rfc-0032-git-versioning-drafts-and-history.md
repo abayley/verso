@@ -37,7 +37,7 @@ authentication can replace later.
 
 ## Context
 
-The Verso wiki app edits a MkDocs-style document tree in place (ADR-045). Today
+The Verso wiki app edits a MkDocs-style document tree in place (ADR-0045). Today
 the editor autosaves the full page markdown to `POST /documents/<path>` roughly
 every two seconds, and `treeSave` writes it straight into the tree, syncs image
 sidecar metadata, and patches the in-memory link index. There is no record of
@@ -152,7 +152,7 @@ runProcess
 ```
 
 Output and stdin are `ByteString` (not `String`) for byte-exactness: page content
-stays bytes (the project's UTF-8/Char8 distinction, ADR-038), so `git show` of a
+stays bytes (the project's UTF-8/Char8 distinction, ADR-0038), so `git show` of a
 page round-trips losslessly. Callers decode to text where they need it (log/diff
 parsing).
 
@@ -439,7 +439,7 @@ server.
 - The operation log, trash, undo, and `replay-tool` are unchanged.
 - New framework module `MicroHttp.Process`; new app modules `Verso.Git` and
   `Verso.Identity`. All follow the qualified-import and Haddock conventions
-  (ADR-069).
+  (ADR-0069).
 
 ## Testing and Quality Gates
 
@@ -499,7 +499,7 @@ browser-driven editor/visual slices follow).
   tests (history returns the revision list; rollback reverts content and commits
   "Roll back ..."); the standalone history/diff pages are server-rendered HTML.
 - [x] Phase 7 — CONTEXT.md glossary additions (draft, publish, revision,
-  revision history, author identity) and ADR-070 (covering the in-place-git
+  revision history, author identity) and ADR-0070 (covering the in-place-git
   decision, the draft/publish workflow, identity, and the `MicroHttp.Process`
   subprocess primitive).
 

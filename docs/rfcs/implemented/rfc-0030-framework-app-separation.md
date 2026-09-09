@@ -122,7 +122,7 @@ binding `rename(2)`/`unlink(2)`/`rmdir(2)`/`stat(2)`) with no document/wiki
 semantics, and `MicroHttp.Log` (framework log rotation, RFC-0024) already imports
 `renamePath`/`removeFilePath` from it. The module's own doc comment records that
 these were consolidated out of `Log` to avoid duplicating the libc escape hatch
-(ADR-061). It is therefore a framework portability shim. It stays in the
+(ADR-0061). It is therefore a framework portability shim. It stays in the
 framework and is renamed `MicroHttp.FileSystem` to reflect what it is. This
 preserves the downward dependency (`Log` -> `FileSystem`, both framework; the app
 also depends on it downward).
@@ -207,7 +207,7 @@ assembly spec `TestAppSpec` -> `Verso.AppSpec`. `FileOpsSpec` ->
 ## Alternatives Considered
 
 - App owns `FileOps`, framework `Log` re-duplicates `rename`/`unlink`: rejected.
-  Reverses the ADR-061 consolidation and duplicates raw C bindings for no gain;
+  Reverses the ADR-0061 consolidation and duplicates raw C bindings for no gain;
   the primitives have no app semantics.
 - Single env prefix (`MICROHTTP_` for everything): rejected by decision. A
   distinct `VERSO_` prefix keeps the application's configuration surface legible
@@ -226,7 +226,7 @@ assembly spec `TestAppSpec` -> `Verso.AppSpec`. `FileOpsSpec` ->
 
 ## Reliability Impact
 
-- No new failure modes. `FileSystem` keeps the ADR-061 return-code-checking
+- No new failure modes. `FileSystem` keeps the ADR-0061 return-code-checking
   contract verbatim. The config overlay change is additive (a second prefix
   pass); absent `VERSO_` vars, behaviour is identical to today.
 - Risk is mechanical breakage during the move (a missed importer, a stale spec
@@ -290,7 +290,7 @@ Each phase is one commit, `make check` green before committing.
    `spike/editor-lit` import. Served bundle path `static/editor/` unchanged.
    `editor-check` green.
 6. **[DONE] Phase 6 -- Docs + memory.** Updated `docs/design/project-organisation.md`,
-   `README.md`, and added ADR-068 to `docs/decision-register.md`. Marked this RFC
+   `README.md`, and added ADR-0068 to `docs/decision-register.md`. Marked this RFC
    Implemented. Kept at `docs/rfcs/` top-level alongside RFC-0026..0029 (the
    de-facto convention; those completed RFCs were not moved to `implemented/`).
 

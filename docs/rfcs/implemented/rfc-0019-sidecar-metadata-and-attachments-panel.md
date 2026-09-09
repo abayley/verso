@@ -22,11 +22,11 @@ superseded_by: null
 
 ## Summary
 
-Two features for the document-tree editing mode (ADR-045). First, keep a page's
+Two features for the document-tree editing mode (ADR-0045). First, keep a page's
 **sidecar metadata** in step with its assets: an upload records the new asset in
 the page's `attachments.yaml` or `images.yaml`, and a save updates an inline
 image's `short_title` to follow the body image's alt text. All writes are
-minimal-byte edits that never reserialise the legacy files (ADR-049). Second, a
+minimal-byte edits that never reserialise the legacy files (ADR-0049). Second, a
 **metadata panel** in the editor that lists the page's attachments -- including
 ones not linked from the body -- and lets the author drag one into the document
 as a link. The panel is the first of three planned chrome panels (a navigation
@@ -36,13 +36,13 @@ tree and a table of contents follow later).
 
 The new documentation layout records every asset in a per-page meta directory
 `<dir>/meta/<base>.meta/` containing `attachments.yaml`, `images.yaml`, and
-`meta.yaml`. Today a tree upload (ADR-046) writes the asset file into the page's
+`meta.yaml`. Today a tree upload (ADR-0046) writes the asset file into the page's
 peer `assets/` but records nothing in this metadata, so the layout's index of a
 page's assets goes stale on every upload. The corpus also holds attachments that
 no page body links -- the author still needs to see them associated with the
 page and be able to link them. The meta files were produced by a legacy CMS
 export and carry fields and formatting we must not disturb, which constrains how
-we may write them (ADR-049).
+we may write them (ADR-0049).
 
 ## Phase Item Completion Instructions
 
@@ -55,7 +55,7 @@ it as complete in the phase checklist.
 - Keep an inline image's `short_title` in step with its body alt text.
 - Surface the page's attachments (linked and unlinked) in a metadata panel.
 - Let the author insert an attachment link by dragging it into the document.
-- Touch only the bytes we own in the legacy meta files (ADR-049).
+- Touch only the bytes we own in the legacy meta files (ADR-0049).
 
 ## Non-Goals
 
@@ -103,7 +103,7 @@ model as alt text else filename. `treeSave`, after writing the `.md`, surgically
 replaces the `short_title:` value within each matched `local_path` block in
 `images.yaml`. Update-only (never creates entries), and writes nothing when the
 value is unchanged. No-JS form saves carry no payload, so this is a JS-editor
-enhancement (ADR-039).
+enhancement (ADR-0039).
 
 ### Metadata panel
 
@@ -118,12 +118,12 @@ cursor as a fallback.
 
 ## Alternatives Considered
 
-- Parse-and-reserialise the meta files: rejected (ADR-049) -- rewrites untouched
+- Parse-and-reserialise the meta files: rejected (ADR-0049) -- rewrites untouched
   legacy entries in our style, losing `id`/`path`/ordering/quoting.
 - Reproduce or synthesise `id`/`path` for new uploads: rejected -- no current
   consumer reads them, and a fabricated value is worse than an absent one.
 - Server-side alt-sync by parsing the Markdown body: rejected -- crosses the
-  ADR-040 boundary (Markdown understanding is browser-owned); the editor already
+  ADR-0040 boundary (Markdown understanding is browser-owned); the editor already
   has the parsed model.
 - A separate `?meta` JSON endpoint for the panel: deferred -- embed-on-load plus
   client-side append keeps the list live without a second route; revisit when
@@ -136,7 +136,7 @@ cursor as a fallback.
 
 - Writes stay within the page's meta directory and peer `assets/`, both derived
   through `Static.resolveStaticPath` (path-safe). No new path input.
-- Tree mode is the trusted, first-party context (ADR-048); the panel renders
+- Tree mode is the trusted, first-party context (ADR-0048); the panel renders
   attachment names and page-relative hrefs as text/attributes (escaped), with no
   raw-HTML execution surface.
 - The save payload only sets `short_title` values keyed by an existing
@@ -155,7 +155,7 @@ cursor as a fallback.
 
 ## Compatibility Impact
 
-- Flat mode (ADR-014/042) is unchanged: no meta directory, no panel.
+- Flat mode (ADR-0014/0042) is unchanged: no meta directory, no panel.
 - New attachment entries omit `id`/`path`; any future consumer of those fields
   must tolerate their absence (none exists today).
 - The save gains an optional payload field; absent it (no-JS), the save behaves

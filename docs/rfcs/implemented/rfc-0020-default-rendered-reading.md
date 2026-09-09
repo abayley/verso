@@ -29,12 +29,12 @@ rendering, the same view switcher (visual / Markdown / split), width, theme, and
 side panels -- but with the editing controls hidden and the content not editable,
 so reading and editing look identical. `?edit` opens the editable shell (today's
 behaviour); `?raw` serves the raw Markdown for tooling. Rendering stays
-browser-owned (ADR-040); this amends ADR-045's "a `GET` serves the raw Markdown".
+browser-owned (ADR-0040); this amends ADR-0045's "a `GET` serves the raw Markdown".
 
 ## Context
 
 A tree page is reachable today as a plain `GET` (raw Markdown), `?edit` (the
-editor), and other files served statically (ADR-045). Following a link to a page
+editor), and other files served statically (ADR-0045). Following a link to a page
 shows raw Markdown source, which is poor for reading. The rendering capability
 already exists in the editor -- its visual surface (Tiptap) and split preview
 render the full content-extension subset -- and the owner wants the read view to
@@ -57,7 +57,7 @@ it as complete in the phase checklist.
 - In the read view the editing controls are hidden and the content is not
   editable; there is no save, autosave, or upload.
 - `?edit` opens the editable shell (unchanged); `?raw` serves raw Markdown.
-- No server-side Markdown rendering (ADR-040); no-JavaScript reading stays raw
+- No server-side Markdown rendering (ADR-0040); no-JavaScript reading stays raw
   Markdown.
 - Reuse the existing metadata/attachments panel; leave slots for the navigation
   tree and table-of-contents panels.
@@ -70,7 +70,7 @@ it as complete in the phase checklist.
 - A separate lightweight reader bundle (the editor shell is reused; parity and
   shared panels outweigh payload).
 - A rendered view for the flat single-document store (this is tree-mode reading).
-- Live execution of the tree's raw HTML (it renders inert, ADR-048).
+- Live execution of the tree's raw HTML (it renders inert, ADR-0048).
 
 ## Proposal
 
@@ -137,13 +137,13 @@ browser-first (AGENTS.md), not specified here.
 `?raw` is the explicit raw-Markdown endpoint for tooling and diffs. With no
 JavaScript, a plain `GET` degrades to the embedded raw Markdown (the shell's
 fallback), so no-JavaScript reading is still raw Markdown -- consistent with
-ADR-040.
+ADR-0040.
 
 ### Decision record
 
 This changes public behaviour (a plain `GET` renders instead of serving raw
-Markdown) and is hard to reverse, so it is recorded as **ADR-050**, which amends
-ADR-045's request model: `GET` reads (rendered), `?raw` is raw Markdown, `?edit`
+Markdown) and is hard to reverse, so it is recorded as **ADR-0050**, which amends
+ADR-0045's request model: `GET` reads (rendered), `?raw` is raw Markdown, `?edit`
 edits, `POST` saves. The document id and URL scheme are otherwise unchanged.
 
 ## Alternatives Considered
@@ -159,14 +159,14 @@ edits, `POST` saves. The document id and URL scheme are otherwise unchanged.
 - A standalone read-only renderer component: rejected -- duplicates the shell;
   an `editable` flag on the existing element is less code and guarantees parity.
 - Server-side rendering: rejected -- reintroduces the cross-language renderer
-  ADR-040 removed.
+  ADR-0040 removed.
 
 ## Security Impact
 
-- Rendering stays browser-owned (ADR-040); the server gains only selector routing.
+- Rendering stays browser-owned (ADR-0040); the server gains only selector routing.
 - The read view has no write path: no form, no autosave, no upload, and the
   panel's mutating actions are hidden/disabled.
-- The trusted tree's raw HTML renders **inert** (ADR-048) -- shown, not executed.
+- The trusted tree's raw HTML renders **inert** (ADR-0048) -- shown, not executed.
 - `?raw` and `?edit` resolve through the same path-safe `Static.resolveStaticPath`
   used today.
 
@@ -181,7 +181,7 @@ edits, `POST` saves. The document id and URL scheme are otherwise unchanged.
 
 - **Breaking (intended):** a plain `GET /documents/<path>.md` now returns the
   rendered shell, not raw `text/markdown`. Tooling and diffs must use `?raw`. This
-  amends ADR-045 and is recorded as ADR-050.
+  amends ADR-0045 and is recorded as ADR-0050.
 - Flat mode is unchanged.
 - No new build artifact: the read view reuses the editor bundle.
 
@@ -209,7 +209,7 @@ edits, `POST` saves. The document id and URL scheme are otherwise unchanged.
    width / theme / name) and panels; vitest.
 2. Server: a plain `GET` serves the read-only shell (no form), `?edit` the
    editable shell, `?raw` the verbatim Markdown, with `404` on a missing
-   read/raw target; integration tests. (ADR-050 already recorded.)
+   read/raw target; integration tests. (ADR-0050 already recorded.)
 3. Read-mode panel behaviour (hide mutating actions) and the read/edit navigation
    affordance; browser-verify parity, view switching, assets, and `?raw`.
 

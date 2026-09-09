@@ -4,6 +4,9 @@
   // all other markdownlint rules stay at their defaults.
   "config": {
     "default": true,
-    "MD013": { "line_length": 120 }
+    // Tables cannot be soft-wrapped without breaking them, so the length
+    // limit does not apply to table rows (the generated ADR and RFC indexes
+    // have long rows by design).
+    "MD013": { "line_length": 120, "tables": false }
   }
 }

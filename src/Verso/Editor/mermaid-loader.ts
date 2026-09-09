@@ -1,5 +1,5 @@
 /**
- * Lazy loader for the Mermaid diagram runtime (RFC-0033, ADR-071). Mermaid is large, so it is built as a
+ * Lazy loader for the Mermaid diagram runtime (RFC-0033, ADR-0071). Mermaid is large, so it is built as a
  * separate bundle (`static/editor/mermaid.js`) and loaded on demand only when a page actually contains a
  * `mermaid` fence — never as part of the base editor bundle. This module lives in the main bundle and only
  * references the separate bundle by URL, so importing it does not pull Mermaid in.

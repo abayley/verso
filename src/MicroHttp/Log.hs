@@ -46,7 +46,7 @@ import qualified System.IO.Unsafe as Unsafe
 -- (MicroHs has no atomic renameFile/removeFile in System.Directory). Rotation is
 -- best-effort: the wrappers' success/failure result is discarded here, so a failed
 -- rename/unlink leaves the files as-is and the caller falls back to appending
--- (ADR-053). FileSystem itself checks the codes for callers that need them (ADR-061).
+-- (ADR-0053). FileSystem itself checks the codes for callers that need them (ADR-0061).
 
 -- localtime converts epoch seconds to a broken-down local time (applying the
 -- zone and DST); strftime renders it. The struct tm is opaque here -- localtime
@@ -186,7 +186,7 @@ fileLogfmtLogger :: FilePath -> Logger
 fileLogfmtLogger path = logfmtTo (\line -> BS.appendFile path (BS.pack (line ++ "\n")))
 
 {- | A line sink that appends to a file, rotating it by size first (RFC-0024,
-ADR-053). When the active file reaches @maxBytes@ it is rotated by a
+ADR-0053). When the active file reaches @maxBytes@ it is rotated by a
 rename-cascade -- @path -> path.1 -> ... -> path.\<keep\>@, oldest dropped -- and
 the next append recreates @path@. The active file's byte size is tracked in an
 'MVar' (seeded from the file on disk once), so there is no @stat@ per line; the

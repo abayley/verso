@@ -8,7 +8,7 @@ Unlike 'MicroHttp.Log', these wrappers __report the failure__: each returns
 @Right@ only when the syscall succeeded, and @Left errno@ otherwise, so a failed
 move or remove surfaces to the caller with its reason -- ENOENT vs EACCES vs
 ENOTEMPTY -- rather than silently leaving the tree inconsistent (the RFC-0027
-reliability contract, ADR-061). The C wrappers fold the return code and @errno@
+reliability contract, ADR-0061). The C wrappers fold the return code and @errno@
 into one value, so no other green thread's C call can clobber @errno@ between
 the syscall and its errno read.
 
@@ -19,7 +19,7 @@ validation of their own.
 
 The 'fileStat' field offsets are __macOS-specific__ (the @struct stat@ layout is
 platform-dependent). They are isolated behind named constants so the cross-platform
-portability RFC can parameterise them; ADR-067.
+portability RFC can parameterise them; ADR-0067.
 -}
 module MicroHttp.FileSystem (
     Errno (..),
@@ -72,21 +72,21 @@ data FileStat = FileStat
 
 -- macOS @struct stat@ layout (arm64/x86_64, 64-bit inode): the buffer size and the
 -- byte offsets of st_mtimespec.tv_sec, its tv_nsec, and st_size. Platform-specific;
--- the portability RFC parameterises these (ADR-067).
+-- the portability RFC parameterises these (ADR-0067).
 
--- | The macOS @struct stat@ buffer size (bytes) to allocate for @stat(2)@ (ADR-067).
+-- | The macOS @struct stat@ buffer size (bytes) to allocate for @stat(2)@ (ADR-0067).
 statBufBytes :: Int
 statBufBytes = 144
 
--- | Byte offset of @st_mtimespec.tv_sec@ within the macOS @struct stat@ (ADR-067).
+-- | Byte offset of @st_mtimespec.tv_sec@ within the macOS @struct stat@ (ADR-0067).
 mtimeSecOffset :: Int
 mtimeSecOffset = 48
 
--- | Byte offset of @st_mtimespec.tv_nsec@ within the macOS @struct stat@ (ADR-067).
+-- | Byte offset of @st_mtimespec.tv_nsec@ within the macOS @struct stat@ (ADR-0067).
 mtimeNsecOffset :: Int
 mtimeNsecOffset = 56
 
--- | Byte offset of @st_size@ within the macOS @struct stat@ (ADR-067).
+-- | Byte offset of @st_size@ within the macOS @struct stat@ (ADR-0067).
 sizeOffset :: Int
 sizeOffset = 96
 
@@ -108,7 +108,7 @@ removeEmptyDir path = CStr.withCString path (fmap outcome . c_rmdir)
 {- | The file's modification time and size via @stat(2)@, or the errno when the call
 fails ('Errno' @2@, ENOENT, when the path is absent). The @mtime@ is sub-second
 (macOS @st_mtimespec@), so an equal-length content edit -- swapping one link target
-for another of the same length -- still moves it (RFC-0029, ADR-067).
+for another of the same length -- still moves it (RFC-0029, ADR-0067).
 -}
 fileStat :: FilePath -> IO (Either Errno FileStat)
 fileStat path =

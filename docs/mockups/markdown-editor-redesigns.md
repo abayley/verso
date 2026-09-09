@@ -115,7 +115,7 @@ Trade-offs and effort: the largest behavioural change. Tiptap supports both
 the bubble toolbar and slash menu patterns well, but the popover and toolbar
 state involved would strengthen the case for the deferred Lit spike recorded
 in the Phase Six notes of
-[markdown-editor-spike.md](../design/markdown-editor-spike.md).
+[markdown-editor-spike.md](../rfcs/refs/markdown-editor-spike.md).
 
 ## Markdown Editor Redesign D: Bold Press
 
@@ -594,7 +594,7 @@ Prototype: [markdown-editor-moebius-desert-day-night.html](markdown-editor-moebi
 
 This one shipped. The editor implements it as the **Moebius** visual theme
 (pick it from the theme dropdown; the light/dark switch beside it chooses the
-hour). See ADR-081 for how it is built -- tokens twice over, scenery and grain
+hour). See ADR-0081 for how it is built -- tokens twice over, scenery and grain
 as inline SVG data URIs, and the wobble filters injected only for this theme.
 The mockups below stay as the design record.
 
@@ -639,12 +639,12 @@ at the real theme system rather than at the illustration.
 
 Prototype: [markdown-editor-moebius-watercolour-prototype.html](markdown-editor-moebius-watercolour-prototype.html)
 
-This one shipped too, as the Moebius theme's wash (ADR-085). Keep the file:
+This one shipped too, as the Moebius theme's wash (ADR-0085). Keep the file:
 it is the tuning record, and the place to start from for any change to the
 numbers, not a design that has been superseded.
 
 The question it answered was whether colour could stop reading as flat paint
-without breaking ADR-081's rule that texture is background layers only. The
+without breaking ADR-0081's rule that texture is background layers only. The
 speckle that shipped with the theme left every surface one uniform colour with
 dots on it; the Giraud reference art in `images/` never does that. The wash
 replaced that speckle rather than joining it -- the two are the same idea at

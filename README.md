@@ -84,12 +84,12 @@ The server renders HTML pages; mutations are fetch requests with status/JSON
 responses (RFC-0036: `PUT`/`DELETE` on pages and drafts, POST controllers for
 domain operations). Markdown text is the wire contract between browser and
 server -- saves carry it as the raw request body -- and the server never
-parses Markdown (ADR-019). A plain form post remains the no-JavaScript floor.
+parses Markdown (ADR-0019). A plain form post remains the no-JavaScript floor.
 
 The editor is a `<markdown-editor>` web component, written in TypeScript under
 `src/Verso/Editor/`:
 
-- Tiptap/ProseMirror provides the visual editing surface (ADR-020); custom
+- Tiptap/ProseMirror provides the visual editing surface (ADR-0020); custom
   nodes and marks cover tables, images, footnotes, admonitions, collapsible
   sections, badges, reference links, and raw HTML.
 - CodeMirror provides the raw Markdown source mode.
@@ -159,7 +159,7 @@ clock, or other external I/O. They may use `IO` when the effect is local and
 in-memory, such as `IORef`-backed writer capture.
 
 Throughput and rendering benchmarks (`make bench-*`) are described in
-[MicroHttp Benchmarks](docs/benchmarks.md).
+[MicroHttp Benchmarks](docs/reference/benchmarks.md).
 
 The optional search engine builds via `make search-lancedb` (patched
 lancedb-c dylib; needs Rust), `make search-model` (checksum-pinned model
@@ -201,15 +201,15 @@ boundary), `test/unit/MicroHttp/RouterSpec.hs` (route matching), and
 
 Useful entry points:
 
-- [Starter Design](docs/design/starter-design.md)
-- [Module Design Index](docs/module-index.md)
-- [ADR Registry](docs/decision-register.md)
-- [Project Organisation](docs/design/project-organisation.md)
-- [Build Automation Design](docs/design/build-automation.md)
-- [Network Design](docs/design/network-design.md)
+- [Starter Design](docs/architecture/starter-design.md)
+- [Module Design Index](docs/reference/module-index.md)
+- [ADR Registry](docs/adrs/index.md)
+- [Project Organisation](docs/architecture/project-organisation.md)
+- [Build Automation Design](docs/architecture/build-automation.md)
+- [Network Design](docs/architecture/network-design.md)
 
 RFCs live under `docs/rfcs/`: open proposals at the top level, completed work
 in `docs/rfcs/implemented/`, and abandoned proposals in `docs/rfcs/rejected/`.
 
 New design decisions should be recorded in the
-[ADR Registry](docs/decision-register.md), not only in comments or chat.
+[ADR Registry](docs/adrs/index.md), not only in comments or chat.

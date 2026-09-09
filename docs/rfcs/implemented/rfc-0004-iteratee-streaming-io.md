@@ -28,7 +28,7 @@ iteratees; stream transformations (length bounding, future decompression or
 chunking) are enumeratees. The `Application` contract changes: handlers
 receive a strict request head and consume the body as a stream, and
 responses may carry a streaming body. Middleware keeps its
-`Application -> Application` shape (ADR-015), with stream-touching
+`Application -> Application` shape (ADR-0015), with stream-touching
 middleware implemented by lifting enumeratees onto the ingress or egress
 pipeline.
 
@@ -58,7 +58,7 @@ iterIO's `Data.IterIO.Http` is prior art for an HTTP server on this
 decomposition and is worth a skim for its body-draining and error choices;
 none of its code is taken.
 
-This remains within ADR-010: no external streaming library. The model is
+This remains within ADR-0010: no external streaming library. The model is
 implemented locally as plain data types and functions, compilable by both
 MicroHs and GHC without extensions.
 
@@ -75,7 +75,7 @@ mark it as complete in the phase checklist.
   response bodies.
 - Stream transformations compose: the Content-Length bound, and later
   decompression or chunked encoding, are enumeratees in a uniform pipeline.
-- Middleware keeps the ADR-015 `Application -> Application` type, with a
+- Middleware keeps the ADR-0015 `Application -> Application` type, with a
   documented taxonomy for head-level, ingress, egress, and failure-handling
   middleware.
 - The known iteratee implementation traps are pinned by tests before the
@@ -83,14 +83,14 @@ mark it as complete in the phase checklist.
 
 ## Non-Goals
 
-- No keep-alive or pipelining; ADR-011 stands. The model is chosen to make
+- No keep-alive or pipelining; ADR-0011 stands. The model is chosen to make
   that revisit cheap, but this RFC does not perform it.
 - No chunked transfer encoding in either direction.
 - No compression middleware; the taxonomy shows where it goes, nothing is
   built.
 - No generalised element types or monad parameters: the stream element is
   `ByteString` and the effect monad is `IO`, concretely.
-- No external streaming dependency (ADR-010).
+- No external streaming dependency (ADR-0010).
 
 ## Proposal
 
@@ -149,7 +149,7 @@ Decisions embodied here:
   `run` resolve `IterM` steps as they drive.
 - Failure is a constructor, not an `Either` inside the result, so binds
   stay single-layered; `run` converts to `Either` at the public boundary,
-  preserving ADR-009's style.
+  preserving ADR-0009's style.
 - `StreamError` is the domain instantiation, retiring RFC-0003's
   `FrameError`. Read and write transport failures are separate constructors
   so the server maps them to `ServerReadFailed` and `ServerWriteFailed`
@@ -287,8 +287,8 @@ data ResponseBody
   `socketSinkI`. `FileBody` is re-expressed as
   `StreamBody (fileEnumerator path)`.
 - A `StreamBody` has no known length and is close-delimited, which
-  `Connection: close` (ADR-011) already makes legal. File sizes for
-  `Content-Length` remain blocked on the ADR-018 `getFileSize` note.
+  `Connection: close` (ADR-0011) already makes legal. File sizes for
+  `Content-Length` remain blocked on the ADR-0018 `getFileSize` note.
 
 Two contract relocations, decided here:
 
@@ -306,12 +306,12 @@ Two contract relocations, decided here:
   behaviour; a move to 413 is a separate, deliberate change.
 - Unconsumed body bytes are the server's to dispose of: when a handler
   responds without draining, the server closes the connection (free under
-  ADR-011). A future keep-alive loop must drain to the request boundary
+  ADR-0011). A future keep-alive loop must drain to the request boundary
   instead; the enumerator-returns-state property makes that possible.
 
 ### Middleware Taxonomy
 
-`type Middleware = Application -> Application` is unchanged (ADR-015).
+`type Middleware = Application -> Application` is unchanged (ADR-0015).
 The kinds:
 
 - Head-level middleware (auth, headers, logging, timing): plain function
@@ -332,7 +332,7 @@ The kinds:
   only down the stack, and the enumerator's resource bracketing is lost in
   the reader shape.
 - External streaming library (conduit/pipes/streaming): excluded by
-  ADR-010 and MicroHs compatibility risk.
+  ADR-0010 and MicroHs compatibility risk.
 - Keeping the strict `Request` with a separate streaming seam: rejected;
   two application contracts drift, and the strict path is expressible as
   `readBodyStrict` in one line.
@@ -356,7 +356,7 @@ The kinds:
 - Producer-owned bracketing closes file handles on every signalled
   failure path without try-finally at call sites. The guarantee covers
   `Either`-signalled failures, not thrown exceptions: the project's
-  no-exception discipline (ADR-009 style) is a stated assumption, and
+  no-exception discipline (ADR-0009 style) is a stated assumption, and
   handler code that throws escapes the bracketing.
 - A handler that never consumes its body cannot wedge the connection: the
   server's close-after-response policy disposes of the stream.
@@ -367,7 +367,7 @@ The kinds:
 ## Compatibility Impact
 
 - `Application` changes shape: this is the breaking change of the RFC and
-  carries ADR-024. `Request` with a strict body disappears in favour of
+  carries ADR-0024. `Request` with a strict body disappears in favour of
   `RequestHead` plus body iteratee; existing TestApp handlers migrate to
   `readBodyStrict` with an explicit bound.
 - `MicroHttp.Http.Framing` from RFC-0003 is re-expressed on the iteratee
@@ -467,7 +467,7 @@ trap sites before any HTTP behaviour:
          `MicroHttp.Http.Parse` to break the `Http`-to-`Stream` cycle.
    - [x] Middleware lifts (`mapResponse`, `ingress`, `egress`,
          `catchIter`) in `MicroHttp.Middleware`, one example test each.
-   - [x] Flip ADR-024 to accepted; update the module index. (No separate
+   - [x] Flip ADR-0024 to accepted; update the module index. (No separate
          network design document change was needed.)
 
 ### Rollout Plan Escape Hatch

@@ -1,6 +1,6 @@
 # Todos
 
-carried over from 2026-07-13 session (RFC-0036 / ADR-080):
+carried over from 2026-07-13 session (RFC-0036 / ADR-0080):
 
 - lancedb-c PR (RFC-0034 era) still to be raised upstream; the vendored clone
   now also carries the lance 8.0.0 dep bump (branch `lance-upgrade-7325`) that
@@ -63,7 +63,7 @@ done:
   only Moebius (which paints its sun and moon there) shows a change
 - 2026-08-09: Moebius surfaces are no longer flat colour with dots on them.
   The speckle is gone, replaced (not joined) by four wash devices tuned
-  against the reference art (ADR-085): uneven
+  against the reference art (ADR-0085): uneven
   low-frequency mottling, a cool-to-warm hue fade whose changeover is dithered
   into stipple, 4px hatching for shadow and contour (the bars' lower edges and
   the scenery hills, never a working surface), and outlined paint-chip flecks

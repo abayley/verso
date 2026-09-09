@@ -1981,7 +1981,7 @@ export class MarkdownEditorElement extends HTMLElement {
 
     /**
      * Carries each page-relative image's short_title (its alt text, else its filename) into the save as
-     * indexed form fields, so the server syncs the page's `images.yaml` (RFC-0019, ADR-049). The server
+     * indexed form fields, so the server syncs the page's `images.yaml` (RFC-0019, ADR-0049). The server
      * reads `image_count` and the `image_path_<i>`/`image_title_<i>` pairs. A no-op when the document has
      * no page-relative images.
      */

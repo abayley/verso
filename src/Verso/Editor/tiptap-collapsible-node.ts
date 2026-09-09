@@ -92,7 +92,7 @@ export const Collapsible = TiptapNode.create({
                 const kind = asKind(current.attrs["collapsibleType"]);
                 dom.className = `markdown-collapsible markdown-collapsible-${kind}`;
                 // The open state lives in the document model (round-trips to ??? / ???+, undoable); drive the
-                // native <details open> from it rather than letting the browser toggle it directly (ADR-054).
+                // native <details open> from it rather than letting the browser toggle it directly (ADR-0054).
                 dom.open = Boolean(current.attrs["open"]);
 
                 if (typeof current.attrs["title"] === "string") {

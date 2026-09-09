@@ -23,3 +23,6 @@ spike/search/store/store_spike
 spike/search/mhs/ffi_spike
 spike/search/mhs/*.o
 spike/search/reference/corpus-ab-report.md
+
+# macOS Finder metadata
+.DS_Store

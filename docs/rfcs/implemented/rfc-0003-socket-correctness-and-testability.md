@@ -62,7 +62,7 @@ mark it as complete in the phase checklist.
 
 ## Non-Goals
 
-- No keep-alive or pipelining; one request per connection stands (ADR-011).
+- No keep-alive or pipelining; one request per connection stands (ADR-0011).
 - No chunked transfer encoding; the parser continues to reject it.
 - No streaming request bodies to handlers; the framed result is still one
   strict `ByteString` (streaming is a later RFC).
@@ -200,7 +200,7 @@ Test cases, simplest to most complex:
          `ServerSocketSpec` drives `handleClient` over a loopback pair: a body
          larger than the read buffer round-trips in full, and a
          `Content-Length` above the body limit persists nothing.
-   - [x] `make check` passes; ADR-023 accepted and the design document
+   - [x] `make check` passes; ADR-0023 accepted and the design document
          updated. The dedicated browser smoke pass was not needed; the
          existing smoke flow still passes through `make check`.
 
@@ -240,7 +240,7 @@ Test cases, simplest to most complex:
   connections to forked `handleClient` threads at once, each returning a
   large lazily-built body, and asserts every response is intact. This is
   the production-relevant pattern (one half-duplex request/response per
-  connection, ADR-011) and it passes. The single-threaded-rounds
+  connection, ADR-0011) and it passes. The single-threaded-rounds
   convention for the throughput benches stays as a measurement choice, not
   a correctness constraint; same-connection simultaneous bidirectional
   transfer in one process remains unexercised and unclaimed.

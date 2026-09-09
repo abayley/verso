@@ -121,7 +121,7 @@ spec =
                     Store.closeStore
                     Monad.void (Process.runProcess "rm" ["-rf", dir] Nothing Nothing)
 
-        it "given a store optimise in flight, when other green threads run, then they are not blocked (ADR-080)" $ do
+        it "given a store optimise in flight, when other green threads run, then they are not blocked (ADR-0080)" $ do
             available <- Store.searchAvailable
             if not available
                 then skip "search shim not built"

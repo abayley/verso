@@ -5,7 +5,7 @@ const outfile = "static/editor/markdown-editor.js";
 // The small classic appearance bootstrap runs synchronously before the stylesheets so stored
 // browser preferences reach the root before first paint.
 const appearanceBootstrapOutfile = "static/editor/appearance-bootstrap.js";
-// The Mermaid diagram runtime is built as its own bundle, loaded on demand (RFC-0033, ADR-071): it is large,
+// The Mermaid diagram runtime is built as its own bundle, loaded on demand (RFC-0033, ADR-0071): it is large,
 // so pages without a `mermaid` fence never pay for it.
 const mermaidOutfile = "static/editor/mermaid.js";
 // Basecoat chrome (RFC-0035): the precompiled nova bundle and its component

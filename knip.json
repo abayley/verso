@@ -16,6 +16,10 @@
         "scripts/*.mjs"
     ],
     "ignoreDependencies": [
+        "effect",
+        "@effect/platform",
+        "@effect/platform-bun",
+        "gray-matter",
         "@fontsource-variable/roboto",
         "@fontsource-variable/roboto-mono",
         "basecoat-css",

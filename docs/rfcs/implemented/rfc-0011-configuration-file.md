@@ -82,7 +82,7 @@ it as complete in the phase checklist.
   per-route configuration; a flat `key = value` namespace.
 - No live reload or file watching (hot reload is a separate backlog item).
 - No secrets management; TLS and its keys are the reverse proxy's concern
-  (ADR-031), so the config holds no credentials today.
+  (ADR-0031), so the config holds no credentials today.
 - Not a general typed-config framework; a small, fixed, documented schema.
 
 ## Proposal
@@ -183,7 +183,7 @@ are out of scope here.
   permissions and the paths it points at are the operator's responsibility, and
   the static path-safety from RFC-0010 still applies to served files.
 - No secrets are stored: TLS and credentials are the reverse proxy's concern
-  (ADR-031).
+  (ADR-0031).
 
 ## Reliability Impact
 
@@ -219,10 +219,10 @@ are out of scope here.
    - [x] `main` loads the config, builds `Settings`, and composes the
          application from it; fail fast on `ConfigError`.
    - [x] Unit and integration tests above; `make check` green.
-   - [x] ADR-033 for the configuration approach; an example
+   - [x] ADR-0033 for the configuration approach; an example
          (`micro-http.conf.example`).
 
-Notes from implementation (recorded in ADR-033): the config store is open (no
+Notes from implementation (recorded in ADR-0033): the config store is open (no
 fixed schema), so the "warn on unknown keys" decision was dropped -- with
 app-defined keys there is no closed key set to warn against. The env-override
 logic was factored into the pure `applyEnvironment` and unit-tested there,

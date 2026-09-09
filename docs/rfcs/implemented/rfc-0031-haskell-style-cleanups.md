@@ -169,7 +169,7 @@ Each phase/group is one commit, `make format` + `make check` green first.
    the DSL exception). The two `Main.hs` drivers already used qualified spec
    imports. No Haddock added to tests. The `test/ghc-compat/` shims (GHC-coverage
    API stubs, not built by `make check`) are out of scope as compatibility infra.
-5. **[DONE] Phase 5 -- Docs + memory.** ADR-069 added (qualified imports,
+5. **[DONE] Phase 5 -- Docs + memory.** ADR-0069 added (qualified imports,
    per-function Haddock, single Http module); README facade list updated (dropped
    the removed Http submodules); memory updated. RFC marked Implemented and moved
    to `docs/rfcs/implemented/`.

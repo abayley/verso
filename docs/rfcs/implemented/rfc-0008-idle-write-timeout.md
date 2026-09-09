@@ -66,7 +66,7 @@ action is to fail the write and close the connection, which the existing
   is draining and arms a timer only when a write would block.
 - Disabled by a non-positive setting, preserving the previous behaviour
   exactly.
-- The public socket interface keeps its `Either` error contract (ADR-009),
+- The public socket interface keeps its `Either` error contract (ADR-0009),
   and the change reuses RFC-0006's shape (`sendAllWithin` mirroring
   `recvWithin`).
 
@@ -152,7 +152,7 @@ is not required for this RFC's goal.
          `socketResponseWriter` threads it.
    - [x] Stalled-reader integration test (a large response to a non-reading
          client fails within the bound, not a hang); `make check` green.
-   - [x] Flip ADR-028 to accepted; note it in the network design document.
+   - [x] Flip ADR-0028 to accepted; note it in the network design document.
 
 ### Rollout Plan Escape Hatch
 

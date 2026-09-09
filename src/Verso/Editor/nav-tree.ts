@@ -1,7 +1,7 @@
 // The navigation tree (RFC-0026): the left-hand panel listing the document tree's sections and pages. The
 // server feeds it lazily -- `GET /tree/<path>` returns one folder's immediate children -- and embeds the open
 // page's ancestor "spine" (each ancestor folder's children) so the tree opens pre-expanded to the page with no
-// load-time fetches (ADR-059). This module parses that data, builds the panel DOM, expands folders on demand
+// load-time fetches (ADR-0059). This module parses that data, builds the panel DOM, expands folders on demand
 // (caching fetched children for the session), navigates on click, and creates new pages/sections.
 
 import { hideBlockingOverlay, showBlockingOverlay } from "./blocking-overlay.js";

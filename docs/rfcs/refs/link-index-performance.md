@@ -1,0 +1,494 @@
+# Link index: how it works and where the performance costs lie
+
+Status: analysis (2026-06-26). Companion to RFC-0029 and ADR-0066/0067.
+
+This documents the in-memory link index (RFC-0029) as built, what each part costs
+**measured on the reference corpus**, why move/delete are not yet sub-second despite
+the FFI `stat`, and the options for making them snappy. It exists because the index
+caused repeated production breakage (a minute-long "hang" on delete) and the cost model
+was not written down.
+
+## Reference corpus
+
+A copy of the real documentation tree, used for all numbers below:
+
+- 3,916 `.md` files, ~15.5 MB of Markdown.
+- ~32,000 total filesystem entries (the rest are assets/images), directory depth 11.
+- Some pages are link-dense; a few are large (up to ~260 KB).
+
+Runtime: the server is compiled by **MicroHs** (mhs), a Haskell-to-combinator
+compiler whose interpreter is markedly slower than GHC, especially for `String`
+(linked-list-of-`Char`) processing. This matters a lot below.
+
+## How the index works
+
+Three pieces (see RFC-0029):
+
+1. **The graph** (`MicroHttp.LinkIndex`): the resolved `.md`->`.md` link graph.
+   `outbound :: Map PagePath [TreePath]` is each page's link targets; `inbound` is the
+   inverse (`target -> referring pages`). Built by parsing every page's links
+   (`DocumentLinks.pageLinks` + `resolveTarget`). A move/delete consults `inbound` to
+   find referrers / the rewrite set in O(1), instead of scanning the tree.
+
+2. **The freshness fingerprint** (`MicroHttp.LinkFingerprint`): a
+   `Map TreePath (mtime, size)` over every `.md`, captured from `stat(2)` (the FFI
+   binding). Held alongside the graph as the record of the tree the graph was built
+   from.
+
+3. **The per-operation freshness check** (`MicroHttp.LinkIndexStore`): before a
+   move/delete the server re-walks the tree, re-stats every `.md`, and compares to the
+   stored fingerprint. Match -> the graph is provably current, serve the lookup.
+   Mismatch (an out-of-band edit) -> rebuild graph + fingerprint first. In-server
+   mutations re-sync the held index so they are not mistaken for drift (ADR-0067). This
+   is what makes the index *always correct* -- no staleness window.
+
+The graph is held in an `MVar`, built lazily on first use (or, since the eager-build
+fix, at startup), and shared across the server's connection threads.
+
+## Measured costs
+
+### Build (constructing the whole graph): ~80-130 s
+
+Forcing the full graph on the reference corpus takes **~80-130 s of CPU**. This is the
+dominant cost and the source of the original "hang".
+
+What it is **not**:
+
+- Not the O(line^2) link scanner. `pageLinks`/`lineLinks` were quadratic per line
+  (recomputing `length`/`drop i` per character); that is fixed (now O(line)). This is
+  worth keeping regardless -- it also speeds the scan.
+- Not the sorted-inbound insert. Suspecting `insertSorted` was O(degree) per edge
+  (O(sum degree^2) on hub pages), it was measured both ways: **sorted 127.9 s vs
+  unsorted 129.6 s -- no difference.**
+
+What it **is**: the constant-factor cost of processing ~15.5 MB of Markdown as
+`String` (via `BS.unpack`) in the mhs interpreter -- parsing every file's links,
+`nub`-ing, and building the maps, with the attendant allocation/GC. The build
+*inherently* parses every file (that is what a whole-tree graph is); the scan parses
+only the few files whose bytes contain the target's name, which is why the scan never
+paid this.
+
+The graph is built **lazily** unless forced: constructing `IndexState (buildIndex ...)`
+stores a thunk. The original bug was that the "eager build" forced only the fingerprint
+(the ~2 s stat-walk), leaving the parse as a thunk that the **first move/delete** then
+forced inside its handler -- a 129 s request. Forcing the graph at build time
+(`forceIndex` + `seq`) fixes the misattribution but moves the ~80-130 s to startup.
+
+### Per operation, warm (freshness check + lookup): ~2.6 s
+
+With a warm, forced index, a delete is **~2.6 s**, and it is almost entirely the
+**freshness walk**, not the lookup:
+
+- The graph lookup (`inbound`/`rewriteCandidates`) is O(1)-ish and negligible.
+- Each freshness pass walks the tree -- `listDirectory` per directory, plus
+  `doesDirectoryExist` per entry, plus `fileStat` per `.md` -- over a 32k-entry,
+  depth-11 tree: **~1.3 s**.
+- A move/delete does this **twice**: once for the pre-op freshness check
+  (`freshIndex`) and once for the post-op re-sync (`resync`). 2 x ~1.3 s ~= 2.6 s.
+
+### The scan baseline (no index): ~3.5 s/op, 0 startup
+
+The pre-index path (`enumerateRelevant`, RFC-0027) reads every `.md`'s bytes (to
+byte-filter on the target name) and parses only the matches. On this corpus it is
+**~3.5 s/op** with no startup cost -- dominated by the walk plus opening/reading 3,916
+files.
+
+## Why it is not sub-second (the FFI `stat` promise)
+
+The lookup the index exists for **is** sub-millisecond. What is not sub-second is the
+**freshness check**, and that is the key thing to understand: it is a *policy choice*,
+not an inherent cost of having an index.
+
+The index avoids the scan's per-op **read-and-parse** of every file. But ADR-0067 added
+a different per-op cost: before trusting the cached graph, the server **re-walks the
+tree and re-`stat`s every `.md`** to prove nothing changed out-of-band since the graph
+was built. That is the ~1.3 s. It buys "never serve a stale answer, no staleness
+window" -- and it is paid on *every* operation, **twice** (the pre-op check and the
+post-op re-sync). The FFI `stat` made this check metadata-only (cheaper than reading
+every file; ~0.3 s on a *shallow* synthetic tree, which is where "sub-second" came
+from), but a full traversal of a deep 32k-entry tree is ~1.3 s regardless of how cheap
+each `stat` is.
+
+So the per-op cost is **freshness verification**, not the lookup. The lever for snappy
+operations is therefore *how out-of-band drift is detected*, not how fast the walk is:
+
+- **A full per-op stat-walk** (current): always correct, no staleness window; ~1.3 s
+  (x2). A/B below make this ~0.6 s but cannot remove it.
+- **Freshness off the per-op path**: rebuild at startup, maintain incrementally for
+  in-server edits, and rebuild on an explicit refresh after the periodic re-export
+  (RFC-0028) -- the only routine out-of-band event, and a *known* moment. Then a
+  move/delete is just the O(1) lookup: **sub-millisecond, no walk.** The cost is no
+  longer auto-detecting *ad-hoc* direct edits to files on disk between refreshes.
+
+Which is right depends on whether files are ever edited out-of-band *other than* by the
+re-export while the server runs. If not, the per-op walk is pure overhead.
+
+The **build** is a separate, larger cost the per-op model did not face: ~80-130 s to
+parse the whole tree into the graph, in the mhs interpreter, over `String`. This is what
+C (ByteString engine) and E (persistence) address; they do **not** touch the per-op
+freshness walk.
+
+## Options
+
+Each option lists impact, tradeoff, and rough effort. They compose.
+
+### Per-operation latency
+
+- **A. One walk per op.** Maintain the index from the operation's known write-set
+  (re-stat only the files it changed) instead of `resync` re-walking the whole tree.
+  Impact: ~2.6 s -> ~1.3 s. Tradeoff: none (still always-correct). Effort: moderate
+  (thread the write-set; the pre-op `freshIndex` walk stays).
+- **B. One `stat` per entry.** The walk currently does `doesDirectoryExist` (a stat)
+  *and* `fileStat` (another stat) per entry. A single `stat` returning `st_mode` tells
+  both dir-vs-file and mtime/size. Impact: roughly halves walk syscalls -> ~0.6-0.7 s
+  per walk. Tradeoff: none. Effort: small (extend the FFI binding + the walk).
+
+A + B together put a warm move/delete around **~0.6 s -- snappy**, keeping the
+always-correct guarantee.
+
+### Build latency (the ~80-130 s)
+
+- **C. ByteString-native link engine.** Read files as `ByteString` and scan them
+  directly (O(1) `BS.index`/`BS.length`), never `BS.unpack`ing to `String`. The link
+  engine already treats content as bytes (offsets are byte offsets), so this is a
+  representation change, not a semantic one. Impact: build ~80-130 s -> ~seconds, *and*
+  the scan gets faster too. Tradeoff: it is the engine that drives byte-exact rewrites,
+  so the spans must stay correct -- correctness-sensitive, but `DocumentLinksSpec` pins
+  them. Effort: large. **Highest leverage single change.**
+- **D. Background build + scan fallback.** Build the index on a background thread at
+  startup; until it is ready, move/delete use the scan (~3.5 s). Impact: instant
+  startup, snappy once warm, no minute-long stall. Tradeoff: a window of scan-speed ops
+  after start; concurrency to get right. Effort: moderate.
+- **E. Persist the index.** Serialise graph + fingerprint to disk; reload on restart
+  (the fingerprint check still validates it). Impact: saves the *parse* on restart, but
+  **not** the `Map`/inbound construction (which dominates in mhs and cannot be skipped
+  when deserialising `Data.Map`), so it helped less than expected -- ~40 s build vs ~25 s
+  reload (see Implemented outcome). Tradeoff: a serialise/validate path. Effort: moderate.
+- **Accept eager startup.** Force the graph at startup and live with ~80-130 s before
+  serving. Simplest, but a poor operational experience that grows with the corpus.
+
+### Freshness model (the real per-op lever)
+
+- **F. Freshness off the per-op path.** Build at startup, maintain incrementally for
+  in-server edits, and rebuild on an **explicit refresh** after the periodic re-export
+  (the re-export script hits an endpoint / sends a signal). No per-op walk. Impact: a
+  move/delete becomes the O(1) lookup -- **sub-millisecond**, regardless of A/B.
+  Tradeoff: ad-hoc direct edits to files on disk between refreshes are not auto-detected
+  (a bounded staleness window; ADR-0067 traded this away). Appropriate when the re-export
+  is the only routine out-of-band writer. Effort: small-moderate (a refresh trigger;
+  drop the per-op check).
+- **F'. Cheaper per-op check.** If automatic detection must stay, a coarser signal than
+  a full per-`.md` walk -- e.g. a sentinel file the re-export touches (one `stat`), or a
+  directory-mtime sweep (detects added/removed/renamed entries, but **not** in-place
+  content edits, since editing a file does not change its parent directory's mtime).
+  Impact varies; weaker guarantee than the full walk for the sentinel/dir-mtime
+  variants.
+
+### No index
+
+- **G. Revert to the scan.** Move/delete use `enumerateRelevant` (~3.5 s/op, 0 startup,
+  always correct). Simplest and reliable; loses snappiness. The index code stays in the
+  tree, dormant, re-enabled by one wiring change.
+
+## Implemented outcome (2026-06-26)
+
+C + E + F were implemented (the index is back in move/delete). Measured on the
+reference corpus:
+
+- **Operations are snappy: ~39 ms** for move/delete -- the warm index is read with no
+  filesystem walk (F), and maintenance is incremental (a move is a pure prefix
+  relocation; delete/save/create/restore re-read only their few touched paths).
+- **Startup build + persist: ~40 s** (a one-off; C's ByteString parse is fast, so this
+  is dominated by mhs `Map`/inbound construction).
+- **Reload from the persisted file: ~25 s.** Persistence (E) saves the *parse* but
+  **not** the `Map` construction -- `Data.Map` cannot be deserialised without re-inserting
+  every element, which is the dominant cost in the mhs interpreter. So persistence helps
+  less than hoped (~40 s -> ~25 s); it is kept because it still saves the parse and
+  validates correctness, but the startup cost is not sub-second.
+- **Refresh** (`POST /index/refresh`, for the re-export to call) rebuilds in ~the build
+  time.
+
+So the user-facing goal (snappy move/delete) is met; the residual cost is a ~25-40 s
+one-off at startup. If that startup cost matters, the lever is the `Map`/inbound build
+(e.g. a flatter in-memory representation, or building inbound unsorted) -- not the parse
+or persistence.
+
+## Profiling outcome (2026-06-27) -- the startup bottleneck, measured per phase
+
+The 2026-06-26 outcome above **mis-attributed the startup cost to the `Map`/inbound
+build.** Temporary per-phase timing instrumentation in `openLinkIndex` (each phase's result
+forced at its boundary so laziness could not shift cost between phases) showed the `Map`
+build is ~1.6 s and was never the bottleneck. (That instrumentation was removed once the two
+bugs below were fixed; startup now logs only `opening link index...` / `link index ready`.
+The numbers below are what it measured.) There are two slow paths, with two *different*
+dominant costs, neither of them the `Map`:
+
+### Reload path (persisted index valid): `BS.lines` was O(n^2) -- fixed
+
+| phase | before | after |
+| --- | --- | --- |
+| read index file | 1 ms | 1 ms |
+| split + parse rows | **23,307 ms** | **729 ms** |
+| build graph from edges (`Map`/inbound) | 1,645 ms | 1,610 ms |
+| build stored fingerprint | 86 ms | 179 ms |
+| fingerprint tree (stat walk) | 869 ms | 957 ms |
+
+Decomposing the 23.3 s parse: `BS.lines` alone was **22,089 ms**; `BS.split '\t'` 100 ms;
+`BS.unpack` of every field (the `String` conversion) **7 ms**; `parseRow` 396 ms. mhs's
+`Data.ByteString.Char8.lines` is O(n^2). The fix is one line -- `BS.lines` ->
+`BS.split '\n'` (the `null` filter drops the trailing empty element, so the rows are
+identical). **Reload startup ~26 s -> ~3.7 s.** (A reported 65 s startup was this same
+O(n^2) under heavier machine load.) Note the `String` conversion the persistence layer
+still does is *not* a cost (7 ms); a ByteString-keyed graph/persistence would not help.
+
+### Cold build / refresh path: the body parse dominates (~36 s) -- open
+
+| phase | time |
+| --- | --- |
+| walk tree (list .md) | 238 ms |
+| read + stat files | 683 ms |
+| parse bodies + build graph | **36,607 ms** |
+| build fingerprint map | 376 ms |
+| persist (write index) | 258 ms |
+
+`buildFromBodies` = parse + `Map` build; the reload path's "build graph from edges" does
+the *same* `Map` build from pre-resolved edges in ~1.6 s. So the ~35 s delta is the
+**body link-parsing** (`DocumentLinks.pageLinks` + `resolveTarget` in `updatePage`),
+~9 ms/file over 3,917 files. This contradicts the earlier "the lever is the `Map` build,
+NOT the parse" -- it is the parse. `unlines` on write (persist) is fine at 258 ms.
+
+Drilling into the parse (standalone harness, corpus bodies loaded once):
+
+| step | time | delta |
+| --- | --- | --- |
+| `pageLinks` (parse only) | 27,137 ms | 27,137 ms |
+| + `resolveTarget` | 28,549 ms | ~1,800 ms |
+| + filter + `nub` | 29,803 ms | ~1,300 ms |
+| + `Map`/inbound build (full `buildIndex`) | 37,042 ms | ~7,200 ms |
+
+So `pageLinks` is ~72% of the build. Decomposing `pageLinks` further isolated the cost to
+the **line splitter**, not the link scan:
+
+| experiment | time |
+| --- | --- |
+| `linesWithOffsets` only (current: `elemIndex`+`take`+`drop` recursion) | **23,377 ms** |
+| `BS.split '\n'` only | **2,295 ms** |
+| `pageLinks` with a `BS.split`-based splitter (byte-identical output) | **4,688 ms** |
+
+**Root cause: in mhs `BS.elemIndex` is `elemIndex . unpack` -- it unpacks the whole
+remaining `ByteString` to a list on every call.** The hand-rolled splitter recursed
+`BS.elemIndex '\n'` down the tail, re-unpacking O(n) bytes per line -> O(n^2). (`BS.drop`/
+`BS.take` in it are O(1) buffer-views and were *not* the cost -- an earlier note here
+claiming "`BS.drop` copies" was wrong; see "mhs ByteString cost model" below.) `BS.split
+'\n'` unpacks **once** and splits the list in a single linear pass. **Fixed**:
+`linesWithOffsets` now splits with `BS.split '\n'` and recovers each line's offset from the
+running sum of preceding line lengths (+1 per newline). Measured outcome: the build's
+"parse bodies + build graph" phase **36,607 ms -> 10,211 ms**, cold startup **~38 s ->
+~11.8 s**, with `DocumentLinksSpec` (span pins) still green. (The byte-by-byte `lineLinks`
+scan is *not* a cost -- it uses O(1) `BS.index` -- so it was left as is.) Same class of trap
+as the reload-path `BS.lines` O(n^2) (`Char8.lines` is itself a recursive `elemIndex` loop).
+
+## mhs ByteString cost model (verified from the MicroHs source)
+
+Both startup bugs above traced to the same misunderstanding, so the actual cost model is
+worth recording (from `MicroHs/lib/Data/ByteString*.hs` and the C runtime `eval.c`). A
+`ByteString` is a primitive heap buffer (a `forptr` + size).
+
+- **O(1), shares the buffer (no copy):** `length`, `index`, and crucially
+  `take`/`drop`/`splitAt`/`substr` -- all route through the `bssubstr` primitive, which is
+  `addForPtr(fp, offs)` with a new size, i.e. a zero-copy view. **So slicing is cheap; the
+  earlier "drop copies" claim was false.**
+- **O(n) per call, allocates a list via `unpack`:** `elemIndex`, `elemIndices`, `findIndex`,
+  `takeWhile`, `dropWhile`, `span`, `break`, `split`, `splitWith`, `lines`, `words`,
+  `isPrefixOf`, `sort`, `intercalate`; `breakSubstring` is worse (it builds `tails`). Fine
+  called once -- **O(n^2) when called repeatedly down a shrinking tail** (the `lines` /
+  manual-`elemIndex` splitter trap; fixed by using `split`, which unpacks once).
+- **O(total x pieceCount), copies repeatedly:** `concat`/`append`. `bsappend` memcpys into a
+  fresh buffer and `concat = foldr append`, so concatenating many small pieces re-copies the
+  growing accumulator. (This is the latent cost in `DocumentLinks.rewriteLinks`; avoid by a
+  single-allocation concat, or by building output with the difference-list `Html.Builder`.)
+- `pack` is O(n) (amortised buffer growth).
+
+Rule of thumb on mhs: to scan/split a whole `ByteString`, **unpack once** (use `split`, or
+`unpack` and work on the list); never loop an `unpack`-based function down the tail; and for
+assembling output prefer a Builder / single-allocation concat over repeated `append`.
+
+### Decision: do not vendor a ByteString library (2026-06-27)
+
+We considered vendoring/forking `Data.ByteString` to "fix" the slow operations. **Decision:
+do not, for now.** Rationale:
+
+- The slicing core (`take`/`drop`/`splitAt`/`index`/`length`) is already O(1) -- there is
+  nothing to fix in the part most worth fixing.
+- The weak spots (the `unpack`-based search/split family, and `foldr`-`append` `concat`) are
+  avoidable by usage discipline we already follow: use `split`/`splitWith` (one unpack)
+  instead of looping `elemIndex`; build output with the difference-list `Html.Builder`.
+- A full fork is high-maintenance (track upstream MicroHs, re-apply patches) for a library
+  that is otherwise fine.
+
+If a *specific profiled* hot path needs it, the proportionate step is a small
+`MicroHttp.ByteString` helper with just the op that matters -- most likely a
+**single-allocation `concat`** (sum the lengths, `primBSnew` once, write each piece,
+`primBSfreeze`: O(total) instead of O(total x pieces)), which would also de-risk
+`Iteratee.readBodyStrict` / `Html.coalesce` for very large many-chunk inputs. Better still,
+upstream a one-pass `concat` and a `memchr`-based `elemIndex`/`lines` to MicroHs (the current
+ones are objectively poor) rather than maintain a fork. **No action until something profiles
+slow.** Code sites carrying these considerations: `DocumentLinks.linesWithOffsets`/
+`rewriteLinks`, `LinkIndexStore.parseRows`, `Iteratee.readBodyStrict`, `Html.Builder`.
+
+## Move profiling and optimisation (2026-06-27)
+
+Profiling a section move on the reference corpus -- the `engineering/` folder (785 pages)
+moved in and out of `hr/` -- showed **~6.6 s** per move, per phase:
+
+| phase | time |
+| --- | --- |
+| find (read candidate bodies) | ~1.7-2.0 s (935 files read) |
+| plan rewrites (parse + edit) | ~3.0 s (935 parsed, 175 rewritten) |
+| write changed files | ~0.06 s (175) |
+| relocate listing | ~0.01 s |
+| index maintenance (`relocateInIndex`) | ~1.6-1.9 s |
+
+Two levers, both implemented (each verified to leave the move's output byte-identical -- a
+corpus in/out round-trip leaves the tree unchanged, plus the spec invariants below):
+
+- **Lever 1 -- narrow the candidate set (`LinkIndex.rewriteCandidates`).** Only pages with a
+  link that *crosses the subtree boundary* can change: subtree pages that link *out*, and
+  outside pages that link *in*. A subtree page linking only within the subtree moves with its
+  targets unchanged. This is read from the index's resolved edges (no body reads), cutting the
+  935-file read+parse to ~175. Still a superset of what `planMoveRewrites` changes (the spec's
+  "rewriteCandidates ... drops no page planMoveRewrites changes" test). **~6.6 s -> ~2.4 s.**
+- **Lever 2 -- direct index relocate (`LinkIndex.relocateIndex`).** Relocation is an injective
+  rename, so the inverse map is the old `inbound` with the rename applied to keys and values
+  and each list re-sorted -- no need to rebuild `inbound` edge-by-edge with `insertSorted`
+  (which dominated the maintenance). Identical to the rebuild (the spec's "relocateIndex equals
+  a rebuild from the relocated edges" test). **~2.4 s -> ~1.4-1.6 s.**
+
+Net: a large-folder move went **~6.6 s -> ~1.4-1.6 s (~4.5x)**. The residual is the
+(now-narrowed) read+parse of the genuinely-affected pages plus `relocateIndex`'s O(edges)
+remap; further gains would need a fully surgical relocate (touch only affected entries) and
+parallel/cheaper candidate reads -- not worth it unless a move profiles slow again.
+
+## Recommendation
+
+The two cost centres are independent and need different fixes:
+
+- **Build (~80-130 s):** **C** (ByteString engine) brings it to ~seconds and speeds the
+  scan too; **E** (persist) then makes it a one-off, reloaded fast on restart and
+  validated by the fingerprint.
+- **Per-op (~2.6 s):** this is the freshness walk, not the lookup. **A + B** shave it to
+  ~0.6 s while keeping always-correct; **F** (freshness off the per-op path) removes it
+  entirely for **sub-millisecond** ops, trading away auto-detection of ad-hoc on-disk
+  edits between re-exports.
+
+**Chosen direction: E + C.** That makes the build cheap and persistent. To also make
+operations snappy, pair it with a per-op decision: **F** if the re-export is the only
+routine out-of-band writer (sub-ms ops, the model that matches "the index avoids
+walks"), or **A + B** if automatic per-op correctness must stay (~0.6 s ops).
+
+Sequencing (each independently shippable, scan stays the fallback throughout):
+
+1. Split the `lineLinks` O(n) fix into its own commit (a clean win for the scan today).
+2. **C** -- ByteString link engine; re-measure the build.
+3. **E** -- persist graph + fingerprint; reload-and-validate on startup.
+4. Per-op: **F** (refresh-triggered) or **A + B** (cheaper walk), per the freshness
+   decision above.
+
+Until C+E land, **revert move/delete to the scan (G)** so deletes are reliable
+(~3.5 s/op, no startup penalty) rather than shipping the lazy-build hang or an
+80-130 s eager startup.
+
+## Error handling (Either, not exceptions)
+
+The project models failure with `Either`/`ExceptT`, not exceptions. The index/IO code
+can still *throw* (file reads, the FFI `stat`, partial functions), so that code should
+run in `ExceptT` and surface failures as `Either`, rather than being guarded by a
+catch-all `try`/`SomeException` at the server boundary. The temporary `try` added to
+`handleClient` during diagnosis should be removed and replaced by `ExceptT` at the
+points that can fail. (The `SIGPIPE` ignore is unrelated -- that is OS-signal handling
+for client disconnects, not exception-as-control-flow.)
+
+## Publish-path parse cost: the memchr scan (2026-07-14)
+
+The remaining per-publish cost was the `pageLinks` parse itself: the per-byte
+`BS.index` walk allocated ~5.6M cells (85MB of transient graph, ~35ms) per 73KB
+page, because every interpreted per-byte step costs ~50-100 cells regardless of
+`String` vs `ByteString` (`make bench-link-parse` measures this; the bench also
+carries the rejected strategies).
+
+Measured strategies on a 76.5KB corpus-shaped page:
+
+| strategy                     | cells/parse | MB/parse | ms/parse |
+| ---------------------------- | ----------- | -------- | -------- |
+| per-byte `BS.index` (old)    | 5,571,526   | 85.0     | ~35      |
+| `BS.split` lines alone       | 1,547,266   | 23.6     | 7.6      |
+| unpack-once `String` walk    | 3,588,632   | 54.8     | 19       |
+| libc `memchr` scan (chosen)  | 993,128     | 15.2     | 7.7      |
+
+The chosen implementation drives the scan with libc `memchr` over one
+marshalled copy: newline hits delimit lines (fence state), `]` hits find the
+`](` candidates, and a bounded `)` search closes each target. The interpreter
+touches only those positions. No custom C is involved -- the only foreign code
+is `string.h memchr` -- and `pageLinks` stays pure (the FFI only reads the
+copied bytes). `updatePage` (parse + index patch) fell 97MB -> 27MB per
+publish.
+
+Why this differs from RFC-0036's rejection of memchr for form decode: decode
+candidates (escapes) were dense -- thousands per body -- so per-candidate FFI
+overhead lost to a straight walk. Link candidates are sparse (~hundreds), so
+skipping the bytes between them wins ~5.6x on cells and ~4.5x on time.
+
+## Search tokenisation cost (2026-07-14, same pass)
+
+`make bench-search-chunk` measures the search indexing pipeline per
+publish-sized page (decode -> chunk -> WordPiece encode of ~90 chunks).
+Baseline: 126.2M cells (1.9GB) and ~790ms per page -- the dominant allocator
+in the whole server, and the driver of the search-enabled GC thrash.
+
+Three behaviour-preserving fixes (all pinned by the existing WordPiece and
+SearchChunks specs):
+
+- The vocabulary became two character tries (word-start and `##`
+  continuation), so the greedy longest-match walks each word once with cheap
+  per-`Char` steps; the old `Map String Int` paid a full string-keyed lookup
+  per candidate length per word. (126M -> 64M cells.)
+- `isPunct` answers ASCII with range tests; mhs's Unicode general-category
+  test costs ~200 cells per character. (64M -> 53M.)
+- `foldAccent` short-circuits ASCII before the accent-table lookup, and the
+  chunker's per-line `acc ++ [l]` appends became cons + reverse.
+
+Result: 53.5M cells (816MB) and ~357ms per page -- 2.4x less allocation.
+A memo of word -> pieces per encode was tried and REJECTED: with the trie the
+lookup is cheaper than maintaining a per-chunk `Map String` (and
+`Data.Map.Strict.fromList` forces values per duplicate key, so the naive memo
+computed every occurrence anyway).
+
+Remaining (measured) structure per page after that pass: decode 56MB,
+chunking ~141MB, encode ~620MB.
+
+## Search pipeline over ByteString (2026-07-14, second pass)
+
+The restructure the first pass deferred: `SearchChunks` and `WordPiece` now
+work over the page's UTF-8 bytes end to end.
+
+- `chunkPage` takes the raw bytes: memchr finds the line ends, classification
+  reads a handful of bytes per line, and sections/paragraphs are O(1) views.
+  The whole-page decode is gone -- only heading texts and the frontmatter
+  block (for the title; `frontmatterSlice`) are decoded. Chunking fell 13.6x
+  (198MB -> 14.6MB including the old decode). The size cap now counts bytes,
+  not decoded chars (equivalent on this corpus).
+- `encode` walks the chunk bytes directly (inline UTF-8 decode + ASCII fast
+  paths), feeding the trie in place -- no decoded String, word list, or token
+  list.
+- `encodeMany` shares a word -> piece-ids cache across a page's chunks,
+  keyed by the word's raw byte view. This is the memo that previously lost
+  with String keys: ByteString comparison is an mhs primitive (bscmp), so a
+  cache hit is far cheaper than re-walking the trie. `Store.StoreChunk` text
+  is bytes too, dropping the decode/re-encode round trip at the FFI.
+
+Whole pipeline per page (chunk + tokenise): 126.2M cells / 1.9GB / ~790ms at
+the day's baseline -> 35.6M cells / 544MB / ~238ms (3.5x cells, 3.3x time).
+The remainder is the per-char interpreted walk in `encode` (~1 map-step or
+byte test per char) and the embed/FFI marshalling; a further constant-factor
+win would need the tokenise loop out of interpreted code, which RFC-0036's
+decision against C string code rules out.

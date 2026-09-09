@@ -2,7 +2,7 @@ import type { PhrasingContent, RootContent } from "mdast";
 import type { ContentExtensionFor, ExtensionBlockInput, ExtensionInlineInput } from "./content-extension.js";
 
 // Raw-HTML passthrough for the trusted document tree. The editor's strict parse otherwise throws on an
-// `html` mdast node (ADR-040/041). Raw HTML -- almost always export metadata comments (`<!-- ... -->`),
+// `html` mdast node (ADR-0040/0041). Raw HTML -- almost always export metadata comments (`<!-- ... -->`),
 // occasionally visible markup like MkDocs grid cards -- is carried through verbatim and shown inert
 // (escaped, never rendered as live HTML), so editing a document never loses or executes its HTML.
 

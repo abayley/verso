@@ -238,8 +238,8 @@ Behaviour tests change only where the interaction contract genuinely changes
 - [x] All three `chrome-gates` checks active in `make check`
       (variant-vocabulary containment, no markup construction in App.hs,
       no `wa-` in src/).
-- [x] Docs: ADR-076 (Basecoat adoption, superseding the Tiptap ADR's Web
-      Awesome clause; the Tiptap decision itself stands) and ADR-077 (theme
+- [x] Docs: ADR-0076 (Basecoat adoption, superseding the Tiptap ADR's Web
+      Awesome clause; the Tiptap decision itself stands) and ADR-0077 (theme
       retirements). The module index covers MicroHttp framework modules
       only, so no entry was needed for the Verso view/chrome split.
 

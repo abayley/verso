@@ -128,7 +128,7 @@ The heart is a pure, unit-tested module (no IO) over Markdown text and tree path
   write from a linking page's directory to a (new) tree path; the inverse used to
   rewrite both inbound links and the moved page's own outward links.
 - `rewriteLinks :: PageText -> [(span, newTarget)] -> PageText` -- apply rewrites
-  by span, preserving everything else byte-for-byte (the ADR-049 minimal-byte
+  by span, preserving everything else byte-for-byte (the ADR-0049 minimal-byte
   spirit).
 
 This core is where the correctness lives and is tested exhaustively (same-dir,
@@ -274,7 +274,7 @@ the target's **name** -- the slug or filename that any relative link to it must
 contain -- plus the moved subtree's own pages (which need rewriting regardless). The
 byte pre-filter never drops a real referrer (false positives only cost a parse), and
 brings the same operation to ~3.5s (dominated by the unavoidable read of every
-`.md`, since there is no index -- ADR-059). A persisted index remains a later
+`.md`, since there is no index -- ADR-0059). A persisted index remains a later
 optimisation, not v1.
 
 ## Alternatives Considered
@@ -430,14 +430,14 @@ optimisation, not v1.
 
 ## Implied Decision Records (to add on acceptance)
 
-- **ADR-060**: Move/delete are in-server and link-preserving (including relocating
+- **ADR-0060**: Move/delete are in-server and link-preserving (including relocating
   the moved item's entry between parent index.md listings); supersedes
   RFC-0026's external-utility reconciliation contract.
-- **ADR-061**: Filesystem mutation uses a shared `MicroHttp.FileOps` (libc
+- **ADR-0061**: Filesystem mutation uses a shared `MicroHttp.FileOps` (libc
   `rename`/`unlink`/`rmdir`, checked return codes).
-- **ADR-062**: Cross-folder page moves classify assets shared/exclusive via body
+- **ADR-0062**: Cross-folder page moves classify assets shared/exclusive via body
   refs + sidecars; exclusive relocate, shared copy.
-- **ADR-063**: Delete refuses while inbound links exist (no dangling links, no
+- **ADR-0063**: Delete refuses while inbound links exist (no dangling links, no
   undo); recovery awaits the versioning store.
 
 ## CONTEXT.md additions (on acceptance)

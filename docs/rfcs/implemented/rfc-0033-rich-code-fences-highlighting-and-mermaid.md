@@ -100,7 +100,7 @@ Both features hang off the fenced-code-block node. StarterKit's `codeBlock` is
 disabled (`StarterKit.configure({ codeBlock: false, ... })`) and replaced by a
 custom code-block extension registered alongside the existing custom nodes
 (`Admonition`, `Collapsible`, `Badge`, ...) in
-[tiptap-visual-editor.ts](../../src/Verso/Editor/tiptap-visual-editor.ts). The node
+[tiptap-visual-editor.ts](../../../src/Verso/Editor/tiptap-visual-editor.ts). The node
 keeps the standard code-block schema (a `language` attribute, a text-only body), so
 `@tiptap/markdown` serialises it back to a ```` ```lang ```` fence unchanged — the
 content model and on-disk form are untouched.
@@ -126,7 +126,7 @@ serialisation is unaffected.
   Open Question. Unregistered languages fall back to an unhighlighted block (no
   error).
 - **Theming.** Highlighting is driven by CSS, not a bundled highlight.js theme: a
-  new block in [markdown-editor.css](../../static/editor/markdown-editor.css) maps
+  new block in [markdown-editor.css](../../../static/editor/markdown-editor.css) maps
   the `hljs-*` token classes (keyword, string, comment, number, function, etc.) to
   the editor palette variables (`--markdown-editor-*`), mirroring how the CodeMirror
   source editor's `paletteHighlightStyle` already colours Markdown tokens. This
@@ -290,7 +290,7 @@ match the page.
 4. **Phase 2 — Mermaid.** Add the Mermaid node view (read = diagram, edit =
    source + live preview + errors), wired to the lazy loader. Browser tests.
 5. **Docs.** Done during design: `CONTEXT.md` gains the **Mermaid diagram** term and
-   ADR-071 records the lazily-loaded-separate-bundle and Mermaid-as-code-block
+   ADR-0071 records the lazily-loaded-separate-bundle and Mermaid-as-code-block
    decisions. Mermaid's version is pinned exactly (deliberate, reviewed upgrades).
 
 ### Rollout Plan Escape Hatch

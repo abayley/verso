@@ -28,7 +28,7 @@ tree**'s **sections** and **pages**. A disclosure control expands and collapses 
 section; clicking a section's label opens its `index.md`; clicking a page opens
 it. The tree is fed by a single server contract -- `GET /tree/*path` returns one
 folder's immediate children as JSON -- that reads the filesystem **live** on each
-request (no cached index; ADR-059). The panel also gains **create** (new page,
+request (no cached index; ADR-0059). The panel also gains **create** (new page,
 new section); rename, move, and delete are deferred to a follow-up RFC. Expected
 outcome: in-place browsing and authoring of the document tree without leaving the
 editor, completing the third of the three planned editor panels (with the
@@ -36,8 +36,8 @@ editor, completing the third of the three planned editor panels (with the
 
 ## Context
 
-The editor serves a documentation tree in place (ADR-045): pages are reached by
-URL (`/documents/<path>.md`), with breadcrumbs (ADR-058) the only structural
+The editor serves a documentation tree in place (ADR-0045): pages are reached by
+URL (`/documents/<path>.md`), with breadcrumbs (ADR-0058) the only structural
 navigation. There is no way to see siblings, browse sections, or move between
 pages without already knowing the URL. The **navigation tree** is the
 conventional answer and the natural complement to the breadcrumb trail
@@ -55,7 +55,7 @@ Facts established before drafting, which shape the design:
   external move-utility (which scans for filesystem changes, computes logical
   moves, and applies link and sidecar-metadata fixes with an undo log). Any
   server-held index would be a *cache* that drifts; a live filesystem read never
-  drifts. This, with the performance analysis in ADR-059, is why the tree reads
+  drifts. This, with the performance analysis in ADR-0059, is why the tree reads
   live and keeps no index.
 - **There is no external nav config.** No `mkdocs.yml`, no `.pages` files exist
   in the tree, so the navigation *is* the filesystem structure -- there is no
@@ -86,7 +86,7 @@ it as complete in the phase checklist.
   open page's ancestor spine embedded so the tree opens pre-expanded to it.
 - **Create** a new page or section in place: title in, slug derived, seeded, and
   opened for editing.
-- Reuse the existing label machinery (ADR-058 ancestor-index titles) and
+- Reuse the existing label machinery (ADR-0058 ancestor-index titles) and
   path-safety machinery (`Static.resolveStaticPath`, `safeComponent`).
 
 ## Non-Goals
@@ -94,11 +94,11 @@ it as complete in the phase checklist.
 - **Rename, move, and delete** -- deferred to a follow-up RFC. All three change a
   path, so all three carry the same burden (fixing inbound links, reconciling the
   page's sidecar **meta directory**). They belong together, once the tree itself is
-  proven in use. (Editing a node's *title* is already possible in-page via ADR-057;
+  proven in use. (Editing a node's *title* is already possible in-page via ADR-0057;
   the tree reflects it.) **Picked up by RFC-0027**, which implements them
   in-server (reversing the earlier external-utility plan).
 - **A cached/materialised tree index** (in-memory or persisted) and the
-  whole-tree search it would enable. The tree reads live (ADR-059). An index is a
+  whole-tree search it would enable. The tree reads live (ADR-0059). An index is a
   forward-compatible future RFC behind the same endpoint if search is wanted.
 - **A filesystem watcher** for out-of-band reconciliation. Not needed without an
   index; the live read is always current and the client has an explicit refresh.
@@ -129,7 +129,7 @@ Node = { name : String      -- display label (title)
 Folding / hiding / labelling / ordering (the live read applies these):
 
 - A folder is a **section**; its label is its `index.md` frontmatter `name`
-  (ADR-058 `frontmatterTitle`), falling back to the humanised directory segment.
+  (ADR-0058 `frontmatterTitle`), falling back to the humanised directory segment.
   `index.md` is *not* emitted as a child -- the section node *is* it; clicking a
   section opens `<dir>/index.md`.
 - A `.md` file other than `index.md` is a **page**; its label is its frontmatter
@@ -151,13 +151,13 @@ milliseconds on local storage) and is amortised by the client cache below.
 ### Live provider (no index)
 
 A plain module of functions implements the read; there is **no provider
-abstraction or mode switch** (an index was considered and rejected, ADR-059). The
+abstraction or mode switch** (an index was considered and rejected, ADR-0059). The
 module exposes the children-of-a-folder computation (the pure folding/ordering
 over a directory listing is the testable seam) and the route wraps it.
 
 The open page's **ancestor spine** is embedded on the editor page as
 `data-tree-spine`: the child listings for each ancestor folder on the current
-page's path (reusing the `linkedFolderPaths` walk from ADR-058). The client uses
+page's path (reusing the `linkedFolderPaths` walk from ADR-0058). The client uses
 it to render the tree already expanded to the current page with zero load-time
 fetches. Only sections the user expands *beyond* the spine trigger a `GET /tree`.
 
@@ -178,7 +178,7 @@ involvement, and no new FFI (`createDirectoryIfMissing` + `BS.writeFile`).
   kebab-case **slug** for the filename and writes `name: <title>` into the
   frontmatter, matching the tree's convention (`network-delivery/` <->
   `name: Network Delivery`). The display title and slug then diverge freely
-  (see CONTEXT.md "Title vs slug"); a later title edit (ADR-057) never renames the
+  (see CONTEXT.md "Title vs slug"); a later title edit (ADR-0057) never renames the
   file.
 - **Collision**: if the slug exists, append a numeric suffix (`foo`, `foo-2`),
   reusing the dedup pattern of `storeAsset`.
@@ -239,7 +239,7 @@ persistence, navigation, create, lazy-load error/retry) is verified.
 - **Embed the whole tree as JSON in every page** (breadcrumb pattern): rejected
   -- infeasible at ~6,000 nodes (payload + per-request walk).
 - **A cached/materialised index** (in-memory + persisted + incrementally
-  maintained), giving whole-tree search and instant expand: deferred (ADR-059).
+  maintained), giving whole-tree search and instant expand: deferred (ADR-0059).
   It is a cache of an out-of-band-mutated filesystem (drift, persistence,
   maintenance complexity), and at this tree size on local storage it buys search,
   not perceptible speed. It is forward-compatible behind the same `GET /tree`
@@ -280,7 +280,7 @@ persistence, navigation, create, lazy-load error/retry) is verified.
   `index.md` write failed) is reported rather than silently leaving an
   `index.md`-less folder.
 - **Per-expand read cost** is bounded by a folder's fan-out and is below the
-  perception threshold on local storage (ADR-059); the client cache avoids
+  perception threshold on local storage (ADR-0059); the client cache avoids
   re-reading on re-expand.
 
 ## Compatibility Impact
@@ -344,9 +344,9 @@ persistence, navigation, create, lazy-load error/retry) is verified.
 
 ## Decision records
 
-- **ADR-059** (recorded, Proposed): the navigation tree reads the filesystem live
+- **ADR-0059** (recorded, Proposed): the navigation tree reads the filesystem live
   with no cached index; one `GET /tree/*path` contract; section labelling/folding
-  extends ADR-058.
+  extends ADR-0058.
 - The deferred rename/move/delete RFC will own the ADR for "app path-mutations
   move only the file/folder; the external utility owns inbound-link and sidecar
   reconciliation."

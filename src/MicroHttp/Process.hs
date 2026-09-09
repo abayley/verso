@@ -16,17 +16,17 @@ workers) whose threads do not survive fork. A forked child that runs any
 interpreter code before exec can resume a green thread whose next step blocks
 on one of those vanished workers, deadlocking the child in the parent's
 @waitpid@ and wedging the whole server. @posix_spawn@ goes straight to exec
-with no user code in the child, so the hazard cannot arise (ADR-078).
+with no user code in the child, so the hazard cannot arise (ADR-0078).
 
 Because arguments reach the child as a @char *const argv[]@ vector, shell
 metacharacters, spaces, and quotes are passed verbatim and command injection is
-structurally impossible: the shell never parses them (RFC-0032, ADR-070).
+structurally impossible: the shell never parses them (RFC-0032, ADR-0070).
 
 The child's stdout and stderr are redirected to temporary capture files (via
 spawn file actions) rather than pipes, so there is no pipe-deadlock to manage;
 the parent @waitpid@s (no zombies) and reads the files back. Output is
 'BS.ByteString' for byte-exactness, so a captured page body round-trips
-losslessly (ADR-038).
+losslessly (ADR-0038).
 
 The capture mechanism uses @creat(3)@ for the output files and @open(2)@ with
 @O_RDONLY@ (the portable @0@ flag) for stdin, sidestepping the platform-divergent

@@ -1082,7 +1082,7 @@ treeUpload root captures request = do
                 Iteratee.liftIO (recordAssetMetadata root path stored (Attachment.originalUploadFilename request))
                 pure (jsonResponse (View.jsonObject [("url", View.jsonString ("assets/" ++ stored))]))
 
-{- | Record a freshly stored asset in the page's sidecar metadata (ADR-049): an
+{- | Record a freshly stored asset in the page's sidecar metadata (ADR-0049): an
 inline image in @images.yaml@ (with the original filename as its initial
 @short_title@), anything else in @attachments.yaml@. Classification reuses the
 attachment store's @inlineImageExtension@. A no-op when the document path is
@@ -1283,7 +1283,7 @@ data TreeNode = TreeNode
 
 {- | Classifies a raw directory entry for the navigation tree, or 'Nothing' when it
 is hidden: the sidecar @meta@/peer-@assets@ folders, dotfiles, non-Markdown files,
-and a folder's own @index.md@ (folded into its section, ADR-058/ADR-059, not shown
+and a folder's own @index.md@ (folded into its section, ADR-0058/ADR-0059, not shown
 as a child).
 -}
 treeEntryKind :: String -> Bool -> Maybe NodeKind
@@ -1327,7 +1327,7 @@ treeChildrenJson nodes = View.jsonArray (map nodeObject nodes)
 
 {- | The immediate navigation-tree children of a folder (its tree-relative path,
 empty for the root), read live from the filesystem and ordered for display
-(RFC-0026, ADR-059). Returns @[]@ for an unsafe path or a missing directory.
+(RFC-0026, ADR-0059). Returns @[]@ for an unsafe path or a missing directory.
 -}
 childrenOf :: FilePath -> String -> IO [TreeNode]
 childrenOf root parentRel =
@@ -1514,10 +1514,10 @@ statusResponse code reason body =
 clientErrorMaxBytes :: Int
 clientErrorMaxBytes = 8192
 
-{- | The client-error telemetry endpoint (RFC-0023, ADR-052): a fire-and-forget
+{- | The client-error telemetry endpoint (RFC-0023, ADR-0052): a fire-and-forget
 @POST /client-errors@ that records one bounded, escaped logfmt line via the given
 sink (the rotating client-error log) and returns @204@. A deliberate, write-only
-exception to the store-and-serve server (ADR-019); the report carries no document
+exception to the store-and-serve server (ADR-0019); the report carries no document
 content and no user identity.
 -}
 clientErrorRoute :: (String -> IO ()) -> Router.Route
@@ -1662,7 +1662,7 @@ saveResponse path =
     pure (seeOtherResponse ("/documents/" ++ path ++ "?edit"))
 
 {- | The page resource's @PUT@ (RFC-0036): replaces the live page with the raw
-request body, stored verbatim (byte-exact, ADR-038 -- no urlencoding, so
+request body, stored verbatim (byte-exact, ADR-0038 -- no urlencoding, so
 nothing decodes on this hot path), and maintains the page's index entry. With
 versioning on this is Publish (RFC-0032): the write is committed, attributed
 to the acting author, and the page's staged draft cleared. Idempotent: an
@@ -1689,7 +1689,7 @@ treePutDocument versioning maint root captures request = do
 
 {- | The image-title sync controller (RFC-0036): @POST /documents/*path?image-titles@
 with the indexed @image_count@/@image_path_<i>@/@image_title_<i>@ form fields
-(RFC-0019, ADR-049). Split out of the save payload so the page body travels as
+(RFC-0019, ADR-0049). Split out of the save payload so the page body travels as
 raw bytes; the editor calls this after a publish, only when the page has
 page-relative images. Update-only and idempotent.
 -}
@@ -1860,7 +1860,7 @@ titleOfHit hit = firstSegment (takeWhile (/= '\n') (Store.hitText hit))
             (c : rest) -> let (b, a) = breakOn sep rest in (c : b, a)
 
 {- | Sync the page's @images.yaml@ @short_title@s to the alt-derived values the
-editor sends with a tree save (RFC-0019, ADR-049): @image_count@ indexed
+editor sends with a tree save (RFC-0019, ADR-0049): @image_count@ indexed
 @image_path_<i>@/@image_title_<i>@ form fields. Each update is surgical and
 update-only -- an unmatched @local_path@ or an unchanged value writes nothing
 (and a save without the fields, e.g. a no-JavaScript post, is a no-op). The count

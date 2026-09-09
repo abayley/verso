@@ -53,7 +53,7 @@ export function frontmatterName(frontmatter: string | null): string | null {
 }
 
 /**
- * Sets the frontmatter `name:` field to the given title, touching only that line (ADR-049: minimal-byte YAML
+ * Sets the frontmatter `name:` field to the given title, touching only that line (ADR-0049: minimal-byte YAML
  * edits, the rest of the block preserved verbatim). Replaces the existing `name:` value, inserts a `name:`
  * line after the opening `---` when absent, or creates a whole frontmatter block when there is none.
  */

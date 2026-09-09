@@ -1,4 +1,4 @@
-{- | The application contract and middleware (RFC-0012, ADR-015). An
+{- | The application contract and middleware (RFC-0012, ADR-0015). An
 'Application' consumes the raw request stream for one connection and yields a
 'Response'; it receives the connection's non-payload metadata
 ('ConnectionInfo') as its argument. A 'Middleware' wraps an application; because

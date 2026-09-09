@@ -32,7 +32,7 @@ connection layer (`handleClient`) collapses to: drive the stack, write the
 response, close. The connection's own metadata that is not in the payload --
 the peer address -- is captured at accept and passed to the application as a
 `ConnectionInfo`, so logging (and, later, handlers) can use it. This supersedes
-the connection-layer logging of ADR-029.
+the connection-layer logging of ADR-0029.
 
 ## Context
 
@@ -276,7 +276,7 @@ middleware, not here. `respondToRequestBytes` (the in-memory test seam) becomes
 
 ## Alternatives Considered
 
-- Keep connection-layer logging (ADR-029 status quo): works, but logging stays
+- Keep connection-layer logging (ADR-0029 status quo): works, but logging stays
   a special case in `handleClient` rather than composing with everything else,
   and framing stays in a server-owned pipeline. The whole point here is to make
   logging a middleware, which the directive requires.
@@ -327,7 +327,7 @@ middleware, not here. `respondToRequestBytes` (the in-memory test seam) becomes
   router from the connection). The `Handler` signature (`Captures ->
   RequestHead -> ...`) is unchanged, so handler code and the route-definition
   surface stay stable; existing handlers simply ignore the new field.
-- Supersedes ADR-029 (connection-layer logging); amends ADR-015 (middleware)
+- Supersedes ADR-0029 (connection-layer logging); amends ADR-0015 (middleware)
   and the `Application` contract from RFC-0004. A new ADR (numbered when this
   RFC is implemented) records the stream-consumer `Application` and
   middleware-hosted logging.
@@ -364,10 +364,10 @@ middleware, not here. `respondToRequestBytes` (the in-memory test seam) becomes
    - [x] `handleClient` drives the stack and writes; `respondToRequestBytes`
          simplified; `TestApp` composes its stack with logging outermost.
    - [x] Unit and integration tests above; `make check` green.
-   - [x] ADR-032 accepted (supersedes ADR-029); update the network design
+   - [x] ADR-0032 accepted (supersedes ADR-0029); update the network design
          and the request-lifecycle walkthrough.
 
-Notes from implementation (recorded in ADR-032): `AccessEvent` carries the peer
+Notes from implementation (recorded in ADR-0032): `AccessEvent` carries the peer
 and a `RequestLine` (method and target strings tapped from the first line)
 rather than a parsed `RequestHead`. `ServerError` gained `ServerStreamFailed`
 for a stream failure that produced no response. The body bound and 400/408

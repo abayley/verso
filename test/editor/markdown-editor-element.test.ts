@@ -37,8 +37,8 @@ describe("MarkdownEditorElement", (): void => {
         document.body.append(editor);
         await waitForInitialisation();
 
-        // The client no longer validates the editor subset (ADR-051); raw HTML is kept verbatim, and the
-        // server stays the trust boundary that rejects it on save (ADR-041).
+        // The client no longer validates the editor subset (ADR-0051); raw HTML is kept verbatim, and the
+        // server stays the trust boundary that rejects it on save (ADR-0041).
         expect(editor.querySelector(".markdown-editor__source .cm-editor")).toBeInstanceOf(HTMLElement);
         expect((editor as MarkdownEditorElement).toMarkdown()).toBe("<script>alert(1)</script>");
         expect(editor.querySelector(".markdown-editor__error")).toBeNull();

@@ -5,7 +5,7 @@ routine out-of-band writer is the periodic re-export, which calls 'refreshLinkIn
 explicitly. In-server mutations keep the in-memory graph correct incrementally -- a move
 is a pure prefix relocation ('relocateInIndex'), a delete/save/create/restore re-reads
 only the few paths it touched ('applyChanges' / 'removeSubtreeInIndex' /
-'addSubtreeToIndex'). None of these walk or re-parse the whole tree (ADR-067 as amended).
+'addSubtreeToIndex'). None of these walk or re-parse the whole tree (ADR-0067 as amended).
 
 The index is __persisted__ (the resolved edges plus the @(path, mtime, size)@
 fingerprint) to a file. 'openLinkIndex' loads it and trusts it only when its fingerprint

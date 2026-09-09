@@ -25,7 +25,7 @@ interface ImageWidthData {
 /**
  * Parses a Pandoc-style attribute list (`{width=N}`) that immediately follows an image and attaches the
  * width to the image node. Markdown has no native image-size syntax and the project rejects raw `<img>`
- * HTML (ADR-040/041), so the size travels as a documented Markdown attribute list. remark parses the
+ * HTML (ADR-0040/0041), so the size travels as a documented Markdown attribute list. remark parses the
  * `{width=N}` as literal text after the image; this transform consumes that text and lifts the width onto
  * the image's `data`, where {@link inlineFromMdast} reads it.
  */

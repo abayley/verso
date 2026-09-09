@@ -1,7 +1,7 @@
 # MicroHttp Document Tree
 
 The language of the editor's **document-tree mode**: serving and editing an
-existing MkDocs-style documentation tree on the filesystem in place (ADR-045).
+existing MkDocs-style documentation tree on the filesystem in place (ADR-0045).
 This glossary covers the tree's layout and its sidecar metadata; it is not a
 spec.
 
@@ -102,7 +102,7 @@ _Avoid_: user, account, login (there is no authentication).
 **Read view**:
 The default rendered, read-only presentation of a **page** (a plain `GET` of its
 URL). It is the **edit view**'s shell with editing switched off (RFC-0020,
-ADR-050).
+ADR-0050).
 _Avoid_: preview (no such pane exists -- see **Split view**), view mode.
 
 **Edit view**:
@@ -176,7 +176,7 @@ _Avoid_: meta folder, `.meta`.
 
 **Frontmatter**:
 The page's own leading `---...---` YAML block, in the page body. Preserved and
-hidden from editing (ADR-047). Distinct from **sidecar metadata**.
+hidden from editing (ADR-0047). Distinct from **sidecar metadata**.
 _Avoid_: header, metadata.
 
 **Callout**:
@@ -246,7 +246,7 @@ pages` map), consulted by **move** and delete to find referrers and rewrite
 sets without scanning every page. Persisted, loaded at startup, maintained in
 lockstep with in-server mutations, and rebuilt on an explicit **index refresh**
 after out-of-band edits -- it accepts a bounded staleness window for ad-hoc
-on-disk changes between refreshes (RFC-0029 as revised, ADR-067 amended;
+on-disk changes between refreshes (RFC-0029 as revised, ADR-0067 amended;
 the original per-operation freshness walk was reverted on measured cost).
 _Avoid_: cache (staleness is bounded and explicit, not incidental), search
 index (a separate system: full-text and semantic retrieval), sitemap.
@@ -299,7 +299,7 @@ _Avoid_: job queue, task queue, backlog.
   interchangeable, and `name` is not synced from body link text.
 - **Title vs slug**: a **page**'s display title is its **frontmatter** `name`;
   its slug is the filename/path segment (and so its URL). They are deliberately
-  independent and not synced -- editing the title (ADR-057) never renames the
+  independent and not synced -- editing the title (ADR-0057) never renames the
   file. A new page derives an initial slug from its title, after which they
   diverge freely. Changing the slug is a **Move** (RFC-0027), not a title edit. The
   **navigation tree** and breadcrumbs show the title; the filesystem and URLs use

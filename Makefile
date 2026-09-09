@@ -127,6 +127,9 @@ all-spikes: spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike
 
 docs:
 	markdownlint-cli2 $(DOC_FILES)
+	bun run docs:typecheck
+	bun run check:adr-index
+	bun run check:rfc-index
 
 editor-build:
 	bun run editor:build

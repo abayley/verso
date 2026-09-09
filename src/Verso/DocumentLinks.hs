@@ -283,7 +283,7 @@ assetsDir dir = dir ++ "/assets"
 
 {- | The asset basenames a page body references (the names after a same-page
 @assets/@ prefix in inline link/image targets), in order, for the shared/exclusive
-analysis of a cross-folder page move (ADR-062).
+analysis of a cross-folder page move (ADR-0062).
 -}
 assetNamesIn :: BS.ByteString -> [String]
 assetNamesIn body =
@@ -303,7 +303,7 @@ data AssetClass = ExclusiveAsset | SharedAsset
 
 {- | Classifies each of the moving page's asset names against the peer pages' asset
 references (each peer's referenced names): 'SharedAsset' when any peer references it,
-'ExclusiveAsset' otherwise (ADR-062). Exclusive assets relocate, shared ones copy.
+'ExclusiveAsset' otherwise (ADR-0062). Exclusive assets relocate, shared ones copy.
 -}
 classifyAssets :: [String] -> [[String]] -> [(String, AssetClass)]
 classifyAssets moving peerRefs =
@@ -314,7 +314,7 @@ paths) and the raw link token of every one of its links that resolves to a path 
 @matches@ predicate accepts. For a page delete @matches@ is equality with the target;
 for a section delete it accepts the subtree (the folder and its descendants), and the
 subtree's own pages are excluded. Used to refuse a referenced delete (RFC-0027,
-ADR-063) and list the referrers.
+ADR-0063) and list the referrers.
 -}
 referrersMatching :: (String -> Bool) -> [String] -> [(String, BS.ByteString)] -> [(String, String)]
 referrersMatching matches excluded pages =

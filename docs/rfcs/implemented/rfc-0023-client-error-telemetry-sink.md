@@ -28,14 +28,14 @@ after the session ends. The editor's error boundary (RFC-0022) posts a small
 stamps and escapes it and appends one logfmt line to a dedicated
 **client-error log**, which rotates per RFC-0024. "Sentry-like" means the
 operational outcome (queryable error visibility), not the Sentry protocol
-(ADR-052).
+(ADR-0052).
 
 ## Context
 
 RFC-0022 surfaces client failures to the user as a dismissible banner, but
 nothing is recorded once the tab closes -- failures are invisible in aggregate,
 exactly when the editor is about to point at the live documentation tree with
-real authors. ADR-019 keeps the server to storing and serving documents; ADR-052
+real authors. ADR-0019 keeps the server to storing and serving documents; ADR-0052
 records the decision to add one bounded, write-only telemetry endpoint as a
 deliberate exception. The server runs on MicroHs (no crypto, no outbound TLS) and
 has no JSON parser, but has a urlencoded form parser (`formFields`), a
@@ -51,9 +51,9 @@ size-capped body reader (`readBodyStrict`), and a logfmt vocabulary
 
 ## Non-Goals
 
-- The Sentry protocol or any hosted/outbound integration (ADR-052).
+- The Sentry protocol or any hosted/outbound integration (ADR-0052).
 - Server-side per-IP rate limiting (trusted-network assumption; growth path
-  recorded in ADR-052).
+  recorded in ADR-0052).
 - A no-JavaScript path (telemetry is a client concern).
 - Log rotation itself -- owned by RFC-0024; this RFC consumes it.
 
@@ -95,8 +95,8 @@ untrusted.
 
 ## Alternatives Considered
 
-- Sentry-compatible ingestion / a hosted DSN: rejected (ADR-052) -- external
-  protocol, network egress, no TLS on MicroHs, against ADR-019.
+- Sentry-compatible ingestion / a hosted DSN: rejected (ADR-0052) -- external
+  protocol, network egress, no TLS on MicroHs, against ADR-0019.
 - Tagged stream in the access log: rejected -- a client error is application
   payload, not a connection event; folding it into `AccessEvent` blurs the
   middleware/handler boundary and pollutes the access-log vocabulary.
@@ -111,7 +111,7 @@ untrusted.
   injection). Mitigations: ~8 KB size cap, logfmt-safe escaping of every
   client value, client-side dedup/session-cap, and rotation bounding disk
   (RFC-0024). Per-IP rate limiting is out of scope under the trusted-network
-  assumption (ADR-052).
+  assumption (ADR-0052).
 - Payloads exclude page body content and user identity; length caps bound any
   incidental leakage in a message or stack.
 
@@ -145,11 +145,11 @@ untrusted.
 
 ### Rollout Plan Escape Hatch
 
-- If implementation reaches behaviour this RFC or ADR-052 does not cover, stop,
+- If implementation reaches behaviour this RFC or ADR-0052 does not cover, stop,
   add the smallest missing decision to `## Open Questions` (or the owning ADR),
   with evidence, impact, options, and a recommendation, and continue only after
   explicit approval.
 
 ## Open Questions
 
-- None outstanding; resolved during the RFC-0023 design grilling (see ADR-052).
+- None outstanding; resolved during the RFC-0023 design grilling (see ADR-0052).

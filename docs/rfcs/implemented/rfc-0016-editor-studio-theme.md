@@ -222,7 +222,7 @@ before ProseMirror.
   showed the existing hand-rolled positioning is sufficient and consistent with
   the link popovers; adding packages for two small surfaces is unjustified.
 - **Adopt Lit for the editor shell now.** Rejected: state here is small and local
-  (two popovers), the standing decision keeps Lit deferred (ADR-019), and the
+  (two popovers), the standing decision keeps Lit deferred (ADR-0019), and the
   spike confirmed it is not needed.
 - **Remove the command bar element under Studio instead of hiding it.** Rejected:
   hiding via a class avoids tearing down save-button and form-submission wiring
@@ -316,7 +316,7 @@ before ProseMirror.
          Escape close, and surfaces inactive under a non-Studio theme. Verified
          in the app, including ArrowDown/Enter navigation.
 4. Phase four: document and close.
-   - [x] ADR-037 for the Studio interaction surfaces; updated the spike doc
+   - [x] ADR-0037 for the Studio interaction surfaces; updated the spike doc
          status; marked this RFC Completed.
    - [x] `make check` green; verified the full flow in the running app (theme
          switch, bubble Bold, slash Heading/Bullet, keyboard nav, Escape).

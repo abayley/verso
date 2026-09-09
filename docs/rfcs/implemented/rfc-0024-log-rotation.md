@@ -27,7 +27,7 @@ uniformly to the access log and the client-error log (RFC-0023). When the active
 file exceeds `log_max_bytes` it is rotated by a rename-cascade
 (`x.log` -> `x.log.1` -> ... -> `x.log.<log_keep>`, oldest dropped). Renaming,
 sizing, and unlinking use libc FFI (no `renameFile` on MicroHs); a per-file
-`MVar` serialises rotate-then-append against concurrent connections (ADR-053).
+`MVar` serialises rotate-then-append against concurrent connections (ADR-0053).
 
 ## Context
 
@@ -120,11 +120,11 @@ appends would lose lines or misfile them. `MicroHttp.Log` already FFIs libc
 
 ### Rollout Plan Escape Hatch
 
-- If implementation reaches behaviour this RFC or ADR-053 does not cover, stop,
+- If implementation reaches behaviour this RFC or ADR-0053 does not cover, stop,
   add the smallest missing decision to `## Open Questions` (or the owning ADR),
   with evidence, impact, options, and a recommendation, and continue only after
   explicit approval.
 
 ## Open Questions
 
-- None outstanding; resolved during the RFC-0023 design grilling (see ADR-053).
+- None outstanding; resolved during the RFC-0023 design grilling (see ADR-0053).

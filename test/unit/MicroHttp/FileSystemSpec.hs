@@ -90,7 +90,7 @@ spec =
                 Directory.createDirectoryIfMissing True d
                 writeText (d ++ "/k.md") "x"
                 outcome <- FileSystem.removeEmptyDir d
-                -- 66 is macOS ENOTEMPTY; the module is macOS-specific (ADR-067)
+                -- 66 is macOS ENOTEMPTY; the module is macOS-specific (ADR-0067)
                 outcome `shouldBe` Left (FileSystem.Errno 66)
 
         describe "fileStat" $ do

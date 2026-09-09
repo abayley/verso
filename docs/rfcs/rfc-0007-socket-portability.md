@@ -26,7 +26,7 @@ platform-divergent piece (the `sockaddr_in` layout) plus an FFI integer-type
 migration that is worth doing anyway. Windows is larger but viable in
 userland: a Winsock adapter behind the existing interface, plus a delay-poll
 readiness fallback (the runtime's poll queue is not configured on Windows,
-but the scheduler is, so the pre-ADR-026 strategy still works). That ships
+but the scheduler is, so the pre-ADR-0026 strategy still works). That ships
 with a known cost -- the request/response latency floor returns on Windows --
 which a contained runtime patch (`WSAPoll`) can later remove. This RFC
 records the analysis and a phased plan; it does not implement anything.
@@ -44,8 +44,8 @@ What is already portable:
   `SO_REUSEADDR`, `F_SETFL`, `O_NONBLOCK`) use `foreign import capi "... value
   X"`, which resolves each constant from the platform's headers at compile
   time. These self-adjust per OS.
-- The retry-loop logic, the `Either SocketError` contract (ADR-009), the
-  `ExceptT` plumbing (ADR-025), and the readiness waiting (ADR-026) are
+- The retry-loop logic, the `Either SocketError` contract (ADR-0009), the
+  `ExceptT` plumbing (ADR-0025), and the readiness waiting (ADR-0026) are
   platform-neutral Haskell.
 
 What is not portable, and why:
@@ -95,7 +95,7 @@ What is not portable, and why:
   feasible in userland, but with a performance cost until the runtime
   `WSAPoll` patch lands.
 - No change to the public socket interface or the `Either` contract.
-- No new concurrency model; ADR-011 and ADR-026 stand.
+- No new concurrency model; ADR-0011 and ADR-0026 stand.
 
 ## Proposal
 
@@ -116,7 +116,7 @@ integration suite.
 ### Linux (small, in-project)
 
 Replace the hand-built BSD `sockaddr_in` with a platform-correct
-construction. Per ADR-007, a C helper is the sanctioned fallback once
+construction. Per ADR-0007, a C helper is the sanctioned fallback once
 Haskell-side layout hits a portability problem; the options are:
 
 - a tiny C shim `mk_sockaddr_in(port, addr, out)` that the platform headers
@@ -126,7 +126,7 @@ Haskell-side layout hits a portability problem; the options are:
 - conditional Haskell (`#if defined(darwin_HOST_OS)` versus else) if MicroHs
   supports CPP, with the BSD and no-`sin_len` layouts side by side.
 
-The C-shim option is recommended: it is ADR-007's intended path, sidesteps
+The C-shim option is recommended: it is ADR-0007's intended path, sidesteps
 the open question of MicroHs CPP support, and is the smallest correct change.
 Linux otherwise carries over unchanged: the unix runtime already provides
 `WANT_FD` and `WANT_IO_POLL`, so framing, the readiness manager, and the idle
@@ -156,8 +156,8 @@ recompile.
 
 Make the readiness wait a seam with a per-platform implementation:
 
-- POSIX: `waitForReadFD` / `waitForWriteFD` (the ADR-026 runtime poll queue).
-- Windows: the pre-ADR-026 strategy -- a non-blocking socket
+- POSIX: `waitForReadFD` / `waitForWriteFD` (the ADR-0026 runtime poll queue).
+- Windows: the pre-ADR-0026 strategy -- a non-blocking socket
   (`ioctlsocket(FIONBIO)`) plus `threadDelay` between retries. This works
   because `threadDelay` is core/ungated.
 
@@ -169,7 +169,7 @@ Consequences of the Windows fallback:
   on Windows.
 - The request/response latency floor returns, on Windows only: each idle wait
   pays a `threadDelay` tick, so the ping-pong figure drops back toward the
-  pre-ADR-026 ~50 MB/s ceiling.
+  pre-ADR-0026 ~50 MB/s ceiling.
 - The idle read timeout (RFC-0006) still works, and more simply: the
   delay-poll loop already wakes every tick, so it checks elapsed-against-
   deadline per tick rather than relying on `System.Timeout` interrupting a
@@ -193,7 +193,7 @@ is the best userland option.
 
 Patch the runtime's `check_pollq` to use `WSAPoll` instead of `poll()` and
 enable `WANT_IO_POLL` on the Windows target. The two APIs are nearly
-identical, so this is a contained runtime change, and it restores ADR-026
+identical, so this is a contained runtime change, and it restores ADR-0026
 performance on Windows. It is a MicroHs recompile, not userland, and is the
 right long-term answer.
 
@@ -217,7 +217,7 @@ remove.
 ## Security Impact
 
 - None directly; portability does not change parsing, limits, or timeouts.
-- The Windows delay-poll fallback reintroduces the latency floor ADR-026
+- The Windows delay-poll fallback reintroduces the latency floor ADR-0026
   removed, but only on Windows and only for request/response turnaround; the
   idle read timeout (RFC-0006) still bounds slow peers there.
 
@@ -244,7 +244,7 @@ targets, what each measures, and what to expect on Windows:
 
 - `make bench-socket` -- single-threaded ping-pong over loopback, MB/s per
   recv buffer size. This is the figure the readiness wait drives: ~1-1.5 GB/s
-  on POSIX (ADR-026), but expected to drop toward the pre-ADR-026 ~50 MB/s on
+  on POSIX (ADR-0026), but expected to drop toward the pre-ADR-0026 ~50 MB/s on
   the Windows delay-poll fallback. The `yield`-then-`threadDelay` hybrid
   should be measured here to see how much of the floor it recovers.
 - `make bench-socket-saturated` -- a GHC blocking sender keeps the pipe full

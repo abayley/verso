@@ -152,7 +152,7 @@ colour name even though the picker lists only the common ones.)
 
 - No raw HTML or execution surface: the badge renders an escaped, inert pill with
   a fixed class shape; the text is escaped like any inline content (consistent
-  with ADR-040/041).
+  with ADR-0040/0041).
 - Registered only in tree mode (trusted first-party content), like `raw-html`.
 
 ## Reliability Impact
@@ -164,7 +164,7 @@ colour name even though the picker lists only the common ones.)
 ## Compatibility Impact
 
 - Flat mode is unchanged (extension not registered).
-- No new server behaviour; this is editor-side (browser-owned rendering, ADR-040).
+- No new server behaviour; this is editor-side (browser-owned rendering, ADR-0040).
 
 ## Testing and Quality Gates
 

@@ -250,7 +250,7 @@ mark it as complete in the phase checklist.
          `onHead`.
    - [x] Unit formatter tests and integration capturing-logger tests
          (normal request and stalled-peer terminal line); `make check` green.
-   - [x] Flip ADR-029 to accepted; note it in the relevant design document.
+   - [x] Flip ADR-0029 to accepted; note it in the relevant design document.
 
 ### Rollout Plan Escape Hatch
 

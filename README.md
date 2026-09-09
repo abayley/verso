@@ -45,10 +45,18 @@ micro-http/
                            packages/verso/static/editor/.
   test/unit/               Unit specs with no filesystem or socket effects.
   test/integration/        Integration specs that use filesystem or socket effects.
+  test/ghc-compat/         Shims that let the suites also build under GHC for coverage.
   test/bench/              Throughput and rendering benchmarks.
+  scripts/                 Repository tooling: the ADR and RFC index generators.
+  data/                    Runtime state: the default document tree and its derived
+                           indexes, logs, drafts, and trash (mostly gitignored).
+  patches/                 Patches applied to vendored dependencies.
+  docs/                    Documentation; docs/README.md is the map of what goes where.
   spike/                   Exploratory compile spikes retained for design evidence.
-  docs/                    Design documents, RFCs, and the decision register.
 ```
+
+Two directories are generated and gitignored: `build/` (compiled binaries, objects, and coverage
+reports) and `vendor/` (the vendored native search libraries; see `make search-*`).
 
 The framework lives under the `MicroHttp` namespace, the wiki application
 under `Verso`, and the search engine under `Concordance`; `Verso.*` depends
@@ -201,7 +209,8 @@ boundary), `test/unit/MicroHttp/RouterSpec.hs` (route matching), and
 
 ## MicroHttp Documentation
 
-Useful entry points:
+[docs/README.md](docs/README.md) maps what each documentation directory holds and where a new document
+goes. Useful entry points:
 
 - [Starter Design](docs/architecture/starter-design.md)
 - [Module Design Index](docs/reference/module-index.md)

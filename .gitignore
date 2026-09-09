@@ -26,3 +26,6 @@ spike/search/reference/corpus-ab-report.md
 
 # macOS Finder metadata
 .DS_Store
+
+# MicroCabal build output
+dist-mcabal/

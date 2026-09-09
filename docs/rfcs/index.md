@@ -43,3 +43,4 @@ Implemented RFC files live under `docs/rfcs/implemented/`. All other RFCs remain
 | [RFC-0035](implemented/rfc-0035-basecoat-chrome.md)                           | Implemented | Basecoat Chrome (shadcn Styling without React)                                  |
 | [RFC-0036](implemented/rfc-0036-restful-writes-without-htmx.md)               | Implemented | RESTful Writes Without htmx                                                     |
 | [RFC-0037](implemented/rfc-0037-explicit-editor-content-pipelines.md)         | Implemented | Explicit Editor Content Pipelines                                               |
+| [RFC-0038](rfc-0038-repository-package-structure.md)                          | Draft       | Repository package structure and Haskell/TypeScript separation                  |

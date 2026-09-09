@@ -1,0 +1,11 @@
+cabal-version: 1.12
+name: consumer
+version: 0.1.0.0
+build-type: Simple
+license: BSD3
+
+executable consumer
+  hs-source-dirs: src
+  main-is: Main.hs
+  build-depends: base, micro-spike
+  default-language: Haskell2010

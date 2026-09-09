@@ -141,7 +141,11 @@ configuredRoutes writeLock indexStore search operationStore trashStore vc client
         : treeRoutesWithStores operationStore trashStore writeLock indexStore search (versioningFromConfig vc) (VConfig.documentTreeRoot vc) (VConfig.trashRoot vc) (VConfig.trashRetentionDays vc) (VConfig.linkIndex vc)
         ++ mounts
   where
-    mounts = [Static.static prefix root | (prefix, root) <- VConfig.staticMounts vc]
+    -- The editor's own asset directory is a built-in mount (its path is the
+    -- `editor_static_dir` config key); `static_mounts` adds any further mounts.
+    mounts =
+        Static.static "/static/editor" (VConfig.editorStaticDir vc)
+            : [Static.static prefix root | (prefix, root) <- VConfig.staticMounts vc]
 
 {- | The search runtime's configuration (RFC-0034): engine paths and the
 model profile from config, the page-title logic injected from here (the
@@ -292,7 +296,6 @@ treeRoutesWithStores operationStore trashStore writeLock indexStore search versi
     [ Router.get "/" (redirectTo "/documents/")
     , Router.get "/index.html" (redirectTo "/documents/")
     , Router.get "/search" (treeSearchHandler search)
-    , Static.static "/static/editor" "packages/verso/static/editor"
     , Router.get "/tree/*path" (treeChildrenHandler root)
     , Router.post "/tree/*path" (treePostDispatch versioning writeLock findRelevant maint operationStore root)
     , Router.get "/trash" (treeTrashListHandler writeLock trashStore trashRetentionDays trashRoot)
@@ -950,14 +953,18 @@ appWithDocumentTree :: FilePath -> Server.Application
 appWithDocumentTree root =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
-        (treeRoutes Nothing Nothing Nothing noVersioning root "data/operation_log" "data/trash" 90 "data/link_index")
+        ( Static.static "/static/editor" VConfig.defaultEditorStaticDir
+            : treeRoutes Nothing Nothing Nothing noVersioning root "data/operation_log" "data/trash" 90 "data/link_index"
+        )
 
 -- | A tree-mode app with draft/publish versioning on and drafts staged under @draftRoot@ (RFC-0032; tests).
 appWithDocumentTreeVersioned :: FilePath -> FilePath -> Server.Application
 appWithDocumentTreeVersioned root draftRoot =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
-        (treeRoutes Nothing Nothing Nothing (Versioning True draftRoot defaultIdentityConfig) root "data/operation_log" "data/trash" 90 "data/link_index")
+        ( Static.static "/static/editor" VConfig.defaultEditorStaticDir
+            : treeRoutes Nothing Nothing Nothing (Versioning True draftRoot defaultIdentityConfig) root "data/operation_log" "data/trash" 90 "data/link_index"
+        )
 
 {- | A GET under the tree: the editor page for @?edit@ on a Markdown file,
 otherwise the file served statically (raw Markdown, images, attachments).

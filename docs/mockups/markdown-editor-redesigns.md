@@ -460,7 +460,7 @@ on 2026-08-05 with two SVG filters used from CSS:
 
 Each of the three also carries an `Aa Roboto` toggle (bottom left) that swaps
 the design face for the app's own Roboto, loaded from
-`static/editor/roboto.css` in the repo, to judge how the identity survives
+`packages/verso/static/editor/roboto.css` in the repo, to judge how the identity survives
 the production font.
 
 ## Markdown Editor Redesign S: Moebius Night
@@ -536,7 +536,7 @@ depends on restraint -- one more colour and it tips into Candy Pop.
 Two more Moebius directions, again distinct from R, S, T, and each other,
 from the new reference art: a sandcastle city under a noon sky, and a coral
 maze with a paved walkway. Both set the type in Roboto -- the app's own face,
-loaded from `static/editor/roboto.css` -- outright rather than behind a
+loaded from `packages/verso/static/editor/roboto.css` -- outright rather than behind a
 toggle, so these two test whether a Moebius identity carries on colour and
 drawing alone with the production font. Both carry the hand-drawn texture
 pass (wobble and clumped speckle) from the start.

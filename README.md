@@ -135,7 +135,7 @@ make check
 `make check` runs:
 
 - Markdown linting for root Markdown files and `docs/`.
-- Fourmolu format checks and HLint for `src/` and `test/`.
+- Fourmolu format checks and HLint for the Haskell sources and `test/`.
 - Unit and integration test executables under `test/`.
 - TypeScript editor linting, Knip unused-code checks, type checking, tests,
   and bundling.

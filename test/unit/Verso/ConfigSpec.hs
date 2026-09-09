@@ -25,6 +25,11 @@ spec =
                         VConfig.logKeep vc `shouldBe` 5
                         VConfig.versioningEnabled vc `shouldBe` True
                         VConfig.linkIndexEnabled vc `shouldBe` True
+                        VConfig.editorStaticDir vc `shouldBe` "packages/verso/static/editor"
+            it "given editor_static_dir, when read, then the editor asset directory takes that value" $
+                case VConfig.fromConfig (parsed "document_tree_root = /docs\neditor_static_dir = /srv/editor") of
+                    Left err -> expect ("unexpected config error: " ++ show err) False
+                    Right vc -> VConfig.editorStaticDir vc `shouldBe` "/srv/editor"
             it "given no document_tree_root, when read, then it fails naming the missing key" $
                 case VConfig.fromConfig (parsed "log_keep = 9") of
                     Left (Config.ConfigError message) -> ("document_tree_root" `List.isInfixOf` message) `shouldBe` True

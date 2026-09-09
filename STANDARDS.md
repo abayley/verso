@@ -12,7 +12,7 @@
   not). All IO is strict: text reads via `MicroHttp.FileSystem.readFileStrict`,
   binary reads via strict `Data.ByteString.Char8.readFile`. Large files that
   must not be resident all at once use streaming IO, not laziness
-- no MicroHs-only syntax in code GHC also compiles. `src/`, `test/unit/`, and
+- no MicroHs-only syntax in code GHC also compiles. The package `src/` trees, `test/unit/`, and
   `test/integration/` are built by both `mhs` and by GHC for `make coverage`, so
   they use only syntax both accept. In particular, no `s"a=${x}"` string
   interpolation and no `M."literal"` qualified strings (both are MicroHs

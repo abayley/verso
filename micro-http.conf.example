@@ -20,8 +20,13 @@ idle_write_timeout_micros = 30000000
 access_log = build/access.log
 client_error_log = build/client-errors.log
 
-# A comma-separated list of "<url-prefix> <filesystem-root>" mounts.
-static_mounts = /static/editor packages/verso/static/editor
+# The editor's own asset directory, served at the fixed /static/editor URL.
+# This is the default; override it if the built bundles live elsewhere.
+editor_static_dir = packages/verso/static/editor
+
+# Any further static mounts, as a comma-separated list of
+# "<url-prefix> <filesystem-root>" pairs. The editor mount above is built in.
+# static_mounts = /assets public/assets
 
 # --- document tree (RFC-0026+) ---
 # document_tree_root (REQUIRED) is the MkDocs-style tree served and edited in

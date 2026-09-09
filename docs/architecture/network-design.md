@@ -229,7 +229,7 @@ Target platforms are macOS, Linux, and Windows.
 
 ## GHC Compatibility Direction
 
-GHC is currently a coverage tool only: `make coverage` compiles `src/` and
+GHC is currently a coverage tool only: `make coverage` compiles the package sources and
 the test suites with GHC and HPC. The server binary has never been built or
 run under GHC. Elevating GHC to a supported platform requires:
 

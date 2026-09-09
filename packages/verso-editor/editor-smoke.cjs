@@ -1037,7 +1037,6 @@ function prepareSmokeTree() {
       `draft_root = ${opsRoot}/drafts`,
       `access_log = ${opsRoot}/access.log`,
       `client_error_log = ${opsRoot}/client-errors.log`,
-      "static_mounts = /static/editor packages/verso/static/editor",
       "",
     ].join("\n"),
   );

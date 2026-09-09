@@ -40,7 +40,6 @@ cat >"$CONF" <<EOF
 host = $HOST
 port = $PORT
 document_root = data/documents
-static_mounts = /static/editor packages/verso/static/editor
 EOF
 
 cleanup() {

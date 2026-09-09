@@ -4,69 +4,64 @@
 
 Use a conventional Haskell layout, adapted for MicroHs. The web framework lives
 under the `MicroHttp` namespace and the Verso wiki application under `Verso`
-(RFC-0030); `Verso.*` depends on `MicroHttp.*`, never the reverse. The
-application's TypeScript editor source lives under `packages/verso-editor/src/`:
+(RFC-0030); `Verso.*` depends on `MicroHttp.*`, never the reverse. Since RFC-0038
+the code is split into packages under `packages/`: the framework is its own
+MicroCabal package, the application is a second, and the TypeScript editor a
+third with its own toolchain.
 
 ```text
 micro-http/
-  micro-http.cabal
-  Makefile
-  docs/
-  src/
-    MicroHttp.hs            framework facade
-    MicroHttp/              framework modules
-      ...
-    Verso/                  the wiki application
-      App.hs               routed application assembly
-      Main.hs              server executable (module Main)
-      ReplayTool.hs        operation-log replay executable (module Main)
-      Config.hs            application config (VERSO_ keys)
-      ...
-      Editor/              TypeScript editor source
-        ...
-  static/
-    editor/
-      ...
+  Makefile                     top-level orchestrator across the packages
+  packages/
+    micro-http/                the framework, a MicroCabal package
+      micro-http.cabal
+      src/
+        MicroHttp.hs           framework facade
+        MicroHttp/             framework modules
+      cbits/                   framework C wrappers (fs, process)
+      include/                 their headers (installed with the package)
+    verso/                     the wiki application
+      src/
+        Verso/                 App.hs, Main.hs, ReplayTool.hs, Config.hs, ...
+        Concordance/           the hybrid search engine
+      cbits/                   the Concordance C shim and stub
+      static/editor/           served editor bundles and vendored assets
+    verso-editor/              the TypeScript editor and its toolchain
+      src/                     editor source
+      test/                    editor tests
+      moebius/                 the generated-CSS tool
   test/
-    unit/
-      MicroHttp/           framework specs
-        ...
-      Verso/               application specs
-        ...
-    integration/
-      MicroHttp/
-        ...
-      Verso/
-        ...
-  spike/
-    MicroHttp/
-      Spike*.hs
+    unit/          MicroHttp/ and Verso/ framework and application specs
+    integration/   MicroHttp/ and Verso/ specs that touch external effects
+    bench/         throughput and rendering benchmarks
+  docs/
+  spike/           exploratory compile spikes
 ```
 
 ## MicroHttp Source Layout Conventions
 
-Common Haskell package conventions are:
+Each Haskell package follows the familiar shape:
 
-- `src/` for library modules.
-- `app/` for executable entry points.
-- `test/` or `tests/` for test suites.
-- `test/bench/` for benchmarks when needed.
-- One `.cabal` file at the package root.
-- Module names mirror file paths.
+- `src/` for the package's modules, with module names mirroring file paths.
+- `cbits/` and `include/` for its C sources and headers, beside `src/`.
+- One `.cabal` file at the package root, built and installed with `mcabal`.
+- `app/`-style executables stay in the application package's `src/Verso` for now
+  (`Main.hs`, `ReplayTool.hs`).
+- `test/` at the repository root holds the Haskell suites; `test/bench/` holds the
+  benchmarks.
 
-This project should follow those conventions even if the first build automation
-uses `Makefile` and `mhs` directly. That keeps the tree familiar to Haskell
-readers and leaves room for `mcabal` integration.
+The framework is installed into the MicroHs package database and the application
+resolves it from there, the same way `base` and `mtl` resolve; the Makefile
+reinstalls it when its sources change.
 
-The Markdown editor follows the same source-vs-asset distinction:
+The Markdown editor follows a source-vs-asset distinction:
 
 - `packages/verso-editor/src/` contains TypeScript source for the application's
-  web components.
-- `packages/verso/static/editor/` contains files the application serves directly, including the
-  generated JavaScript bundle and CSS.
-- `packages/verso-editor/test/` contains TypeScript tests for editor source modules.
+  web components, with its own tests under `packages/verso-editor/test/`.
+- `packages/verso/static/editor/` contains files the application serves directly,
+  including the generated JavaScript bundle and CSS.
 
-Do not put TypeScript source under `static/`; that directory is for served
+Do not put TypeScript source under a `static/` directory; that is for served
 assets.
 
 ## MicroHttp Spike Code Policy
@@ -74,7 +69,7 @@ assets.
 Keep `spike/` as evidence and exploratory code. Do not import from `spike/` in
 production modules.
 
-When a spike result becomes production code, copy or rewrite it into `src/` with
+When a spike result becomes production code, copy or rewrite it into a package's `src/` with
 tests under `test/`. Do not gradually mutate spike modules into production
 modules.
 

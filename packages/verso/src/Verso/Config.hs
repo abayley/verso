@@ -14,6 +14,7 @@ module Verso.Config (
     fromConfig,
     appEnvKeys,
     loadConfig,
+    defaultEditorStaticDir,
 ) where
 
 import qualified MicroHttp.Config as Config
@@ -30,6 +31,7 @@ data VersoConfig = VersoConfig
     , logMaxBytes :: Int
     , logKeep :: Int
     , staticMounts :: [(String, String)]
+    , editorStaticDir :: String
     , versioningEnabled :: Bool
     , linkIndexEnabled :: Bool
     , draftRoot :: String
@@ -64,6 +66,7 @@ appEnvKeys =
     , "log_max_bytes"
     , "log_keep"
     , "static_mounts"
+    , "editor_static_dir"
     , "versioning_enabled"
     , "link_index_enabled"
     , "draft_root"
@@ -81,6 +84,12 @@ appEnvKeys =
     , "search_threads"
     , "search_query_prefix"
     ]
+
+{- | The default directory served at @/static/editor@, holding the editor's built
+bundles and vendored assets. Overridden by the @editor_static_dir@ config key.
+-}
+defaultEditorStaticDir :: String
+defaultEditorStaticDir = "packages/verso/static/editor"
 
 -- | The default trash retention in days (zero or negative disables the sweep).
 defaultTrashRetentionDays :: Int
@@ -126,6 +135,7 @@ fromConfig cfg = do
             , logMaxBytes = maxBytes
             , logKeep = keep
             , staticMounts = Config.configMounts "static_mounts" cfg
+            , editorStaticDir = Config.configString "editor_static_dir" defaultEditorStaticDir cfg
             , versioningEnabled = versioning
             , linkIndexEnabled = indexEnabled
             , draftRoot = Config.configString "draft_root" "data/drafts" cfg

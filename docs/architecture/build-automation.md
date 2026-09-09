@@ -38,7 +38,9 @@ The spike targets remain available for historical reproducibility, but the main
 
 ## MicroHttp Cabal Or MicroCabal Direction
 
-Add `micro-http.cabal` once the first production modules exist in `src/`.
+The framework is a MicroCabal package at `packages/micro-http/` with its own
+`micro-http.cabal` (RFC-0038); the application resolves it from the package
+database. This section records the original direction.
 
 The Cabal file should describe:
 

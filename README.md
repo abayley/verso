@@ -35,7 +35,8 @@ The project deliberately avoids:
 
 ```text
 micro-http/
-  src/MicroHttp/     The web framework (HTTP, sockets, server, router, ...).
+  packages/micro-http/    The web framework, a MicroCabal package (HTTP,
+                          sockets, server, router, and its cbits).
   src/Concordance/   The hybrid search engine (tokeniser, embedding, store).
   src/Verso/         The Verso wiki application (built on MicroHttp).
   packages/verso-editor/  The TypeScript editor, built into static/editor/.

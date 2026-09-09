@@ -139,7 +139,7 @@ on the `timezone`/`tzname` globals at all.
 ## Local Mitigation Applied
 
 MicroHttp does not use `Data.Time` for the access-log timestamp. `localTimestamp`
-in `src/MicroHttp/Log.hs` calls libc `localtime` then `strftime` directly via
+in `packages/micro-http/src/MicroHttp/Log.hs` calls libc `localtime` then `strftime` directly via
 FFI, handing the opaque `struct tm` pointer straight from one to the other. That
 path is the system's own local-time conversion, so it is correct on this
 toolchain. A code comment at the FFI records this rationale so the function is

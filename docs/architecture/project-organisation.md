@@ -82,7 +82,7 @@ modules.
 
 Use `test/unit/...` for unit specs and `test/integration/...` for specs that
 touch the filesystem, sockets, subprocesses, environment, clock, or other
-external effects. Within each suite, mirror `src/MicroHttp/...` module paths.
+external effects. Within each suite, mirror `packages/micro-http/src/MicroHttp/...` module paths.
 
 Suggested test split:
 

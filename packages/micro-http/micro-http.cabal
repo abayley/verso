@@ -1,0 +1,31 @@
+cabal-version: 1.12
+name: micro-http
+version: 0.1.0.0
+build-type: Simple
+license: BSD3
+synopsis: A small HTTP/1.1 server library for MicroHs.
+
+library
+  hs-source-dirs: src
+  c-sources: cbits/microhttp_fs.c cbits/microhttp_process.c
+  include-dirs: include
+  install-includes: microhttp_fs.h microhttp_process.h
+  build-depends: base, mtl
+  default-language: Haskell2010
+  exposed-modules:
+    MicroHttp
+    MicroHttp.Config
+    MicroHttp.FileSystem
+    MicroHttp.Html
+    MicroHttp.Http
+    MicroHttp.Http.Parse
+    MicroHttp.Iteratee
+    MicroHttp.Log
+    MicroHttp.Middleware
+    MicroHttp.Network.Socket
+    MicroHttp.Process
+    MicroHttp.Router
+    MicroHttp.Server
+    MicroHttp.Settings
+    MicroHttp.Static
+    MicroHttp.Stream

@@ -7,6 +7,15 @@ BUILD = build
 SPIKE = spike
 BENCH = test/bench
 EDITOR = packages/verso-editor
+# The framework is a MicroCabal package (RFC-0038): its modules and its cbits are
+# installed into the package database, and the Verso build resolves them from there
+# via -a$(MHS_PACKAGE_DB), the same way base and mtl resolve.
+MICROHTTP = packages/micro-http
+MICROHTTP_SRC = $(MICROHTTP)/src
+MICROHTTP_HS = $(shell find $(MICROHTTP_SRC) -name '*.hs' | sort)
+MICROHTTP_CBITS = $(MICROHTTP)/cbits
+MICROHTTP_INCLUDE = $(MICROHTTP)/include
+MICROHTTP_PKG = $(MHS_PACKAGE_DB)/packages/micro-http-0.1.0.0.pkg
 SRC = src
 TEST = test
 UNIT_TEST = $(TEST)/unit
@@ -16,7 +25,7 @@ DOCS = docs
 DOC_FILES = README.md INSTALL.md STANDARDS.md TODO.md "$(DOCS)/**/*.md"
 # Benchmarks under $(BENCH) are measurement code, deliberately outside the
 # format and lint gate (as they were when they lived in a top-level bench/).
-HS_FILES = $(shell find $(SRC) $(TEST) -name '*.hs' -not -path '$(BENCH)/*' | sort)
+HS_FILES = $(shell find $(SRC) $(MICROHTTP_SRC) $(TEST) -name '*.hs' -not -path '$(BENCH)/*' | sort)
 
 # Prerequisites for the mhs binaries. mhs is a whole-program compiler, so every
 # binary depends on the whole of src/; the test binaries add their own tree. These
@@ -59,26 +68,33 @@ SEARCH_GHC_LINK = $(SEARCH_OBJS)
 SEARCH_DEP = $(SEARCH_BUILD)/concordance_stub.o
 endif
 # The filesystem syscall wrappers (MicroHttp.FileSystem) and the posix_spawn
-# wrapper (MicroHttp.Process) are unconditional: every build links them, so
-# they ride along in the cbits flags and dependencies.
+# wrapper (MicroHttp.Process) now live in the micro-http package: the mhs builds
+# link them from there automatically. These objects are still built for the GHC
+# coverage builds, which compile every source directly and do not use the package.
 FS_OBJ = $(BUILD)/microhttp_fs.o
 PROC_OBJ = $(BUILD)/microhttp_process.o
 CBITS_OBJS = $(FS_OBJ) $(PROC_OBJ)
-MHS_SEARCH = -optc -I$(CBITS) $(SEARCH_LINK) $(foreach o,$(CBITS_OBJS),-optl $(o))
-SEARCH_DEP += $(CBITS_OBJS)
+# The mhs search flags carry only the Concordance shim/stub (Concordance stays in
+# the Verso build); the micro-http cbits arrive with the package.
+MHS_SEARCH = -optc -I$(CBITS) $(SEARCH_LINK)
 LINK_OBJS = $(SEARCH_DEP) $(wildcard $(SEARCH_OBJS))
+
+# Install (or reinstall) the framework package when its sources change, so the
+# Verso and test binaries resolve the current MicroHttp modules and cbits.
+$(MICROHTTP_PKG): $(MICROHTTP_HS) $(MICROHTTP_CBITS)/microhttp_fs.c $(MICROHTTP_CBITS)/microhttp_process.c $(MICROHTTP_INCLUDE)/microhttp_fs.h $(MICROHTTP_INCLUDE)/microhttp_process.h $(MICROHTTP)/micro-http.cabal
+	cd $(MICROHTTP) && mcabal install
 
 $(SEARCH_BUILD)/concordance_stub.o: $(CBITS)/concordance_stub.c $(CBITS)/concordance_shim.h
 	mkdir -p $(SEARCH_BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(CBITS)
 
-$(FS_OBJ): $(CBITS)/microhttp_fs.c $(CBITS)/microhttp_fs.h
+$(FS_OBJ): $(MICROHTTP_CBITS)/microhttp_fs.c $(MICROHTTP_INCLUDE)/microhttp_fs.h
 	mkdir -p $(BUILD)
-	cc -O2 -Wall -c $< -o $@ -I$(CBITS)
+	cc -O2 -Wall -c $< -o $@ -I$(MICROHTTP_INCLUDE)
 
-$(PROC_OBJ): $(CBITS)/microhttp_process.c $(CBITS)/microhttp_process.h
+$(PROC_OBJ): $(MICROHTTP_CBITS)/microhttp_process.c $(MICROHTTP_INCLUDE)/microhttp_process.h
 	mkdir -p $(BUILD)
-	cc -O2 -Wall -c $< -o $@ -I$(CBITS)
+	cc -O2 -Wall -c $< -o $@ -I$(MICROHTTP_INCLUDE)
 
 .PHONY: chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder bench-link-parse bench-search-chunk spike-remark-ast spike1 spike2 spike3 spike4 spike5 spike6 spike7 spike8 spike9 spike10 spike11 all-spikes search-lancedb search-nanoarrow search-model search-shim check clean
 
@@ -163,9 +179,9 @@ format-check:
 lint:
 	# -j0 uses every core: 11.8s single-threaded against 2.7s here, measured on 12 cores.
 	# $(BENCH) is excluded to match the format gate: benchmarks are measurement code.
-	hlint -j0 $(SRC) $(UNIT_TEST) $(INTEGRATION_TEST) $(GHC_COMPAT_TEST)
+	hlint -j0 $(SRC) $(MICROHTTP_SRC) $(UNIT_TEST) $(INTEGRATION_TEST) $(GHC_COMPAT_TEST)
 
-$(BUILD)/verso: $(SRC_HS) $(LINK_OBJS)
+$(BUILD)/verso: $(SRC_HS) $(MICROHTTP_PKG) $(LINK_OBJS)
 	mkdir -p $(BUILD)
 	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) $(SRC)/Verso/Main.hs -o $@
 
@@ -174,7 +190,7 @@ run-verso: editor-build $(BUILD)/verso
 
 # Replay the operation log onto the tree (RFC-0028), after a corpus refresh. Reads
 # the same config as the server (MICROHTTP_CONFIG, default micro-http.conf).
-replay-tool: $(SEARCH_DEP)
+replay-tool: $(SEARCH_DEP) $(MICROHTTP_PKG)
 	mkdir -p $(BUILD)
 	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) $(SRC)/Verso/ReplayTool.hs -o $(BUILD)/replay-tool
 	$(BUILD)/replay-tool
@@ -182,14 +198,14 @@ replay-tool: $(SEARCH_DEP)
 test-editor-browser: editor-build $(BUILD)/verso
 	bun $(EDITOR)/editor-smoke.cjs
 
-$(BUILD)/unit-test: $(SRC_HS) $(UNIT_HS) $(LINK_OBJS)
+$(BUILD)/unit-test: $(SRC_HS) $(UNIT_HS) $(MICROHTTP_PKG) $(LINK_OBJS)
 	mkdir -p $(BUILD)
 	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -o $@
 
 test-unit: $(BUILD)/unit-test
 	$(BUILD)/unit-test
 
-$(BUILD)/integration-test: $(SRC_HS) $(INTEGRATION_HS) $(LINK_OBJS)
+$(BUILD)/integration-test: $(SRC_HS) $(INTEGRATION_HS) $(MICROHTTP_PKG) $(LINK_OBJS)
 	mkdir -p $(BUILD)
 	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -o $@
 
@@ -201,7 +217,7 @@ test: test-unit test-integration
 coverage-unit: $(SEARCH_DEP)
 	rm -rf $(BUILD)/coverage/unit
 	mkdir -p $(BUILD)/coverage/unit/mix $(BUILD)/coverage/unit/objects $(BUILD)/coverage/unit/report
-	$(GHC) -threaded -fhpc -hpcdir $(BUILD)/coverage/unit/mix $(SEARCH_GHC_LINK) $(CBITS_OBJS) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -outputdir $(BUILD)/coverage/unit/objects -o $(BUILD)/coverage/unit/unit-test
+	$(GHC) -threaded -fhpc -hpcdir $(BUILD)/coverage/unit/mix $(SEARCH_GHC_LINK) $(CBITS_OBJS) -I$(MICROHTTP_INCLUDE) -I$(CBITS) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(MICROHTTP_SRC) -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -outputdir $(BUILD)/coverage/unit/objects -o $(BUILD)/coverage/unit/unit-test
 	HPCTIXFILE=$(BUILD)/coverage/unit/unit-test.tix $(BUILD)/coverage/unit/unit-test
 	$(HPC) report $(BUILD)/coverage/unit/unit-test.tix --hpcdir $(BUILD)/coverage/unit/mix --per-module
 	$(HPC) markup $(BUILD)/coverage/unit/unit-test.tix --hpcdir $(BUILD)/coverage/unit/mix --destdir $(BUILD)/coverage/unit/report
@@ -209,7 +225,7 @@ coverage-unit: $(SEARCH_DEP)
 coverage-integration: $(SEARCH_DEP)
 	rm -rf $(BUILD)/coverage/integration
 	mkdir -p $(BUILD)/coverage/integration/mix $(BUILD)/coverage/integration/objects $(BUILD)/coverage/integration/report
-	$(GHC) -threaded -fhpc -hpcdir $(BUILD)/coverage/integration/mix $(SEARCH_GHC_LINK) $(CBITS_OBJS) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -outputdir $(BUILD)/coverage/integration/objects -o $(BUILD)/coverage/integration/integration-test
+	$(GHC) -threaded -fhpc -hpcdir $(BUILD)/coverage/integration/mix $(SEARCH_GHC_LINK) $(CBITS_OBJS) -I$(MICROHTTP_INCLUDE) -I$(CBITS) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(MICROHTTP_SRC) -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -outputdir $(BUILD)/coverage/integration/objects -o $(BUILD)/coverage/integration/integration-test
 	HPCTIXFILE=$(BUILD)/coverage/integration/integration-test.tix $(BUILD)/coverage/integration/integration-test
 	$(HPC) report $(BUILD)/coverage/integration/integration-test.tix --hpcdir $(BUILD)/coverage/integration/mix --per-module
 	$(HPC) markup $(BUILD)/coverage/integration/integration-test.tix --hpcdir $(BUILD)/coverage/integration/mix --destdir $(BUILD)/coverage/integration/report

@@ -230,10 +230,16 @@ with `make check` green.
   (via `overrides` for the whole `@tiptap`/`prosemirror` tree): a fresh install otherwise drifted tiptap
   from 3.26.x to 3.31.x, which broke the Bold command the browser smoke checks. This was a move, not an
   upgrade. `make check` stayed green.
-- **Phase 3 — Haskell package split.** Introduce `packages/micro-http` (with its `.cabal`, its cbits, and
-  the headers moved to `include/`) and `packages/verso` (holding `Verso.*` and `Concordance.*` with its
-  existing native linking). Convert the Makefile to install `micro-http` and build `verso` against it. This
-  is the largest change and rests on Phase 0.
+- **Phase 3 — Haskell package split. Done (2026-09-09), reduced scope.** Extracted `packages/micro-http`
+  (its `.cabal`, the 16 `MicroHttp` modules, the two cbits, and the headers moved to `include/`) and made
+  the Makefile install it with `mcabal install` and build the Verso binary and the test suites against it:
+  they resolve `MicroHttp.*` and its cbits from the package database through the existing
+  `-a$(MHS_PACKAGE_DB)`, no preload flag needed (confirmed in Phase 0). The framework source now lives in
+  the package and joins the format and lint gate from there. `Verso.*` and `Concordance.*`, the Concordance
+  cbits, and `static/` were left in `src/` and the repository root: nesting them under `packages/verso/` is
+  a directory move whose one real snag is the served-`static/` runtime path (`src/Verso/App.hs` defaults the
+  editor mount to `static/editor`), and it earns its own phase. The GHC coverage builds compile the
+  framework source directly and were repointed at its new location. `make check` stayed green.
 - **Phase 4 (out of scope here, listed for continuity) — repo extraction.** With `micro-http` a package
   Verso only depends on, its extraction to a separate repository becomes a directory move plus a published
   or vendored dependency. A later RFC owns it.

@@ -286,7 +286,13 @@ async function main() {
   assert.equal((await rawResponse.text()).trim(), sourceMarkdown);
 
   await page.goto(`${baseUrl}/documents/home.md?edit`);
-  await page.waitForSelector(".markdown-editor__surface strong");
+  // Another render-after-navigation wait, so it gets the same diagnostics as the first one.
+  try {
+    await page.waitForSelector(".markdown-editor__surface strong");
+  } catch (err) {
+    throw new Error(`${err.message}\n${await firstRenderDiagnostics(page, consoleErrors)}`);
+  }
+
   assert.equal(await page.locator(".markdown-editor__surface p strong").first().innerText(), "source");
   await page.locator('.markdown-editor__surface a[href="/target"]').hover();
   await moveMouseToParagraphEdge(page);
@@ -579,9 +585,22 @@ async function main() {
   assert.equal(await page.locator(".markdown-editor__surface h2").innerText(), "Autosaved heading");
   assert.equal(await page.locator(".markdown-editor__preview").count(), 0);
 
+  // The mark step depends on a selection existing when the button is pressed, which the
+  // outcome wait cannot tell you about: with the selection gone, Bold applies to nothing and
+  // the wait for <strong> simply runs its 90 seconds out. That is the shape of the one
+  // intermittent failure seen here, so the precondition is checked separately and the outcome
+  // wait reports what the page was in when it gave up.
   await page.locator(".markdown-editor__surface p").selectText();
+  const selectedBeforeBold = await page.evaluate(() => String(window.getSelection() ?? ""));
+  assert.notEqual(selectedBeforeBold, "", "expected a selection before pressing Bold");
+
   await page.getByRole("button", { name: "Bold" }).click();
-  await page.waitForSelector(".markdown-editor__surface strong");
+
+  try {
+    await page.waitForSelector(".markdown-editor__surface strong");
+  } catch (err) {
+    throw new Error(`${err.message}\n${await markStepDiagnostics(page, consoleErrors, selectedBeforeBold)}`);
+  }
   assert.equal(await page.locator(".markdown-editor__surface strong").innerText(), "Autosaved source paragraph.");
   assert.equal(await page.locator(".markdown-editor__preview").count(), 0);
 
@@ -922,6 +941,36 @@ async function startSplitParseFixture() {
  * editor booted but rendered late) from a broken bundle (never upgraded) from the wrong document being
  * served (rendered, but not the expected content), without needing to reproduce the failure.
  */
+/** What the page was in when the Bold step failed to produce a mark. */
+async function markStepDiagnostics(page, consoleErrors, selectedBeforeBold) {
+  const dom = await page
+    .evaluate(() => {
+      const surface = document.querySelector(".markdown-editor__surface");
+      const bold = document.querySelector('button[aria-label="Bold"], button[data-tooltip="Bold"]');
+      const selection = window.getSelection();
+
+      return {
+        selectionNow: String(selection ?? ""),
+        selectionCollapsed: selection ? selection.isCollapsed : null,
+        selectionRanges: selection ? selection.rangeCount : null,
+        activeElement: document.activeElement ? document.activeElement.className || document.activeElement.tagName : null,
+        boldDisabled: bold ? bold.disabled : null,
+        boldPressed: bold ? bold.getAttribute("aria-pressed") : null,
+        surfaceHtml: surface ? surface.innerHTML.slice(0, 400) : null,
+      };
+    })
+    .catch((evaluateError) => ({ evaluateFailed: String(evaluateError).split("\n")[0] }));
+
+  return [
+    `port: ${port}`,
+    `selection before Bold: ${JSON.stringify(selectedBeforeBold)}`,
+    `dom: ${JSON.stringify(dom)}`,
+    `console errors: ${JSON.stringify(consoleErrors)}`,
+    `server: ${JSON.stringify(serverOutput.split("\n").slice(-4))}`,
+    `memory: ${memorySnapshot()}`,
+  ].join("\n");
+}
+
 async function firstRenderDiagnostics(page, consoleErrors) {
   const dom = await page
     .evaluate(() => {

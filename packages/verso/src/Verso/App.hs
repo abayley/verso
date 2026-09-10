@@ -10,7 +10,6 @@ module Verso.App (
     appWithDocumentTreeVersioned,
     childrenOf,
     clientErrorRoute,
-    frontmatterTitle,
     searchResultsJson,
     linkedFolderPaths,
     orderTreeNodes,
@@ -48,6 +47,7 @@ import qualified Verso.Attachment as Attachment
 import qualified Verso.Config as VConfig
 import qualified Verso.DocumentMeta as DocumentMeta
 import qualified Verso.Draft as Draft
+import qualified Verso.Frontmatter as Frontmatter
 import qualified Verso.Git as Git
 import qualified Verso.Identity as Identity
 import qualified Verso.LinkIndexStore as LinkIndexStore
@@ -170,7 +170,7 @@ searchConfigFrom console vc =
                 }
         , SearchIndex.searchVocabPath = VConfig.searchVocab vc
         , SearchIndex.searchTitleOf = \path content ->
-            Maybe.fromMaybe (humaniseSegment (lastSegment path)) (frontmatterTitle content)
+            Maybe.fromMaybe (humaniseSegment (lastSegment path)) (Frontmatter.title content)
         , SearchIndex.searchLog = console
         }
 
@@ -1007,7 +1007,7 @@ treeEdit versioning root path request =
                         then (,False) <$> Iteratee.liftIO (BS.readFile fsPath)
                         else pure (BS.pack seededMarkdown, True)
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
-            breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
+            breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path content)
             spine <- Iteratee.liftIO (treeSpineFor root path)
             escaped <- Iteratee.liftIO (Html.escapeBytes content)
             pure (documentResponse (View.editorPage path (editorMode request) (documentPageTitle isNew path content) escaped (versioningOn versioning) True (Maybe.isJust mDraft) attachments breadcrumbs spine))
@@ -1027,7 +1027,7 @@ treeRead versioning root path request =
                 else do
                     content <- Iteratee.liftIO (BS.readFile fsPath)
                     attachments <- Iteratee.liftIO (loadPageAttachments root path)
-                    breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
+                    breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path content)
                     spine <- Iteratee.liftIO (treeSpineFor root path)
                     -- RFC-0032: flag an unpublished draft so the read view can mark it next to "Edit".
                     hasDraft <-
@@ -1193,7 +1193,7 @@ folderHref fp = "/documents/" ++ fp ++ "/index.md"
 current page's own title as the final unlinked crumb. A folder's label falls back to a humanised segment
 (and the root to @Cello@) when its @index.md@ is missing or has no @name@.
 -}
-breadcrumbsFor :: FilePath -> String -> String -> IO [View.Crumb]
+breadcrumbsFor :: FilePath -> String -> BS.ByteString -> IO [View.Crumb]
 breadcrumbsFor root path content = do
     links <- mapM folderCrumb (linkedFolderPaths path)
     pure (links ++ [View.Crumb currentLabel Nothing])
@@ -1203,7 +1203,7 @@ breadcrumbsFor root path content = do
         pure (View.Crumb (Maybe.fromMaybe (folderFallback fp) name) (Just (folderHref fp)))
     folderFallback "" = "Cello"
     folderFallback fp = humaniseSegment (lastSegment fp)
-    currentLabel = Maybe.fromMaybe (humaniseSegment (lastSegment path)) (frontmatterTitle content)
+    currentLabel = Maybe.fromMaybe (humaniseSegment (lastSegment path)) (Frontmatter.title (BS.unpack (Frontmatter.slice content)))
 
 -- | The last @/@-separated segment of a path (the path itself when it has none).
 lastSegment :: String -> String
@@ -1225,56 +1225,20 @@ readIndexTitle :: FilePath -> String -> IO (Maybe String)
 readIndexTitle root fp =
     case Static.resolveStaticPath root (pathSegments indexPath) of
         Nothing -> pure Nothing
-        Just fsPath -> do
-            exists <- Directory.doesFileExist fsPath
-            if exists
-                then fmap frontmatterTitle (readDocumentText fsPath)
-                else pure Nothing
+        Just fsPath -> readTitle fsPath
   where
     indexPath = if null fp then "index.md" else fp ++ "/index.md"
 
--- | The @name@ field from a document's leading @---@ frontmatter block (unquoted), or Nothing.
-frontmatterTitle :: String -> Maybe String
-frontmatterTitle content =
-    case map stripCarriageReturn (lines content) of
-        (first : rest)
-            | trimSpace first == "---" -> findName (takeWhile (\l -> trimSpace l /= "---") rest)
-        _ -> Nothing
-  where
-    findName [] = Nothing
-    findName (l : ls) = case nameFieldValue l of
-        Just value -> Just value
-        Nothing -> findName ls
-
--- | The unquoted value of a @name:@ line, or Nothing for any other line.
-nameFieldValue :: String -> Maybe String
-nameFieldValue line = case break (== ':') (dropWhile Char.isSpace (stripCarriageReturn line)) of
-    ("name", ':' : rest) -> Just (unquoteScalar (trimSpace rest))
-    _ -> Nothing
-
--- | Strips a surrounding double- or single-quoted YAML scalar, unescaping as that style requires.
-unquoteScalar :: String -> String
-unquoteScalar value
-    | wrapped '"' = unescapeDouble middle
-    | wrapped '\'' = undoubleSingle middle
-    | otherwise = value
-  where
-    wrapped q = length value >= 2 && head value == q && last value == q
-    middle = init (drop 1 value)
-    unescapeDouble ('\\' : c : xs) = c : unescapeDouble xs
-    unescapeDouble (c : xs) = c : unescapeDouble xs
-    unescapeDouble [] = []
-    undoubleSingle ('\'' : '\'' : xs) = '\'' : undoubleSingle xs
-    undoubleSingle (c : xs) = c : undoubleSingle xs
-    undoubleSingle [] = []
+{- | A document's frontmatter title read from disk, touching only the leading block; Nothing
+when the file is absent or untitled. The bytes are taken as-is (not UTF-8 decoded), as the
+navigation labels always have been.
+-}
+readTitle :: FilePath -> IO (Maybe String)
+readTitle fsPath = fmap (Frontmatter.title . BS.unpack) (Frontmatter.readBlock fsPath)
 
 -- | Trims leading and trailing whitespace.
 trimSpace :: String -> String
 trimSpace = f . f where f = reverse . dropWhile Char.isSpace
-
--- | Drops a trailing carriage return (CRLF tolerance).
-stripCarriageReturn :: String -> String
-stripCarriageReturn s = if not (null s) && last s == '\r' then init s else s
 
 -- | A navigation-tree node kind: a section (a folder) or a page (a Markdown file).
 data NodeKind = Section | Page
@@ -1386,7 +1350,7 @@ pageLabel root childRel name =
             if not exists
                 then pure (humaniseSegment name)
                 else do
-                    title <- fmap frontmatterTitle (readDocumentText fsPath)
+                    title <- readTitle fsPath
                     pure (Maybe.fromMaybe (humaniseSegment name) title)
 
 -- | Whether a folder holds any entry the navigation tree would show (so a section is expandable).
@@ -1718,7 +1682,7 @@ treeImageTitles root captures _request = do
 -- | The auto-generated commit message for a publish: the page's frontmatter title, falling back to its path.
 publishMessage :: String -> String -> String
 publishMessage path markdown =
-    case frontmatterTitle markdown of
+    case Frontmatter.title markdown of
         Just title -> "Publish " ++ title
         Nothing -> "Publish " ++ path
 
@@ -1739,9 +1703,8 @@ treePageTitle root path =
     case Static.resolveStaticPath root (pathSegments path) of
         Nothing -> pure (humaniseSegment (lastSegment path))
         Just fsPath -> do
-            exists <- Directory.doesFileExist fsPath
-            content <- if exists then BS.readFile fsPath else pure BS.empty
-            pure (documentPageTitle False path content)
+            block <- Frontmatter.readBlock fsPath
+            pure (documentPageTitle False path block)
 
 {- | The diff view (RFC-0032): @GET /documents/\<path\>?diff&from=\<rev\>&to=\<rev\>@
 renders a side-by-side diff of the page between the two revisions. With the
@@ -1773,7 +1736,7 @@ treeReadAt root path request = do
         then pure treeNotFound
         else do
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
-            breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
+            breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path content)
             spine <- Iteratee.liftIO (treeSpineFor root path)
             escaped <- Iteratee.liftIO (Html.escapeBytes content)
             pure (documentResponse (View.editorPage path (editorMode request) (documentPageTitle False path content) escaped False False False attachments breadcrumbs spine))
@@ -1978,17 +1941,12 @@ capture name ((key, value) : rest)
     | name == key = value
     | otherwise = capture name rest
 
-{- | Read a document's bytes as an opaque (UTF-8) string and write them back
-verbatim. The document is handled as bytes, never decoded: MicroHs's 'readFile'
-decodes UTF-8 to Unicode characters which the @Char8@ HTML builder then truncates
-to one byte each, corrupting every multibyte character (and 'writeFile' would
-re-encode on save). Reading and writing the raw bytes keeps the file byte-exact
-end to end -- the same property the static @?raw@/asset serving already has.
+{- | Writes a document's bytes verbatim from a one-char-per-byte 'String'. Documents are
+handled as bytes, never decoded: MicroHs's 'writeFile' would re-encode Unicode characters
+as UTF-8, corrupting content that was read as raw bytes. Reading and writing the raw bytes
+keeps the file byte-exact end to end -- the same property the static @?raw@/asset serving
+already has.
 -}
-readDocumentText :: FilePath -> IO String
-readDocumentText path = fmap BS.unpack (BS.readFile path)
-
--- | Writes a document's bytes verbatim (the byte-exact counterpart of 'readDocumentText').
 writeDocumentText :: FilePath -> String -> IO ()
 writeDocumentText path content = writeDocumentBytes path (BS.pack content)
 
@@ -2051,7 +2009,7 @@ documentPageTitle isNew docId content
     | otherwise =
         Maybe.fromMaybe
             (humaniseSegment (lastSegment docId))
-            (frontmatterTitle (Utf8.decodeUtf8 (BS.unpack content)))
+            (Frontmatter.title (Utf8.decodeUtf8 (BS.unpack (Frontmatter.slice content))))
 
 -- | The seed Markdown for a new or missing document.
 seededMarkdown :: String

@@ -32,10 +32,28 @@ spec =
             result <- Iteratee.run final
             Directory.removeFile roundTripFile
             result `shouldBe` Right (BS.pack "file body contents")
+        it "given a chunked file enumerator, when run into a chunk-counting consumer, then the file arrives in chunks of the requested size" $ do
+            writeFile chunkedFile "twelve bytes"
+            final <- Stream.fileEnumeratorChunked 5 chunkedFile countChunks
+            result <- Iteratee.run final
+            Directory.removeFile chunkedFile
+            result `shouldBe` Right [5, 5, 2]
         it "given a file that does not exist, when enumerated, then the consumer sees a source error" $ do
             final <- Stream.fileEnumerator missingFile (Iteratee.readBodyStrict bodyTooLarge 1000)
             result <- Iteratee.run final
             isSourceError result `shouldBe` True
+
+-- | Collects the byte length of each chunk fed until end of stream.
+countChunks :: Iteratee.Iter Stream.StreamError [Int]
+countChunks = go []
+  where
+    go acc = Iteratee.NeedInput $ \stream -> case stream of
+        Iteratee.Chunk bytes -> go (BS.length bytes : acc)
+        Iteratee.EndOfStream Nothing -> Iteratee.Done (reverse acc) stream
+        Iteratee.EndOfStream (Just err) -> Iteratee.IterFailed err stream
+
+chunkedFile :: FilePath
+chunkedFile = "build/streamspec-chunked.txt"
 
 bodyTooLarge :: Stream.StreamError
 bodyTooLarge = Stream.StreamParseError Parse.BodyTooLarge

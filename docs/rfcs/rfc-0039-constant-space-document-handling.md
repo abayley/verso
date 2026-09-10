@@ -143,9 +143,20 @@ fixing the current in-place overwrite that a crash mid-write would corrupt. The 
 
 The frontmatter title comes from the streaming utility's early-completing reader, which consumes chunks only
 until the closing `---` and decodes just that small block, so a title lookup never reads or unpacks the body.
-`breadcrumbsFor`, `readDocumentText`, `documentPageTitle`, and the `TreeMove` title lookup route through it.
-When the body is already in hand (the editor page has just read it), the title is taken from
-`SearchChunks.frontmatterSlice` of those bytes rather than re-reading.
+`breadcrumbsFor`, `documentPageTitle`, the navigation labels, and the `TreeMove` title lookup route through
+it; `readDocumentText`, which unpacked a whole file to a `String`, is gone. When the body is already in hand
+(the editor page has just read it), the title is taken from the frontmatter slice of those bytes rather than
+re-reading.
+
+Everything about the block lives in one module, `Verso.Frontmatter`: the classification of bytes as no
+frontmatter, an unclosed block, or a closed block; the iteratee that completes on the closing delimiter;
+the file reader over it; and the `name` parser. An unclosed block is abandoned once it passes a 64KB cap,
+so a document that never closes its frontmatter is not read whole either. This consolidated three parsers
+that had drifted apart (the tolerant one behind page titles, a stricter one in `TreeMove`, and the
+byte-level delimiter test in the search chunker) onto one rule: a delimiter is `---` alone on its line with
+spaces, tabs, and a carriage return tolerated around it, and the `name` value may be single- or
+double-quoted. The only observable differences are at those edges (a tab-indented or trailing-space
+delimiter, a single-quoted name in a synthesised listing entry), where the readers now agree.
 
 ### Minor reads
 
@@ -232,7 +243,7 @@ Riskiest-value-first, each a small commit with `make check` green, the heap left
 2. Byte-level escaper in `MicroHttp.Html`, with the golden test and the bench. **Done (2026-09-10)**, as
    a C escaper in `IO` (see the escaper benchmark ref).
 3. The streaming utility: parameterise `fileEnumerator`'s chunk size and add the early-completing
-   frontmatter reader; route the title lookups through it.
+   frontmatter reader; route the title lookups through it. **Done (2026-09-10).**
 4. The shared `scanStep` core with capped tail-carry, expressed so `pageLinks` is its single-chunk case;
    golden equality across chunk sizes; `bench-link-parse` at 4K/64K/128K against the whole-body baseline
    and the cello-docs build time -- this is the profiling gate, and it decides whether a `cbits` scanner is

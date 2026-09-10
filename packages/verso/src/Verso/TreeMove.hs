@@ -42,6 +42,7 @@ import qualified System.Directory as Directory
 import qualified Verso.DocumentLinks as DocumentLinks
 import qualified Verso.DocumentListing as DocumentListing
 import qualified Verso.DocumentMeta as DocumentMeta
+import qualified Verso.Frontmatter as Frontmatter
 import qualified Verso.LinkIndex as LinkIndex
 import qualified Verso.LinkIndexStore as LinkIndexStore
 import qualified Verso.OperationLog as OperationLog
@@ -763,26 +764,7 @@ writeRel root rel content =
 
 -- | The frontmatter @name@ of an index.md (for a synthesised listing entry), or a fallback.
 frontmatterNameOf :: FilePath -> IO String
-frontmatterNameOf fs = do
-    exists <- Directory.doesFileExist fs
-    if not exists
-        then pure "Untitled"
-        else fmap (Maybe.fromMaybe "Untitled" . frontmatterName . BS.unpack) (BS.readFile fs)
-
--- | Extracts the @name:@ scalar from a leading @---@ frontmatter block.
-frontmatterName :: String -> Maybe String
-frontmatterName text = case lines text of
-    ("---" : rest) -> lookupName (takeWhile (/= "---") rest)
-    _ -> Nothing
-  where
-    lookupName [] = Nothing
-    lookupName (l : ls)
-        | "name:" `List.isPrefixOf` l = Just (unquote (trim (drop (length "name:") l)))
-        | otherwise = lookupName ls
-    trim = dropWhile (== ' ')
-    unquote s
-        | length s >= 2 && head s == '"' && last s == '"' = init (drop 1 s)
-        | otherwise = s
+frontmatterNameOf fs = fmap (Maybe.fromMaybe "Untitled" . Frontmatter.title . BS.unpack) (Frontmatter.readBlock fs)
 
 -- | The parent tree path of a tree path (its segments minus the last; @""@ at the root).
 parentRel :: String -> String

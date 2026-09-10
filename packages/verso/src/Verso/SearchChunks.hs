@@ -17,7 +17,8 @@ per-line list churn) was a large share of the indexing cost
 module Verso.SearchChunks (
     Chunk (..),
     chunkPage,
-    frontmatterSlice,
+    lineRanges,
+    isDashesLine,
 ) where
 
 import qualified Concordance.Utf8 as Utf8
@@ -63,20 +64,6 @@ chunkPage cap title content =
     continuationContext anchor context =
         if null anchor then context else context ++ " > " ++ anchor
     withContext context = BS.append (BS.pack (Utf8.encodeUtf8 (context ++ "\n")))
-
-{- | The frontmatter block (both @---@ delimiter lines included) when the
-content opens with one, else empty. The caller decodes just this slice for
-the page title instead of the whole page.
--}
-frontmatterSlice :: BS.ByteString -> BS.ByteString
-frontmatterSlice content =
-    case lineRanges content of
-        (first : rest)
-            | isDashesLine content first ->
-                case List.find (isDashesLine content) rest of
-                    Just (_, closeEnd) -> BS.take closeEnd content
-                    Nothing -> BS.empty
-        _ -> BS.empty
 
 {- | Splits the paragraph ranges into pieces of at most the cap (in bytes) at
 paragraph boundaries, joined with blank lines; a single paragraph beyond the
@@ -205,20 +192,23 @@ isFenceAt content (s, e) = go s
                 && BS.index content (k + 1) == '`'
                 && BS.index content (k + 2) == '`'
 
-{- | Whether the line is a frontmatter delimiter: exactly @---@ after optional
-leading spaces, up to the line end or a carriage return.
+{- | Whether the line is a frontmatter delimiter: @---@ alone on the line,
+with spaces, tabs, and a carriage return tolerated on either side. One rule
+for the search chunker and 'Verso.Frontmatter'.
 -}
 isDashesLine :: BS.ByteString -> Range -> Bool
-isDashesLine content (s, e) = go s
+isDashesLine content (s, e) = dashes (skipBlanks s)
   where
-    go k
-        | k < e && BS.index content k == ' ' = go (k + 1)
-        | otherwise =
-            k + 3 <= e
-                && BS.index content k == '-'
-                && BS.index content (k + 1) == '-'
-                && BS.index content (k + 2) == '-'
-                && (k + 3 == e || BS.index content (k + 3) == '\r')
+    dashes k =
+        k + 3 <= e
+            && BS.index content k == '-'
+            && BS.index content (k + 1) == '-'
+            && BS.index content (k + 2) == '-'
+            && skipBlanks (k + 3) == e
+    -- Past any run of spaces, tabs, and carriage returns from k.
+    skipBlanks k
+        | k < e && (BS.index content k == ' ' || BS.index content k == '\t' || BS.index content k == '\r') = skipBlanks (k + 1)
+        | otherwise = k
 
 -- | The ATX heading's level and (decoded, trimmed) text, when the line is one.
 headingAt :: BS.ByteString -> Range -> Maybe (Int, String)

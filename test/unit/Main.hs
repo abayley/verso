@@ -29,6 +29,7 @@ import qualified Verso.DocumentLinksSpec as DocumentLinksSpec
 import qualified Verso.DocumentListingSpec as DocumentListingSpec
 import qualified Verso.DocumentMetaSpec as DocumentMetaSpec
 import qualified Verso.DraftSpec as DraftSpec
+import qualified Verso.FrontmatterSpec as FrontmatterSpec
 import qualified Verso.IdentitySpec as IdentitySpec
 import qualified Verso.LinkFingerprintSpec as LinkFingerprintSpec
 import qualified Verso.LinkIndexSpec as LinkIndexSpec
@@ -74,6 +75,7 @@ main = hspec $ do
     SocketAddrSpec.spec
     ProcessSpec.spec
     DraftSpec.spec
+    FrontmatterSpec.spec
     IdentitySpec.spec
     OperationLogSpec.spec
     AppSpec.spec

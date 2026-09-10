@@ -10,6 +10,7 @@ module MicroHttp.Stream (
     socketEnumerator,
     socketSinkI,
     fileEnumerator,
+    fileEnumeratorChunked,
 ) where
 
 import qualified Data.ByteString as BS
@@ -78,16 +79,22 @@ socketWrite socket bytes = do
 {- | Streams a file in chunks, owning the handle: it opens the file, feeds
 its contents, and closes the handle on every exit path, including a consumer
 that completes early or fails mid-stream. A file that will not open ends the
-stream with a 'StreamSourceError'.
+stream with a 'StreamSourceError'. Chunks are 'fileChunkBytes', sized for
+socket traffic; 'fileEnumeratorChunked' takes the size for consumers that
+scan documents.
 -}
 fileEnumerator :: FilePath -> Iteratee.Enumerator StreamError a
-fileEnumerator path =
+fileEnumerator = fileEnumeratorChunked fileChunkBytes
+
+-- | 'fileEnumerator' with the chunk size in bytes chosen by the caller.
+fileEnumeratorChunked :: Int -> FilePath -> Iteratee.Enumerator StreamError a
+fileEnumeratorChunked chunkBytes path =
     Iteratee.resourceEnumerator
         (Open.openBinaryFileM path Base.ReadMode)
         Base.hClose
-        (`BS.hGet` fileChunkBytes)
+        (`BS.hGet` chunkBytes)
         (StreamSourceError ("cannot open file: " ++ path))
 
--- | The chunk size, in bytes, used when streaming a file.
+-- | The default chunk size, in bytes, used when streaming a file.
 fileChunkBytes :: Int
 fileChunkBytes = 4096

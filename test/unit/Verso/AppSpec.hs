@@ -17,14 +17,6 @@ import qualified Verso.OperationLog as OperationLog
 spec :: Spec
 spec =
     describe "Verso.App" $ do
-        it "given frontmatter with a name, when read, then the title is returned (quotes stripped)" $ do
-            App.frontmatterTitle "---\nname: Engineering\nmeta: x\n---\n\n# Body" `shouldBe` Just "Engineering"
-            App.frontmatterTitle "---\nname: \"A: title\"\n---" `shouldBe` Just "A: title"
-
-        it "given no frontmatter or no name, when read, then Nothing is returned" $ do
-            App.frontmatterTitle "# Just a body\n" `shouldBe` Nothing
-            App.frontmatterTitle "---\nmeta: x\n---" `shouldBe` Nothing
-
         it "given a regular page path, when linked folders computed, then root and each ancestor folder are linked" $ do
             App.linkedFolderPaths "engineering/hpearuba-guides/aruba-central-troubleshooting/noc.md"
                 `shouldBe` ["", "engineering", "engineering/hpearuba-guides", "engineering/hpearuba-guides/aruba-central-troubleshooting"]

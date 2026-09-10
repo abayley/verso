@@ -159,6 +159,9 @@ Individual targets:
   `make editor-knip` for individual steps.
 - `make test-editor-browser` — Playwright browser smoke test for the editor;
   it starts and stops the Verso server itself.
+- `make test-ghc-smoke` — the same smoke against the GHC build of the server
+  (`build/ghc/verso`), the one check that both compilers' binaries behave
+  alike end to end.
 - `make coverage` — developer-only GHC/HPC coverage reports under
   `build/coverage/*/report/`. Coverage is a secondary signal; the
   compatibility gate remains the MicroHs-based `make check`.

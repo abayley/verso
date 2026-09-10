@@ -132,7 +132,7 @@ $(PROC_OBJ): $(MICROHTTP_CBITS)/microhttp_process.c $(MICROHTTP_INCLUDE)/microht
 	mkdir -p $(BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(MICROHTTP_INCLUDE)
 
-.PHONY: build-verso-ghc build-verso-ghc-prof run-verso-ghc run-verso-ghc-prof chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder bench-link-parse bench-search-chunk search-lancedb search-nanoarrow search-model search-shim check clean
+.PHONY: build-verso-ghc build-verso-ghc-prof run-verso-ghc run-verso-ghc-prof test-ghc-smoke chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder bench-link-parse bench-search-chunk search-lancedb search-nanoarrow search-model search-shim check clean
 
 
 docs:
@@ -194,6 +194,12 @@ replay-tool: $(SEARCH_DEP) $(MICROHTTP_PKG)
 
 test-editor-browser: editor-build $(BUILD)/verso
 	bun $(EDITOR)/editor-smoke.cjs
+
+# The same browser smoke against the GHC build of the server: the one check that the two
+# compilers' binaries behave alike end to end (the FFI, the iteratee streams, the escaper
+# and the git/process seams are all exercised by it).
+test-ghc-smoke: editor-build $(BUILD)/ghc/verso
+	SMOKE_SERVER_BIN=$(BUILD)/ghc/verso bun $(EDITOR)/editor-smoke.cjs
 
 $(BUILD)/unit-test: $(SRC_HS) $(UNIT_HS) $(MICROHTTP_PKG) $(LINK_OBJS)
 	mkdir -p $(BUILD)
@@ -365,7 +371,7 @@ chrome-gates:
 		if [ -n "$$dead_classes" ]; then echo "chrome-gates FAILED: CSS classes without a source producer:"; echo "$$dead_classes"; exit 1; fi
 	@echo "chrome-gates OK"
 
-check: docs format-check lint test editor-check test-editor-browser chrome-gates
+check: docs format-check lint test editor-check test-editor-browser test-ghc-smoke chrome-gates
 
 clean:
 	rm -rf $(BUILD)

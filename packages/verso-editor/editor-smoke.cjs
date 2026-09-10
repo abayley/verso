@@ -773,8 +773,13 @@ async function selectTextRangeInElement(page, selector, startText, endText) {
 }
 
 
+// The server binary under test: the MicroHs build by default, or another (the GHC build,
+// `make test-ghc-smoke`) named by SMOKE_SERVER_BIN. Both are the same sources; the smoke is
+// what says they behave the same.
+const serverBinary = process.env.SMOKE_SERVER_BIN ?? "./build/verso";
+
 function startServer() {
-  const server = spawn("./build/verso", [], {
+  const server = spawn(serverBinary, [], {
     cwd: process.cwd(),
     detached: true,
     env: { ...process.env, MICROHTTP_CONFIG: smokeConfig },

@@ -65,7 +65,8 @@ and then carried into `packages/verso-editor/moebius/`.
 
 `make check` runs, in order: the docs build, the format check, the linters, the
 Haskell unit and integration suites, the editor checks (lint, typecheck and
-Vitest), the Playwright editor smoke, and the chrome gates. It rebuilds the
+Vitest), the Playwright editor smoke, the same smoke against the GHC build of the
+server, and the chrome gates. It rebuilds the
 editor bundle and the `verso` binary along the way, so it takes several minutes.
 
 ```bash

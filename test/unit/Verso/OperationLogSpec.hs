@@ -59,6 +59,20 @@ spec =
                 ops <- OperationLog.readOperations logPath
                 ops `shouldBe` [moveOp, deleteOp]
 
+            it "given a log read in chunks smaller than a line, when read, then the operations equal the whole read" $ do
+                createParent
+                cleanLog
+                Monad.forM_ [0 .. 40 :: Int] $ \n -> OperationLog.appendOperation logPath moveOp{OperationLog.opSeq = n}
+                whole <- OperationLog.readOperations logPath
+                chunked <- OperationLog.readOperationsChunked 7 logPath
+                length whole `shouldBe` 41
+                chunked `shouldBe` whole
+
+            it "given a missing log, when read, then there are no operations" $ do
+                createParent
+                cleanLog
+                OperationLog.readOperations logPath `shouldReturn` []
+
             it "given an empty log and then a populated one, when the next sequence number is asked for, then it is 0 and then one past the maximum" $ do
                 createParent
                 cleanLog

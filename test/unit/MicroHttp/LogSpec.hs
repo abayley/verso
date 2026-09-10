@@ -51,6 +51,16 @@ spec =
                 ("second-line-bbbb" `List.isInfixOf` archived) `shouldBe` True
                 active `shouldBe` "third-line-cccc\n"
 
+            it "given an active file already past the threshold, when a new appender first appends, then it rotates before writing" $ do
+                path <- freshLogPath "seeded"
+                BS.writeFile path (BS.pack (replicate 40 'x' ++ "\n"))
+                append <- Log.rotatingAppender 30 3 path
+                append "fresh-line"
+                archived <- BS.unpack <$> BS.readFile (path ++ ".1")
+                active <- BS.unpack <$> BS.readFile path
+                (replicate 40 'x' `List.isInfixOf` archived) `shouldBe` True
+                active `shouldBe` "fresh-line\n"
+
             it "given repeated rotations, when they exceed keep, then the cascade shifts archives and drops the oldest" $ do
                 path <- freshLogPath "cascade"
                 append <- Log.rotatingAppender 10 2 path

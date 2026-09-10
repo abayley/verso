@@ -16,6 +16,7 @@ module Verso.OperationLog (
     renderOperation,
     parseOperation,
     readOperations,
+    readOperationsChunked,
     appendOperation,
     nextSeq,
 ) where
@@ -23,7 +24,8 @@ module Verso.OperationLog (
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
-import qualified System.Directory as Directory
+import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Stream as Stream
 
 -- | The kind of a logical operation.
 data OpType = OpMove | OpDelete | OpRestore
@@ -101,13 +103,44 @@ parseOperation line = do
         (rawKey, ':' : rawValue) -> Just (unquote (trim rawKey), unquote (trim rawValue))
         _ -> Nothing
 
--- | Reads every operation from the log file (empty when absent), in file order.
+{- | Reads every operation from the log file (empty when absent), in file order. The
+file is streamed and parsed a line at a time (RFC-0039): one chunk plus the partial
+last line is resident, never the whole log.
+-}
 readOperations :: FilePath -> IO [Operation]
-readOperations path = do
-    exists <- Directory.doesFileExist path
-    if not exists
-        then pure []
-        else fmap (Maybe.mapMaybe parseOperation . lines . BS.unpack) (BS.readFile path)
+readOperations = readOperationsChunked logChunkBytes
+
+-- | 'readOperations' with the chunk size chosen by the caller.
+readOperationsChunked :: Int -> FilePath -> IO [Operation]
+readOperationsChunked chunkBytes path = do
+    outcome <- Stream.fileEnumeratorChunked chunkBytes path operationsI >>= Iteratee.run
+    case outcome of
+        Right operations -> pure operations
+        Left _ -> pure []
+
+-- | The chunk size for streaming the log.
+logChunkBytes :: Int
+logChunkBytes = 65536
+
+{- | Parses operations from a stream of log bytes: each complete line is parsed as it
+arrives (a line that does not parse is skipped), and the incomplete tail is carried to
+the next chunk.
+-}
+operationsI :: Iteratee.Iter e [Operation]
+operationsI = go BS.empty []
+  where
+    go carry acc = Iteratee.NeedInput (step carry acc)
+    step carry acc stream = case stream of
+        Iteratee.Chunk bytes
+            | BS.null bytes -> go carry acc
+            | otherwise ->
+                let pieces = BS.split '\n' (BS.append carry bytes)
+                    complete = init pieces
+                    parsed = Maybe.mapMaybe (parseOperation . BS.unpack) complete
+                 in length parsed `seq` go (BS.copy (last pieces)) (reverse parsed ++ acc)
+        Iteratee.EndOfStream Nothing ->
+            Iteratee.Done (reverse acc ++ Maybe.maybeToList (parseOperation (BS.unpack carry))) stream
+        Iteratee.EndOfStream (Just err) -> Iteratee.IterFailed err stream
 
 -- | Appends one operation as a JSON line (apply-then-append; the file is created on first write).
 appendOperation :: FilePath -> Operation -> IO ()

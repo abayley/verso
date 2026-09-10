@@ -200,11 +200,9 @@ rotatingAppender maxBytes keep path = do
 rotatingFileLogfmtLogger :: Int -> Int -> FilePath -> IO Logger
 rotatingFileLogfmtLogger maxBytes keep path = fmap logfmtTo (rotatingAppender maxBytes keep path)
 
--- | The current size of a file in bytes, or 0 if it does not exist.
+-- | The current size of a file in bytes (by @stat@, not by reading it), or 0 if it does not exist.
 currentFileSize :: FilePath -> IO Int
-currentFileSize path = do
-    exists <- Directory.doesFileExist path
-    if exists then fmap BS.length (BS.readFile path) else pure 0
+currentFileSize path = fmap (either (const 0) FileSystem.fsSize) (FileSystem.fileStat path)
 
 {- | The rename-cascade: drop @path.\<keep\>@, shift each @path.\<n\>@ up to
 @path.\<n+1\>@ from the top down, then move the active @path@ to @path.1@. Each

@@ -264,7 +264,9 @@ Riskiest-value-first, each a small commit with `make check` green, the heap left
    rather than bodies, so the index-backed move holds no body at all (the no-index fallback still reads
    each body for its byte prefilter, then keeps only the links). The shared-asset copy streams through
    `Stream.copyFile`. Left as is: the asset-conflict check still reads both files whole to compare them.
-7. The minor reads (`Log` size via `stat`, `OperationLog` streaming parse).
+7. The minor reads (`Log` size via `stat`, `OperationLog` streaming parse). **Done (2026-09-10).** The
+   rotating appender seeds its size from `stat`; the operation log is streamed and parsed a line at a time,
+   with the partial last line carried between chunks.
 8. Lower the `VERSO_HEAP_CELLS` default to the tight fail-fast value, after exercising the largest documents
    and realistic concurrency on the real corpus.
 

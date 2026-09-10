@@ -419,7 +419,7 @@ breadcrumbsJson crumbs = jsonArray (map crumbObject crumbs)
     crumbObject (Crumb label href) =
         jsonObject (("label", jsonString label) : maybe [] (\h -> [("href", jsonString h)]) href)
 
-editorPage :: String -> Maybe String -> String -> BS.ByteString -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Html.Html ()
+editorPage :: String -> Maybe String -> String -> Html.Escaped -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Html.Html ()
 editorPage docId mode pageTitle content versioned editable hasDraft attachments breadcrumbs treeSpine =
     Html.html [Html.lang "en"] $ do
         Html.head [] $ do
@@ -447,7 +447,7 @@ editorPage docId mode pageTitle content versioned editable hasDraft attachments 
 no-script @\<textarea\>@ fallback holding the document. @data-readonly@ is set in the
 read view (RFC-0020); the element disables editing and hides the editing chrome.
 -}
-editorElement :: String -> Maybe String -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> BS.ByteString -> Html.Html ()
+editorElement :: String -> Maybe String -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Html.Escaped -> Html.Html ()
 editorElement docId mode versioned editable hasDraft attachments breadcrumbs treeSpine content =
     Html.custom
         "markdown-editor"
@@ -465,5 +465,5 @@ editorElement docId mode versioned editable hasDraft attachments breadcrumbs tre
         ( Html.custom
             "textarea"
             [Html.attr "name" "markdown", Html.attr "aria-label" "Markdown source", Html.class_ "markdown-editor__fallback"]
-            (Html.bytesText content)
+            (Html.escapedText content)
         )

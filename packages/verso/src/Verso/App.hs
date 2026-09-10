@@ -1009,7 +1009,8 @@ treeEdit versioning root path request =
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
             breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
             spine <- Iteratee.liftIO (treeSpineFor root path)
-            pure (documentResponse (View.editorPage path (editorMode request) (documentPageTitle isNew path content) content (versioningOn versioning) True (Maybe.isJust mDraft) attachments breadcrumbs spine))
+            escaped <- Iteratee.liftIO (Html.escapeBytes content)
+            pure (documentResponse (View.editorPage path (editorMode request) (documentPageTitle isNew path content) escaped (versioningOn versioning) True (Maybe.isJust mDraft) attachments breadcrumbs spine))
 
 {- | Renders the read-only view for a tree document (the default @GET@, RFC-0020):
 the editor shell with editing disabled. A missing page is a @404@ -- reading never
@@ -1033,7 +1034,8 @@ treeRead versioning root path request =
                         if versioningOn versioning
                             then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
                             else pure False
-                    pure (documentResponse (View.editorPage path (editorMode request) (documentPageTitle False path content) content (versioningOn versioning) False hasDraft attachments breadcrumbs spine))
+                    escaped <- Iteratee.liftIO (Html.escapeBytes content)
+                    pure (documentResponse (View.editorPage path (editorMode request) (documentPageTitle False path content) escaped (versioningOn versioning) False hasDraft attachments breadcrumbs spine))
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
 treeServeFile :: FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
@@ -1773,7 +1775,8 @@ treeReadAt root path request = do
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
             breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path (BS.unpack content))
             spine <- Iteratee.liftIO (treeSpineFor root path)
-            pure (documentResponse (View.editorPage path (editorMode request) (documentPageTitle False path content) content False False False attachments breadcrumbs spine))
+            escaped <- Iteratee.liftIO (Html.escapeBytes content)
+            pure (documentResponse (View.editorPage path (editorMode request) (documentPageTitle False path content) escaped False False False attachments breadcrumbs spine))
 
 {- | The rollback action (RFC-0032): @POST /documents/\<path\>?rollback@ with a
 @rev@ field restores the page's content at that revision, writes it through the

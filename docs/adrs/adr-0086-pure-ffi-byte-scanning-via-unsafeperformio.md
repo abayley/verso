@@ -66,9 +66,10 @@ correctly for access logging by injecting a `Logger`, so there is no reason to k
 
 ## Consequences
 
-Each sanctioned site must satisfy all four invariants and state them in its comment; RFC-0039's shared
-`scanStep` core is the intended home for byte scanning, so new scanners extend it rather than adding fresh
-`unsafePerformIO` sites. A grep gate over `unsafePerformIO` with an allowlist of the sanctioned modules is
-cheap and keeps the set from growing silently. The `consoleQuiet` global is replaced by an injected console
-sink in a separate, behaviour-preserving change (18 call sites across `Verso.App` and `Verso.Main`; the
-test binaries pass a silent sink instead of calling `silenceConsoleLog`).
+Each sanctioned site must satisfy all four invariants and state them in its comment; RFC-0039's shared `scanStep` core
+is the intended home for byte scanning, so new scanners extend it rather than adding fresh `unsafePerformIO` sites.
+RFC-0039's HTML escaper writes an output buffer, so it is an `IO` function (`MicroHttp.Html.escapeBytes`) rather than
+a further site. A grep gate over `unsafePerformIO` with an allowlist of the sanctioned modules is cheap and keeps the
+set from growing silently. The `consoleQuiet` global is replaced by an injected console sink in a separate,
+behaviour-preserving change (18 call sites across `Verso.App` and `Verso.Main`; the test binaries pass a silent sink
+instead of calling `silenceConsoleLog`).

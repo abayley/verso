@@ -7,7 +7,9 @@ module MicroHttp.Html (
     button_,
     body,
     body_,
-    bytesText,
+    Escaped,
+    escapeBytes,
+    escapedText,
     class_,
     custom,
     div,
@@ -60,8 +62,15 @@ module MicroHttp.Html (
 ) where
 
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Unsafe as BSU
 import qualified Data.String as String
+import qualified Foreign.C.Types as CTypes
+import qualified Foreign.Marshal.Alloc as Alloc
+import qualified Foreign.Ptr as Ptr
 import Prelude hiding (div, head, span)
+
+foreign import ccall "microhttp_html.h mhhtml_escaped_length" c_escapedLength :: Ptr.Ptr CTypes.CUChar -> CTypes.CLong -> IO CTypes.CLong
+foreign import ccall "microhttp_html.h mhhtml_escape" c_escape :: Ptr.Ptr CTypes.CUChar -> CTypes.CLong -> Ptr.Ptr CTypes.CUChar -> IO CTypes.CLong
 
 {- | A difference list of 'ByteString' chunks: O(1) append by composition, run
 to a chunk list in document order (RFC-0013). Constant tag and escape fragments
@@ -145,16 +154,44 @@ coalesce bufSize = finish . foldl step ([], [], 0)
 text :: String -> Html ()
 text = emit . escapeText
 
-{- | Emit text from a 'ByteString' that is already UTF-8 (e.g. a document read
-straight off disk). The five HTML-significant characters are escaped at the byte
-level and every other byte -- including all UTF-8 continuation bytes -- passes
-through verbatim. Unlike 'text' there is no 'String' round-trip and no
-encoding/decoding: the bytes flow through untouched, which is the only correct
-marshalling given MicroHs decodes 'String' I/O as UTF-8 but treats
-'Data.ByteString.Char8' as raw bytes.
+{- | Bytes already escaped for HTML text content by 'escapeBytes'. Opaque, so the
+only way to obtain one is to escape, and a view can take one to say its content
+is safe to emit without knowing where it came from.
 -}
-bytesText :: BS.ByteString -> Html ()
-bytesText = emit . escapeBytes
+newtype Escaped = Escaped BS.ByteString
+
+{- | Escapes a 'ByteString' that is already UTF-8 (e.g. a document read straight
+off disk) for HTML text content. The five HTML-significant bytes become their
+entities and every other byte -- including all UTF-8 continuation bytes -- passes
+through verbatim, with no 'String' round-trip and no encoding/decoding, which is
+the only correct marshalling given MicroHs decodes 'String' I/O as UTF-8 but
+treats 'Data.ByteString.Char8' as raw bytes.
+
+The work is done in C (@cbits/microhttp_html.c@, RFC-0039): the input is read in
+place, its escaped length is computed, and the escaped bytes are written into a
+private buffer that is packed into the result and freed. Memory is the input plus
+the output, never a per-byte list. In 'IO' because it writes that buffer; ADR-0086
+reserves 'unsafePerformIO' for read-only scans. An input with no specials is
+returned as-is, without a copy.
+-}
+escapeBytes :: BS.ByteString -> IO Escaped
+escapeBytes input
+    | BS.null input = pure (Escaped input)
+    | otherwise = BSU.unsafeUseAsCStringLen input $ \(inPtr, len) -> do
+        let inBytes = Ptr.castPtr inPtr
+            cLen = fromIntegral len
+        escapedLen <- c_escapedLength inBytes cLen
+        if escapedLen == cLen
+            then pure (Escaped input)
+            else Alloc.allocaBytes (fromIntegral escapedLen) $ \outBytes -> do
+                written <- c_escape inBytes cLen outBytes
+                Escaped <$> BS.packCStringLen (Ptr.castPtr outBytes, fromIntegral written)
+
+-- | Emit already-escaped bytes as text content, as one chunk.
+escapedText :: Escaped -> Html ()
+escapedText (Escaped bytes)
+    | BS.null bytes = pure ()
+    | otherwise = emit (chunk bytes)
 
 -- | Emit a 'String' verbatim with no escaping; the caller vouches for its safety.
 rawTrusted :: String -> Html ()
@@ -414,16 +451,6 @@ linear (docs/design/link-index-performance.md).
 escapeChars :: String -> Builder
 escapeChars [] = mempty
 escapeChars input = chunk (BS.pack (concatMap escapeChar input))
-
-{- | The 'ByteString' analogue of 'escapeChars', escaping at the byte level. The
-specials are all ASCII and UTF-8 never places an ASCII byte inside a multibyte
-sequence, so byte-level escaping is correct for UTF-8 content. Emits one packed
-chunk for the same reason as 'escapeChars'.
--}
-escapeBytes :: BS.ByteString -> Builder
-escapeBytes input
-    | BS.null input = mempty
-    | otherwise = chunk (BS.pack (concatMap escapeChar (BS.unpack input)))
 
 -- | The escaped form of one character; the identity fragment for safe characters.
 escapeChar :: Char -> String

@@ -79,13 +79,14 @@ SEARCH_LINK = -optl $(SEARCH_BUILD)/concordance_stub.o
 SEARCH_GHC_LINK = $(SEARCH_OBJS)
 SEARCH_DEP = $(SEARCH_BUILD)/concordance_stub.o
 endif
-# The filesystem syscall wrappers (MicroHttp.FileSystem) and the posix_spawn
-# wrapper (MicroHttp.Process) now live in the micro-http package: the mhs builds
+# The filesystem syscall wrappers (MicroHttp.FileSystem), the HTML escaper
+# (MicroHttp.Html) and the posix_spawn wrapper (MicroHttp.Process) live in the micro-http package: the mhs builds
 # link them from there automatically. These objects are still built for the GHC
 # coverage builds, which compile every source directly and do not use the package.
 FS_OBJ = $(BUILD)/microhttp_fs.o
+HTML_OBJ = $(BUILD)/microhttp_html.o
 PROC_OBJ = $(BUILD)/microhttp_process.o
-CBITS_OBJS = $(FS_OBJ) $(PROC_OBJ)
+CBITS_OBJS = $(FS_OBJ) $(HTML_OBJ) $(PROC_OBJ)
 # The mhs search flags carry only the Concordance shim/stub (Concordance stays in
 # the Verso build); the micro-http cbits arrive with the package.
 MHS_SEARCH = -optc -I$(CBITS) $(SEARCH_LINK)
@@ -93,7 +94,7 @@ LINK_OBJS = $(SEARCH_DEP) $(wildcard $(SEARCH_OBJS))
 
 # Install (or reinstall) the framework package when its sources change, so the
 # Verso and test binaries resolve the current MicroHttp modules and cbits.
-$(MICROHTTP_PKG): $(MICROHTTP_HS) $(MICROHTTP_CBITS)/microhttp_fs.c $(MICROHTTP_CBITS)/microhttp_process.c $(MICROHTTP_INCLUDE)/microhttp_fs.h $(MICROHTTP_INCLUDE)/microhttp_process.h $(MICROHTTP)/micro-http.cabal
+$(MICROHTTP_PKG): $(MICROHTTP_HS) $(MICROHTTP_CBITS)/microhttp_fs.c $(MICROHTTP_CBITS)/microhttp_html.c $(MICROHTTP_CBITS)/microhttp_process.c $(MICROHTTP_INCLUDE)/microhttp_fs.h $(MICROHTTP_INCLUDE)/microhttp_html.h $(MICROHTTP_INCLUDE)/microhttp_process.h $(MICROHTTP)/micro-http.cabal
 	cd $(MICROHTTP) && mcabal install
 
 $(SEARCH_BUILD)/concordance_stub.o: $(CBITS)/concordance_stub.c $(CBITS)/concordance_shim.h
@@ -101,6 +102,10 @@ $(SEARCH_BUILD)/concordance_stub.o: $(CBITS)/concordance_stub.c $(CBITS)/concord
 	cc -O2 -Wall -c $< -o $@ -I$(CBITS)
 
 $(FS_OBJ): $(MICROHTTP_CBITS)/microhttp_fs.c $(MICROHTTP_INCLUDE)/microhttp_fs.h
+	mkdir -p $(BUILD)
+	cc -O2 -Wall -c $< -o $@ -I$(MICROHTTP_INCLUDE)
+
+$(HTML_OBJ): $(MICROHTTP_CBITS)/microhttp_html.c $(MICROHTTP_INCLUDE)/microhttp_html.h
 	mkdir -p $(BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(MICROHTTP_INCLUDE)
 

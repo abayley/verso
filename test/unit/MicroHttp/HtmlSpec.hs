@@ -17,9 +17,22 @@ spec =
             Html.renderHtml blazeStyleDocument `shouldBe` blazeStyleExpected
         it "given a rendered document, when chunked, then the concatenated chunks equal the string render" $
             BS.unpack (BS.concat (Html.renderChunks todoItem)) `shouldBe` Html.renderHtml todoItem
-        it "given UTF-8 bytes, when rendering bytesText, then specials are escaped and other bytes pass through verbatim" $
-            BS.concat (Html.renderChunks (Html.bytesText (BS.pack "caf\xc3\xa9 <b> & \xf0\x9f\x98\x80")))
-                `shouldBe` BS.pack "caf\xc3\xa9 &lt;b&gt; &amp; \xf0\x9f\x98\x80"
+        it "given UTF-8 bytes, when escaped, then specials are escaped and other bytes pass through verbatim" $
+            escapeAndRender (BS.pack "caf\xc3\xa9 <b> & \xf0\x9f\x98\x80")
+                `shouldReturn` BS.pack "caf\xc3\xa9 &lt;b&gt; &amp; \xf0\x9f\x98\x80"
+        it "given bytes with no specials, when escaped, then the bytes come back unchanged" $
+            escapeAndRender plainBytes `shouldReturn` plainBytes
+        it "given empty bytes, when escaped, then nothing is rendered" $
+            escapeAndRender BS.empty `shouldReturn` BS.empty
+        it "given specials at the start, adjacent, and at the end, when escaped, then each is its entity" $
+            escapeAndRender (BS.pack "<<a>>&\"'\"&")
+                `shouldReturn` BS.pack "&lt;&lt;a&gt;&gt;&amp;&quot;&#39;&quot;&amp;"
+        it "given a NUL byte beside a special, when escaped, then the NUL passes through and the special is escaped" $
+            escapeAndRender (BS.pack "a\0<\0b") `shouldReturn` BS.pack "a\0&lt;\0b"
+        it "given many specials among multibyte UTF-8, when escaped, then the output matches the per-character escaper" $
+            escapeAndRender denseBytes `shouldReturn` referenceEscape denseBytes
+        it "given a large document with sparse specials, when escaped, then the output matches the per-character escaper" $
+            escapeAndRender sparseBytes `shouldReturn` referenceEscape sparseBytes
         it "given a small page, when chunked, then it coalesces to a single segment" $
             length (Html.renderChunks document) `shouldBe` 1
         it "given a page larger than the coalescing buffer, when chunked, then it splits into bounded segments" $ do
@@ -95,3 +108,35 @@ blazeStyleExpected =
 largeDocument :: Html.Html ()
 largeDocument =
     mapM_ (\_ -> Html.p_ [] (Html.text "A padding paragraph used to exceed the coalescing buffer.")) [1 .. (800 :: Int)]
+
+-- | Escapes bytes as document content and renders them, as the editor page does.
+escapeAndRender :: BS.ByteString -> IO BS.ByteString
+escapeAndRender bytes = do
+    escaped <- Html.escapeBytes bytes
+    pure (BS.concat (Html.renderChunks (Html.escapedText escaped)))
+
+-- | Bytes with no HTML specials, including multibyte UTF-8.
+plainBytes :: BS.ByteString
+plainBytes = BS.concat (replicate 300 (BS.pack "caf\xc3\xa9 na\xc3\xafve \xf0\x9f\x98\x80 plain text\n"))
+
+-- | A special-dense body: every few bytes is one of the five specials, with UTF-8 on both sides.
+denseBytes :: BS.ByteString
+denseBytes = BS.concat (replicate 2000 (BS.pack "\xc3\xa9<\xc3\xa9>&\"'\xf0\x9f\x98\x80'\"&><"))
+
+-- | A ~200KB body with a special every few hundred bytes, as prose tends to have.
+sparseBytes :: BS.ByteString
+sparseBytes = BS.concat (replicate 800 (BS.pack (replicate 250 'x' ++ "\xc3\xa9 it's \"quoted\" a & b < c > d\n")))
+
+{- | The per-character escaper the byte-level one replaced, kept as the oracle: it is the
+definition of the five entities, so the new escaper is checked against it rather than against
+itself.
+-}
+referenceEscape :: BS.ByteString -> BS.ByteString
+referenceEscape = BS.pack . concatMap escapeChar . BS.unpack
+  where
+    escapeChar '<' = "&lt;"
+    escapeChar '>' = "&gt;"
+    escapeChar '&' = "&amp;"
+    escapeChar '"' = "&quot;"
+    escapeChar '\'' = "&#39;"
+    escapeChar c = [c]

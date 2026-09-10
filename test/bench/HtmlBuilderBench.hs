@@ -59,6 +59,11 @@ main = do
     bench "rope-concat" (ropeConcatBytes . dynamicTexts)
     bench "rope-stream" (ropeStreamBytes . dynamicTexts)
     putStrLn ""
+    putStrLn "document escape (Html.escapeBytes on a whole document, RFC-0039):"
+    putStrLn "document      | bytes/doc  | total ms | us/doc"
+    benchDoc "prose-260k" proseDocument
+    benchDoc "dense-260k" denseDocument
+    putStrLn ""
     putStrLn "constant fragment cost (1,600,000 uses):"
     benchN 1600000 "pack-each" packEach
     benchN 1600000 "shared-caf" sharedCaf
@@ -153,6 +158,45 @@ ropeConcatBytes texts =
 ropeStreamBytes :: [String] -> Int
 ropeStreamBytes texts =
     sumLengths (ropeToList (buildRope texts) [])
+
+-- | Documents escaped per timed document strategy.
+docReps :: Int
+docReps = 20
+
+{- | Times escaping a whole document through the live 'Html.escapeBytes' path, the
+editor page's embedding of a document body. Reports microseconds per document.
+-}
+benchDoc :: String -> ByteString -> IO ()
+benchDoc name doc = do
+    t0 <- getCPUTime
+    total <- escapeAll 0 [1 .. docReps]
+    total `seq` do
+        t1 <- getCPUTime
+        let secs = fromIntegral (t1 - t0) / 1.0e12 :: Double
+            usEach = secs * 1.0e6 / fromIntegral docReps
+        putStrLn
+            ( pad 13 name
+                ++ "| "
+                ++ pad 10 (show (total `div` docReps))
+                ++ " | "
+                ++ pad 8 (showFixed (secs * 1000.0))
+                ++ " | "
+                ++ showFixed usEach
+            )
+  where
+    escapeAll acc [] = pure acc
+    escapeAll acc (i : rest) = do
+        escaped <- Html.escapeBytes (BS.append doc (BS.pack (show i)))
+        let n = sumLengths (Html.renderChunks (Html.escapedText escaped))
+        n `seq` escapeAll (acc + n) rest
+
+-- | A ~260KB prose-like document: a special every few hundred bytes.
+proseDocument :: ByteString
+proseDocument = BS.concat (replicate 1000 (BS.pack (replicate 220 'x' ++ " caf\xc3\xa9 it's \"quoted\" a & b < c > d\n")))
+
+-- | A ~260KB special-dense document: code-like text where every few bytes is a special.
+denseDocument :: ByteString
+denseDocument = BS.concat (replicate 13000 (BS.pack "<a href=\"x\">&amp;'q'</a>"))
 
 -- | The three byte fragments for one row: open tag, escaped text, close tag.
 fragments :: String -> [ByteString]

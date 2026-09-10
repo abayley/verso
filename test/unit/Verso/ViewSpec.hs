@@ -20,13 +20,14 @@ spec =
 
         describe "editor page shell" $ do
             it "given an editor page, when rendered, then browser appearance loads before CSS without theme data" $ do
+                content <- Html.escapeBytes (BS.pack "# Page")
                 let out =
                         Html.renderHtml
                             ( View.editorPage
                                 "page.md"
                                 Nothing
                                 "Page"
-                                (BS.pack "# Page")
+                                content
                                 False
                                 False
                                 False

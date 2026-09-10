@@ -11,6 +11,7 @@ superseded_by: null
 related_rfcs: [RFC-0014, RFC-0029]
 related_refs:
     - docs/rfcs/refs/rfc-0039-memory-profile-20260910.md
+    - docs/rfcs/refs/rfc-0039-escaper-bench-20260910.md
 ---
 
 # RFC-0039: Constant-space document handling and a fail-fast heap
@@ -71,14 +72,26 @@ constant-space; this RFC extends that property to the document-rendering and ind
 
 ### Byte-level HTML escaping
 
-Replace the `String` round-trip in `escapeBytes` (and `escapeChars`) with a byte-scanning escaper that never
-materialises the input as a `String`. It emits the long unescaped runs between specials as `ByteString`
-slices (O(1) views) and the five entities as small constant `ByteString`s, packing the result once so the
-render stays a single builder chunk (composing thousands of builder nodes is itself a known mhs cost, so the
-one-chunk property from the current code is preserved). The five specials are ASCII, and UTF-8 never places
-an ASCII byte inside a multibyte sequence, so byte-level scanning is correct for UTF-8 content. The existing
-`memchr` FFI used by `Verso.DocumentLinks` is the model for finding the next special quickly. A no-specials
-input returns the input unchanged as one chunk.
+Replace the `String` round-trip in `escapeBytes` with a byte-level escaper that never materialises the
+input as a `String`. The five specials are ASCII, and UTF-8 never places an ASCII byte inside a multibyte
+sequence, so byte-level escaping is correct for UTF-8 content. The escaper is a small C function in the
+framework's `cbits` (`microhttp_html.c`): one call computes the escaped length, a second writes the escaped
+bytes into a private buffer that is packed into the result, so memory is the input plus the output and
+the render stays a single builder chunk (composing thousands of builder nodes is itself a known mhs cost).
+A no-specials input is returned as-is, without a copy.
+
+Because it writes a buffer, `Html.escapeBytes :: ByteString -> IO Escaped` is an `IO` function, in line
+with ADR-0086, which reserves `unsafePerformIO` for read-only scans. `Escaped` is opaque: the only way to
+obtain one is to escape, and the view takes one (`Html.escapedText`) rather than raw bytes, so the type
+says the content is safe to emit. The three handlers that build the editor page already read the document
+in `IO` and escape it there. The `String` escaper (`escapeChars`, for attribute values and `text`) is
+unchanged: its input is already a list, so it has no blowup to remove.
+
+The RFC originally proposed a pure Haskell scan driven by `memchr` with the C escaper held in reserve.
+The benchmark (`docs/rfcs/refs/rfc-0039-escaper-bench-20260910.md`) decided it: a foreign call per
+special costs 2 to 3 microseconds under mhs, which only tied the `String` round-trip on the densest real
+document and was three times slower on a special-dense fixture, while the C escaper is 68 times faster on
+prose and 12 times faster on the dense fixture.
 
 ### One streaming file-reading utility
 
@@ -152,11 +165,16 @@ concurrency.
 - **Just set a tight heap now.** Rejected: with the non-constant-space paths still present, a tight heap
   crashes at startup on a large corpus (the link build) or on a large-document edit. The reads must be fixed
   first, which is the point of sequencing.
-- **A C escaper via FFI.** A `cbits` escaper would be fully O(n) with no Haskell intermediate. Kept in
-  reserve: the byte-slice approach in pure Haskell is expected to be enough and avoids growing the FFI
-  surface; if benchmarks disagree, an FFI escaper is the fallback.
+- **A pure Haskell escaper over `memchr`.** Unescaped runs as O(1) slices, entities as shared constants,
+  the next special found by `memchr` and the pieces joined pairwise. Measured and rejected: mhs charges 2
+  to 3 microseconds per foreign call, so one call per special only tied the `String` round-trip on the
+  densest real document and lost three-fold on a special-dense fixture. The C escaper (adopted) makes two
+  calls per document.
 - **Escape into a `Builder` of per-special nodes.** Rejected: thousands of builder nodes are ~1ms each to
   force in mhs, so a special-heavy document would serialise in seconds. The one-chunk property is kept.
+- **A pure C escaper under `unsafePerformIO`.** The C escaper writes an output buffer, which is outside
+  the read-only shape ADR-0086 sanctions. Rather than widen the ADR, the escaper is `IO` and the view takes
+  the opaque `Escaped` result; the handlers were already in `IO`.
 - **Make the scanner `IO` and drop `unsafePerformIO`.** Rejected: the file-level driver is `IO` anyway, but
   the scanner has pure callers on small inputs, so this either makes them `IO` or forces a second pure
   scanner -- two implementations to keep byte-identical. ADR-0086 records the sanctioned pure-FFI idiom that
@@ -211,7 +229,8 @@ Riskiest-value-first, each a small commit with `make check` green, the heap left
 1. Record ADR-0086 (done alongside this revision) and retire the `consoleQuiet` global by injecting the
    console sink -- a small separate change, so the sanctioned `unsafePerformIO` set is exactly the scanners.
    **Done (2026-09-10).**
-2. Byte-level escaper in `MicroHttp.Html`, with the golden test and the bench.
+2. Byte-level escaper in `MicroHttp.Html`, with the golden test and the bench. **Done (2026-09-10)**, as
+   a C escaper in `IO` (see the escaper benchmark ref).
 3. The streaming utility: parameterise `fileEnumerator`'s chunk size and add the early-completing
    frontmatter reader; route the title lookups through it.
 4. The shared `scanStep` core with capped tail-carry, expressed so `pageLinks` is its single-chunk case;
@@ -228,6 +247,7 @@ Riskiest-value-first, each a small commit with `make check` green, the heap left
 
 - The exact tight default. The measured floor is single-digit-million cells for the corpora to hand, but the
   final number should come from the largest real documents plus a concurrency factor, decided in step 5.
-- Whether a `cbits` escaper is needed, decided by the step-1 benchmark rather than up front.
+- ~~Whether a `cbits` escaper is needed.~~ Decided by the step-2 benchmark: it is (see the escaper
+  benchmark ref).
 - The tail cap size. It only has to exceed the longest `](target)` plus a fence marker; a few KB is
   expected to be ample, confirmed by the boundary fixtures in step 4.

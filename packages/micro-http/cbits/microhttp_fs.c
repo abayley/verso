@@ -29,3 +29,7 @@ long mhfs_set_nonblock(long fd) {
     }
     return fcntl((int) fd, F_SETFL, flags | O_NONBLOCK) == 0 ? 0 : (long) errno;
 }
+
+long mhfs_open_read(const char *path) {
+    return (long) open(path, O_RDONLY);
+}

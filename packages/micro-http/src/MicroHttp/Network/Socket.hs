@@ -34,43 +34,58 @@ import qualified Data.ByteString as BS
 import qualified Data.Word as Word
 import qualified Foreign.C.Error as Error
 import qualified Foreign.C.String as CStr
+import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Marshal.Alloc as Alloc
 import qualified Foreign.Ptr as Ptr
 import qualified Foreign.Storable as Storable
 import qualified System.IO.FD as FD
 import qualified System.Timeout as Timeout
 
-foreign import ccall "socket" c_socket :: Int -> Int -> Int -> IO Int
-foreign import ccall "setsockopt" c_setsockopt :: Int -> Int -> Int -> Ptr.Ptr Int -> Int -> IO Int
+-- Every import spells its C types with Foreign.C.Types (ADR-0087 follow-up, network-design
+-- "GHC Compatibility Direction"): a C `int` result read as a 64-bit Int has an unspecified
+-- upper half under GHC, and a `socklen_t` is 32 bits, so a `Ptr Int` for it reads eight
+-- bytes through a four-byte object. `ssize_t`, `off_t` and `time_t` are `long` on the
+-- LP64 platforms this targets, spelt CLong. Descriptors stay Int on the Haskell side and
+-- convert at the call.
+foreign import ccall "socket" c_socket :: CTypes.CInt -> CTypes.CInt -> CTypes.CInt -> IO CTypes.CInt
+foreign import ccall "setsockopt" c_setsockopt :: CTypes.CInt -> CTypes.CInt -> CTypes.CInt -> Ptr.Ptr CTypes.CInt -> CTypes.CUInt -> IO CTypes.CInt
 
 -- fcntl(2) is variadic and must not be imported at a fixed arity: on arm64
 -- macOS the variadic argument travels on the stack, so a three-Int ccall put
 -- O_NONBLOCK where fcntl never looked and the socket silently stayed blocking
 -- under GHC (the coverage builds). The cbits wrapper makes the call from real C.
-foreign import ccall "microhttp_fs.h mhfs_set_nonblock" c_setNonBlock :: Int -> IO Int
-foreign import ccall "bind" c_bind :: Int -> Ptr.Ptr () -> Int -> IO Int
-foreign import ccall "connect" c_connect :: Int -> Ptr.Ptr () -> Int -> IO Int
-foreign import ccall "listen" c_listen :: Int -> Int -> IO Int
-foreign import ccall "accept" c_accept :: Int -> Ptr.Ptr () -> Ptr.Ptr Int -> IO Int
-foreign import ccall "getsockname" c_getsockname :: Int -> Ptr.Ptr () -> Ptr.Ptr Int -> IO Int
-foreign import ccall "recv" c_recv :: Int -> CStr.CString -> Int -> Int -> IO Int
-foreign import ccall "send" c_send :: Int -> CStr.CString -> Int -> Int -> IO Int
-foreign import ccall "close" c_close :: Int -> IO Int
-foreign import ccall "fcntl.h open" c_open :: CStr.CString -> Int -> Int -> IO Int
-foreign import ccall "unistd.h lseek" c_lseek :: Int -> Int -> Int -> IO Int
+foreign import ccall "microhttp_fs.h mhfs_set_nonblock" c_setNonBlock :: CTypes.CLong -> IO CTypes.CLong
+foreign import ccall "bind" c_bind :: CTypes.CInt -> Ptr.Ptr () -> CTypes.CUInt -> IO CTypes.CInt
+foreign import ccall "connect" c_connect :: CTypes.CInt -> Ptr.Ptr () -> CTypes.CUInt -> IO CTypes.CInt
+foreign import ccall "listen" c_listen :: CTypes.CInt -> CTypes.CInt -> IO CTypes.CInt
+foreign import ccall "accept" c_accept :: CTypes.CInt -> Ptr.Ptr () -> Ptr.Ptr CTypes.CUInt -> IO CTypes.CInt
+foreign import ccall "getsockname" c_getsockname :: CTypes.CInt -> Ptr.Ptr () -> Ptr.Ptr CTypes.CUInt -> IO CTypes.CInt
+foreign import ccall "recv" c_recv :: CTypes.CInt -> CStr.CString -> CTypes.CSize -> CTypes.CInt -> IO CTypes.CLong
+foreign import ccall "send" c_send :: CTypes.CInt -> CStr.CString -> CTypes.CSize -> CTypes.CInt -> IO CTypes.CLong
+foreign import ccall "close" c_close :: CTypes.CInt -> IO CTypes.CInt
+
+-- open(2) is variadic, so it goes through the fixed-arity wrapper (see microhttp_fs.h).
+foreign import ccall "microhttp_fs.h mhfs_open_read" c_openRead :: CStr.CString -> IO CTypes.CLong
+foreign import ccall "unistd.h lseek" c_lseek :: CTypes.CInt -> CTypes.CLong -> CTypes.CInt -> IO CTypes.CLong
 
 -- macOS sendfile: sendfile(int fd, int s, off_t offset, off_t *len,
 -- struct sf_hdtr *hdtr, int flags). The in/out len holds bytes sent on both
 -- success and EAGAIN; hdtr is passed NULL (the head goes via the chunk path).
 foreign import ccall "sys/socket.h sendfile"
-    c_sendfile :: Int -> Int -> Int -> Ptr.Ptr Int -> Ptr.Ptr () -> Int -> IO Int
+    c_sendfile :: CTypes.CInt -> CTypes.CInt -> CTypes.CLong -> Ptr.Ptr CTypes.CLong -> Ptr.Ptr () -> CTypes.CInt -> IO CTypes.CInt
 
+-- The constants stay Int: MicroHs evaluates a `capi value` import typed as a
+-- Foreign.C.Types newtype to an unevaluated application ("evalint, bad tag AP" at the
+-- call), so they are converted at each use instead.
 foreign import capi "sys/socket.h value AF_INET" afInet :: Int
 foreign import capi "sys/socket.h value SOCK_STREAM" sockStream :: Int
 foreign import capi "sys/socket.h value SOL_SOCKET" solSocket :: Int
 foreign import capi "sys/socket.h value SO_REUSEADDR" soReuseAddr :: Int
-foreign import capi "fcntl.h value O_RDONLY" oRdOnly :: Int
 foreign import capi "unistd.h value SEEK_END" seekEnd :: Int
+
+-- | A descriptor, flag or constant as a C @int@.
+cfd :: Int -> CTypes.CInt
+cfd = fromIntegral
 
 newtype ListenSocket = ListenSocket Int
     deriving (Eq, Show)
@@ -139,11 +154,11 @@ backlog, set non-blocking, closing the descriptor on any mid-setup failure.
 listenTcp :: Host -> Port -> Int -> IO (Either SocketError ListenSocket)
 listenTcp host port backlog =
     Except.runExceptT $ do
-        fd <- Except.ExceptT (checked "socket" (c_socket afInet sockStream 0))
+        fd <- Except.ExceptT (checked "socket" (c_socket (cfd afInet) (cfd sockStream) 0))
         closingOnError fd $ do
             Except.ExceptT (setReuseAddr fd)
-            Except.ExceptT (withSockAddrIn host port (\addr addrLen -> checked "bind" (c_bind fd addr addrLen)))
-            Except.ExceptT (checked "listen" (c_listen fd backlog))
+            Except.ExceptT (withSockAddrIn host port (\addr addrLen -> checked "bind" (c_bind (cfd fd) addr addrLen)))
+            Except.ExceptT (checked "listen" (c_listen (cfd fd) (fromIntegral backlog)))
             Except.ExceptT (setNonBlocking fd)
             pure (ListenSocket fd)
 
@@ -163,8 +178,8 @@ accept (ListenSocket fd) =
                     pure (ClientSocket accepted, peer)
   where
     acceptLoop addr addrLen = do
-        Storable.poke addrLen sockaddrInSize
-        accepted <- c_accept fd (Ptr.castPtr addr) addrLen
+        Storable.poke addrLen sockaddrInLen
+        accepted <- fmap fromIntegral (c_accept (cfd fd) (Ptr.castPtr addr) addrLen)
         if accepted < 0
             then do
                 errno <- Error.getErrno
@@ -182,7 +197,7 @@ polled: in-progress results retry until the socket reports connected.
 connectTcp :: Host -> Port -> IO (Either SocketError ClientSocket)
 connectTcp host port =
     Except.runExceptT $ do
-        fd <- Except.ExceptT (checked "socket" (c_socket afInet sockStream 0))
+        fd <- Except.ExceptT (checked "socket" (c_socket (cfd afInet) (cfd sockStream) 0))
         closingOnError fd $ do
             Except.ExceptT (setNonBlocking fd)
             Except.ExceptT (withSockAddrIn host port (connectLoop fd))
@@ -210,9 +225,9 @@ probeListener host port = do
 {- | Drives the non-blocking connect, retrying on connect-pending errors by
 parking on write readiness until the socket reports connected.
 -}
-connectLoop :: Int -> Ptr.Ptr () -> Int -> IO (Either SocketError ClientSocket)
+connectLoop :: Int -> Ptr.Ptr () -> CTypes.CUInt -> IO (Either SocketError ClientSocket)
 connectLoop fd addr addrLen = do
-    connected <- c_connect fd addr addrLen
+    connected <- c_connect (cfd fd) addr addrLen
     if connected >= 0
         then return (Right (ClientSocket fd))
         else do
@@ -237,8 +252,8 @@ boundPort (ListenSocket fd) =
     Alloc.allocaBytes sockaddrInSize $ \addr ->
         Alloc.alloca $ \addrLen ->
             Except.runExceptT $ do
-                Class.liftIO (Storable.poke addrLen sockaddrInSize)
-                Except.ExceptT (checked "getsockname" (c_getsockname fd (Ptr.castPtr addr) addrLen))
+                Class.liftIO (Storable.poke addrLen sockaddrInLen)
+                Except.ExceptT (checked "getsockname" (c_getsockname (cfd fd) (Ptr.castPtr addr) addrLen))
                 high <- Class.liftIO (peekWord8 addr 2)
                 low <- Class.liftIO (peekWord8 addr 3)
                 pure (Port (fromIntegral high * 256 + fromIntegral low))
@@ -283,7 +298,7 @@ recvWithin idleMicros (ClientSocket fd) byteCount =
     Alloc.allocaBytes byteCount recvLoop
   where
     recvLoop buf = do
-        received <- c_recv fd (Ptr.castPtr buf) byteCount 0
+        received <- fmap fromIntegral (c_recv (cfd fd) (Ptr.castPtr buf) (fromIntegral byteCount) 0)
         if received < 0
             then do
                 errno <- Error.getErrno
@@ -336,18 +351,18 @@ sendAllWithin idleMicros (ClientSocket fd) bytes =
 -- | Opens a file read-only for zero-copy sending; 'Nothing' if it cannot open.
 openFileRead :: FilePath -> IO (Maybe FileFd)
 openFileRead path = do
-    fd <- CStr.withCString path (\p -> c_open p oRdOnly 0)
+    fd <- fmap fromIntegral (CStr.withCString path c_openRead)
     if fd < 0
         then return Nothing
         else return (Just (FileFd fd))
 
 -- | The file's size in bytes, via @lseek@ to the end (no @struct stat@ needed).
 fileSize :: FileFd -> IO Int
-fileSize (FileFd fd) = c_lseek fd 0 seekEnd
+fileSize (FileFd fd) = fmap fromIntegral (c_lseek (cfd fd) 0 (cfd seekEnd))
 
 -- | Closes a file descriptor (a read-only fd close); the result is ignored.
 closeFileFd :: FileFd -> IO ()
-closeFileFd (FileFd fd) = Monad.void (c_close fd)
+closeFileFd (FileFd fd) = Monad.void (c_close (cfd fd))
 
 {- | The size of a file by path, opening read-only and closing again, or
 'Nothing' if it cannot be opened. The single size source for a 'FileBody':
@@ -380,13 +395,13 @@ sendFileWithin idleMicros (ClientSocket s) (FileFd fd) offset0 len0 =
 {- | Drives the @sendfile@ retry loop, advancing past bytes the kernel sent and
 parking on write readiness on a would-block until the range is fully sent.
 -}
-sendFileLoop :: Int -> Int -> Int -> Int -> Int -> Ptr.Ptr Int -> IO (Either SocketError ())
+sendFileLoop :: Int -> Int -> Int -> Int -> Int -> Ptr.Ptr CTypes.CLong -> IO (Either SocketError ())
 sendFileLoop idleMicros s fd offset remaining lenPtr
     | remaining <= 0 = return (Right ())
     | otherwise = do
-        Storable.poke lenPtr remaining
-        rc <- c_sendfile fd s offset lenPtr Ptr.nullPtr 0
-        sent <- Storable.peek lenPtr
+        Storable.poke lenPtr (fromIntegral remaining)
+        rc <- c_sendfile (cfd fd) (cfd s) (fromIntegral offset) lenPtr Ptr.nullPtr 0
+        sent <- fmap fromIntegral (Storable.peek lenPtr)
         let offset' = offset + sent
             remaining' = remaining - sent
         if remaining' <= 0
@@ -437,7 +452,7 @@ drainReceiveBuffer :: ClientSocket -> IO ()
 drainReceiveBuffer (ClientSocket fd) = Alloc.allocaBytes drainBufferBytes loop
   where
     loop buf = do
-        received <- c_recv fd (Ptr.castPtr buf) drainBufferBytes 0
+        received <- c_recv (cfd fd) (Ptr.castPtr buf) (fromIntegral drainBufferBytes) 0
         Monad.when (received > 0) (loop buf)
 
 -- | The fixed buffer size used by the receive-buffer drain sweep.
@@ -450,7 +465,7 @@ and parking on write readiness on a would-block until all bytes are sent.
 sendLoop :: Int -> Int -> CStr.CString -> Int -> IO (Either SocketError ())
 sendLoop _ _ _ remaining | remaining <= 0 = return (Right ())
 sendLoop idleMicros fd ptr remaining = do
-    sent <- c_send fd ptr remaining 0
+    sent <- fmap fromIntegral (c_send (cfd fd) ptr (fromIntegral remaining) 0)
     if sent < 0
         then do
             errno <- Error.getErrno
@@ -483,14 +498,14 @@ advanceCString ptr count = Ptr.castPtr (Ptr.castPtr ptr `Ptr.plusPtr` count)
 
 -- | Closes a raw descriptor, discarding the success value, reporting any error.
 closeFd :: Int -> IO (Either SocketError ())
-closeFd fd = Monad.void <$> checked "close" (c_close fd)
+closeFd fd = Monad.void <$> checked "close" (c_close (cfd fd))
 
 -- | Enables @SO_REUSEADDR@ on a socket, returning any setsockopt error.
 setReuseAddr :: Int -> IO (Either SocketError ())
 setReuseAddr fd =
     Alloc.alloca $ \opt -> do
-        Storable.poke opt (1 :: Int)
-        Monad.void <$> checked "setsockopt" (c_setsockopt fd solSocket soReuseAddr opt (Storable.sizeOf (1 :: Int)))
+        Storable.poke opt (1 :: CTypes.CInt)
+        Monad.void <$> checked "setsockopt" (c_setsockopt (cfd fd) (cfd solSocket) (cfd soReuseAddr) opt (fromIntegral (Storable.sizeOf (1 :: CTypes.CInt))))
 
 {- | Sets a socket to non-blocking mode (adding @O_NONBLOCK@ to its flags),
 returning any error. The whole layer depends on this: reads and writes probe
@@ -499,7 +514,7 @@ the kernel instead of in the scheduler, and the idle timeouts never arm.
 -}
 setNonBlocking :: Int -> IO (Either SocketError ())
 setNonBlocking fd = do
-    rc <- c_setNonBlock fd
+    rc <- c_setNonBlock (fromIntegral fd)
     pure
         ( if rc == 0
             then Right ()
@@ -518,15 +533,15 @@ descriptor.
 closingOnError :: Int -> Except.ExceptT SocketError IO a -> Except.ExceptT SocketError IO a
 closingOnError fd action =
     action `Except.catchError` \err -> do
-        _ <- Class.liftIO (c_close fd)
+        _ <- Class.liftIO (c_close (cfd fd))
         Except.throwError err
 
-{- | Runs a syscall returning an @Int@, mapping a negative result to a
+{- | Runs a syscall returning a C @int@, mapping a negative result to a
 'SocketError' tagged with the given label and the current errno.
 -}
-checked :: String -> IO Int -> IO (Either SocketError Int)
+checked :: String -> IO CTypes.CInt -> IO (Either SocketError Int)
 checked label action = do
-    result <- action
+    result <- fmap fromIntegral action
     if result < 0
         then do
             Left . SocketError label <$> Error.getErrno
@@ -555,11 +570,11 @@ hostBytes (HostIPv4 a b c d) = [a, b, c, d]
 {- | Builds a @sockaddr_in@ in a temporary buffer and passes it (with its size)
 to the continuation.
 -}
-withSockAddrIn :: Host -> Port -> (Ptr.Ptr () -> Int -> IO a) -> IO a
+withSockAddrIn :: Host -> Port -> (Ptr.Ptr () -> CTypes.CUInt -> IO a) -> IO a
 withSockAddrIn host port use =
     Alloc.allocaBytes sockaddrInSize $ \ptr -> do
         pokeBytes ptr (encodeSockAddrIn host port)
-        use (Ptr.castPtr ptr) sockaddrInSize
+        use (Ptr.castPtr ptr) sockaddrInLen
 
 -- | Writes a list of bytes into a buffer at successive offsets from zero.
 pokeBytes :: Ptr.Ptr Word.Word8 -> [Word.Word8] -> IO ()
@@ -573,3 +588,7 @@ pokeBytes ptr = go 0
 -- | The size in bytes of a @sockaddr_in@ structure.
 sockaddrInSize :: Int
 sockaddrInSize = 16
+
+-- | The same size as the @socklen_t@ the socket calls take and fill in.
+sockaddrInLen :: CTypes.CUInt
+sockaddrInLen = fromIntegral sockaddrInSize

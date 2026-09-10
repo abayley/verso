@@ -236,15 +236,22 @@ server serves pages, edits and searches on the demo corpus, and `make check` run
 browser smoke against it (`make test-ghc-smoke`), but the FFI caveats below still stand.
 Elevating GHC to a supported platform requires:
 
-- Migrating FFI signatures from `Int` to `Foreign.C.Types` (`CInt`,
-  `CSize`): GHC's code generator does not guarantee the upper half of a
-  64-bit read from a C `int` return. Both compilers provide
-  `Foreign.C.Types`.
-- Using `capi` for function imports as well as constants, which makes GHC
-  check prototypes against headers and handles the variadic `fcntl`
-  correctly.
-- A `check-ghc` gate that builds and runs the suites, and a GHC build of the
-  TestApp exercised by the browser smoke flow.
+- Done: the FFI signatures spell their C types with `Foreign.C.Types` (`CInt`,
+  `CUInt` for `socklen_t`, `CSize`, `CLong` for `ssize_t`/`off_t`/`time_t`, which
+  are `long` on the LP64 targets). GHC's code generator does not guarantee the
+  upper half of a 64-bit read from a C `int` return, and a `Ptr Int` for a
+  `socklen_t` read eight bytes through a four-byte object. Descriptors stay `Int`
+  on the Haskell side and convert at the call.
+- Done, by wrapping rather than `capi`: the variadic libc calls (`fcntl`, `open`)
+  go through fixed-arity wrappers in the framework's `cbits`. Both compilers need
+  this. GHC passes variadic arguments wrongly through a fixed-arity import on
+  arm64, and MicroHs's runtime dispatches known libc functions through its own
+  table with fixed arities (`open` at three), so an import at another arity
+  corrupts the interpreter stack and the next call dies. Check that table
+  (`src/runtime/eval.c`) before importing a libc function directly.
+- Done: `make test-ghc-smoke` runs the browser smoke against the GHC server
+  inside `make check`. Still open: a GHC run of the Haskell unit and
+  integration suites as a gate (today they run under GHC only for coverage).
 
 GHC support and OS portability share their seams: GHC runs on Linux and
 Windows today, so a first-class GHC target provides CI coverage of all

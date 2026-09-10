@@ -31,6 +31,7 @@ import qualified Control.Concurrent.MVar as MVar
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified Foreign.C.String as CStr
+import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Marshal.Alloc as Alloc
 import qualified Foreign.Ptr as Ptr
 import qualified Foreign.Storable as Storable
@@ -56,8 +57,8 @@ import qualified System.IO.TimeMilli as TimeMilli
 -- this toolchain: getZonedTime detects the zone name but negates the offset
 -- (e.g. NZST renders as -1200 with the wrong calendar day), so it logs the
 -- wrong local time. localtime/strftime delegate to libc and are correct.
-foreign import ccall "time.h localtime" c_localtime :: Ptr.Ptr Int -> IO (Ptr.Ptr ())
-foreign import ccall "time.h strftime" c_strftime :: CStr.CString -> Int -> CStr.CString -> Ptr.Ptr () -> IO Int
+foreign import ccall "time.h localtime" c_localtime :: Ptr.Ptr CTypes.CTime -> IO (Ptr.Ptr ())
+foreign import ccall "time.h strftime" c_strftime :: CStr.CString -> CTypes.CSize -> CStr.CString -> Ptr.Ptr () -> IO CTypes.CSize
 
 -- | An injected access-log sink.
 type Logger = AccessEvent -> IO ()
@@ -129,7 +130,7 @@ timed console label action = do
 localTimestampAtMillis :: Int -> IO String
 localTimestampAtMillis millis =
     Alloc.alloca $ \timePtr -> do
-        Storable.poke timePtr (millis `div` 1000)
+        Storable.poke timePtr (fromIntegral (millis `div` 1000))
         tmPtr <- c_localtime timePtr
         base <- strftimeWith "%Y-%m-%dT%H:%M:%S" tmPtr
         zone <- strftimeWith "%z" tmPtr
@@ -154,8 +155,8 @@ strftimeWith :: String -> Ptr.Ptr () -> IO String
 strftimeWith format tmPtr =
     Alloc.allocaBytes timestampBufferBytes $ \buf ->
         CStr.withCString format $ \fmt -> do
-            written <- c_strftime buf timestampBufferBytes fmt tmPtr
-            CStr.peekCStringLen (buf, written)
+            written <- c_strftime buf (fromIntegral timestampBufferBytes) fmt tmPtr
+            CStr.peekCStringLen (buf, fromIntegral written)
 
 -- | Zero-pads a millisecond value (0-999) to three digits.
 pad3 :: Int -> String

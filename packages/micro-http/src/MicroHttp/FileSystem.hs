@@ -33,17 +33,18 @@ module MicroHttp.FileSystem (
 ) where
 
 import qualified Foreign.C.String as CStr
+import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Marshal.Alloc as Alloc
 import qualified Foreign.Ptr as Ptr
 import qualified Foreign.Storable as Storable
 
 -- The microhttp_fs.c wrappers: 0 on success, the syscall's errno on failure.
 foreign import ccall "microhttp_fs.h mhfs_rename"
-    c_rename :: CStr.CString -> CStr.CString -> IO Int
-foreign import ccall "microhttp_fs.h mhfs_unlink" c_unlink :: CStr.CString -> IO Int
-foreign import ccall "microhttp_fs.h mhfs_rmdir" c_rmdir :: CStr.CString -> IO Int
+    c_rename :: CStr.CString -> CStr.CString -> IO CTypes.CLong
+foreign import ccall "microhttp_fs.h mhfs_unlink" c_unlink :: CStr.CString -> IO CTypes.CLong
+foreign import ccall "microhttp_fs.h mhfs_rmdir" c_rmdir :: CStr.CString -> IO CTypes.CLong
 foreign import ccall "microhttp_fs.h mhfs_stat"
-    c_stat :: CStr.CString -> Ptr.Ptr () -> IO Int
+    c_stat :: CStr.CString -> Ptr.Ptr () -> IO CTypes.CLong
 
 -- | A failed syscall's @errno@ (e.g. @2@ = ENOENT, @13@ = EACCES, macOS @66@ = ENOTEMPTY).
 newtype Errno = Errno Int
@@ -58,9 +59,9 @@ isDoesNotExist :: Errno -> Bool
 isDoesNotExist (Errno e) = e == 2
 
 -- | Interprets a wrapper's return value: @0@ is success, anything else the errno.
-outcome :: Int -> Either Errno ()
+outcome :: CTypes.CLong -> Either Errno ()
 outcome 0 = Right ()
-outcome e = Left (Errno e)
+outcome e = Left (Errno (fromIntegral e))
 
 -- | A file's modification time (sub-second) and size: the link index's freshness fingerprint (RFC-0029).
 data FileStat = FileStat

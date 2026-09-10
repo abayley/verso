@@ -62,7 +62,9 @@ foreign import ccall "sys/wait.h waitpid" c_waitpid :: CTypes.CInt -> Ptr.Ptr CT
 -- O_CREAT/O_TRUNC (whose values differ by platform); open(2) with flag 0 is
 -- O_RDONLY everywhere, used to feed the stdin capture file to the child.
 foreign import ccall "fcntl.h creat" c_creat :: CStr.CString -> CTypes.CInt -> IO CTypes.CInt
-foreign import ccall "fcntl.h open" c_open :: CStr.CString -> CTypes.CInt -> IO CTypes.CInt
+
+-- open(2) is variadic, so it goes through the fixed-arity wrapper (see microhttp_fs.h).
+foreign import ccall "microhttp_fs.h mhfs_open_read" c_openRead :: CStr.CString -> IO CTypes.CLong
 
 -- | The outcome of a subprocess: its exit status and the bytes it wrote to stdout and stderr.
 data ProcResult = ProcResult
@@ -109,7 +111,7 @@ spawnAndWait executable args mCwd outPath errPath mInPath = do
     errFd <- CStr.withCString errPath (`c_creat` 0o600)
     inFd <- case mInPath of
         Nothing -> pure (-1)
-        Just p -> CStr.withCString p (`c_open` 0) -- 0 == O_RDONLY
+        Just p -> fmap fromIntegral (CStr.withCString p c_openRead)
     pid <- spawn executable args mCwd outFd errFd inFd
     mapM_ closeFd [outFd, errFd, inFd]
     if pid < 0

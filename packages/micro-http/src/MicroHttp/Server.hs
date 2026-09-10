@@ -14,6 +14,7 @@ module MicroHttp.Server (
 import qualified Control.Concurrent as Concurrent
 import qualified Control.Concurrent.QSem as QSem
 import qualified Data.ByteString.Char8 as BS
+import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Ptr as Ptr
 import MicroHttp.Http (Application)
 import qualified MicroHttp.Http as Http
@@ -37,7 +38,7 @@ data ServerError
 -- (e.g. a browser that gave up on a slow operation) makes the socket write return an
 -- error -- already handled per-connection as a SocketError -- instead of killing the
 -- whole server with signal 13. SIG_IGN is the libc sentinel handler value @(void*)1@.
-foreign import ccall "signal" c_signal :: Int -> Ptr.Ptr () -> IO (Ptr.Ptr ())
+foreign import ccall "signal" c_signal :: CTypes.CInt -> Ptr.Ptr () -> IO (Ptr.Ptr ())
 
 -- | Install SIG_IGN for SIGPIPE so writes to a dead socket fail rather than kill the process.
 ignoreSigpipe :: IO ()

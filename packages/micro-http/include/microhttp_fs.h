@@ -23,4 +23,11 @@ long mhfs_stat(const char *path, void *buf);
  * the prototype in scope, hiding the bug). This wrapper is the fix. */
 long mhfs_set_nonblock(long fd);
 
+/* open(2) read-only at fixed arity: returns the descriptor, or -1 with errno set.
+ * open is variadic (the mode follows only with O_CREAT). GHC must not call a variadic
+ * function through a fixed-arity import (see mhfs_set_nonblock), and MicroHs's runtime
+ * FFI table registers `open` with three arguments, so an import at two pops the wrong
+ * interpreter stack and the *next* call dies with "evalint, bad tag AP". */
+long mhfs_open_read(const char *path);
+
 #endif

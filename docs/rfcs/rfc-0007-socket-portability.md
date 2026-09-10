@@ -5,7 +5,7 @@ status: Draft
 owners:
     - alistair
 created: 2026-06-12
-updated: 2026-06-12
+updated: 2026-09-10
 supersedes: []
 superseded_by: null
 ---
@@ -113,6 +113,29 @@ place to make the descriptor newtype able to hold a Windows `SOCKET` later
 (a wider type than `CInt`). Low risk, covered by the existing socket
 integration suite.
 
+**Done (2026-09-10)**, as a side effect of the GHC developer build work rather than
+this RFC: `CInt` for descriptors and `int` parameters, `CUInt` for the `socklen_t`
+pointers, `CSize` for the `recv`/`send` lengths, converted at the module boundary.
+One deviation: the `recv`/`send` results (and `off_t`, `time_t`) are `CLong`, not
+`CSsize`, because MicroHs spells that type `CSSize` and GHC `CSsize`; `long` is the
+same width on every LP64 target this RFC covers. The descriptor newtypes still hold
+`Int`; widening them for a Windows `SOCKET` remains for the Windows slice.
+
+Two things learned in passing bear on the C-shim work below:
+
+- The MicroHs runtime dispatches known libc functions through its own table with
+  fixed arities (`src/runtime/eval.c`, e.g. `open` at three arguments). A Haskell
+  import of such a function at a different arity corrupts the interpreter stack and
+  the *next* call fails with `evalint, bad tag AP`. GHC has the mirror problem for
+  variadic functions on arm64. `open(2)` therefore goes through a fixed-arity
+  wrapper (`mhfs_open_read`), as `fcntl` already did; any new shim should be a
+  fixed-arity C function with its own name, never a direct import of a variadic or
+  table-registered libc call.
+- `make check` now builds and runs the Haskell suites and the browser smoke under GHC
+  (`make test-ghc`, `make test-ghc-smoke`). GHC runs on Linux today, so the Linux
+  slice can be proved against the full integration suite on a Linux host before
+  MicroHs is built there.
+
 ### Linux (small, in-project)
 
 Replace the hand-built BSD `sockaddr_in` with a platform-correct
@@ -132,6 +155,12 @@ Linux otherwise carries over unchanged: the unix runtime already provides
 `WANT_FD` and `WANT_IO_POLL`, so framing, the readiness manager, and the idle
 timeout all work. After this slice plus the type migration, Linux should run
 the full integration suite.
+
+Two further macOS assumptions sit outside this module and need the same treatment
+before the suite passes on Linux: `MicroHttp.FileSystem.fileStat` reads `struct
+stat` at hard-coded macOS field offsets (ADR-0067 records this as deliberate), and
+`sendfile` is imported with the macOS signature, which differs from Linux's. Both
+are candidates for the same C-shim approach.
 
 ### Windows (large, but viable in userland)
 

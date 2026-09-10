@@ -23,9 +23,9 @@ defaultConfigPath = "micro-http.conf"
 main :: IO ()
 main = do
     startedAt <- TimeMilli.getTimeMilli
-    Log.consoleLog "MicroHTTP startup"
+    Log.stdoutConsole "MicroHTTP startup"
     configPath <- Maybe.fromMaybe defaultConfigPath <$> Environment.lookupEnv "MICROHTTP_CONFIG"
-    loaded <- Log.timed "startup: read config" (VConfig.loadConfig configPath)
+    loaded <- Log.timed Log.stdoutConsole "startup: read config" (VConfig.loadConfig configPath)
     case loaded >>= prepare of
         Left err -> failWith err
         Right (settings, versoCfg) -> do
@@ -36,11 +36,11 @@ main = do
             -- announcement itself is made from the ready callback, once the socket is
             -- bound: printed before, it claimed success and was then followed by a bind
             -- failure.
-            application <- App.appFromConfig settings versoCfg
+            application <- App.appFromConfig Log.stdoutConsole settings versoCfg
             result <- Server.serveWithReady settings (announce startedAt settings) application
             case result of
                 Left err -> do
-                    Log.consoleLog ("failed to listen on " ++ listenAddress settings ++ ": " ++ show err)
+                    Log.stdoutConsole ("failed to listen on " ++ listenAddress settings ++ ": " ++ show err)
                     Exit.exitFailure
                 Right () -> return ()
 
@@ -52,9 +52,9 @@ when it grows.
 announce :: Int -> Server.Settings -> Socket.Port -> IO ()
 announce startedAt settings port = do
     readyAt <- TimeMilli.getTimeMilli
-    Log.consoleLog ("startup: total " ++ show (readyAt - startedAt) ++ "ms")
+    Log.stdoutConsole ("startup: total " ++ show (readyAt - startedAt) ++ "ms")
     -- With the scheme, so the terminal makes it a link worth clicking.
-    Log.consoleLog
+    Log.stdoutConsole
         ("listening on http://" ++ renderHost (Server.settingsHost settings) ++ ":" ++ renderPort port)
 
 {- | Warns when another process already answers on the loopback address of the configured
@@ -72,7 +72,7 @@ warnIfShadowed settings =
             let port = Server.settingsPort settings
             busy <- Socket.probeListener (Socket.HostIPv4 127 0 0 1) port
             Monad.when busy $
-                Log.consoleLog
+                Log.stdoutConsole
                     ( "warning: 127.0.0.1:"
                         ++ renderPort port
                         ++ " is already served by another process; this server binds the wildcard, so"
@@ -94,7 +94,7 @@ prepare cfg = do
 -- | Report a configuration error to the console and exit with failure.
 failWith :: Config.ConfigError -> IO ()
 failWith (Config.ConfigError message) = do
-    Log.consoleLog ("configuration error: " ++ message)
+    Log.stdoutConsole ("configuration error: " ++ message)
     Exit.exitFailure
 
 -- | The configured listen address as @<ip>:<port>@; the any-host binds 0.0.0.0.

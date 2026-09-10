@@ -5,6 +5,7 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as List
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Http as Http
+import qualified MicroHttp.Log as Log
 import qualified MicroHttp.Process as Process
 import qualified MicroHttp.Server as Server
 import qualified System.Directory as Directory
@@ -32,7 +33,7 @@ spec = do
             root <- setupTreeFixture
             _ <- Process.runProcess "rm" ["-rf", "build/appspec-writable"] Nothing Nothing
             let vc = appConfig root "build/appspec-writable"
-            _ <- App.appFromConfig Server.defaultSettings vc
+            _ <- App.appFromConfig Log.silentConsole Server.defaultSettings vc
             Directory.doesDirectoryExist "build/appspec-writable/logs" `shouldReturn` True
             Directory.doesDirectoryExist "build/appspec-writable/oplog" `shouldReturn` True
         it "given trash at startup, when its manifest later disappears, then the trash endpoint still serves the warmed entry" $ do
@@ -47,7 +48,7 @@ spec = do
             Directory.createDirectoryIfMissing True (stateRoot ++ "/oplog")
             writeFile manifestPath (Trash.renderManifest (Trash.Manifest "removed.md" "page" 7 Nothing []))
             OperationLog.appendOperation logPath (OperationLog.Operation OperationLog.OpDelete "page" (Just "removed.md") Nothing 7 "2026-08-06T10:00:00.000+1200" (Just "7"))
-            application <- App.appFromConfig Server.defaultSettings vc
+            application <- App.appFromConfig Log.silentConsole Server.defaultSettings vc
             Directory.removeFile manifestPath
 
             response <- Server.respondToRequestBytes application (BS.pack (getRequest "/trash"))
@@ -462,7 +463,7 @@ spec = do
             let stateRoot = "build/appspec-warm-delete"
             _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
             writeFile (root ++ "/sec/warm-delete.md") "# Delete me\n"
-            application <- App.appFromConfig Server.defaultSettings (appConfig root stateRoot)
+            application <- App.appFromConfig Log.silentConsole Server.defaultSettings (appConfig root stateRoot)
 
             _ <- Server.respondToRequestBytes application (BS.pack (deleteRequest "/tree/sec/warm-delete.md"))
             listing <- Server.respondToRequestBytes application (BS.pack (getRequest "/trash"))
@@ -473,7 +474,7 @@ spec = do
             let stateRoot = "build/appspec-warm-restore"
             _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
             writeFile (root ++ "/sec/warm-restore.md") "# Restore me\n"
-            application <- App.appFromConfig Server.defaultSettings (appConfig root stateRoot)
+            application <- App.appFromConfig Log.silentConsole Server.defaultSettings (appConfig root stateRoot)
             deleted <- Server.respondToRequestBytes application (BS.pack (deleteRequest "/tree/sec/warm-restore.md"))
             let trashId = either (const "") trashIdOf deleted
 
@@ -486,7 +487,7 @@ spec = do
             let stateRoot = "build/appspec-warm-purge-one"
             _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
             writeFile (root ++ "/sec/warm-purge-one.md") "# Purge me\n"
-            application <- App.appFromConfig Server.defaultSettings (appConfig root stateRoot)
+            application <- App.appFromConfig Log.silentConsole Server.defaultSettings (appConfig root stateRoot)
             deleted <- Server.respondToRequestBytes application (BS.pack (deleteRequest "/tree/sec/warm-purge-one.md"))
             let trashId = either (const "") trashIdOf deleted
 
@@ -500,7 +501,7 @@ spec = do
             _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
             writeFile (root ++ "/sec/warm-empty-one.md") "# Empty one\n"
             writeFile (root ++ "/sec/warm-empty-two.md") "# Empty two\n"
-            application <- App.appFromConfig Server.defaultSettings (appConfig root stateRoot)
+            application <- App.appFromConfig Log.silentConsole Server.defaultSettings (appConfig root stateRoot)
             _ <- Server.respondToRequestBytes application (BS.pack (deleteRequest "/tree/sec/warm-empty-one.md"))
             _ <- Server.respondToRequestBytes application (BS.pack (deleteRequest "/tree/sec/warm-empty-two.md"))
 
@@ -519,7 +520,7 @@ spec = do
             Directory.createDirectoryIfMissing True (stateRoot ++ "/oplog")
             writeFile (trashRoot ++ "/3/manifest") (Trash.renderManifest (Trash.Manifest "expired.md" "page" 3 Nothing []))
             OperationLog.appendOperation logPath (OperationLog.Operation OperationLog.OpDelete "page" (Just "expired.md") Nothing 3 "2020-01-01T00:00:00.000+1200" (Just "3"))
-            application <- App.appFromConfig Server.defaultSettings vc
+            application <- App.appFromConfig Log.silentConsole Server.defaultSettings vc
 
             firstListing <- Server.respondToRequestBytes application (BS.pack (getRequest "/trash"))
             secondListing <- Server.respondToRequestBytes application (BS.pack (getRequest "/trash"))
@@ -531,7 +532,7 @@ spec = do
             let stateRoot = "build/appspec-warm-undo-delete"
             _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
             writeFile (root ++ "/sec/warm-undo-delete.md") "# Undo delete\n"
-            application <- App.appFromConfig Server.defaultSettings (appConfig root stateRoot)
+            application <- App.appFromConfig Log.silentConsole Server.defaultSettings (appConfig root stateRoot)
             _ <- Server.respondToRequestBytes application (BS.pack (deleteRequest "/tree/sec/warm-undo-delete.md"))
 
             _ <- Server.respondToRequestBytes application (BS.pack (postRequest "/undo" ""))
@@ -543,7 +544,7 @@ spec = do
             let stateRoot = "build/appspec-warm-undo-restore"
             _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
             writeFile (root ++ "/sec/warm-undo-restore.md") "# Undo restore\n"
-            application <- App.appFromConfig Server.defaultSettings (appConfig root stateRoot)
+            application <- App.appFromConfig Log.silentConsole Server.defaultSettings (appConfig root stateRoot)
             deleted <- Server.respondToRequestBytes application (BS.pack (deleteRequest "/tree/sec/warm-undo-restore.md"))
             let trashId = either (const "") trashIdOf deleted
             _ <- Server.respondToRequestBytes application (BS.pack (postRequest ("/trash/" ++ trashId) ""))
@@ -583,7 +584,7 @@ spec = do
             _ <- Process.runProcess "rm" ["-rf", stateRoot] Nothing Nothing
             writeFile (root ++ "/sec/trash-limit-older.md") "# Older\n"
             writeFile (root ++ "/sec/trash-limit-newer.md") "# Newer\n"
-            application <- App.appFromConfig Server.defaultSettings (appConfig root stateRoot)
+            application <- App.appFromConfig Log.silentConsole Server.defaultSettings (appConfig root stateRoot)
             _ <-
                 Server.respondToRequestBytes
                     application

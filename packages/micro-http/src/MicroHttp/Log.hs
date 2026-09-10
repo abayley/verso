@@ -15,8 +15,9 @@ module MicroHttp.Log (
     Logger,
     nullLogger,
     formatLogfmt,
-    consoleLog,
-    silenceConsoleLog,
+    Console,
+    stdoutConsole,
+    silentConsole,
     timed,
     localTimestamp,
     localTimestampAtMillis,
@@ -29,7 +30,6 @@ module MicroHttp.Log (
 import qualified Control.Concurrent.MVar as MVar
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
-import qualified Data.IORef as IORef
 import qualified Foreign.C.String as CStr
 import qualified Foreign.Marshal.Alloc as Alloc
 import qualified Foreign.Ptr as Ptr
@@ -40,7 +40,6 @@ import qualified MicroHttp.Network.Socket as Socket
 import qualified System.Directory as Directory
 import qualified System.IO as IO
 import qualified System.IO.TimeMilli as TimeMilli
-import qualified System.IO.Unsafe as Unsafe
 
 -- Log rotation reuses the libc rename/unlink wrappers from MicroHttp.FileSystem
 -- (MicroHs has no atomic renameFile/removeFile in System.Directory). Rotation is
@@ -62,6 +61,13 @@ foreign import ccall "time.h strftime" c_strftime :: CStr.CString -> Int -> CStr
 
 -- | An injected access-log sink.
 type Logger = AccessEvent -> IO ()
+
+{- | An injected console sink for startup and operational lines. The production
+entry point passes 'stdoutConsole'; test binaries pass 'silentConsole' so the
+startup phase lines do not land between the test runner's own (nothing asserts
+on console output -- access logging goes to a file through a 'Logger').
+-}
+type Console = String -> IO ()
 
 -- | The request's first line, as tapped: the method token and the target.
 data RequestLine = RequestLine
@@ -110,13 +116,13 @@ Times only what the action actually evaluates: a phase that returns a thunk and 
 its work will report a time that belongs to whoever forces it later. The startup phases
 force their results before returning, which is what makes these numbers mean anything.
 -}
-timed :: String -> IO a -> IO a
-timed label action = do
+timed :: Console -> String -> IO a -> IO a
+timed console label action = do
     started <- TimeMilli.getTimeMilli
-    consoleLog label
+    console label
     result <- action
     finished <- TimeMilli.getTimeMilli
-    consoleLog (label ++ ": " ++ show (finished - started) ++ "ms")
+    console (label ++ ": " ++ show (finished - started) ++ "ms")
     pure result
 
 -- | As 'localTimestamp' for an arbitrary epoch-milli instant (e.g. a retention cutoff).
@@ -129,33 +135,19 @@ localTimestampAtMillis millis =
         zone <- strftimeWith "%z" tmPtr
         return (base ++ "." ++ pad3 (millis `mod` 1000) ++ zone)
 
-{- | Writes a line to stdout prefixed with the local timestamp (the same format
-as the access log), then flushes. Used for startup/operational console output so
-each step is timestamped and slow steps are visible.
+{- | The console that writes each line to stdout prefixed with the local
+timestamp (the same format as the access log), then flushes, so each startup
+step is timestamped and slow steps are visible.
 -}
-consoleLog :: String -> IO ()
-consoleLog message = do
-    quiet <- IORef.readIORef consoleQuiet
-    Monad.unless quiet $ do
-        ts <- localTimestamp
-        putStrLn (ts ++ " " ++ message)
-        IO.hFlush IO.stdout
+stdoutConsole :: Console
+stdoutConsole message = do
+    ts <- localTimestamp
+    putStrLn (ts ++ " " ++ message)
+    IO.hFlush IO.stdout
 
-{-# NOINLINE consoleQuiet #-}
-
--- | Whether 'consoleLog' writes anything. Off by default: a server should chatter.
-consoleQuiet :: IORef.IORef Bool
-consoleQuiet = Unsafe.unsafePerformIO (IORef.newIORef False)
-
-{- | Silences 'consoleLog', and so 'timed' with it.
-
-For test binaries. They build applications directly, so the startup phase logging lands in
-the middle of the test runner's own output -- a line per phase per test, wrapped around the
-result lines. Nothing asserts on console output (access logging goes to a file through an
-injected 'Logger'), so there is nothing to lose by turning it off.
--}
-silenceConsoleLog :: IO ()
-silenceConsoleLog = IORef.writeIORef consoleQuiet True
+-- | The console that discards every line.
+silentConsole :: Console
+silentConsole _ = pure ()
 
 -- | Renders a broken-down time with a strftime format into a fresh buffer.
 strftimeWith :: String -> Ptr.Ptr () -> IO String

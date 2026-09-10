@@ -62,8 +62,8 @@ import qualified Verso.View as View
 path, document root, and static mounts come from the config, and the parse
 limits from the (config-derived) settings. Logging is the outermost middleware.
 -}
-appFromConfig :: Server.Settings -> VConfig.VersoConfig -> IO Server.Application
-appFromConfig settings vc = do
+appFromConfig :: Log.Console -> Server.Settings -> VConfig.VersoConfig -> IO Server.Application
+appFromConfig console settings vc = do
     -- Create the writable paths' parent directories up front. Without this a missing parent
     -- (say a fresh checkout with a configured build/ log path) left the server listening but
     -- failing every request on the access-log append -- a confusing failure mode.
@@ -74,14 +74,14 @@ appFromConfig settings vc = do
     -- with only a start and an end to go on there was no telling which phase owned a long
     -- gap -- the trash catalogue once held it for 28 seconds and looked like the link
     -- index's doing. Each phase forces its result, so the numbers are the real cost.
-    (accessLogger, clientErrorSink) <- Log.timed "startup: open logger" $ do
+    (accessLogger, clientErrorSink) <- Log.timed console "startup: open logger" $ do
         accessLogger <- Log.rotatingFileLogfmtLogger (VConfig.logMaxBytes vc) (VConfig.logKeep vc) (VConfig.accessLog vc)
         clientErrorSink <- Log.rotatingAppender (VConfig.logMaxBytes vc) (VConfig.logKeep vc) (VConfig.clientErrorLog vc)
         pure (accessLogger, clientErrorSink)
     operationStore <-
-        Log.timed "startup: index operation log" (OperationStore.openOperationStore (VConfig.operationLog vc))
+        Log.timed console "startup: index operation log" (OperationStore.openOperationStore (VConfig.operationLog vc))
     trashStore <-
-        Log.timed "startup: index trash" (TrashStore.openTrashStore (VConfig.trashRoot vc) operationStore)
+        Log.timed console "startup: index trash" (TrashStore.openTrashStore (VConfig.trashRoot vc) operationStore)
     -- Open the link index at startup in tree mode (RFC-0029): load the persisted index if
     -- its fingerprint still matches the tree, else build and persist. Move/delete then read
     -- it warm with no per-request walk, and re-export calls POST /index/refresh. When
@@ -93,31 +93,33 @@ appFromConfig settings vc = do
                 indexStore <- LinkIndexStore.newLinkIndexStore
                 opened <-
                     Log.timed
+                        console
                         "startup: build link index"
                         (LinkIndexStore.openLinkIndex (VConfig.documentTreeRoot vc) (VConfig.linkIndex vc) indexStore)
-                Log.consoleLog (either ("link index FAILED (move/delete degraded until refresh): " ++) (const "link index ready") opened)
+                console (either ("link index FAILED (move/delete degraded until refresh): " ++) (const "link index ready") opened)
                 pure (Just indexStore)
             else do
-                Log.consoleLog "link index disabled (move/delete use the byte-scan fallback)"
+                console "link index disabled (move/delete use the byte-scan fallback)"
                 pure Nothing
     -- Ensure the document tree is a git repository when versioning is on (RFC-0032): a one-time
     -- import commit on first run, then reused. A missing git degrades to no versioning, not a crash.
     Monad.when (VConfig.versioningEnabled vc) $ do
         available <- Git.gitAvailable
         if not available
-            then Log.consoleLog "versioning ON but git not found on PATH (history/publish degraded)"
+            then console "versioning ON but git not found on PATH (history/publish degraded)"
             else do
                 outcome <-
                     Log.timed
+                        console
                         "startup: check for git"
                         (Git.ensureRepository (VConfig.documentTreeRoot vc) (importIdentity vc))
-                Log.consoleLog (case outcome of Git.Initialised -> "git repository initialised (import commit)"; Git.AlreadyPresent -> "git repository present")
+                console (case outcome of Git.Initialised -> "git repository initialised (import commit)"; Git.AlreadyPresent -> "git repository present")
     -- Serialize structural tree mutations across the server's connection threads (see 'WriteLock').
     writeLock <- MVar.newMVar ()
     -- Concordance search (RFC-0034): optional; absent shim/model degrades to disabled.
     search <-
         if VConfig.searchEnabled vc
-            then Log.timed "startup: search" (SearchIndex.startSearch (searchConfigFrom vc))
+            then Log.timed console "startup: search" (SearchIndex.startSearch (searchConfigFrom console vc))
             else pure Nothing
     pure
         ( Middleware.logRequests
@@ -151,8 +153,8 @@ configuredRoutes writeLock indexStore search operationStore trashStore vc client
 model profile from config, the page-title logic injected from here (the
 frontmatter machinery is the application's).
 -}
-searchConfigFrom :: VConfig.VersoConfig -> SearchIndex.SearchConfig
-searchConfigFrom vc =
+searchConfigFrom :: Log.Console -> VConfig.VersoConfig -> SearchIndex.SearchConfig
+searchConfigFrom console vc =
     SearchIndex.SearchConfig
         { SearchIndex.searchRoot = VConfig.documentTreeRoot vc
         , SearchIndex.searchIndexDir = VConfig.searchIndexDir vc
@@ -169,7 +171,7 @@ searchConfigFrom vc =
         , SearchIndex.searchVocabPath = VConfig.searchVocab vc
         , SearchIndex.searchTitleOf = \path content ->
             Maybe.fromMaybe (humaniseSegment (lastSegment path)) (frontmatterTitle content)
-        , SearchIndex.searchLog = Log.consoleLog
+        , SearchIndex.searchLog = console
         }
 
 -- | The tree handlers' versioning context, read from configuration (RFC-0032).

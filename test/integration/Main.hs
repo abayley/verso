@@ -4,7 +4,6 @@ import qualified Concordance.SearchSeamSpec as SearchSeamSpec
 import qualified Concordance.WordPieceFixtureSpec as WordPieceFixtureSpec
 import qualified MicroHttp.ConfigSpec as ConfigSpec
 import qualified MicroHttp.Http.ResponseFileSpec as ResponseFileSpec
-import qualified MicroHttp.Log as Log
 import qualified MicroHttp.Network.SocketSpec as SocketSpec
 import qualified MicroHttp.ServerConcurrencySpec as ServerConcurrencySpec
 import qualified MicroHttp.ServerLoggingSpec as ServerLoggingSpec
@@ -22,9 +21,6 @@ import qualified Verso.TrashStoreSpec as TrashStoreSpec
 main :: IO ()
 main = do
     IO.hSetBuffering IO.stdout IO.LineBuffering
-    -- The application logs its startup phases to the console; unsilenced, those lines land
-    -- between the test runner's own, once per test that builds an app.
-    Log.silenceConsoleLog
     hspec $ do
         WordPieceFixtureSpec.spec
         SearchSeamSpec.spec

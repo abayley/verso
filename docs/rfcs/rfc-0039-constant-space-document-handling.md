@@ -251,7 +251,11 @@ Riskiest-value-first, each a small commit with `make check` green, the heap left
    4K/64K/128K 7.1 to 7.2ms, cells equal (15.2MB per parse either way), so no `cbits` scanner. Equality
    holds at every split point of a fixture and byte-by-byte; the tail cap is 64KB, and a line past it is
    scanned as a hard break with the carry emptied. The build time is measured in step 5.
-5. Stream the link-index cold build and reload over the core.
+5. Stream the link-index cold build and reload over the core. **Done (2026-09-10).** Every page the
+   store reads (cold build, refresh, incremental patch, subtree restore) is scanned as a 64KB stream and
+   folded into the index before the next is opened. On cello-docs (3980 documents) with the 16M-cell heap
+   the cold build took 7.7s against 9.0s before, at 269MB RSS against 290MB; with a 4M-cell heap it now
+   survives startup (18.3s, GC-bound, 73MB RSS), where the materialised build needed 8M.
 6. The fused streaming rewrite on move, with temp-then-rename; stream the asset copy.
 7. The minor reads (`Log` size via `stat`, `OperationLog` streaming parse).
 8. Lower the `VERSO_HEAP_CELLS` default to the tight fail-fast value, after exercising the largest documents

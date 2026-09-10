@@ -62,6 +62,18 @@ spec =
             List.sort (LinkIndex.inboundOf "b.md" ix) `shouldBe` ["a.md"]
             List.sort (LinkIndex.inboundOf "c.md" ix) `shouldBe` ["a.md"]
 
+        it "given a page larger than a scan chunk, when the index is built, then links on both sides of the chunk boundary are indexed" $ do
+            freshTree
+            let filler = concat (replicate 3000 "a line of filler text that pushes the second link past the first chunk\n")
+            writeAt "big.md" ("[B](./b.md)\n" ++ filler ++ "[C](./c.md)\n")
+            writeAt "b.md" "leaf b\n"
+            writeAt "c.md" "leaf c\n"
+            store <- LinkIndexStore.newLinkIndexStore
+            LinkIndexStore.openLinkIndex root indexPath store
+            ix <- LinkIndexStore.currentIndex store
+            length filler > 65536 `shouldBe` True
+            List.sort (LinkIndex.inboundOf "b.md" ix) `shouldBe` ["big.md"]
+            List.sort (LinkIndex.inboundOf "c.md" ix) `shouldBe` ["big.md"]
         it "given a persisted index, when it is reloaded, then it is reused, and rebuilt when its fingerprint is stale" $ do
             freshTree
             writeAt "a.md" "[B](./b.md)\n"

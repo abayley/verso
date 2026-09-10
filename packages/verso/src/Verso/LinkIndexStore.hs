@@ -28,6 +28,7 @@ module Verso.LinkIndexStore (
 
 import qualified Control.Concurrent.MVar as MVar
 import qualified Control.Exception as Exception
+import qualified Control.Monad as Monad
 import qualified Control.Monad.Except as Except
 import qualified Control.Monad.IO.Class as Class
 import qualified Data.ByteString.Char8 as BS
@@ -35,7 +36,10 @@ import qualified Data.List as List
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
 import qualified MicroHttp.FileSystem as FileSystem
+import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
+import qualified Verso.DocumentLinks as DocumentLinks
 import qualified Verso.LinkFingerprint as LinkFingerprint
 import qualified Verso.LinkIndex as LinkIndex
 
@@ -91,9 +95,9 @@ applyChanges root paths store = Except.runExceptT $ do
     pairs <- tryIO (mapM readPath paths)
     Class.liftIO (modifyIndex store (\ix -> List.foldl' patch ix pairs))
   where
-    readPath rel = do body <- readPageBody (root ++ "/" ++ rel); pure (rel, body)
+    readPath rel = do links <- scanPageLinks (root ++ "/" ++ rel); pure (rel, links)
     patch ix (rel, Nothing) = LinkIndex.removePage rel ix
-    patch ix (rel, Just body) = LinkIndex.updatePage rel body ix
+    patch ix (rel, Just links) = LinkIndex.updatePageLinks rel links ix
 
 -- | Maintenance for a move: relocate the moved subtree's keys and targets in-place (a pure transform, no re-read, cannot fail).
 relocateInIndex :: String -> String -> LinkIndexStore -> IO ()
@@ -111,8 +115,8 @@ addSubtreeToIndex root prefix store = Except.runExceptT $ do
     pairs <- tryIO (mapM readBoth under)
     Class.liftIO (modifyIndex store (\ix -> List.foldl' add ix pairs))
   where
-    readBoth (rel, fs) = do body <- readPageBody fs; pure (rel, body)
-    add ix (rel, body) = LinkIndex.updatePage rel (Maybe.fromMaybe BS.empty body) ix
+    readBoth (rel, fs) = do links <- scanPageLinks fs; pure (rel, links)
+    add ix (rel, links) = LinkIndex.updatePageLinks rel (Maybe.fromMaybe [] links) ix
 
 -- | Runs an IO action that may throw, converting any exception to a 'Left' message (the Either boundary).
 tryIO :: IO a -> Except.ExceptT String IO a
@@ -136,32 +140,38 @@ storeState :: LinkIndexStore -> IndexState -> IO ()
 storeState (LinkIndexStore mv) st = MVar.modifyMVar_ mv (\_ -> pure (Just st))
 
 {- | Builds the graph and fingerprint from the tree in a single walk (forced), so the
-whole-tree parse is paid here, not lazily in the first request. Filesystem exceptions
-become 'Left' via 'tryIO'.
+whole-tree parse is paid here, not lazily in the first request. Each page is scanned as a
+stream and its links folded into the graph before the next is opened, so the build holds
+one chunk of one document plus the growing index, never the corpus (RFC-0039).
+Filesystem exceptions become 'Left' via 'tryIO'.
 -}
 buildFromTree :: FilePath -> Except.ExceptT String IO IndexState
 buildFromTree root = do
     files <- tryIO (LinkFingerprint.markdownFiles root)
-    entries <- tryIO (mapM readAndStat files)
-    let pages = [(rel, body) | (rel, Just body, _) <- entries]
-        fingerprint = Map.fromList [(rel, st) | (rel, _, Just st) <- entries]
-        graph = LinkIndex.forceIndex (buildFromBodies pages)
-    graph `seq` pure (IndexState graph fingerprint)
+    (graph, fingerprint) <- tryIO (Monad.foldM scanAndStat (LinkIndex.emptyIndex, Map.empty) files)
+    let forced = LinkIndex.forceIndex graph
+    forced `seq` pure (IndexState forced fingerprint)
   where
-    readAndStat (rel, fs) = do
-        body <- readPageBody fs
+    scanAndStat (ix, fp) (rel, fs) = do
+        links <- scanPageLinks fs
         st <- FileSystem.fileStat fs
-        pure (rel, body, either (const Nothing) Just st)
+        let ix' = case links of
+                Just ls -> length ls `seq` LinkIndex.updatePageLinks rel ls ix
+                Nothing -> ix
+            fp' = either (const fp) (\s -> Map.insert rel s fp) st
+        ix' `seq` pure (ix', fp')
 
--- | Builds the graph from page bodies (the parse), via repeated 'updatePage' over the empty index.
-buildFromBodies :: [(String, BS.ByteString)] -> LinkIndex.LinkIndex
-buildFromBodies = List.foldl' (\ix (rel, body) -> LinkIndex.updatePage rel body ix) LinkIndex.emptyIndex
+{- | A page's links, scanned as a stream in 'scanChunkBytes' chunks so the body is never
+resident whole; 'Nothing' when the file is absent or cannot be opened.
+-}
+scanPageLinks :: FilePath -> IO (Maybe [DocumentLinks.Link])
+scanPageLinks fs = do
+    outcome <- Stream.fileEnumeratorChunked scanChunkBytes fs DocumentLinks.linksI >>= Iteratee.run
+    pure (either (const Nothing) Just outcome)
 
--- | Reads a page body as 'ByteString' (no @String@ conversion), or 'Nothing' when absent.
-readPageBody :: FilePath -> IO (Maybe BS.ByteString)
-readPageBody fs = do
-    exists <- Directory.doesFileExist fs
-    if exists then fmap Just (BS.readFile fs) else pure Nothing
+-- | The chunk size for scanning a document's links (RFC-0039: sized for document scanning, not socket traffic).
+scanChunkBytes :: Int
+scanChunkBytes = 65536
 
 -- Persistence -----------------------------------------------------------------
 

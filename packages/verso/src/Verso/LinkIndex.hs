@@ -34,6 +34,7 @@ module Verso.LinkIndex (
     outboundOf,
     inboundOf,
     updatePage,
+    updatePageLinks,
     removePage,
     relocatePage,
     referrers,
@@ -141,10 +142,14 @@ body order. External and non-@.md@ (asset) targets are excluded -- the graph is
 the scan.
 -}
 pageTargets :: PagePath -> BS.ByteString -> [TreePath]
-pageTargets page body =
+pageTargets page body = targetsOf page (DocumentLinks.pageLinks body)
+
+-- | The distinct in-tree @.md@ targets among a page's links, resolved against its directory.
+targetsOf :: PagePath -> [DocumentLinks.Link] -> [TreePath]
+targetsOf page links =
     List.nub
         [ target
-        | link <- DocumentLinks.pageLinks body
+        | link <- links
         , Just target <- [DocumentLinks.resolveTarget (DocumentLinks.dirOfPath page) (DocumentLinks.linkTarget link)]
         , ".md" `List.isSuffixOf` target
         ]
@@ -154,9 +159,15 @@ inverse: the page's previous edges are withdrawn from 'inbound' and its new edge
 Applied per page, this keeps the index equal to a rebuild from the same bodies.
 -}
 updatePage :: PagePath -> BS.ByteString -> LinkIndex -> LinkIndex
-updatePage page body ix =
+updatePage page body = updatePageLinks page (DocumentLinks.pageLinks body)
+
+{- | 'updatePage' from the page's links rather than its body, for a caller that has
+scanned the page as a stream (RFC-0039) and never held the body.
+-}
+updatePageLinks :: PagePath -> [DocumentLinks.Link] -> LinkIndex -> LinkIndex
+updatePageLinks page links ix =
     let cleared = clearSource page ix
-        targets = pageTargets page body
+        targets = targetsOf page links
         outbound' = Map.insert page targets (idxOutbound cleared)
         inbound' = List.foldl' (\m t -> addInbound t page m) (idxInbound cleared) targets
      in LinkIndex outbound' inbound'

@@ -1,6 +1,6 @@
 # RFC-0039 HTML Escaper Benchmark (2026-09-10)
 
-Supporting evidence for [RFC-0039](../rfc-0039-constant-space-document-handling.md), rollout step 2.
+Supporting evidence for [RFC-0039](../implemented/rfc-0039-constant-space-document-handling.md), rollout step 2.
 Records why the byte-level escaper is written in C rather than as a pure Haskell `memchr` scan, which
 the RFC had proposed with the C escaper held in reserve. Measured with `make bench-html-builder`
 (`test/bench/HtmlBuilderBench.hs`, "document escape" section) and a scratch probe, on the same machine

@@ -1,6 +1,6 @@
 # RFC-0039 Heap Sizing (2026-09-10)
 
-Supporting evidence for [RFC-0039](../rfc-0039-constant-space-document-handling.md), rollout step 8: the
+Supporting evidence for [RFC-0039](../implemented/rfc-0039-constant-space-document-handling.md), rollout step 8: the
 measurements behind the `VERSO_HEAP_CELLS` default of 8,000,000 cells. Taken after steps 1 to 7 landed, on
 the same machine and corpus as the memory profile, with `build/verso +RTS -H<cells> -RTS`.
 

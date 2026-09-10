@@ -1,6 +1,6 @@
 # RFC-0039 Memory Profile (2026-09-10)
 
-Supporting evidence for [RFC-0039](../rfc-0039-constant-space-document-handling.md). Records how the
+Supporting evidence for [RFC-0039](../implemented/rfc-0039-constant-space-document-handling.md). Records how the
 running server reaches ~900MB resident and where the non-constant-space code is. Measured on macOS arm64
 with `ps`, `vmmap`, `footprint`, and `heap` against `build/verso`.
 

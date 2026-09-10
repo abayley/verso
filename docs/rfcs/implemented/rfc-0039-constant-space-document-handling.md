@@ -1,7 +1,7 @@
 ---
 id: RFC-0039
 name: Constant-space document handling and a fail-fast heap
-status: Draft
+status: Implemented
 owners:
     - Alistair Bayley
 created: 2026-09-10

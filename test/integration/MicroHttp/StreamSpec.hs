@@ -1,5 +1,6 @@
 module MicroHttp.StreamSpec (spec) where
 
+import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified MicroHttp.Http.Parse as Parse
 import qualified MicroHttp.Iteratee as Iteratee
@@ -38,6 +39,19 @@ spec =
             result <- Iteratee.run final
             Directory.removeFile chunkedFile
             result `shouldBe` Right [5, 5, 2]
+        it "given a source file, when copied, then the destination holds the same bytes" $ do
+            writeFile chunkedFile "bytes to copy across"
+            outcome <- Stream.copyFile chunkedFile copiedFile
+            copied <- BS.readFile copiedFile
+            Directory.removeFile chunkedFile
+            Directory.removeFile copiedFile
+            outcome `shouldBe` Right ()
+            copied `shouldBe` BS.pack "bytes to copy across"
+        it "given a missing source, when copied, then the copy fails with a source error" $ do
+            outcome <- Stream.copyFile missingFile copiedFile
+            exists <- Directory.doesFileExist copiedFile
+            Monad.when exists (Directory.removeFile copiedFile)
+            isSourceError outcome `shouldBe` True
         it "given a file that does not exist, when enumerated, then the consumer sees a source error" $ do
             final <- Stream.fileEnumerator missingFile (Iteratee.readBodyStrict bodyTooLarge 1000)
             result <- Iteratee.run final
@@ -54,6 +68,9 @@ countChunks = go []
 
 chunkedFile :: FilePath
 chunkedFile = "build/streamspec-chunked.txt"
+
+copiedFile :: FilePath
+copiedFile = "build/streamspec-copied.txt"
 
 bodyTooLarge :: Stream.StreamError
 bodyTooLarge = Stream.StreamParseError Parse.BodyTooLarge

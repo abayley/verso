@@ -38,6 +38,7 @@ import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Static as Static
+import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
 import qualified Verso.DocumentLinks as DocumentLinks
 import qualified Verso.DocumentListing as DocumentListing
@@ -45,6 +46,7 @@ import qualified Verso.DocumentMeta as DocumentMeta
 import qualified Verso.Frontmatter as Frontmatter
 import qualified Verso.LinkIndex as LinkIndex
 import qualified Verso.LinkIndexStore as LinkIndexStore
+import qualified Verso.LinkRewrite as LinkRewrite
 import qualified Verso.OperationLog as OperationLog
 import qualified Verso.Trash as Trash
 
@@ -72,12 +74,13 @@ data RelevantQuery = RelevantQuery
     , rqRegion :: String -> Bool
     }
 
-{- | A page source: the @(treePath, body)@ pages an operation must process for a query.
-'scanRelevant' (the byte-prefiltered whole-tree read) and 'indexRelevant' (the
-freshness-checked link index) are the two backends; the server uses the index,
-@replay-tool@ and the unit tests use the scan.
+{- | A page source: the @(treePath, links)@ pages an operation must process for a
+query, each page reduced to its links so no body is held (RFC-0039). 'scanRelevant'
+(the byte-prefiltered whole-tree read) and 'indexRelevant' (the freshness-checked link
+index) are the two backends; the server uses the index, @replay-tool@ and the unit
+tests use the scan.
 -}
-type RelevantPages = FilePath -> RelevantQuery -> IO [(String, BS.ByteString)]
+type RelevantPages = FilePath -> RelevantQuery -> IO [(String, [DocumentLinks.Link])]
 
 -- | The scan backend: the byte-prefiltered whole-tree read (RFC-0027), unchanged. The index's rebuild fallback and @replay-tool@'s mechanism.
 scanRelevant :: RelevantPages
@@ -97,8 +100,8 @@ indexRelevant store root query = do
     candidates <- mapM readCandidate paths
     pure (Maybe.catMaybes candidates)
   where
-    readCandidate path = fmap (fmap (withPath path)) (readRel root path)
-    withPath path body = (path, body)
+    readCandidate path = fmap (fmap (withPath path)) (linksRel root path)
+    withPath path links = (path, links)
 
 -- | The subtree-membership predicate for a region path (the path itself and its descendants).
 inRegion :: String -> String -> Bool
@@ -154,9 +157,10 @@ moveSection findRelevant root rawSrcRel rawDestParentRel rawSlug confirm
             srcIndexRel = indexRel srcParentRel
             destIndexRel = indexRel destParentRel
             excluded = [srcIndexRel, destIndexRel]
-            rewritePages = [(p, b) | (p, b) <- pages, p `notElem` excluded]
+            rewritePages = [(p, ls) | (p, ls) <- pages, p `notElem` excluded]
             rewrites = DocumentLinks.planMoveRewrites (srcRel, newPrefix) rewritePages
-            changed = [Maybe.fromMaybe p (DocumentLinks.relocatePath srcRel newPrefix p) | (p, _) <- rewrites]
+            relocated p = Maybe.fromMaybe p (DocumentLinks.relocatePath srcRel newPrefix p)
+            changed = map (relocated . fst) rewrites
         if not confirm
             then pure (Right (MovePlan srcRel newPrefix changed False))
             else do
@@ -164,10 +168,11 @@ moveSection findRelevant root rawSrcRel rawDestParentRel rawSlug confirm
                 case outcome of
                     Left e -> pure (Left ("rename failed (" ++ show e ++ ")"))
                     Right () -> do
-                        Monad.forM_ rewrites $ \(oldPath, newText) ->
-                            writeRel root (Maybe.fromMaybe oldPath (DocumentLinks.relocatePath srcRel newPrefix oldPath)) newText
+                        -- Each page is rewritten at its post-rename location, streaming (RFC-0039).
+                        failures <- rewriteEach [(relocated oldPath, DocumentLinks.moveLinkEdit (srcRel, newPrefix) oldPath) | (oldPath, _) <- rewrites]
                         relocateListing root srcRel srcParentRel destParentRel newPrefix
-                        pure (Right (MovePlan srcRel newPrefix changed True))
+                        pure (if null failures then Right (MovePlan srcRel newPrefix changed True) else Left (unlines failures))
+    rewriteEach = fmap Maybe.catMaybes . mapM (uncurry (rewriteRel root))
 
 {- | Relocates a member's listing entry from the source parent's index.md to the
 destination parent's, repointing its link from @oldTarget@ to @newTarget@. When the
@@ -263,6 +268,9 @@ movePage findRelevant root rawSrcRel rawDestParentRel rawSlug confirm
                 let rewritePages = filter ((`notElem` excluded) . fst) pages
                     rewrites = DocumentLinks.planPageMove (srcRel, newPath) rewritePages
                     changed = map fst rewrites
+                    decisionFor p
+                        | p == newPath = DocumentLinks.pageMoveLinkEdit (srcRel, newPath)
+                        | otherwise = DocumentLinks.moveLinkEdit (srcRel, newPath) p
                 if not confirm
                     then pure (Right (MovePlan srcRel newPath changed False))
                     else do
@@ -276,10 +284,10 @@ movePage findRelevant root rawSrcRel rawDestParentRel rawSlug confirm
                             Right () -> do
                                 Monad.forM_ assets (relocateOrCopyAsset root srcDir destParentRel)
                                 relocateMeta root srcRel newPath
-                                Monad.forM_ rewrites (uncurry (writeRel root))
+                                failures <- fmap Maybe.catMaybes (mapM (\(p, _) -> rewriteRel root p (decisionFor p)) rewrites)
                                 title <- frontmatterNameOf newFs
                                 relocateEntry root srcDir destParentRel srcRel newPath ("- [" ++ title ++ "](./" ++ slug ++ ".md)")
-                                pure (Right (MovePlan srcRel newPath changed True))
+                                pure (if null failures then Right (MovePlan srcRel newPath changed True) else Left (unlines failures))
 
 -- | Drops a trailing @.md@ from a filename.
 dropDotMd :: String -> String
@@ -290,14 +298,14 @@ dropDotMd name
 -- | The shared/exclusive classification of the moving page's assets against its source-folder peers (ADR-0062).
 classifyMovingAssets :: FilePath -> String -> String -> IO [(String, DocumentLinks.AssetClass)]
 classifyMovingAssets root srcRel srcDir = do
-    movingBody <- fmap (Maybe.fromMaybe BS.empty) (readRel root srcRel)
+    movingLinks <- fmap (Maybe.fromMaybe []) (linksRel root srcRel)
     movingSidecar <- sidecarAssetNames root srcRel
-    let movingAssets = List.nub (DocumentLinks.assetNamesIn movingBody ++ movingSidecar)
+    let movingAssets = List.nub (DocumentLinks.assetNamesIn movingLinks ++ movingSidecar)
     peers <- siblingPages root srcDir srcRel
     peerRefs <- Monad.forM peers $ \peer -> do
-        body <- fmap (Maybe.fromMaybe BS.empty) (readRel root peer)
+        links <- fmap (Maybe.fromMaybe []) (linksRel root peer)
         sidecar <- sidecarAssetNames root peer
-        pure (List.nub (DocumentLinks.assetNamesIn body ++ sidecar))
+        pure (List.nub (DocumentLinks.assetNamesIn links ++ sidecar))
     pure (DocumentLinks.classifyAssets movingAssets peerRefs)
 
 -- | The @.md@ pages directly in a folder (non-recursive), excluding the named page.
@@ -370,7 +378,7 @@ relocateOrCopyAsset root srcDir destDir (name, cls) =
                     then pure ()
                     else case cls of
                         DocumentLinks.ExclusiveAsset -> Monad.void (FileSystem.renamePath sf df)
-                        DocumentLinks.SharedAsset -> BS.readFile sf >>= BS.writeFile df
+                        DocumentLinks.SharedAsset -> Monad.void (Stream.copyFile sf df)
         _ -> pure ()
   where
     parentDir = reverse . drop 1 . dropWhile (/= '/') . reverse
@@ -706,7 +714,7 @@ replayReportJson entries =
             ++ jsonStr (reStatus e)
             ++ "}"
 
-{- | Reads the @.md@ pages /relevant/ to an operation, as @(treeRelPath, body)@, skipping
+{- | Reads the @.md@ pages /relevant/ to an operation, as @(treeRelPath, links)@, skipping
 dot-entries and @assets@/@meta@ folders. A page is returned only when its raw bytes contain
 @hint@ -- the target's name, which any relative link to it must contain -- or when it lies within
 @subtreePrefix@ (the moved subtree, whose own pages must be rewritten even when they do not mention
@@ -715,7 +723,7 @@ difference between a sub-second and a ~90-second scan on a large corpus (no inde
 byte pre-filter never drops a real referrer (false positives only cost a parse), since a relative
 link's path always contains the slug/filename of what it points at.
 -}
-enumerateRelevant :: FilePath -> BS.ByteString -> Maybe String -> IO [(String, BS.ByteString)]
+enumerateRelevant :: FilePath -> BS.ByteString -> Maybe String -> IO [(String, [DocumentLinks.Link])]
 enumerateRelevant root hint subtreePrefix = walk ""
   where
     inSubtree path = case subtreePrefix of
@@ -737,10 +745,30 @@ enumerateRelevant root hint subtreePrefix = walk ""
                     if ".md" `List.isSuffixOf` name
                         then do
                             bytes <- BS.readFile childFs
-                            pure [(childRel, bytes) | BS.isInfixOf hint bytes || inSubtree childRel]
+                            if BS.isInfixOf hint bytes || inSubtree childRel
+                                then let links = DocumentLinks.pageLinks bytes in length links `seq` pure [(childRel, links)]
+                                else pure []
                         else pure []
     isDot ('.' : _) = True
     isDot _ = False
+
+-- | A tree-relative page's links, scanned as a stream; 'Nothing' when it is absent or its path is unsafe.
+linksRel :: FilePath -> String -> IO (Maybe [DocumentLinks.Link])
+linksRel root rel =
+    case Static.resolveStaticPath root (DocumentLinks.pathSegmentsOf rel) of
+        Nothing -> pure Nothing
+        Just fs -> LinkIndexStore.scanPageLinks fs
+
+{- | Rewrites a tree-relative page's links in place per the decision, streaming with a
+temp-then-rename write; 'Just' a reason on failure, and an unsafe path is skipped.
+-}
+rewriteRel :: FilePath -> String -> (DocumentLinks.Link -> Maybe String) -> IO (Maybe String)
+rewriteRel root rel decide =
+    case Static.resolveStaticPath root (DocumentLinks.pathSegmentsOf rel) of
+        Nothing -> pure Nothing
+        Just fs -> do
+            outcome <- LinkRewrite.rewriteFileLinks decide fs
+            pure (either (\reason -> Just ("rewrite of " ++ rel ++ " failed: " ++ reason)) (const Nothing) outcome)
 
 -- | Reads a tree-relative file as bytes, or 'Nothing' when it is absent or its path is unsafe.
 readRel :: FilePath -> String -> IO (Maybe BS.ByteString)

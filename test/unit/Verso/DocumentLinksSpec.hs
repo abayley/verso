@@ -10,6 +10,14 @@ import qualified Verso.DocumentLinks as DocumentLinks
 bs :: String -> BS.ByteString
 bs = BS.pack
 
+-- | Pages reduced to their links, as the planners now take them.
+linksOf :: [(String, BS.ByteString)] -> [(String, [DocumentLinks.Link])]
+linksOf pages = [(p, DocumentLinks.pageLinks b) | (p, b) <- pages]
+
+-- | Applies planned edits to the pages' bodies (looked up by the plan's key), for asserting on the rewritten text.
+applyPlan :: [(String, BS.ByteString)] -> [(String, [DocumentLinks.Edit])] -> [(String, BS.ByteString)]
+applyPlan pages plan = [(p, DocumentLinks.rewriteLinks body edits) | (p, edits) <- plan, Just body <- [lookup p pages]]
+
 -- | The substring a link's span points at (to check spans without hand-counting offsets).
 spanText :: BS.ByteString -> DocumentLinks.Link -> String
 spanText text link = BS.unpack (BS.take (DocumentLinks.linkEnd link - DocumentLinks.linkStart link) (BS.drop (DocumentLinks.linkStart link) text))
@@ -145,7 +153,7 @@ spec =
                         [ ("a/index.md", bs "See [B](./b/index.md).\n")
                         , ("a/b/index.md", bs "# B\n")
                         ]
-                DocumentLinks.planMoveRewrites ("a/b", "c/b") pages
+                applyPlan pages (DocumentLinks.planMoveRewrites ("a/b", "c/b") (linksOf pages))
                     `shouldBe` [("a/index.md", bs "See [B](../c/b/index.md).\n")]
 
             it "given links within the moved subtree, when a plain move is planned, then they are untouched" $ do
@@ -153,25 +161,25 @@ spec =
                         [ ("a/b/index.md", bs "Child [P](./p.md) and [Q](./sub/q.md).\n")
                         , ("a/b/p.md", bs "Up [Idx](./index.md).\n")
                         ]
-                DocumentLinks.planMoveRewrites ("a/b", "c/b") pages `shouldBe` []
+                DocumentLinks.planMoveRewrites ("a/b", "c/b") (linksOf pages) `shouldBe` []
 
             it "given a moved page linking to a target that stays put, when the move is planned, then its link is fixed" $ do
                 let pages = [("a/b/p.md", bs "Out [Z](../z.md).\n")]
-                DocumentLinks.planMoveRewrites ("a/b", "c/b") pages
+                applyPlan pages (DocumentLinks.planMoveRewrites ("a/b", "c/b") (linksOf pages))
                     `shouldBe` [("a/b/p.md", bs "Out [Z](../../a/z.md).\n")]
 
             it "given an internal link routing through the old name, when a rename is planned, then it is fixed" $ do
                 let pages = [("a/b/sub/p.md", bs "Sib [O](../../b/other.md).\n")]
-                DocumentLinks.planMoveRewrites ("a/b", "a/bnew") pages
+                applyPlan pages (DocumentLinks.planMoveRewrites ("a/b", "a/bnew") (linksOf pages))
                     `shouldBe` [("a/b/sub/p.md", bs "Sib [O](../other.md).\n")]
 
             it "given external targets and code-fenced links, when the move is planned, then they are left alone" $ do
                 let pages = [("a/index.md", bs "[E](https://x.test) and `code`.\n")]
-                DocumentLinks.planMoveRewrites ("a/b", "c/b") pages `shouldBe` []
+                DocumentLinks.planMoveRewrites ("a/b", "c/b") (linksOf pages) `shouldBe` []
 
             it "given a link carrying an anchor, when the move is planned, then the anchor is preserved" $ do
                 let pages = [("a/index.md", bs "[B](./b/index.md#intro)\n")]
-                DocumentLinks.planMoveRewrites ("a/b", "c/b") pages
+                applyPlan pages (DocumentLinks.planMoveRewrites ("a/b", "c/b") (linksOf pages))
                     `shouldBe` [("a/index.md", bs "[B](../c/b/index.md#intro)\n")]
 
         describe "planPageMove" $ do
@@ -180,7 +188,7 @@ spec =
                         [ ("a/old.md", bs "Link [Other](./other.md) and ![img](assets/x.png).\n")
                         , ("a/other.md", bs "Back [Old](./old.md).\n")
                         ]
-                    result = DocumentLinks.planPageMove ("a/old.md", "b/old.md") pages
+                    result = applyPlan (("b/old.md", bs "Link [Other](./other.md) and ![img](assets/x.png).\n") : pages) (DocumentLinks.planPageMove ("a/old.md", "b/old.md") (linksOf pages))
                 lookup "b/old.md" result
                     `shouldBe` Just (bs "Link [Other](../a/other.md) and ![img](assets/x.png).\n")
                 lookup "a/other.md" result
@@ -191,13 +199,13 @@ spec =
                         [ ("a/old.md", bs "Self [Sib](./sib.md) and ![img](assets/x.png).\n")
                         , ("a/sib.md", bs "To [Old](./old.md).\n")
                         ]
-                    result = DocumentLinks.planPageMove ("a/old.md", "a/new.md") pages
+                    result = applyPlan (("a/new.md", bs "Self [Sib](./sib.md) and ![img](assets/x.png).\n") : pages) (DocumentLinks.planPageMove ("a/old.md", "a/new.md") (linksOf pages))
                 lookup "a/new.md" result `shouldBe` Nothing
                 lookup "a/sib.md" result `shouldBe` Just (bs "To [Old](./new.md).\n")
 
         describe "assetNamesIn" $ do
             it "given body links and images, when asset names are extracted, then the asset basenames are returned" $ do
-                DocumentLinks.assetNamesIn (bs "![d](assets/diagram.png) and [f](./assets/report.pdf) and [x](./other.md)")
+                DocumentLinks.assetNamesIn (DocumentLinks.pageLinks (bs "![d](assets/diagram.png) and [f](./assets/report.pdf) and [x](./other.md)"))
                     `shouldBe` ["diagram.png", "report.pdf"]
 
         describe "classifyAssets" $ do
@@ -212,7 +220,7 @@ spec =
                         , ("a/other.md", bs "See [P](./p.md) twice [P](./p.md#x)\n")
                         , ("a/p.md", bs "self [me](./p.md)\n")
                         ]
-                DocumentLinks.referrersMatching (== "a/p.md") ["a/index.md", "a/p.md"] pages
+                DocumentLinks.referrersMatching (== "a/p.md") ["a/index.md", "a/p.md"] (linksOf pages)
                     `shouldBe` [("a/other.md", "./p.md"), ("a/other.md", "./p.md#x")]
 
             it "given a subtree predicate for a section delete, when referrers are matched, then the pages linking into the subtree are returned" $ do
@@ -221,7 +229,7 @@ spec =
                         , ("sec/inside.md", bs "Sibling [Y](./y.md)\n")
                         ]
                     inSubtree t = t == "sec" || ("sec/" `List.isPrefixOf` t)
-                DocumentLinks.referrersMatching inSubtree ["sec/inside.md"] pages
+                DocumentLinks.referrersMatching inSubtree ["sec/inside.md"] (linksOf pages)
                     `shouldBe` [("top.md", "./sec/sub/x.md")]
 
 {- | A page with the things a chunk boundary must not break: a link target, a title, angle

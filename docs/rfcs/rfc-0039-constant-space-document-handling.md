@@ -256,7 +256,14 @@ Riskiest-value-first, each a small commit with `make check` green, the heap left
    folded into the index before the next is opened. On cello-docs (3980 documents) with the 16M-cell heap
    the cold build took 7.7s against 9.0s before, at 269MB RSS against 290MB; with a 4M-cell heap it now
    survives startup (18.3s, GC-bound, 73MB RSS), where the materialised build needed 8M.
-6. The fused streaming rewrite on move, with temp-then-rename; stream the asset copy.
+6. The fused streaming rewrite on move, with temp-then-rename; stream the asset copy. **Done
+   (2026-09-10).** `Verso.LinkRewrite` scans each chunk with the shared core, puts the links it settles to a
+   per-link decision (`DocumentLinks.moveLinkEdit` / `pageMoveLinkEdit`, which the pure planners are now
+   built from), splices the settled bytes and writes them to `<page>.tmp`, renamed over the page at the
+   end; a page nothing changed in is left untouched. Candidate pages reach the planners as `(path, links)`
+   rather than bodies, so the index-backed move holds no body at all (the no-index fallback still reads
+   each body for its byte prefilter, then keeps only the links). The shared-asset copy streams through
+   `Stream.copyFile`. Left as is: the asset-conflict check still reads both files whole to compare them.
 7. The minor reads (`Log` size via `stat`, `OperationLog` streaming parse).
 8. Lower the `VERSO_HEAP_CELLS` default to the tight fail-fast value, after exercising the largest documents
    and realistic concurrency on the real corpus.

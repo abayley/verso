@@ -34,6 +34,7 @@ import qualified Verso.IdentitySpec as IdentitySpec
 import qualified Verso.LinkFingerprintSpec as LinkFingerprintSpec
 import qualified Verso.LinkIndexSpec as LinkIndexSpec
 import qualified Verso.LinkIndexStoreSpec as LinkIndexStoreSpec
+import qualified Verso.LinkRewriteSpec as LinkRewriteSpec
 import qualified Verso.OperationLogSpec as OperationLogSpec
 import qualified Verso.SearchChunksSpec as SearchChunksSpec
 import qualified Verso.SearchQueueSpec as SearchQueueSpec
@@ -61,6 +62,7 @@ main = hspec $ do
     SearchChunksSpec.spec
     SearchQueueSpec.spec
     LinkIndexStoreSpec.spec
+    LinkRewriteSpec.spec
     HttpSpec.spec
     ParserSpec.spec
     ResponseSpec.spec

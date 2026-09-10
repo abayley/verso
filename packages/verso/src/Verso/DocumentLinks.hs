@@ -16,13 +16,20 @@ module Verso.DocumentLinks (
     Link (..),
     pageLinks,
     ScanState,
+    Scanned (..),
     initialScan,
     scanStep,
+    scanChunk,
     scanFinish,
+    scanFinishAll,
     scanChunks,
     carriedBytes,
     tailCapBytes,
     linksI,
+    Edit,
+    editsWith,
+    moveLinkEdit,
+    pageMoveLinkEdit,
     splitTargetSuffix,
     isExternalTarget,
     resolveTarget,
@@ -102,17 +109,41 @@ fence marker split by such a break is not matched, which only a line longer
 than the cap can cause.
 -}
 scanStep :: ScanState -> BS.ByteString -> (ScanState, [Link])
-scanStep st chunk =
+scanStep st chunk = let scanned = scanChunk st chunk in (scannedState scanned, scannedLinks scanned)
+
+{- | One step of a scan in full: the state to carry on with, and the bytes the step
+settled (the complete lines, an O(1) view whose first byte sits at 'scannedBase' in
+the document) with the links found in them. A rewriter splices those links into
+those bytes; a scan that only wants links uses 'scanStep'.
+-}
+data Scanned = Scanned
+    { scannedState :: ScanState
+    , scannedBase :: Int
+    , scannedSettled :: BS.ByteString
+    , scannedLinks :: [Link]
+    }
+
+-- | 'scanStep' returning the settled bytes as well.
+scanChunk :: ScanState -> BS.ByteString -> Scanned
+scanChunk st chunk =
     let buffer = if BS.null (scanCarry st) then chunk else BS.append (scanCarry st) chunk
         (inFence, tailStart, links) = scanLines (scanInFence st) (scanBase st) False buffer
         carry = if tailStart >= BS.length buffer then BS.empty else BS.copy (BS.drop tailStart buffer)
-     in (ScanState inFence carry (scanBase st + tailStart), links)
+     in Scanned (ScanState inFence carry (scanBase st + tailStart)) (scanBase st) (BS.take tailStart buffer) links
 
 -- | Ends a scan: the links in the carried final line (a body need not end in a newline).
 scanFinish :: ScanState -> [Link]
-scanFinish st
-    | BS.null (scanCarry st) = []
-    | otherwise = let (_, _, links) = scanLines (scanInFence st) (scanBase st) True (scanCarry st) in links
+scanFinish = scannedLinks . scanFinishAll
+
+-- | 'scanFinish' returning the carried bytes it settled as well; the state is left empty.
+scanFinishAll :: ScanState -> Scanned
+scanFinishAll st
+    | BS.null carry = Scanned st (scanBase st) BS.empty []
+    | otherwise =
+        let (inFence, _, links) = scanLines (scanInFence st) (scanBase st) True carry
+         in Scanned (ScanState inFence BS.empty (scanBase st + BS.length carry)) (scanBase st) carry links
+  where
+    carry = scanCarry st
 
 -- | The links of a body presented as chunks: 'scanStep' over each, then 'scanFinish'.
 scanChunks :: [BS.ByteString] -> [Link]
@@ -288,7 +319,7 @@ not a problem today. It would become O(len) with a single-allocation concat (sum
 lengths, allocate once, write each piece). See the mhs BS cost model in
 docs/design/link-index-performance.md.
 -}
-rewriteLinks :: BS.ByteString -> [(Int, Int, String)] -> BS.ByteString
+rewriteLinks :: BS.ByteString -> [Edit] -> BS.ByteString
 rewriteLinks text edits = BS.concat (go 0 (List.sortBy byStart edits))
   where
     byStart (a, _, _) (b, _, _) = compare a b
@@ -310,85 +341,102 @@ relocatePath oldPrefix newPrefix p
     | (oldPrefix ++ "/") `List.isPrefixOf` p = Just (newPrefix ++ drop (length oldPrefix) p)
     | otherwise = Nothing
 
+-- | A span replacement: the half-open byte span @[start, end)@ and the bytes to put there.
+type Edit = (Int, Int, String)
+
+-- | The edits a per-link decision yields over a page's links: the span of each link it replaces.
+editsWith :: (Link -> Maybe String) -> [Link] -> [Edit]
+editsWith decide links = [(linkStart l, linkEnd l, replacement) | l <- links, Just replacement <- [decide l]]
+
+{- | The decision for one link of the page at @path@ under the subtree relocation
+@(oldPrefix, newPrefix)@: the new target token when the current token would no longer
+resolve to the target's new location from the page's new directory, else 'Nothing'.
+A pure move thus leaves intra-subtree and unrelated links byte-for-byte unchanged; a
+move that also renames additionally fixes internal links routing through the old name.
+-}
+moveLinkEdit :: (String, String) -> String -> Link -> Maybe String
+moveLinkEdit (oldPrefix, newPrefix) path l =
+    case resolveTarget oldDir (linkTarget l) of
+        Nothing -> Nothing
+        Just oldTarget ->
+            let newTarget = Maybe.fromMaybe oldTarget (reloc oldTarget)
+             in if resolveTarget newDir pathPart /= Just newTarget
+                    then Just (relativeBetween newDir newTarget ++ suffix)
+                    else Nothing
+  where
+    reloc = relocatePath oldPrefix newPrefix
+    oldDir = dirOfPath path
+    newDir = Maybe.fromMaybe oldDir (reloc oldDir)
+    (pathPart, suffix) = splitTargetSuffix (linkTarget l)
+
 {- | Plans the link rewrites a move induces across the tree. Given the relocation
-@(oldPrefix, newPrefix)@ and every page as @(treePath, body)@ (paths at their
-*current* locations), it returns @(treePath, newBody)@ for each page whose body
-changes. A link is rewritten only when its current token would no longer resolve to
-the target's new location from the page's new directory, so a pure move leaves
-intra-subtree links and unrelated links byte-for-byte unchanged; a move that also
-renames additionally fixes internal links routing through the old name.
+@(oldPrefix, newPrefix)@ and every page as @(treePath, links)@ (paths at their
+*current* locations), it returns the edits for each page whose body changes, per
+'moveLinkEdit'.
 
 The two parent index.md listings are reconciled separately (their membership entry
 relocates, not repoints) and so are excluded by the caller from the page set here.
 -}
-planMoveRewrites :: (String, String) -> [(String, BS.ByteString)] -> [(String, BS.ByteString)]
-planMoveRewrites (oldPrefix, newPrefix) pages =
-    [ (path, rewriteLinks text edits)
-    | (path, text) <- pages
-    , let edits = pageEdits path text
+planMoveRewrites :: (String, String) -> [(String, [Link])] -> [(String, [Edit])]
+planMoveRewrites relocation pages =
+    [ (path, edits)
+    | (path, links) <- pages
+    , let edits = editsWith (moveLinkEdit relocation path) links
     , not (null edits)
     ]
-  where
-    reloc = relocatePath oldPrefix newPrefix
-    pageEdits path text =
-        let oldDir = dirOfPath path
-            newDir = Maybe.fromMaybe oldDir (reloc oldDir)
-         in [ (linkStart l, linkEnd l, relativeBetween newDir newTarget ++ suffix)
-            | l <- pageLinks text
-            , let (pathPart, suffix) = splitTargetSuffix (linkTarget l)
-            , Just oldTarget <- [resolveTarget oldDir (linkTarget l)]
-            , let newTarget = Maybe.fromMaybe oldTarget (reloc oldTarget)
-            , resolveTarget newDir pathPart /= Just newTarget
-            ]
 
-{- | Plans the link rewrites a single page move induces. Unlike 'planMoveRewrites'
-(which relocates a whole subtree prefix), a page move changes the moved page's own
-directory, so the moved page is rewritten against its new directory -- its outward
-@.md@ links re-pointed, a self-link re-pointed, and its @assets/@ refs left as the
-same relative token (the assets travel into the destination's @assets/@) -- while
-every other page's inbound links to it are fixed by the subtree machinery (the file
-itself is the relocated prefix). The moved page's result is keyed by its new path.
+{- | The decision for one link of the moved page itself under a page move from
+@oldPath@ to @newPath@. A page move changes the page's own directory, so its outward
+@.md@ links are re-pointed, a self-link re-pointed, and its @assets/@ refs left as the
+same relative token (the assets travel into the destination's @assets/@).
 -}
-planPageMove :: (String, String) -> [(String, BS.ByteString)] -> [(String, BS.ByteString)]
+pageMoveLinkEdit :: (String, String) -> Link -> Maybe String
+pageMoveLinkEdit (oldPath, newPath) l =
+    case resolveTarget oldDir pathPart of
+        Nothing -> Nothing
+        Just oldTarget ->
+            let newTarget = relocateMovedTarget oldTarget
+             in if resolveTarget newDir pathPart /= Just newTarget
+                    then Just (relativeBetween newDir newTarget ++ suffix)
+                    else Nothing
+  where
+    oldDir = dirOfPath oldPath
+    newDir = dirOfPath newPath
+    (pathPart, suffix) = splitTargetSuffix (linkTarget l)
+    relocateMovedTarget t =
+        Maybe.fromMaybe t (orElse (relocatePath oldPath newPath t) (relocatePath (assetsDir oldDir) (assetsDir newDir) t))
+    orElse (Just x) _ = Just x
+    orElse Nothing y = y
+
+{- | Plans the link rewrites a single page move induces: the moved page's own edits
+('pageMoveLinkEdit', keyed by its new path) and every other page's inbound fixes
+('moveLinkEdit', the file itself being the relocated prefix).
+-}
+planPageMove :: (String, String) -> [(String, [Link])] -> [(String, [Edit])]
 planPageMove (oldPath, newPath) pages =
     movedEntry ++ planMoveRewrites (oldPath, newPath) others
   where
     others = filter ((/= oldPath) . fst) pages
-    oldDir = dirOfPath oldPath
-    newDir = dirOfPath newPath
-    oldAssets = assetsDir oldDir
-    newAssets = assetsDir newDir
-    movedEntry = case lookup oldPath pages of
-        Nothing -> []
-        Just body ->
-            let edits =
-                    [ (linkStart l, linkEnd l, relativeBetween newDir newTarget ++ suffix)
-                    | l <- pageLinks body
-                    , let (pathPart, suffix) = splitTargetSuffix (linkTarget l)
-                    , Just oldTarget <- [resolveTarget oldDir pathPart]
-                    , let newTarget = relocateMovedTarget oldTarget
-                    , resolveTarget newDir pathPart /= Just newTarget
-                    ]
-                rewritten = rewriteLinks body edits
-             in [(newPath, rewritten) | rewritten /= body]
-    relocateMovedTarget t =
-        Maybe.fromMaybe t (orElse (relocatePath oldPath newPath t) (relocatePath oldAssets newAssets t))
-    orElse (Just x) _ = Just x
-    orElse Nothing y = y
+    movedEntry =
+        [ (newPath, edits)
+        | Just links <- [lookup oldPath pages]
+        , let edits = editsWith (pageMoveLinkEdit (oldPath, newPath)) links
+        , not (null edits)
+        ]
 
 -- | The page-relative @assets@ directory tree path for a page directory (@assets@ at the root).
 assetsDir :: String -> String
 assetsDir "" = "assets"
 assetsDir dir = dir ++ "/assets"
 
-{- | The asset basenames a page body references (the names after a same-page
+{- | The asset basenames a page's links reference (the names after a same-page
 @assets/@ prefix in inline link/image targets), in order, for the shared/exclusive
 analysis of a cross-folder page move (ADR-0062).
 -}
-assetNamesIn :: BS.ByteString -> [String]
-assetNamesIn body =
+assetNamesIn :: [Link] -> [String]
+assetNamesIn links =
     [ name
-    | l <- pageLinks body
+    | l <- links
     , let (pathPart, _) = splitTargetSuffix (linkTarget l)
     , Just name <- [assetBasename pathPart]
     ]
@@ -416,12 +464,12 @@ for a section delete it accepts the subtree (the folder and its descendants), an
 subtree's own pages are excluded. Used to refuse a referenced delete (RFC-0027,
 ADR-0063) and list the referrers.
 -}
-referrersMatching :: (String -> Bool) -> [String] -> [(String, BS.ByteString)] -> [(String, String)]
+referrersMatching :: (String -> Bool) -> [String] -> [(String, [Link])] -> [(String, String)]
 referrersMatching matches excluded pages =
     [ (path, linkTarget l)
-    | (path, body) <- pages
+    | (path, links) <- pages
     , path `notElem` excluded
-    , l <- pageLinks body
+    , l <- links
     , Just target <- [resolveTarget (dirOfPath path) (linkTarget l)]
     , matches target
     ]

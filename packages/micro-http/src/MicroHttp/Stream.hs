@@ -11,6 +11,7 @@ module MicroHttp.Stream (
     socketSinkI,
     fileEnumerator,
     fileEnumeratorChunked,
+    copyFile,
 ) where
 
 import qualified Data.ByteString as BS
@@ -98,3 +99,17 @@ fileEnumeratorChunked chunkBytes path =
 -- | The default chunk size, in bytes, used when streaming a file.
 fileChunkBytes :: Int
 fileChunkBytes = 4096
+
+{- | Copies a file in 'fileChunkBytes' chunks, so a large file is never held whole. A
+destination that will not open, or a source that will not, is a 'StreamSourceError';
+the destination is left as whatever was written when the source fails part-way.
+-}
+copyFile :: FilePath -> FilePath -> IO (Either StreamError ())
+copyFile from to = do
+    opened <- Open.openBinaryFileM to Base.WriteMode
+    case opened of
+        Nothing -> pure (Left (StreamSourceError ("cannot open file: " ++ to)))
+        Just handle -> do
+            outcome <- fileEnumerator from (Iteratee.byteSinkI (\bytes -> BS.hPut handle bytes >> pure (Right ()))) >>= Iteratee.run
+            Base.hClose handle
+            pure outcome

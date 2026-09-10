@@ -117,14 +117,14 @@ spec =
                     matches = (== "ref/api.md")
                     excluded = ["ref/index.md", "ref/api.md"]
                 List.sort (LinkIndex.referrers matches excluded ix)
-                    `shouldBe` List.sort (dedup (map fst (DocumentLinks.referrersMatching matches excluded pages)))
+                    `shouldBe` List.sort (dedup (map fst (DocumentLinks.referrersMatching matches excluded (linksOf pages))))
 
             it "given a section delete subtree, when its referrers are queried, then the pages linking into it are returned" $ do
                 let ix = LinkIndex.buildIndex pages
                     matches = inSubtree "ref"
                     excluded = "index.md" : ["ref/index.md", "ref/api.md"]
                 List.sort (LinkIndex.referrers matches excluded ix)
-                    `shouldBe` List.sort (dedup (map fst (DocumentLinks.referrersMatching matches excluded pages)))
+                    `shouldBe` List.sort (dedup (map fst (DocumentLinks.referrersMatching matches excluded (linksOf pages))))
 
         describe "rewriteCandidates (agrees with planMoveRewrites)" $ do
             it "given a planned move, when candidates are drawn from the index, then they include every page the byte scan would rewrite" $ do
@@ -132,8 +132,12 @@ spec =
                     move = ("guide", "ref/guide")
                     candidates = LinkIndex.rewriteCandidates (inSubtree "guide") ix
                     candidatePages = filter ((`elem` candidates) . fst) pages
-                List.sort (map fst (DocumentLinks.planMoveRewrites move candidatePages))
-                    `shouldBe` List.sort (map fst (DocumentLinks.planMoveRewrites move pages))
+                List.sort (map fst (DocumentLinks.planMoveRewrites move (linksOf candidatePages)))
+                    `shouldBe` List.sort (map fst (DocumentLinks.planMoveRewrites move (linksOf pages)))
+
+-- | Pages reduced to their links, as the scan-side functions now take them.
+linksOf :: [(String, BS.ByteString)] -> [(String, [DocumentLinks.Link])]
+linksOf pages = [(p, DocumentLinks.pageLinks b) | (p, b) <- pages]
 
 -- | Order-independent dedup (the index returns a page set; the scan returns a row per link).
 dedup :: [String] -> [String]

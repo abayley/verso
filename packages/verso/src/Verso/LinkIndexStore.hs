@@ -24,6 +24,7 @@ module Verso.LinkIndexStore (
     relocateInIndex,
     removeSubtreeInIndex,
     addSubtreeToIndex,
+    scanPageLinks,
 ) where
 
 import qualified Control.Concurrent.MVar as MVar

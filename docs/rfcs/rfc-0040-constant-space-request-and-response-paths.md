@@ -9,6 +9,8 @@ updated: 2026-09-11
 supersedes: []
 superseded_by: null
 related_rfcs: [RFC-0012, RFC-0013, RFC-0014, RFC-0029, RFC-0032, RFC-0034, RFC-0039]
+related_refs:
+    - docs/rfcs/refs/rfc-0040-baseline-20260911.md
 ---
 
 # RFC-0040: Constant-space request and response paths
@@ -16,7 +18,7 @@ related_rfcs: [RFC-0012, RFC-0013, RFC-0014, RFC-0029, RFC-0032, RFC-0034, RFC-0
 | Stage     | Timestamp             |
 | --------- | --------------------- |
 | Authored  | 2026-09-11 09:32 NZST |
-| Started   |                       |
+| Started   | 2026-09-11 11:57 NZST |
 | Completed |                       |
 
 ## Summary
@@ -52,9 +54,15 @@ of what is needed: `Iteratee.byteSinkI` and `resourceEnumerator` for ingest, `Ht
 Second, ADR-0087 requires byte scanners to be `IO`, and production code under `packages/*/src` may not
 import `System.IO.Unsafe`, so any new scanner or comparator is an `IO` action.
 
-Nothing below is measured yet. The survey read the code; the numbers quoted are cost-model estimates from
-`docs/design/link-index-performance.md`, not observations. Every phase in the rollout plan therefore starts
-by measuring the path it is about to change, in the manner of the RFC-0039 refs.
+Phase 1 has since measured the three request paths on the real corpus at the current heap
+(`docs/rfcs/refs/rfc-0040-baseline-20260911.md`), and it corrected the survey twice. The save path is not a
+memory multiplier but a functional limit: a 32KB form body saves in 0.02s, a 64KB body takes 30s, a 128KB
+body 161s, and a body near the 1 MiB cap does not finish at all. Documents of 263KB, 190KB and 150KB already
+exist in the corpus, so editing a large document is broken today rather than merely expensive. The upload
+path costs about 56x the body in transient RSS, not the two copies the survey assumed, and because that
+memory is `malloc`'d ByteString payload outside the cell arena it never reports `heap exhausted`. The
+document render, ranked highest by the survey, turns out to be the cheapest of the three at corpus sizes.
+Later phases still start by measuring the path they are about to change, in the manner of the RFC-0039 refs.
 
 ## Goals
 
@@ -92,13 +100,13 @@ tracker: a site is not closed until its phase is done or its row says why it sta
 | Site | Cost class | Bound | Phase |
 | --- | --- | --- | --- |
 | `Iteratee.readBodyStrict` ([Iteratee.hs:147](../../packages/micro-http/src/MicroHttp/Iteratee.hs)) | whole body, `BS.concat` over k pieces | per request cap | 2, 3 |
-| `treeSave` body ([App.hs:1615](../../packages/verso/src/Verso/App.hs)) | whole body, then `String` round-trip | 1 MiB per request | 2 |
+| `treeSave` body ([App.hs:1615](../../packages/verso/src/Verso/App.hs)) | whole body, then `String` round-trip | measured: unusable past ~64KB | 2 |
 | `treePublish`, `treeDiscard`, history posts (App.hs:1576, 1652, 1676) | whole body, then `String` | 1 MiB per request | 2 |
-| `treeUpload` body ([App.hs:1085](../../packages/verso/src/Verso/App.hs)) | whole body | 10 MiB per request | 3 |
+| `treeUpload` body ([App.hs:1085](../../packages/verso/src/Verso/App.hs)) | whole body, `BS.concat` over ~2,560 chunks | measured: ~560MB per 10 MiB body | 3 |
 | `storeAsset` write and dedup compare ([App.hs:1132](../../packages/verso/src/Verso/App.hs)) | whole write, plus whole read to compare | 2 x 10 MiB | 3 |
 | `TreeMove.assetConflicts` ([TreeMove.hs:361](../../packages/verso/src/Verso/TreeMove.hs)) | two whole files compared | 2 x asset size | 3 |
 | `htmlResponseChunks` ([App.hs:1926](../../packages/verso/src/Verso/App.hs)) | `BS.concat` of the whole page | per response | 4 |
-| `treeEdit`, `treeRead`, `treeReadAt` (App.hs:1007, 1029, 1737) | whole document, escaped whole, in a whole page | 4-5 copies | 4 |
+| `treeEdit`, `treeRead`, `treeReadAt` (App.hs:1007, 1029, 1737) | whole document, escaped whole, in a whole page | measured: ~6MB at 263KB | 4 |
 | `treeDiff` via `Git.diffBetween` ([Git.hs:163](../../packages/verso/src/Verso/Git.hs)) | whole diff, then `String` | unbounded | 5 |
 | `Process.runProcess` capture ([Process.hs:121](../../packages/micro-http/src/MicroHttp/Process.hs)) | whole stdout and stderr | unbounded | 5 |
 | `Git.showFileAtRevision` and rollback write (Git.hs:169, App.hs:1766) | whole file | document size | 5 |
@@ -215,7 +223,14 @@ the change is not worth making records that instead, in this RFC.
 ## Security Impact
 
 The upload path stops holding attacker-controlled bodies in the heap, so a burst of concurrent
-at-the-cap uploads costs bounded buffers plus disk instead of `concurrency x 10 MiB` of arena. That removes
+at-the-cap uploads costs bounded buffers plus disk. Today it costs ~560MB of transient allocation for a
+single at-the-cap upload, and four concurrent uploads took the server above 25GB resident and exhausted the
+host (phase 1 baseline). The per-request cost grows under concurrency rather than holding steady, because a
+ByteString payload is `malloc`'d outside the cell arena and so does not count toward the pressure that
+triggers a collection: the intermediates are garbage immediately but nothing prompts the collector to
+reclaim them. Neither of RFC-0039's safety nets covers this -- not the tight arena, which this memory
+bypasses, and not `heap exhausted`, which never fires. This is a denial-of-service lever available to any
+client allowed to upload, and it is the strongest single argument for phase 3. That removes
 a cheap memory-exhaustion lever against a fixed, non-growable heap: today enough simultaneous uploads can
 reach `heap exhausted`, which is a fatal crash, not a rejected request.
 
@@ -292,12 +307,23 @@ about to change so the fix is justified and the win is recorded. The heap defaul
 
 ### Phase 1: baseline measurement
 
-- [ ] Measure an at-the-cap upload, an at-the-cap save, and a largest-document page render on the real
-      corpus at 8,000,000 cells: time, peak RSS, and whether the heap survives.
-- [ ] Measure the same three under concurrency, to find where today's code exhausts the heap.
-- [ ] Take a GHC cost-centre profile of each for the algorithmic shape, not for cell counts.
-- [ ] Record the numbers as a ref, and correct this RFC's inventory where the measurement disagrees with
-      the survey's cost-model estimate.
+- [x] Measure an at-the-cap upload, an at-the-cap save, and a largest-document page render on the real
+      corpus at 8,000,000 cells: time, peak RSS, and whether the heap survives. **Done (2026-09-11.)** No
+      path reports `heap exhausted`: the save path spends CPU at flat RSS, and the upload path inflates RSS
+      outside the cell arena.
+- [ ] The heap-control experiment for the save cliff: re-run the 64KB and 128KB saves at `-H32000000` to
+      test whether the super-quadratic time is arena pressure rather than per-character cost. Single
+      request, bounded; phase 2 needs the answer.
+- [ ] Take a GHC cost-centre profile of the save path for the algorithmic shape, not for cell counts.
+- [x] Record the numbers as a ref, and correct this RFC's inventory where the measurement disagrees with
+      the survey's cost-model estimate. **Done (2026-09-11)**, three corrections, in the baseline ref.
+- [ ] The concurrency measurement is **deferred to after phase 3, and must be bounded.** The first attempt
+      (four simultaneous at-the-cap uploads) took the server above 25GB resident, exhausted the host's RAM
+      and restarted its desktop session. That was a test-design error rather than a discovered limit, but
+      the 25GB is itself a finding: the per-request cost rises under concurrency, which points at
+      `malloc`'d ByteString payload being invisible to the collector's trigger. When taken, the measurement
+      needs two requests rather than four, a 1 MiB body scaled arithmetically, a memory cap on the server
+      process, and an abort threshold in the harness.
 
 ### Phase 2: byte-level form decoding on the save path
 

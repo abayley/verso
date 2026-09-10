@@ -132,7 +132,7 @@ $(PROC_OBJ): $(MICROHTTP_CBITS)/microhttp_process.c $(MICROHTTP_INCLUDE)/microht
 	mkdir -p $(BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(MICROHTTP_INCLUDE)
 
-.PHONY: build-verso-ghc build-verso-ghc-prof run-verso-ghc run-verso-ghc-prof test-ghc-smoke chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder bench-link-parse bench-search-chunk search-lancedb search-nanoarrow search-model search-shim check clean
+.PHONY: build-verso-ghc build-verso-ghc-prof run-verso-ghc run-verso-ghc-prof test-ghc test-ghc-unit test-ghc-integration test-ghc-smoke chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder bench-link-parse bench-search-chunk search-lancedb search-nanoarrow search-model search-shim check clean
 
 
 docs:
@@ -258,6 +258,25 @@ $(BUILD)/ghc-prof/verso: $(SRC_HS) $(MICROHTTP_HS) $(GHC_COMPAT_HS) $(CBITS_OBJS
 
 build-verso-ghc-prof: $(BUILD)/ghc-prof/verso
 
+# The Haskell suites under GHC (developer gate, in make check): the same test sources
+# as the mhs suites, built with GHC and run, so a behaviour that differs between the
+# compilers fails a test rather than waiting for the browser smoke to notice.
+$(BUILD)/ghc/unit-test: $(SRC_HS) $(MICROHTTP_HS) $(UNIT_HS) $(GHC_COMPAT_HS) $(CBITS_OBJS) $(SEARCH_DEP)
+	mkdir -p $(BUILD)/ghc/unit-objects
+	$(GHC_COMMON) -O1 -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -outputdir $(BUILD)/ghc/unit-objects -o $@
+
+$(BUILD)/ghc/integration-test: $(SRC_HS) $(MICROHTTP_HS) $(INTEGRATION_HS) $(GHC_COMPAT_HS) $(CBITS_OBJS) $(SEARCH_DEP)
+	mkdir -p $(BUILD)/ghc/integration-objects
+	$(GHC_COMMON) -O1 -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -outputdir $(BUILD)/ghc/integration-objects -o $@
+
+test-ghc-unit: $(BUILD)/ghc/unit-test
+	$(BUILD)/ghc/unit-test
+
+test-ghc-integration: $(BUILD)/ghc/integration-test
+	$(BUILD)/ghc/integration-test
+
+test-ghc: test-ghc-unit test-ghc-integration
+
 # Runs the profiling build and, when the server exits (Ctrl-C), leaves the reports in
 # build/ghc-prof/: verso.prof (time and allocation by cost centre), verso.hp (heap by
 # cost centre over time; render with `hp2ps -c build/ghc-prof/verso.hp`) and RTS
@@ -371,7 +390,7 @@ chrome-gates:
 		if [ -n "$$dead_classes" ]; then echo "chrome-gates FAILED: CSS classes without a source producer:"; echo "$$dead_classes"; exit 1; fi
 	@echo "chrome-gates OK"
 
-check: docs format-check lint test editor-check test-editor-browser test-ghc-smoke chrome-gates
+check: docs format-check lint test editor-check test-editor-browser test-ghc test-ghc-smoke chrome-gates
 
 clean:
 	rm -rf $(BUILD)

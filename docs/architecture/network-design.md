@@ -249,9 +249,9 @@ Elevating GHC to a supported platform requires:
   table with fixed arities (`open` at three), so an import at another arity
   corrupts the interpreter stack and the next call dies. Check that table
   (`src/runtime/eval.c`) before importing a libc function directly.
-- Done: `make test-ghc-smoke` runs the browser smoke against the GHC server
-  inside `make check`. Still open: a GHC run of the Haskell unit and
-  integration suites as a gate (today they run under GHC only for coverage).
+- Done: `make check` runs the Haskell unit and integration suites under GHC
+  (`make test-ghc`) and the browser smoke against the GHC server
+  (`make test-ghc-smoke`).
 
 GHC support and OS portability share their seams: GHC runs on Linux and
 Windows today, so a first-class GHC target provides CI coverage of all

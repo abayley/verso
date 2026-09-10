@@ -144,7 +144,8 @@ spec =
                                     expect "expected the second bind to fail" False
                                 Left (Socket.SocketError operation errno) -> do
                                     operation `shouldBe` "bind"
-                                    errno `shouldBe` Error.eADDRINUSE
+                                    -- Compared as a Bool: GHC's Errno has no Show instance.
+                                    (errno == Error.eADDRINUSE) `shouldBe` True
                     closed <- Socket.closeListenSocket socket
                     closed `shouldBe` Right ()
         -- The probe exists because a clash is not always a bind failure: with SO_REUSEADDR

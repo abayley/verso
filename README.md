@@ -159,6 +159,9 @@ Individual targets:
   `make editor-knip` for individual steps.
 - `make test-editor-browser` — Playwright browser smoke test for the editor;
   it starts and stops the Verso server itself.
+- `make test-ghc` — the Haskell unit and integration suites built with GHC and
+  run (`make test-ghc-unit`, `make test-ghc-integration`), so a behaviour that
+  differs between the compilers fails a test.
 - `make test-ghc-smoke` — the same smoke against the GHC build of the server
   (`build/ghc/verso`), the one check that both compilers' binaries behave
   alike end to end.

@@ -64,6 +64,8 @@ constant-space; this RFC extends that property to the document-rendering and ind
   the HTML builder stays as is.
 - Moving document bytes off the heap entirely for editing. The editor legitimately needs the document in the
   response; the goal is to stop *multiplying* it, not to avoid sending it.
+- Streaming the *response* body of the editor page itself; the framework already streams file bodies, and
+  the page is built as one chunk by design (RFC-0013).
 
 ## Proposal
 
@@ -78,20 +80,59 @@ an ASCII byte inside a multibyte sequence, so byte-level scanning is correct for
 `memchr` FFI used by `Verso.DocumentLinks` is the model for finding the next special quickly. A no-specials
 input returns the input unchanged as one chunk.
 
+### One streaming file-reading utility
+
+`MicroHttp.Stream.fileEnumerator` already streams a file into an iteratee in fixed-size chunks; this RFC makes it
+the one way documents are read, with the chunk size a parameter (the current 4096-byte constant suits socket
+traffic; document scanning wants 64K-128K). Every consumer below is an iteratee fed by it, so "true constant
+space" means one chunk plus a bounded carry, never a whole document. The frontmatter reader is the same
+utility with an early-completing iteratee: it returns as soon as it has seen the closing `---`, and the
+enumerator stops feeding and closes the file. Nothing reads a whole document into the Haskell heap.
+
+### A shared, pure scanner core
+
+Byte scanning is one implementation, `scanStep :: ScanState -> ByteString -> (ScanState, [Link])`, where the
+state carries the fence flag and the carried tail. It is the memchr scan of today's `pageLinks`, so it stays
+pure under ADR-0086 (a deterministic `memchr` over a private `useAsCStringLen` copy, wrapped in
+`unsafePerformIO`). Today's `pageLinks :: ByteString -> [Link]` becomes `scanStep` applied to a single chunk,
+and the streaming file scan is `scanStep` folded over chunks -- the same code path, so byte-identical results
+are guaranteed by construction rather than by keeping two scanners in step. The small pure callers
+(`DocumentListing` scanning one line, `LinkIndex.pageTargets`) keep calling the pure form.
+
+Two properties make the chunking safe. A document smaller than the chunk is read as one chunk, which is
+exactly today's whole-body scan, so the common case is unchanged; chunking engages only for large documents,
+where constant space is the point. Across a boundary the scanner **carries the incomplete tail** (the bytes
+after the last newline) into the next chunk. That tail is **capped**: both things the scanner must see
+contiguously -- a `](target)` and a fence marker at line start -- are short, so a bounded tail (a few KB)
+never splits one, and a pathological single line longer than the cap is treated as a hard break rather than
+allowed to grow the carry back into a whole-body read. Resident memory is one chunk plus that bounded tail.
+
 ### Streaming the link-index build
 
-Change the cold build and reload so they walk the tree reading one document at a time, applying `updatePage`
-and discarding the body, rather than materialising `[(PagePath, ByteString)]`. `LinkIndex.buildIndex` keeps
-its meaning but is fed incrementally; the accumulated index (O(links)) is the only thing that grows. The
-persisted-index reload path gets the same treatment.
+The cold build and reload fold `scanStep` over each document's chunks, applying `updatePage` with the targets
+and discarding the bytes, rather than materialising `[(PagePath, ByteString)]`. `updatePage` takes the
+computed targets, so it stays pure; only the driver that reads files is `IO`. The accumulated index
+(O(links)) is the only thing that grows.
+
+### Streaming the rewrite on move
+
+`rewriteLinks` today reads the whole body, computes `(start, end, replacement)` offsets from `pageLinks`,
+splices, and overwrites the file in place with `BS.writeFile`. It becomes a **fused streaming
+scan-and-rewrite**: per chunk plus carried tail, `scanStep` finds each link and the rewriter emits the chunk's
+bytes with each target replaced per the move mapping, written to a temporary file, which is then
+`renamePath`'d over the original. Offsets never leave the chunk, so the offset-splice API retires. Each
+referrer (from the O(1) link-index lookup) and the moved page itself is streamed independently, so moving a
+very large document is constant-space end to end -- and the temp-then-rename makes the write **atomic**,
+fixing the current in-place overwrite that a crash mid-write would corrupt. The `SharedAsset` copy
+(`BS.readFile >>= BS.writeFile`) on the same path is streamed the same way.
 
 ### Frontmatter title without unpacking
 
-Add a `ByteString`-level frontmatter-title reader that inspects only the leading frontmatter block (the
-existing `SearchChunks.frontmatterSlice` already extracts it) and decodes just that small slice. Route
-`breadcrumbsFor`, `readDocumentText`, `documentPageTitle`, and the `TreeMove` title lookup through it, so a
-title lookup never unpacks the body. Where only the title is needed and the body is not already in hand,
-read only the frontmatter head from disk rather than the whole file.
+The frontmatter title comes from the streaming utility's early-completing reader, which consumes chunks only
+until the closing `---` and decodes just that small block, so a title lookup never reads or unpacks the body.
+`breadcrumbsFor`, `readDocumentText`, `documentPageTitle`, and the `TreeMove` title lookup route through it.
+When the body is already in hand (the editor page has just read it), the title is taken from
+`SearchChunks.frontmatterSlice` of those bytes rather than re-reading.
 
 ### Minor reads
 
@@ -116,6 +157,13 @@ concurrency.
   surface; if benchmarks disagree, an FFI escaper is the fallback.
 - **Escape into a `Builder` of per-special nodes.** Rejected: thousands of builder nodes are ~1ms each to
   force in mhs, so a special-heavy document would serialise in seconds. The one-chunk property is kept.
+- **Make the scanner `IO` and drop `unsafePerformIO`.** Rejected: the file-level driver is `IO` anyway, but
+  the scanner has pure callers on small inputs, so this either makes them `IO` or forces a second pure
+  scanner -- two implementations to keep byte-identical. ADR-0086 records the sanctioned pure-FFI idiom that
+  lets one core serve both.
+- **Keep two resident chunks and scan across them.** Rejected in favour of a capped tail-carry: two separate
+  ByteStrings cannot be `memchr`'d as one without concatenating, which is just a sliding window, and the
+  tail-carry holds one chunk plus a bounded tail rather than two chunks.
 - **Leave rendering alone and only cut the heap that indexing needs.** Rejected: the per-request escaper
   spike is what makes concurrency dangerous (N concurrent large edits multiply the transient), so it is the
   more important fix.
@@ -145,6 +193,11 @@ default heap changes value in the final step; operators who set `VERSO_HEAP_CELL
 - `make bench-html-builder` shows the escaper's time is no worse and its allocation materially lower;
   `make bench-link-parse` covers the link path.
 - Link-index unit/integration tests still pass unchanged (same index for the same tree).
+- The streaming scanner produces the identical `[Link]` as `pageLinks` on every fixture, and on fixtures split
+  at 4K, 64K, and 128K chunks with boundaries forced to land mid-link and mid-fence-marker; a single-line
+  fixture longer than the tail cap proves the carry stays bounded.
+- A move rewrite over a large fixture is byte-identical to the whole-body `rewriteLinks`, and a simulated
+  failure before the rename leaves the original file intact.
 - Frontmatter-title tests (in `AppSpec`) still pass; add cases for a document whose body dwarfs its
   frontmatter to prove the body is not read.
 - A guard that the server survives fetching the largest fixture document under a deliberately small heap,
@@ -155,11 +208,19 @@ default heap changes value in the final step; operators who set `VERSO_HEAP_CELL
 
 Riskiest-value-first, each a small commit with `make check` green, the heap left generous until the end.
 
-1. Byte-level escaper in `MicroHttp.Html`, with the golden test and the bench.
-2. Frontmatter title on `ByteString`; route the callers through it.
-3. Stream the link-index cold build and reload.
-4. The minor reads (`Log` size via `stat`, `OperationLog` streaming parse).
-5. Lower the `VERSO_HEAP_CELLS` default to the tight fail-fast value, after exercising the largest documents
+1. Record ADR-0086 (done alongside this revision) and retire the `consoleQuiet` global by injecting the
+   console sink -- a small separate change, so the sanctioned `unsafePerformIO` set is exactly the scanners.
+2. Byte-level escaper in `MicroHttp.Html`, with the golden test and the bench.
+3. The streaming utility: parameterise `fileEnumerator`'s chunk size and add the early-completing
+   frontmatter reader; route the title lookups through it.
+4. The shared `scanStep` core with capped tail-carry, expressed so `pageLinks` is its single-chunk case;
+   golden equality across chunk sizes; `bench-link-parse` at 4K/64K/128K against the whole-body baseline
+   and the cello-docs build time -- this is the profiling gate, and it decides whether a `cbits` scanner is
+   needed.
+5. Stream the link-index cold build and reload over the core.
+6. The fused streaming rewrite on move, with temp-then-rename; stream the asset copy.
+7. The minor reads (`Log` size via `stat`, `OperationLog` streaming parse).
+8. Lower the `VERSO_HEAP_CELLS` default to the tight fail-fast value, after exercising the largest documents
    and realistic concurrency on the real corpus.
 
 ## Open Questions
@@ -167,5 +228,5 @@ Riskiest-value-first, each a small commit with `make check` green, the heap left
 - The exact tight default. The measured floor is single-digit-million cells for the corpora to hand, but the
   final number should come from the largest real documents plus a concurrency factor, decided in step 5.
 - Whether a `cbits` escaper is needed, decided by the step-1 benchmark rather than up front.
-- Whether the `TreeMove` asset copy (`BS.readFile >>= BS.writeFile`) is worth streaming; it is off the hot
-  path and rare, so it is listed but not scheduled.
+- The tail cap size. It only has to exceed the longest `](target)` plus a fence marker; a few KB is
+  expected to be ample, confirmed by the boundary fixtures in step 4.

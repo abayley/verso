@@ -210,6 +210,7 @@ Riskiest-value-first, each a small commit with `make check` green, the heap left
 
 1. Record ADR-0086 (done alongside this revision) and retire the `consoleQuiet` global by injecting the
    console sink -- a small separate change, so the sanctioned `unsafePerformIO` set is exactly the scanners.
+   **Done (2026-09-10).**
 2. Byte-level escaper in `MicroHttp.Html`, with the golden test and the bench.
 3. The streaming utility: parameterise `fileEnumerator`'s chunk size and add the early-completing
    frontmatter reader; route the title lookups through it.

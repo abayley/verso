@@ -229,9 +229,12 @@ Target platforms are macOS, Linux, and Windows.
 
 ## GHC Compatibility Direction
 
-GHC is currently a coverage tool only: `make coverage` compiles the package sources and
-the test suites with GHC and HPC. The server binary has never been built or
-run under GHC. Elevating GHC to a supported platform requires:
+GHC is a developer tool, not a supported platform: `make coverage` compiles the package
+sources and the test suites with GHC and HPC, and `make run-verso-ghc` /
+`make run-verso-ghc-prof` build and run the server with GHC for its profiler. The GHC
+server serves pages, edits and searches on the demo corpus, but it is not tested by
+`make check` and the caveats below still stand. Elevating GHC to a supported platform
+requires:
 
 - Migrating FFI signatures from `Int` to `Foreign.C.Types` (`CInt`,
   `CSize`): GHC's code generator does not guarantee the upper half of a

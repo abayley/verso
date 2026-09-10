@@ -162,6 +162,15 @@ Individual targets:
 - `make coverage` — developer-only GHC/HPC coverage reports under
   `build/coverage/*/report/`. Coverage is a secondary signal; the
   compatibility gate remains the MicroHs-based `make check`.
+- `make run-verso-ghc` — developer-only: build the server with GHC
+  (`build/ghc/verso`) and run it on the same config as `run-verso`. The
+  shipped binary is the MicroHs one; this exists for GHC's tooling.
+- `make run-verso-ghc-prof` — the GHC profiling build; on exit (Ctrl-C) it
+  leaves `build/ghc-prof/verso.prof` (time and allocation by cost centre) and
+  `verso.hp` (heap over time, `hp2ps -c` renders it). `VERSO_GHC_PROF_RTS`
+  selects the RTS profile flags. Read a GHC profile for algorithmic hot spots
+  and allocation shape; the MicroHs cost model (interpreted per-byte work,
+  the fixed cell heap) does not apply to it.
 - `make clean` — remove generated binaries.
 
 Unit tests must not perform filesystem, socket, subprocess, environment,

@@ -70,7 +70,7 @@ SEARCH_LINK = $(foreach o,$(SEARCH_OBJS),-optl $(o)) \
     -optl -L$(ORT_PREFIX)/lib -optl -lonnxruntime \
     -optl -Wl,-rpath,$(abspath $(SEARCH_LIB_DIR)) \
     -optl -Wl,-rpath,$(ORT_PREFIX)/lib
-# The same libraries in GHC's flag spelling, for the coverage builds.
+# The same libraries in GHC's flag spelling, for the GHC builds.
 SEARCH_GHC_LINK = $(SEARCH_OBJS) \
     -L$(SEARCH_LIB_DIR) -llancedb \
     -L$(ORT_PREFIX)/lib -lonnxruntime \
@@ -83,6 +83,21 @@ SEARCH_LINK = -optl $(SEARCH_BUILD)/concordance_stub.o
 SEARCH_GHC_LINK = $(SEARCH_OBJS)
 SEARCH_DEP = $(SEARCH_BUILD)/concordance_stub.o
 endif
+# GHC builds: the coverage reports and the developer-only GHC server for profiling.
+# ghcup's GHC has the Command Line Tools SDK baked into its rts package (`ghc-pkg
+# field rts library-dirs`) while `gcc` resolves to Xcode's clang and ld, so when the
+# two toolchains drift (a CLT update ships .tbd stubs newer than Xcode's ld can read:
+# "tapi error: malformed file") every GHC link fails, hello world included. Linking
+# with the CLT's own ld sidesteps the mismatch. Override GHC_LINK_FLAGS (or make it
+# empty) on a host where the toolchains agree or the CLT is elsewhere.
+CLT_LD = /Library/Developer/CommandLineTools/usr/bin/ld
+GHC_LINK_FLAGS ?= $(if $(wildcard $(CLT_LD)),-optl-fuse-ld=$(CLT_LD),)
+GHC_COMPAT_HS = $(shell find $(GHC_COMPAT_TEST) -name '*.hs' | sort)
+# The GHC invocation shared by every GHC build: the package sources compiled directly
+# (no MicroCabal package), the framework cbits and search libraries linked in, and the
+# ghc-compat shims standing in for the mhs-only modules.
+GHC_COMMON = $(GHC) -threaded $(GHC_LINK_FLAGS) $(SEARCH_GHC_LINK) $(CBITS_OBJS) -I$(MICROHTTP_INCLUDE) -I$(CBITS) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(MICROHTTP_SRC)
+
 # The filesystem syscall wrappers (MicroHttp.FileSystem), the HTML escaper
 # (MicroHttp.Html) and the posix_spawn wrapper (MicroHttp.Process) live in the micro-http package: the mhs builds
 # link them from there automatically. These objects are still built for the GHC
@@ -117,7 +132,7 @@ $(PROC_OBJ): $(MICROHTTP_CBITS)/microhttp_process.c $(MICROHTTP_INCLUDE)/microht
 	mkdir -p $(BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(MICROHTTP_INCLUDE)
 
-.PHONY: chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder bench-link-parse bench-search-chunk search-lancedb search-nanoarrow search-model search-shim check clean
+.PHONY: build-verso-ghc build-verso-ghc-prof run-verso-ghc run-verso-ghc-prof chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder bench-link-parse bench-search-chunk search-lancedb search-nanoarrow search-model search-shim check clean
 
 
 docs:
@@ -199,7 +214,7 @@ test: test-unit test-integration
 coverage-unit: $(SEARCH_DEP)
 	rm -rf $(BUILD)/coverage/unit
 	mkdir -p $(BUILD)/coverage/unit/mix $(BUILD)/coverage/unit/objects $(BUILD)/coverage/unit/report
-	$(GHC) -threaded -fhpc -hpcdir $(BUILD)/coverage/unit/mix $(SEARCH_GHC_LINK) $(CBITS_OBJS) -I$(MICROHTTP_INCLUDE) -I$(CBITS) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(MICROHTTP_SRC) -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -outputdir $(BUILD)/coverage/unit/objects -o $(BUILD)/coverage/unit/unit-test
+	$(GHC_COMMON) -fhpc -hpcdir $(BUILD)/coverage/unit/mix -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -outputdir $(BUILD)/coverage/unit/objects -o $(BUILD)/coverage/unit/unit-test
 	HPCTIXFILE=$(BUILD)/coverage/unit/unit-test.tix $(BUILD)/coverage/unit/unit-test
 	$(HPC) report $(BUILD)/coverage/unit/unit-test.tix --hpcdir $(BUILD)/coverage/unit/mix --per-module
 	$(HPC) markup $(BUILD)/coverage/unit/unit-test.tix --hpcdir $(BUILD)/coverage/unit/mix --destdir $(BUILD)/coverage/unit/report
@@ -207,12 +222,44 @@ coverage-unit: $(SEARCH_DEP)
 coverage-integration: $(SEARCH_DEP)
 	rm -rf $(BUILD)/coverage/integration
 	mkdir -p $(BUILD)/coverage/integration/mix $(BUILD)/coverage/integration/objects $(BUILD)/coverage/integration/report
-	$(GHC) -threaded -fhpc -hpcdir $(BUILD)/coverage/integration/mix $(SEARCH_GHC_LINK) $(CBITS_OBJS) -I$(MICROHTTP_INCLUDE) -I$(CBITS) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(MICROHTTP_SRC) -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -outputdir $(BUILD)/coverage/integration/objects -o $(BUILD)/coverage/integration/integration-test
+	$(GHC_COMMON) -fhpc -hpcdir $(BUILD)/coverage/integration/mix -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -outputdir $(BUILD)/coverage/integration/objects -o $(BUILD)/coverage/integration/integration-test
 	HPCTIXFILE=$(BUILD)/coverage/integration/integration-test.tix $(BUILD)/coverage/integration/integration-test
 	$(HPC) report $(BUILD)/coverage/integration/integration-test.tix --hpcdir $(BUILD)/coverage/integration/mix --per-module
 	$(HPC) markup $(BUILD)/coverage/integration/integration-test.tix --hpcdir $(BUILD)/coverage/integration/mix --destdir $(BUILD)/coverage/integration/report
 
 coverage: coverage-unit coverage-integration
+
+# The GHC build of the server (developer-only, for GHC's profiler): the same sources
+# as the mhs binary, so behaviour is the same, but not the shipped runtime -- the mhs
+# cost model (interpreted per-byte work, the fixed cell heap) does not apply, so read
+# a GHC profile for algorithmic hot spots and allocation shape, not for mhs cell counts.
+$(BUILD)/ghc/verso: $(SRC_HS) $(MICROHTTP_HS) $(GHC_COMPAT_HS) $(CBITS_OBJS) $(SEARCH_DEP)
+	mkdir -p $(BUILD)/ghc/objects
+	$(GHC_COMMON) -O1 $(SRC)/Verso/Main.hs -outputdir $(BUILD)/ghc/objects -o $@
+
+build-verso-ghc: $(BUILD)/ghc/verso
+
+# Runs the GHC server on the same config as run-verso (MICROHTTP_CONFIG). No heap flag:
+# GHC's heap grows on demand.
+run-verso-ghc: editor-build $(BUILD)/ghc/verso
+	$(BUILD)/ghc/verso
+
+# The profiling build: a cost centre on every top-level binding (-fprof-auto) and RTS
+# options enabled, so +RTS -p/-h* work.
+$(BUILD)/ghc-prof/verso: $(SRC_HS) $(MICROHTTP_HS) $(GHC_COMPAT_HS) $(CBITS_OBJS) $(SEARCH_DEP)
+	mkdir -p $(BUILD)/ghc-prof/objects
+	$(GHC_COMMON) -O1 -prof -fprof-auto -rtsopts $(SRC)/Verso/Main.hs -outputdir $(BUILD)/ghc-prof/objects -o $@
+
+build-verso-ghc-prof: $(BUILD)/ghc-prof/verso
+
+# Runs the profiling build and, when the server exits (Ctrl-C), leaves the reports in
+# build/ghc-prof/: verso.prof (time and allocation by cost centre), verso.hp (heap by
+# cost centre over time; render with `hp2ps -c build/ghc-prof/verso.hp`) and RTS
+# statistics on stderr. Override VERSO_GHC_PROF_RTS for another heap view, e.g.
+# `-hy` (by type) or `-hd` (by closure description).
+VERSO_GHC_PROF_RTS ?= -p -hc -s
+run-verso-ghc-prof: editor-build $(BUILD)/ghc-prof/verso
+	$(BUILD)/ghc-prof/verso +RTS $(VERSO_GHC_PROF_RTS) -po$(BUILD)/ghc-prof/verso -RTS
 
 # Measurement spike: Haskell vs C for the form-decode per-byte pass.
 bench-form-decode: $(CBITS_OBJS)

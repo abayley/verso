@@ -267,10 +267,11 @@ indexPage runtime path = do
             bytes <- BS.readFile fsPath
             -- Only the frontmatter block is decoded (for the title); the chunker
             -- and tokeniser work over the raw bytes (see Verso.SearchChunks).
-            let title = searchTitleOf cfg path (Utf8.decodeUtf8 (BS.unpack (Frontmatter.slice bytes)))
-                chunks = SearchChunks.chunkPage chunkCapChars title bytes
-                -- One page-wide tokenisation pass: the chunks share a word cache (encodeMany).
-                encoded =
+            titleBlock <- Frontmatter.slice bytes
+            let title = searchTitleOf cfg path (Utf8.decodeUtf8 (BS.unpack titleBlock))
+            chunks <- SearchChunks.chunkPage chunkCapChars title bytes
+            -- One page-wide tokenisation pass: the chunks share a word cache (encodeMany).
+            let encoded =
                     WordPiece.encodeMany
                         (srVocab runtime)
                         (Embedding.profileMaxTokens (searchProfile cfg))

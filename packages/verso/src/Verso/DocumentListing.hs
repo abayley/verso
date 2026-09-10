@@ -7,9 +7,10 @@ source listing and added to the destination's -- rather than repointed in place
 'Verso.DocumentLinks.planMoveRewrites'); a delete removes the entry so it is
 never counted as a blocking inbound reference.
 
-The functions are pure over the @index.md@ text. Entry matching and link repointing
-reuse the link engine, so an entry is matched by where its link /resolves/ (robust
-to @./@ vs bare relative forms) and repointed with 'relativeBetween'.
+The functions transform the @index.md@ text, in 'IO' only because entry matching and
+link repointing reuse the link engine's scanner (a foreign call, ADR-0087); an entry is
+matched by where its link /resolves/ (robust to @./@ vs bare relative forms) and
+repointed with 'relativeBetween'.
 -}
 module Verso.DocumentListing (
     removeListingEntry,
@@ -25,11 +26,15 @@ from the @index.md@'s own directory @indexDir@, to @target@; returns the new tex
 and the removed line (without its newline), or the text unchanged and 'Nothing' when
 no entry matches.
 -}
-removeListingEntry :: String -> String -> String -> (String, Maybe String)
-removeListingEntry indexDir target text =
-    case break (matchesTarget indexDir target) (textLines text) of
-        (_, []) -> (text, Nothing)
-        (before, removed : after) -> (joinLines (endsWithNewline text) (before ++ after), Just removed)
+removeListingEntry :: String -> String -> String -> IO (String, Maybe String)
+removeListingEntry indexDir target text = go [] (textLines text)
+  where
+    go _ [] = pure (text, Nothing)
+    go before (line : after) = do
+        matches <- matchesTarget indexDir target line
+        if matches
+            then pure (joinLines (endsWithNewline text) (reverse before ++ after), Just line)
+            else go (line : before) after
 
 {- | Adds a listing entry to a destination @index.md@, repointing the entry's link
 to reach @target@ from the destination directory @destDir@. A section entry (target
@@ -37,26 +42,27 @@ to reach @target@ from the destination directory @destDir@. A section entry (tar
 block is synthesised at end of file when absent); a flat page entry goes as a bullet
 after the existing bullet run (or appended when none exists).
 -}
-addListingEntry :: String -> String -> String -> String -> String
-addListingEntry destDir target entryLine text =
-    joinLines (endsWithNewline text) (insert (textLines text))
+addListingEntry :: String -> String -> String -> String -> IO String
+addListingEntry destDir target entryLine text = do
+    newEntry <- repointEntry destDir target entryLine
+    pure (joinLines (endsWithNewline text) (insert newEntry (textLines text)))
   where
-    newEntry = repointEntry destDir target entryLine
-    insert ls
+    insert newEntry ls
         | isSectionTarget target = insertCard newEntry ls
         | otherwise = insertBullet newEntry ls
 
 -- | Repoints an entry's first inline link to reach @target@ from @destDir@, preserving its anchor suffix.
-repointEntry :: String -> String -> String -> String
-repointEntry destDir target line =
+repointEntry :: String -> String -> String -> IO String
+repointEntry destDir target line = do
     -- The line is the byte-per-char form (from BS.unpack of the index.md bytes), so
     -- BS.pack/BS.unpack round-trips it losslessly while pageLinks/rewriteLinks work on bytes.
     let packed = BS.pack line
-     in case DocumentLinks.pageLinks packed of
-            [] -> line
-            (l : _) ->
-                let (_, suffix) = DocumentLinks.splitTargetSuffix (DocumentLinks.linkTarget l)
-                 in BS.unpack (DocumentLinks.rewriteLinks packed [(DocumentLinks.linkStart l, DocumentLinks.linkEnd l, DocumentLinks.relativeBetween destDir target ++ suffix)])
+    links <- DocumentLinks.pageLinks packed
+    pure $ case links of
+        [] -> line
+        (l : _) ->
+            let (_, suffix) = DocumentLinks.splitTargetSuffix (DocumentLinks.linkTarget l)
+             in BS.unpack (DocumentLinks.rewriteLinks packed [(DocumentLinks.linkStart l, DocumentLinks.linkEnd l, DocumentLinks.relativeBetween destDir target ++ suffix)])
 
 {- | Inserts a card line into the first grid block, after the last existing card
 (so cards stay contiguous and a trailing blank line before @</div>@ is preserved),
@@ -112,9 +118,12 @@ isListItem :: String -> Bool
 isListItem line = "- " `List.isPrefixOf` dropSpaces line
 
 -- | Whether a line's inline link resolves (from @indexDir@) to @target@.
-matchesTarget :: String -> String -> String -> Bool
-matchesTarget indexDir target line =
-    isListItem line && any (\l -> DocumentLinks.resolveTarget indexDir (DocumentLinks.linkTarget l) == Just target) (DocumentLinks.pageLinks (BS.pack line))
+matchesTarget :: String -> String -> String -> IO Bool
+matchesTarget indexDir target line
+    | not (isListItem line) = pure False
+    | otherwise = do
+        links <- DocumentLinks.pageLinks (BS.pack line)
+        pure (any (\l -> DocumentLinks.resolveTarget indexDir (DocumentLinks.linkTarget l) == Just target) links)
 
 -- | Drops leading spaces from a line (the optional indent before a list item or closing tag).
 dropSpaces :: String -> String

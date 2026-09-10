@@ -1,13 +1,13 @@
 ---
 id: ADR-0086
 name: Pure FFI byte scanning via unsafePerformIO over a private copy
-status: Accepted
+status: Superseded
 owners:
     - Alistair Bayley
 created: 2026-09-10
 updated: 2026-09-10
 supersedes: []
-superseded_by: null
+superseded_by: ADR-0087
 related_rfcs: [RFC-0029, RFC-0039]
 ---
 

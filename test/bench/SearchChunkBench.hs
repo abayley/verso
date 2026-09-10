@@ -10,10 +10,11 @@ import qualified Concordance.Utf8 as Utf8
 import qualified Concordance.WordPiece as WordPiece
 import Data.ByteString.Char8 (ByteString)
 import qualified Data.ByteString.Char8 as BS
-import Data.List (foldl')
+import Control.Monad (foldM)
 import System.CPUTime (getCPUTime)
 import qualified System.Directory as Directory
 import qualified System.RTS as RTS
+import qualified Verso.Frontmatter as Frontmatter
 import qualified Verso.SearchChunks as SearchChunks
 
 -- | Runs per measured phase.
@@ -31,7 +32,7 @@ chunkCap = 2000
 main :: IO ()
 main = do
     let body = pageBody
-        chunks = SearchChunks.chunkPage chunkCap "Bench Page" body
+    chunks <- SearchChunks.chunkPage chunkCap "Bench Page" body
     vocabPath <- firstExisting vocabCandidates
     vocab <- WordPiece.mkVocab <$> BS.readFile vocabPath
     putStrLn "search-chunk bench: cells + time per phase for a publish-sized page"
@@ -45,9 +46,9 @@ main = do
             ++ " reps/phase"
         )
     putStrLn "phase         | cells/run   | MB/run   | ms/run"
-    bench "title-slice" (length . Utf8.decodeUtf8 . BS.unpack . SearchChunks.frontmatterSlice) body
-    bench "chunkPage" (length . SearchChunks.chunkPage chunkCap "Bench Page") body
-    bench "encode-all" (encodeAll vocab . SearchChunks.chunkPage chunkCap "Bench Page") body
+    bench "title-slice" (fmap (length . Utf8.decodeUtf8 . BS.unpack) . Frontmatter.slice) body
+    bench "chunkPage" (fmap length . SearchChunks.chunkPage chunkCap "Bench Page") body
+    bench "encode-all" (fmap (encodeAll vocab) . SearchChunks.chunkPage chunkCap "Bench Page") body
   where
     encodeAll vocab pageChunks =
         sum
@@ -72,11 +73,11 @@ vocabCandidates =
     ]
 
 -- | Measures cells allocated and CPU time across `reps` runs, forcing each result.
-bench :: String -> (ByteString -> Int) -> ByteString -> IO ()
+bench :: String -> (ByteString -> IO Int) -> ByteString -> IO ()
 bench name force body = do
     statsBefore <- RTS.getStats
     t0 <- getCPUTime
-    let total = foldl' (\acc i -> acc + force (vary i)) 0 [1 .. reps]
+    total <- foldM (\acc i -> fmap (acc +) (force (vary i))) 0 [1 .. reps]
     total `seq` do
         t1 <- getCPUTime
         statsAfter <- RTS.getStats

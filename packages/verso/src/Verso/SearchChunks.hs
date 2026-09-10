@@ -23,11 +23,11 @@ module Verso.SearchChunks (
 
 import qualified Concordance.Utf8 as Utf8
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Unsafe as BSU
 import qualified Data.List as List
 import qualified Foreign.C.String as CStr
 import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Ptr as Ptr
-import qualified System.IO.Unsafe as Unsafe
 
 foreign import ccall "string.h memchr" c_memchr :: CStr.CString -> CTypes.CInt -> CTypes.CSize -> IO (Ptr.Ptr ())
 
@@ -48,13 +48,15 @@ type Range = (Int, Int)
 {- | Chunks a page: context line (title plus ancestor headings), heading
 sections, size-capped (in bytes) at paragraph boundaries.
 -}
-chunkPage :: Int -> String -> BS.ByteString -> [Chunk]
-chunkPage cap title content =
-    [ Chunk anchor seqNo text
-    | (seqNo, (anchor, text)) <- zip [0 ..] (concatMap capPieces usable)
-    ]
+chunkPage :: Int -> String -> BS.ByteString -> IO [Chunk]
+chunkPage cap title content = do
+    ranges <- lineRanges content
+    let usable = [s | s@(_, _, paras) <- sectionsOf title content (dropFrontmatter content ranges), not (null paras)]
+    pure
+        [ Chunk anchor seqNo text
+        | (seqNo, (anchor, text)) <- zip [0 ..] (concatMap capPieces usable)
+        ]
   where
-    usable = [s | s@(_, _, paras) <- sectionsOf title content (dropFrontmatter content (lineRanges content)), not (null paras)]
     capPieces (anchor, context, paras) =
         case splitAtParagraphs cap content paras of
             [] -> []
@@ -139,9 +141,9 @@ dropFrontmatter _ allLines = allLines
 semantics (no empty final line after a trailing newline). The line ends come
 from libc @memchr@ so the interpreter never walks the bytes between them.
 -}
-lineRanges :: BS.ByteString -> [Range]
-lineRanges content = Unsafe.unsafePerformIO $
-    BS.useAsCStringLen content $ \(basePtr, len) -> do
+lineRanges :: BS.ByteString -> IO [Range]
+lineRanges content =
+    BSU.unsafeUseAsCStringLen content $ \(basePtr, len) -> do
         let findNewline i
                 | i >= len = pure Nothing
                 | otherwise = do

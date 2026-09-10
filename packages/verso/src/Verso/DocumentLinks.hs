@@ -46,7 +46,9 @@ module Verso.DocumentLinks (
     dirOfPath,
 ) where
 
+import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.Unsafe as BSU
 import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
@@ -54,7 +56,6 @@ import qualified Foreign.C.String as CStr
 import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Ptr as Ptr
 import qualified MicroHttp.Iteratee as Iteratee
-import qualified System.IO.Unsafe as Unsafe
 
 foreign import ccall "string.h memchr" c_memchr :: CStr.CString -> CTypes.CInt -> CTypes.CSize -> IO (Ptr.Ptr ())
 
@@ -76,9 +77,10 @@ blocks (``` and @~~~@). A title (@](path "title")@) is excluded from the target;
 the target token is the path plus any @#anchor@/@?query@.
 
 The single-chunk case of the streaming scan: 'scanChunks' over the whole body, so
-a body scanned in pieces yields exactly these links.
+a body scanned in pieces yields exactly these links. In 'IO' because the scan is a
+foreign call (ADR-0087).
 -}
-pageLinks :: BS.ByteString -> [Link]
+pageLinks :: BS.ByteString -> IO [Link]
 pageLinks text = scanChunks [text]
 
 {- | The state carried between chunks of a streaming scan (RFC-0039): whether
@@ -108,8 +110,8 @@ memory is one chunk plus a bounded carry, never a whole document; a link or
 fence marker split by such a break is not matched, which only a line longer
 than the cap can cause.
 -}
-scanStep :: ScanState -> BS.ByteString -> (ScanState, [Link])
-scanStep st chunk = let scanned = scanChunk st chunk in (scannedState scanned, scannedLinks scanned)
+scanStep :: ScanState -> BS.ByteString -> IO (ScanState, [Link])
+scanStep st chunk = fmap (\scanned -> (scannedState scanned, scannedLinks scanned)) (scanChunk st chunk)
 
 {- | One step of a scan in full: the state to carry on with, and the bytes the step
 settled (the complete lines, an O(1) view whose first byte sits at 'scannedBase' in
@@ -124,32 +126,37 @@ data Scanned = Scanned
     }
 
 -- | 'scanStep' returning the settled bytes as well.
-scanChunk :: ScanState -> BS.ByteString -> Scanned
-scanChunk st chunk =
+scanChunk :: ScanState -> BS.ByteString -> IO Scanned
+scanChunk st chunk = do
     let buffer = if BS.null (scanCarry st) then chunk else BS.append (scanCarry st) chunk
-        (inFence, tailStart, links) = scanLines (scanInFence st) (scanBase st) False buffer
-        carry = if tailStart >= BS.length buffer then BS.empty else BS.copy (BS.drop tailStart buffer)
-     in Scanned (ScanState inFence carry (scanBase st + tailStart)) (scanBase st) (BS.take tailStart buffer) links
+    (inFence, tailStart, links) <- scanLines (scanInFence st) (scanBase st) False buffer
+    let carry = if tailStart >= BS.length buffer then BS.empty else BS.copy (BS.drop tailStart buffer)
+    pure (Scanned (ScanState inFence carry (scanBase st + tailStart)) (scanBase st) (BS.take tailStart buffer) links)
 
 -- | Ends a scan: the links in the carried final line (a body need not end in a newline).
-scanFinish :: ScanState -> [Link]
-scanFinish = scannedLinks . scanFinishAll
+scanFinish :: ScanState -> IO [Link]
+scanFinish = fmap scannedLinks . scanFinishAll
 
 -- | 'scanFinish' returning the carried bytes it settled as well; the state is left empty.
-scanFinishAll :: ScanState -> Scanned
+scanFinishAll :: ScanState -> IO Scanned
 scanFinishAll st
-    | BS.null carry = Scanned st (scanBase st) BS.empty []
-    | otherwise =
-        let (inFence, _, links) = scanLines (scanInFence st) (scanBase st) True carry
-         in Scanned (ScanState inFence BS.empty (scanBase st + BS.length carry)) (scanBase st) carry links
+    | BS.null carry = pure (Scanned st (scanBase st) BS.empty [])
+    | otherwise = do
+        (inFence, _, links) <- scanLines (scanInFence st) (scanBase st) True carry
+        pure (Scanned (ScanState inFence BS.empty (scanBase st + BS.length carry)) (scanBase st) carry links)
   where
     carry = scanCarry st
 
 -- | The links of a body presented as chunks: 'scanStep' over each, then 'scanFinish'.
-scanChunks :: [BS.ByteString] -> [Link]
-scanChunks chunks =
-    let (final, linksPerChunk) = List.mapAccumL scanStep initialScan chunks
-     in concat linksPerChunk ++ scanFinish final
+scanChunks :: [BS.ByteString] -> IO [Link]
+scanChunks chunks = do
+    (final, linksPerChunk) <- Monad.foldM step (initialScan, []) chunks
+    finalLinks <- scanFinish final
+    pure (concat (reverse linksPerChunk) ++ finalLinks)
+  where
+    step (st, acc) chunk = do
+        (st', links) <- scanStep st chunk
+        pure (st', links : acc)
 
 {- | The links of a body arriving as a stream: 'scanStep' per chunk, 'scanFinish' at
 end of stream. Holds the links found so far (O(links)) and the bounded carry, never
@@ -163,8 +170,12 @@ linksI = go initialScan []
     step st acc stream = case stream of
         Iteratee.Chunk bytes
             | BS.null bytes -> go st acc
-            | otherwise -> let (st', links) = scanStep st bytes in go st' (reverse links ++ acc)
-        Iteratee.EndOfStream Nothing -> Iteratee.Done (reverse acc ++ scanFinish st) stream
+            | otherwise -> Iteratee.IterM $ do
+                (st', links) <- scanStep st bytes
+                pure (go st' (reverse links ++ acc))
+        Iteratee.EndOfStream Nothing -> Iteratee.IterM $ do
+            links <- scanFinish st
+            pure (Iteratee.Done (reverse acc ++ links) stream)
         Iteratee.EndOfStream (Just err) -> Iteratee.IterFailed err stream
 
 -- | The longest incomplete line 'scanStep' carries before scanning it as a hard break.
@@ -184,13 +195,12 @@ cells (85MB -> 15MB per 73KB page) and ~4.5x faster than the previous per-byte
 'BS.index' walk (@make bench-link-parse@); no pure-Haskell arrangement came
 close, because any full scan pays ~50-100 interpreted cells per byte.
 
-Pure despite the FFI, per ADR-0086: 'BS.useAsCStringLen' marshals the buffer
-into a private copy, @memchr@ only reads that copy, and the result is a function
-of the bytes alone.
+In 'IO' because a foreign call is one (ADR-0087); @memchr@ only reads, so the
+buffer is passed in place without a copy.
 -}
-scanLines :: Bool -> Int -> Bool -> BS.ByteString -> (Bool, Int, [Link])
-scanLines inFence0 base final text = Unsafe.unsafePerformIO $
-    BS.useAsCStringLen text $ \(basePtr, len) -> do
+scanLines :: Bool -> Int -> Bool -> BS.ByteString -> IO (Bool, Int, [Link])
+scanLines inFence0 base final text =
+    BSU.unsafeUseAsCStringLen text $ \(basePtr, len) -> do
         let
             -- The first `wanted` byte at or after `i` but before `bound`, via memchr.
             findFrom i bound wanted

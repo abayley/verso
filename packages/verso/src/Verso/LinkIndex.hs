@@ -16,7 +16,7 @@ page set the scan ('referrersMatching'/'planMoveRewrites', which resolve every l
 including assets) would, while asset edges would add size for no whole-tree benefit.
 
 Each adjacency list is deduplicated. 'outbound' lists stay in body order (both a
-rebuild and an incremental update derive them from the same bytes via 'pageTargets',
+rebuild and an incremental update derive them from the same bytes via 'updatePageLinks',
 so they match); the inverted 'inbound' lists are kept sorted (they accumulate across
 pages in arbitrary order). Together this makes structural equality a true semantic
 equality: an incrementally-maintained index equals a full rebuild from the same final
@@ -25,7 +25,6 @@ bodies (the anti-drift invariant, asserted in the tests).
 module Verso.LinkIndex (
     LinkIndex,
     emptyIndex,
-    buildIndex,
     forceIndex,
     outboundEdges,
     indexFromEdges,
@@ -33,7 +32,6 @@ module Verso.LinkIndex (
     removeSubtree,
     outboundOf,
     inboundOf,
-    updatePage,
     updatePageLinks,
     removePage,
     relocatePage,
@@ -67,15 +65,8 @@ data LinkIndex = LinkIndex
 emptyIndex :: LinkIndex
 emptyIndex = LinkIndex Map.empty Map.empty
 
-{- | Builds the index from every page as @(treePath, body)@. Equivalent to applying
-'updatePage' to each page over the empty index, so an incremental sequence converges to
-this rebuild.
--}
-buildIndex :: [(PagePath, BS.ByteString)] -> LinkIndex
-buildIndex = List.foldl' (\ix (page, body) -> updatePage page body ix) emptyIndex
-
 {- | Forces the graph's adjacency lists so the deferred link parse (the comprehension in
-'pageTargets') runs /now/, where the index is built or maintained, rather than being left
+'targetsOf') runs /now/, where the index is built or maintained, rather than being left
 a thunk for whatever first reads the graph (RFC-0029).
 -}
 forceIndex :: LinkIndex -> LinkIndex
@@ -141,8 +132,6 @@ body order. External and non-@.md@ (asset) targets are excluded -- the graph is
 @.md@->@.md@ only (ADR-0066). Resolution reuses 'Verso.DocumentLinks', so it matches
 the scan.
 -}
-pageTargets :: PagePath -> BS.ByteString -> [TreePath]
-pageTargets page body = targetsOf page (DocumentLinks.pageLinks body)
 
 -- | The distinct in-tree @.md@ targets among a page's links, resolved against its directory.
 targetsOf :: PagePath -> [DocumentLinks.Link] -> [TreePath]
@@ -154,15 +143,10 @@ targetsOf page links =
         , ".md" `List.isSuffixOf` target
         ]
 
-{- | Records (or replaces) a page's outbound edges from its current body, patching the
-inverse: the page's previous edges are withdrawn from 'inbound' and its new edges added.
-Applied per page, this keeps the index equal to a rebuild from the same bodies.
--}
-updatePage :: PagePath -> BS.ByteString -> LinkIndex -> LinkIndex
-updatePage page body = updatePageLinks page (DocumentLinks.pageLinks body)
-
-{- | 'updatePage' from the page's links rather than its body, for a caller that has
-scanned the page as a stream (RFC-0039) and never held the body.
+{- | Records (or replaces) a page's outbound edges from its links, patching the
+inverse: the page's previous edges are withdrawn from 'inbound' and its new edges
+added. Applied per page, this keeps the index equal to a rebuild from the same links.
+The links come from a scan in 'IO' (ADR-0087); the graph update stays pure.
 -}
 updatePageLinks :: PagePath -> [DocumentLinks.Link] -> LinkIndex -> LinkIndex
 updatePageLinks page links ix =
@@ -185,8 +169,8 @@ from the (possibly rewritten) new body. Other pages whose links were rewritten t
 new path are maintained separately by re-deriving each (the move's write-set), so this
 handles only the moved page's own key.
 -}
-relocatePage :: PagePath -> PagePath -> BS.ByteString -> LinkIndex -> LinkIndex
-relocatePage oldPath newPath newBody = updatePage newPath newBody . removePage oldPath
+relocatePage :: PagePath -> PagePath -> [DocumentLinks.Link] -> LinkIndex -> LinkIndex
+relocatePage oldPath newPath newLinks = updatePageLinks newPath newLinks . removePage oldPath
 
 {- | The pages that link to a target the predicate accepts, excluding the given paths.
 Mirrors 'Verso.DocumentLinks.referrersMatching' as a page set: equality with a

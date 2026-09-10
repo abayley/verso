@@ -36,10 +36,14 @@ data Lead
       Frontmatter BS.ByteString
     deriving (Eq, Show)
 
--- | Classifies the leading frontmatter of some content.
-leadingBlock :: BS.ByteString -> Lead
-leadingBlock content =
-    case SearchChunks.lineRanges content of
+{- | Classifies the leading frontmatter of some content. In 'IO' because the line
+ends come from a foreign @memchr@ scan (ADR-0087); a pure split would unpack the
+whole content on MicroHs, which is the cost RFC-0039 removed.
+-}
+leadingBlock :: BS.ByteString -> IO Lead
+leadingBlock content = do
+    ranges <- SearchChunks.lineRanges content
+    pure $ case ranges of
         (first : rest)
             | SearchChunks.isDashesLine content first ->
                 case List.find (SearchChunks.isDashesLine content) rest of
@@ -50,10 +54,12 @@ leadingBlock content =
 {- | The closed frontmatter block of content already in hand, else empty. A
 caller with the whole document decodes just this slice for the title.
 -}
-slice :: BS.ByteString -> BS.ByteString
-slice content = case leadingBlock content of
-    Frontmatter block -> block
-    _ -> BS.empty
+slice :: BS.ByteString -> IO BS.ByteString
+slice content = do
+    lead <- leadingBlock content
+    pure $ case lead of
+        Frontmatter block -> block
+        _ -> BS.empty
 
 {- | Reads the leading frontmatter block as a stream consumer, completing as
 soon as the closing delimiter has been seen so the producer stops feeding
@@ -69,15 +75,16 @@ blockI = go 0 []
     step seen acc stream = case stream of
         Iteratee.Chunk bytes
             | BS.null bytes -> go seen acc
-            | otherwise ->
+            | otherwise -> Iteratee.IterM $ do
                 let acc' = bytes : acc
                     seen' = seen + BS.length bytes
-                 in case leadingBlock (BS.concat (reverse acc')) of
-                        Frontmatter block -> done block
-                        NoFrontmatter -> done BS.empty
-                        Unclosed
-                            | seen' > blockCapBytes -> done BS.empty
-                            | otherwise -> go seen' acc'
+                lead <- leadingBlock (BS.concat (reverse acc'))
+                pure $ case lead of
+                    Frontmatter block -> done block
+                    NoFrontmatter -> done BS.empty
+                    Unclosed
+                        | seen' > blockCapBytes -> done BS.empty
+                        | otherwise -> go seen' acc'
         Iteratee.EndOfStream Nothing -> done BS.empty
         Iteratee.EndOfStream (Just err) -> Iteratee.IterFailed err stream
     done block = Iteratee.Done block (Iteratee.Chunk BS.empty)

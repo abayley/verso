@@ -34,7 +34,8 @@ spec =
     describe "Verso.LinkRewrite" $ do
         it "given links straddling every chunk boundary, when a page is rewritten as a stream, then the result equals the whole-body rewrite" $ do
             fresh fixture
-            let edits = [(DocumentLinks.linkStart l, DocumentLinks.linkEnd l, r) | l <- DocumentLinks.pageLinks fixture, Just r <- [repointPages l]]
+            links <- DocumentLinks.pageLinks fixture
+            let edits = [(DocumentLinks.linkStart l, DocumentLinks.linkEnd l, r) | l <- links, Just r <- [repointPages l]]
                 expected = DocumentLinks.rewriteLinks fixture edits
             outcome <- LinkRewrite.rewriteFileLinksChunked 7 repointPages page
             outcome `shouldBe` Right True

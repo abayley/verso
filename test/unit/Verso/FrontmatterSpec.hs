@@ -21,26 +21,26 @@ spec =
 
         describe "leadingBlock" $ do
             it "given content opening with a body line, when classified, then there is no frontmatter" $
-                Frontmatter.leadingBlock (BS.pack "# Title\n---\n") `shouldBe` Frontmatter.NoFrontmatter
+                Frontmatter.leadingBlock (BS.pack "# Title\n---\n") `shouldReturn` Frontmatter.NoFrontmatter
             it "given an opening delimiter with no closing one yet, when classified, then the block is unclosed" $
-                Frontmatter.leadingBlock (BS.pack "---\nname: x\n") `shouldBe` Frontmatter.Unclosed
+                Frontmatter.leadingBlock (BS.pack "---\nname: x\n") `shouldReturn` Frontmatter.Unclosed
             it "given a closed block, when classified, then both delimiter lines are the block and the body is excluded" $
                 Frontmatter.leadingBlock (BS.pack "---\r\nname: x\r\n---\r\n# Body\n")
-                    `shouldBe` Frontmatter.Frontmatter (BS.pack "---\r\nname: x\r\n---\r")
+                    `shouldReturn` Frontmatter.Frontmatter (BS.pack "---\r\nname: x\r\n---\r")
             it "given a delimiter with trailing spaces, when classified, then it still delimits" $
                 Frontmatter.leadingBlock (BS.pack "---  \nname: x\n---\t\nbody")
-                    `shouldBe` Frontmatter.Frontmatter (BS.pack "---  \nname: x\n---\t")
+                    `shouldReturn` Frontmatter.Frontmatter (BS.pack "---  \nname: x\n---\t")
 
         describe "blockI" $ do
             it "given a first chunk holding the whole block, when fed, then it completes without asking for the body" $
-                feedAll [BS.pack "---\nname: x\n---\nbody starts"] `shouldBe` Just (Just (BS.pack "---\nname: x\n---"))
+                feedAll [BS.pack "---\nname: x\n---\nbody starts"] `shouldReturn` Just (Just (BS.pack "---\nname: x\n---"))
             it "given a block split across two chunks, when fed, then the second chunk completes it" $ do
-                feedAll [BS.pack "---\nname: x\n--"] `shouldBe` Nothing
-                feedAll [BS.pack "---\nname: x\n--", BS.pack "-\nbody"] `shouldBe` Just (Just (BS.pack "---\nname: x\n---"))
+                feedAll [BS.pack "---\nname: x\n--"] `shouldReturn` Nothing
+                feedAll [BS.pack "---\nname: x\n--", BS.pack "-\nbody"] `shouldReturn` Just (Just (BS.pack "---\nname: x\n---"))
             it "given a first chunk opening with the body, when fed, then it completes at once with no block" $
-                feedAll [BS.pack "# Heading\n---\n"] `shouldBe` Just (Just BS.empty)
+                feedAll [BS.pack "# Heading\n---\n"] `shouldReturn` Just (Just BS.empty)
             it "given an unclosed block past the size cap, when fed, then it gives up with no block" $
-                feedAll [BS.pack "---\n", BS.replicate (Frontmatter.blockCapBytes + 1) 'x'] `shouldBe` Just (Just BS.empty)
+                feedAll [BS.pack "---\n", BS.replicate (Frontmatter.blockCapBytes + 1) 'x'] `shouldReturn` Just (Just BS.empty)
             it "given end of stream inside an unclosed block, when fed, then there is no block" $
                 case Frontmatter.blockI of
                     Iteratee.NeedInput k ->
@@ -48,14 +48,14 @@ spec =
                             `shouldReturn` (Right BS.empty :: Either () BS.ByteString)
                     _ -> False `shouldBe` True
 
--- | Feeds chunks to 'blockI' in order; Just once it completes (with its result), Nothing if it still wants input.
-feedAll :: [BS.ByteString] -> Maybe (Maybe BS.ByteString)
+-- | Feeds chunks to 'blockI' in order, running its effect steps; Just once it completes (with its result), Nothing if it still wants input.
+feedAll :: [BS.ByteString] -> IO (Maybe (Maybe BS.ByteString))
 feedAll = go Frontmatter.blockI
   where
     go it chunks = case it of
-        Iteratee.Done block _ -> Just (Just block)
-        Iteratee.IterFailed () _ -> Just Nothing
-        Iteratee.IterM _ -> Nothing
+        Iteratee.Done block _ -> pure (Just (Just block))
+        Iteratee.IterFailed () _ -> pure (Just Nothing)
+        Iteratee.IterM m -> m >>= \it' -> go it' chunks
         Iteratee.NeedInput k -> case chunks of
-            [] -> Nothing
+            [] -> pure Nothing
             (c : rest) -> go (k (Iteratee.Chunk c)) rest

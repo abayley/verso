@@ -1010,7 +1010,8 @@ treeEdit versioning root path request =
             breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path content)
             spine <- Iteratee.liftIO (treeSpineFor root path)
             escaped <- Iteratee.liftIO (Html.escapeBytes content)
-            pure (documentResponse (View.editorPage path (editorMode request) (documentPageTitle isNew path content) escaped (versioningOn versioning) True (Maybe.isJust mDraft) attachments breadcrumbs spine))
+            title <- Iteratee.liftIO (documentPageTitle isNew path content)
+            pure (documentResponse (View.editorPage path (editorMode request) title escaped (versioningOn versioning) True (Maybe.isJust mDraft) attachments breadcrumbs spine))
 
 {- | Renders the read-only view for a tree document (the default @GET@, RFC-0020):
 the editor shell with editing disabled. A missing page is a @404@ -- reading never
@@ -1035,7 +1036,8 @@ treeRead versioning root path request =
                             then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
                             else pure False
                     escaped <- Iteratee.liftIO (Html.escapeBytes content)
-                    pure (documentResponse (View.editorPage path (editorMode request) (documentPageTitle False path content) escaped (versioningOn versioning) False hasDraft attachments breadcrumbs spine))
+                    title <- Iteratee.liftIO (documentPageTitle False path content)
+                    pure (documentResponse (View.editorPage path (editorMode request) title escaped (versioningOn versioning) False hasDraft attachments breadcrumbs spine))
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
 treeServeFile :: FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
@@ -1196,6 +1198,8 @@ current page's own title as the final unlinked crumb. A folder's label falls bac
 breadcrumbsFor :: FilePath -> String -> BS.ByteString -> IO [View.Crumb]
 breadcrumbsFor root path content = do
     links <- mapM folderCrumb (linkedFolderPaths path)
+    block <- Frontmatter.slice content
+    let currentLabel = Maybe.fromMaybe (humaniseSegment (lastSegment path)) (Frontmatter.title (BS.unpack block))
     pure (links ++ [View.Crumb currentLabel Nothing])
   where
     folderCrumb fp = do
@@ -1203,7 +1207,6 @@ breadcrumbsFor root path content = do
         pure (View.Crumb (Maybe.fromMaybe (folderFallback fp) name) (Just (folderHref fp)))
     folderFallback "" = "Cello"
     folderFallback fp = humaniseSegment (lastSegment fp)
-    currentLabel = Maybe.fromMaybe (humaniseSegment (lastSegment path)) (Frontmatter.title (BS.unpack (Frontmatter.slice content)))
 
 -- | The last @/@-separated segment of a path (the path itself when it has none).
 lastSegment :: String -> String
@@ -1704,7 +1707,7 @@ treePageTitle root path =
         Nothing -> pure (humaniseSegment (lastSegment path))
         Just fsPath -> do
             block <- Frontmatter.readBlock fsPath
-            pure (documentPageTitle False path block)
+            documentPageTitle False path block
 
 {- | The diff view (RFC-0032): @GET /documents/\<path\>?diff&from=\<rev\>&to=\<rev\>@
 renders a side-by-side diff of the page between the two revisions. With the
@@ -1739,7 +1742,8 @@ treeReadAt root path request = do
             breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path content)
             spine <- Iteratee.liftIO (treeSpineFor root path)
             escaped <- Iteratee.liftIO (Html.escapeBytes content)
-            pure (documentResponse (View.editorPage path (editorMode request) (documentPageTitle False path content) escaped False False False attachments breadcrumbs spine))
+            title <- Iteratee.liftIO (documentPageTitle False path content)
+            pure (documentResponse (View.editorPage path (editorMode request) title escaped False False False attachments breadcrumbs spine))
 
 {- | The rollback action (RFC-0032): @POST /documents/\<path\>?rollback@ with a
 @rev@ field restores the page's content at that revision, writes it through the
@@ -2003,13 +2007,16 @@ splitOn separator text =
 {- | The browser-tab title for a document page: the page's frontmatter
 @name@, falling back to the humanised filename for an untitled page.
 -}
-documentPageTitle :: Bool -> String -> BS.ByteString -> String
+documentPageTitle :: Bool -> String -> BS.ByteString -> IO String
 documentPageTitle isNew docId content
-    | isNew = "New page"
-    | otherwise =
-        Maybe.fromMaybe
-            (humaniseSegment (lastSegment docId))
-            (Frontmatter.title (Utf8.decodeUtf8 (BS.unpack (Frontmatter.slice content))))
+    | isNew = pure "New page"
+    | otherwise = do
+        block <- Frontmatter.slice content
+        pure
+            ( Maybe.fromMaybe
+                (humaniseSegment (lastSegment docId))
+                (Frontmatter.title (Utf8.decodeUtf8 (BS.unpack block)))
+            )
 
 -- | The seed Markdown for a new or missing document.
 seededMarkdown :: String

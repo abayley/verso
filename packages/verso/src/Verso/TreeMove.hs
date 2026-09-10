@@ -183,13 +183,15 @@ relocateEntry :: FilePath -> String -> String -> String -> String -> String -> I
 relocateEntry root srcParentRel destParentRel oldTarget newTarget synth = do
     srcText <- readRel root srcIndexRel
     removed <- case srcText of
-        Just t ->
-            let (t', r) = DocumentListing.removeListingEntry srcParentRel oldTarget (BS.unpack t)
-             in writeRel root srcIndexRel (BS.pack t') >> pure r
+        Just t -> do
+            (t', r) <- DocumentListing.removeListingEntry srcParentRel oldTarget (BS.unpack t)
+            writeRel root srcIndexRel (BS.pack t')
+            pure r
         Nothing -> pure Nothing
     let entry = Maybe.fromMaybe synth removed
     destBase <- fmap (maybe "" BS.unpack) (readRel root destIndexRel)
-    writeRel root destIndexRel (BS.pack (DocumentListing.addListingEntry destParentRel newTarget entry destBase))
+    added <- DocumentListing.addListingEntry destParentRel newTarget entry destBase
+    writeRel root destIndexRel (BS.pack added)
   where
     srcIndexRel = indexRel srcParentRel
     destIndexRel = indexRel destParentRel
@@ -553,9 +555,10 @@ removeParentListing :: FilePath -> String -> String -> String -> IO (Maybe Strin
 removeParentListing root parentIndexRel parent target = do
     txt <- readRel root parentIndexRel
     case txt of
-        Just t ->
-            let (t', removed) = DocumentListing.removeListingEntry parent target (BS.unpack t)
-             in writeRel root parentIndexRel (BS.pack t') >> pure removed
+        Just t -> do
+            (t', removed) <- DocumentListing.removeListingEntry parent target (BS.unpack t)
+            writeRel root parentIndexRel (BS.pack t')
+            pure removed
         Nothing -> pure Nothing
 
 -- | Re-adds a restored item's listing entry to its parent index.md (the preserved line, or nothing when absent).
@@ -565,7 +568,8 @@ reAddListing root manifest =
         Nothing -> pure ()
         Just entry -> do
             base <- fmap (maybe "" BS.unpack) (readRel root parentIndexRel)
-            writeRel root parentIndexRel (BS.pack (DocumentListing.addListingEntry parent target entry base))
+            added <- DocumentListing.addListingEntry parent target entry base
+            writeRel root parentIndexRel (BS.pack added)
   where
     parent = parentRel (Trash.manPath manifest)
     parentIndexRel = indexRel parent
@@ -746,7 +750,9 @@ enumerateRelevant root hint subtreePrefix = walk ""
                         then do
                             bytes <- BS.readFile childFs
                             if BS.isInfixOf hint bytes || inSubtree childRel
-                                then let links = DocumentLinks.pageLinks bytes in length links `seq` pure [(childRel, links)]
+                                then do
+                                    links <- DocumentLinks.pageLinks bytes
+                                    length links `seq` pure [(childRel, links)]
                                 else pure []
                         else pure []
     isDot ('.' : _) = True

@@ -42,7 +42,7 @@ spec =
     describe "Verso.DocumentListing" $ do
         describe "removeListingEntry" $ do
             it "given a card linking to the target, when the entry is removed, then the card goes and is returned" $ do
-                let (newText, removed) = DocumentListing.removeListingEntry "" "beta/index.md" cardIndex
+                (newText, removed) <- DocumentListing.removeListingEntry "" "beta/index.md" cardIndex
                 removed
                     `shouldBe` Just "- :material-b: [**Beta**](./beta/index.md) <span class=\"oracle-card-description\">Two</span>"
                 lines newText
@@ -56,17 +56,17 @@ spec =
                                ]
 
             it "given a flat-page bullet linking to the target, when the entry is removed, then the bullet goes" $ do
-                let (newText, removed) = DocumentListing.removeListingEntry "docs" "docs/second.md" bulletIndex
+                (newText, removed) <- DocumentListing.removeListingEntry "docs" "docs/second.md" bulletIndex
                 removed `shouldBe` Just "- [Second](./second.md)"
                 lines newText `shouldBe` ["# Folder", "", "- [First](./first.md)"]
 
             it "given no entry matching the target, when a removal is attempted, then the text is unchanged and nothing is returned" $ do
-                DocumentListing.removeListingEntry "" "missing/index.md" cardIndex `shouldBe` (cardIndex, Nothing)
+                DocumentListing.removeListingEntry "" "missing/index.md" cardIndex `shouldReturn` (cardIndex, Nothing)
 
         describe "addListingEntry" $ do
             it "given a grid block, when a card is added, then it is inserted before the closing div with its link repointed" $ do
                 let entry = "- :material-b: [**Beta**](./beta/index.md) <span class=\"oracle-card-description\">Two</span>"
-                    result = DocumentListing.addListingEntry "dest" "dest/beta/index.md" entry destCardIndex
+                result <- DocumentListing.addListingEntry "dest" "dest/beta/index.md" entry destCardIndex
                 lines result
                     `shouldBe` [ "# Section"
                                , ""
@@ -80,13 +80,13 @@ spec =
 
             it "given a destination slug differing from the source, when a card is added, then its link is repointed" $ do
                 let entry = "- :material-b: [**Beta**](./beta/index.md) <span class=\"oracle-card-description\">Two</span>"
-                    result = DocumentListing.addListingEntry "dest" "dest/renamed/index.md" entry destCardIndex
-                    expected = "- :material-b: [**Beta**](./renamed/index.md) <span class=\"oracle-card-description\">Two</span>"
+                result <- DocumentListing.addListingEntry "dest" "dest/renamed/index.md" entry destCardIndex
+                let expected = "- :material-b: [**Beta**](./renamed/index.md) <span class=\"oracle-card-description\">Two</span>"
                 (expected `elem` lines result) `shouldBe` True
 
             it "given an existing bullet run, when a flat-page bullet is added, then it is appended to the run" $ do
                 let entry = "- [Third](./third.md)"
-                    result = DocumentListing.addListingEntry "docs" "docs/third.md" entry bulletIndex
+                result <- DocumentListing.addListingEntry "docs" "docs/third.md" entry bulletIndex
                 lines result
                     `shouldBe` [ "# Folder"
                                , ""

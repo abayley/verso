@@ -10,7 +10,7 @@ module Main (main) where
 import Data.ByteString.Char8 (ByteString)
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
-import Data.List (foldl')
+import Control.Monad (foldM)
 import qualified Foreign.C.String as CStr
 import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Ptr as Ptr
@@ -29,27 +29,28 @@ reps = 5
 main :: IO ()
 main = do
     let body = pageBody
+    linkCount <- fmap length (DocumentLinks.pageLinks body)
     putStrLn "link-parse bench: cells + time per parse of a publish-sized page"
     putStrLn
         ( "input = "
             ++ show (BS.length body)
             ++ " bytes, "
-            ++ show (length (DocumentLinks.pageLinks body))
+            ++ show linkCount
             ++ " links found, "
             ++ show reps
             ++ " reps/strategy"
         )
     putStrLn "strategy      | cells/parse | MB/parse | ms/parse"
-    bench "pageLinks" (length . DocumentLinks.pageLinks) body
-    bench "scan-4k" (length . DocumentLinks.scanChunks . chunksOf 4096) body
-    bench "scan-64k" (length . DocumentLinks.scanChunks . chunksOf 65536) body
-    bench "scan-128k" (length . DocumentLinks.scanChunks . chunksOf 131072) body
-    bench "updatePage" (weigh . applyUpdate) body
-    bench "lines-only" (length . BS.split '\n') body
-    bench "unpack-walk" (length . unpackWalkLinks) body
-    bench "memchr-scan" (length . memchrScanLinks) body
+    bench "pageLinks" (fmap length . DocumentLinks.pageLinks) body
+    bench "scan-4k" (fmap length . DocumentLinks.scanChunks . chunksOf 4096) body
+    bench "scan-64k" (fmap length . DocumentLinks.scanChunks . chunksOf 65536) body
+    bench "scan-128k" (fmap length . DocumentLinks.scanChunks . chunksOf 131072) body
+    bench "updatePage" (fmap weigh . applyUpdate) body
+    bench "lines-only" (pure . length . BS.split '\n') body
+    bench "unpack-walk" (pure . length . unpackWalkLinks) body
+    bench "memchr-scan" (pure . length . memchrScanLinks) body
   where
-    applyUpdate body = LinkIndex.updatePage "sec/page.md" body LinkIndex.emptyIndex
+    applyUpdate body = fmap (\links -> LinkIndex.updatePageLinks "sec/page.md" links LinkIndex.emptyIndex) (DocumentLinks.pageLinks body)
     weigh ix = length (LinkIndex.outboundOf "sec/page.md" ix)
 
 -- candidate: unpack once, walk the String ------------------------------------
@@ -129,11 +130,11 @@ fenceTildes :: ByteString
 fenceTildes = BS.pack "~~~"
 
 -- | Measures cells allocated and CPU time across `reps` runs of a parse, forcing each result.
-bench :: String -> (ByteString -> Int) -> ByteString -> IO ()
+bench :: String -> (ByteString -> IO Int) -> ByteString -> IO ()
 bench name force body = do
     statsBefore <- RTS.getStats
     t0 <- getCPUTime
-    let total = foldl' (\acc i -> acc + force (vary i)) 0 [1 .. reps]
+    total <- foldM (\acc i -> fmap (acc +) (force (vary i))) 0 [1 .. reps]
     total `seq` do
         t1 <- getCPUTime
         statsAfter <- RTS.getStats

@@ -67,11 +67,12 @@ rewriteLinksI decide write = go DocumentLinks.initialScan False
     step st changed stream = case stream of
         Iteratee.Chunk bytes
             | BS.null bytes -> go st changed
-            | otherwise ->
-                let scanned = DocumentLinks.scanChunk st bytes
-                 in emit scanned changed (go (DocumentLinks.scannedState scanned))
-        Iteratee.EndOfStream Nothing ->
-            emit (DocumentLinks.scanFinishAll st) changed (`Iteratee.Done` stream)
+            | otherwise -> Iteratee.IterM $ do
+                scanned <- DocumentLinks.scanChunk st bytes
+                pure (emit scanned changed (go (DocumentLinks.scannedState scanned)))
+        Iteratee.EndOfStream Nothing -> Iteratee.IterM $ do
+            scanned <- DocumentLinks.scanFinishAll st
+            pure (emit scanned changed (`Iteratee.Done` stream))
         Iteratee.EndOfStream (Just err) -> Iteratee.IterFailed err stream
     emit scanned changed continue =
         let base = DocumentLinks.scannedBase scanned

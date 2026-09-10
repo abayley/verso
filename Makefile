@@ -156,12 +156,11 @@ lint:
 	# -j0 uses every core: 11.8s single-threaded against 2.7s here, measured on 12 cores.
 	# $(BENCH) is excluded to match the format gate: benchmarks are measurement code.
 	hlint -j0 $(SRC) $(MICROHTTP_SRC) $(UNIT_TEST) $(INTEGRATION_TEST) $(GHC_COMPAT_TEST)
-	# unsafePerformIO gate (ADR-0086): only the read-only memchr scanners may import
-	# System.IO.Unsafe. A new site must extend DocumentLinks.scanLines or be honest IO.
-	@offenders=$$(grep -rl "System.IO.Unsafe" $(SRC) $(MICROHTTP_SRC) \
-	    | grep -v -x -e $(SRC)/Verso/DocumentLinks.hs -e $(SRC)/Verso/SearchChunks.hs); \
+	# unsafePerformIO gate (ADR-0087): production code does not import System.IO.Unsafe;
+	# a foreign call is IO. Benchmarks under $(BENCH) are measurement code and exempt.
+	@offenders=$$(grep -rl "System.IO.Unsafe" $(SRC) $(MICROHTTP_SRC)); \
 	if [ -n "$$offenders" ]; then \
-	    echo "unsafePerformIO outside the ADR-0086 allowlist:"; echo "$$offenders"; exit 1; \
+	    echo "System.IO.Unsafe imported in production code (ADR-0087):"; echo "$$offenders"; exit 1; \
 	fi
 
 $(BUILD)/verso: $(SRC_HS) $(MICROHTTP_PKG) $(LINK_OBJS)

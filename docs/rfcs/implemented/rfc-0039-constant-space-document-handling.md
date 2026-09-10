@@ -187,10 +187,11 @@ concurrency.
 - **A pure C escaper under `unsafePerformIO`.** The C escaper writes an output buffer, which is outside
   the read-only shape ADR-0086 sanctions. Rather than widen the ADR, the escaper is `IO` and the view takes
   the opaque `Escaped` result; the handlers were already in `IO`.
-- **Make the scanner `IO` and drop `unsafePerformIO`.** Rejected: the file-level driver is `IO` anyway, but
-  the scanner has pure callers on small inputs, so this either makes them `IO` or forces a second pure
-  scanner -- two implementations to keep byte-identical. ADR-0086 records the sanctioned pure-FFI idiom that
-  lets one core serve both.
+- **Make the scanner `IO` and drop `unsafePerformIO`.** Rejected at the time: the scanner had pure callers
+  on small inputs, so this either made them `IO` or forced a second pure scanner. ADR-0086 recorded the
+  pure-FFI idiom instead. Reversed after the rollout by ADR-0087: once the index build, the move rewrite and
+  the planners took links rather than bodies, the remaining pure callers were trivial to make `IO`, and the
+  scanners now are. The core is still one implementation.
 - **Keep two resident chunks and scan across them.** Rejected in favour of a capped tail-carry: two separate
   ByteStrings cannot be `memchr`'d as one without concatenating, which is just a sliding window, and the
   tail-carry holds one chunk plus a bounded tail rather than two chunks.

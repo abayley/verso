@@ -12,6 +12,7 @@ related_rfcs: [RFC-0014, RFC-0029]
 related_refs:
     - docs/rfcs/refs/rfc-0039-memory-profile-20260910.md
     - docs/rfcs/refs/rfc-0039-escaper-bench-20260910.md
+    - docs/rfcs/refs/rfc-0039-heap-sizing-20260910.md
 ---
 
 # RFC-0039: Constant-space document handling and a fail-fast heap
@@ -268,12 +269,15 @@ Riskiest-value-first, each a small commit with `make check` green, the heap left
    rotating appender seeds its size from `stat`; the operation log is streamed and parsed a line at a time,
    with the partial last line carried between chunks.
 8. Lower the `VERSO_HEAP_CELLS` default to the tight fail-fast value, after exercising the largest documents
-   and realistic concurrency on the real corpus.
+   and realistic concurrency on the real corpus. **Done (2026-09-10).** 8,000,000 cells (122MB), from
+   16,000,000: the real corpus builds its index and serves twelve concurrent large-document edits at 4M, so
+   8M is twice the measured floor; the cold build costs 9.7s against 7.7s. Search on is unaffected. The
+   measurements are in `docs/rfcs/refs/rfc-0039-heap-sizing-20260910.md`.
 
 ## Open Questions
 
-- The exact tight default. The measured floor is single-digit-million cells for the corpora to hand, but the
-  final number should come from the largest real documents plus a concurrency factor, decided in step 5.
+- ~~The exact tight default.~~ 8,000,000 cells, twice the measured floor of 4,000,000 (see the heap sizing
+  ref).
 - ~~Whether a `cbits` escaper is needed.~~ Decided by the step-2 benchmark: it is (see the escaper
   benchmark ref).
 - ~~The tail cap size.~~ 64KB (`DocumentLinks.tailCapBytes`): far beyond any `](target)` plus fence

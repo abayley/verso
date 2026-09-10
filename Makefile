@@ -3,12 +3,16 @@ MHS_PACKAGE_DB = $(HOME)/.mcabal/mhs-0.16.5.0
 MHSFLAGS = -a$(MHS_PACKAGE_DB)
 # The MicroHs heap is a fixed, non-growable arena of this many 16-byte cells,
 # allocated once at process start (its default, 50,000,000 cells, is ~763MB and
-# becomes resident under the link-index build's allocation churn). run-verso
-# passes it as +RTS -H<cells>; 16M cells (~256MB) holds the real corpus with
-# headroom. Raise it if the server ever dies with "heap exhausted" under load;
-# lower it to trade a smaller footprint for more frequent GC. Override on the
-# command line: `make run-verso VERSO_HEAP_CELLS=24000000`.
-VERSO_HEAP_CELLS ?= 16000000
+# becomes resident under allocation churn). run-verso passes it as
+# +RTS -H<cells>. 8M cells (~122MB) is deliberately tight (RFC-0039): documents
+# are handled in constant space, so the real corpus builds its link index and
+# serves concurrent large-document edits at half this, and a code path that
+# again reads a whole large file into the heap should die with "heap exhausted"
+# rather than quietly inflate memory. Raise it for unusually large documents or
+# high concurrency; lowering it trades startup time for footprint (the 3980-page
+# corpus builds in 9.7s at 8M, 18s at 4M). Override on the command line:
+# `make run-verso VERSO_HEAP_CELLS=16000000`.
+VERSO_HEAP_CELLS ?= 8000000
 GHC = ghc
 HPC = hpc
 BUILD = build

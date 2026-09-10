@@ -15,6 +15,14 @@ fenced code blocks are skipped.
 module Verso.DocumentLinks (
     Link (..),
     pageLinks,
+    ScanState,
+    initialScan,
+    scanStep,
+    scanFinish,
+    scanChunks,
+    carriedBytes,
+    tailCapBytes,
+    linksI,
     splitTargetSuffix,
     isExternalTarget,
     resolveTarget,
@@ -38,6 +46,7 @@ import qualified Data.Maybe as Maybe
 import qualified Foreign.C.String as CStr
 import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Ptr as Ptr
+import qualified MicroHttp.Iteratee as Iteratee
 import qualified System.IO.Unsafe as Unsafe
 
 foreign import ccall "string.h memchr" c_memchr :: CStr.CString -> CTypes.CInt -> CTypes.CSize -> IO (Ptr.Ptr ())
@@ -59,18 +68,97 @@ data Link = Link
 blocks (``` and @~~~@). A title (@](path "title")@) is excluded from the target;
 the target token is the path plus any @#anchor@/@?query@.
 
-The scan is driven by libc @memchr@ over one marshalled copy of the body:
+The single-chunk case of the streaming scan: 'scanChunks' over the whole body, so
+a body scanned in pieces yields exactly these links.
+-}
+pageLinks :: BS.ByteString -> [Link]
+pageLinks text = scanChunks [text]
+
+{- | The state carried between chunks of a streaming scan (RFC-0039): whether
+the scan is inside a fenced code block, the incomplete final line of the bytes
+seen so far (the carry), and the byte offset of the carry's first byte in the
+document, so link spans stay document-absolute across chunks.
+-}
+data ScanState = ScanState
+    { scanInFence :: Bool
+    , scanCarry :: BS.ByteString
+    , scanBase :: Int
+    }
+
+-- | The state before any bytes: outside a fence, nothing carried, at offset 0.
+initialScan :: ScanState
+initialScan = ScanState False BS.empty 0
+
+-- | The bytes a scan is carrying into the next chunk (bounded by 'tailCapBytes').
+carriedBytes :: ScanState -> Int
+carriedBytes = BS.length . scanCarry
+
+{- | Scans one more chunk: the links in every complete line of the carry plus
+the chunk, with the incomplete tail after the last newline carried forward (as a
+private copy, so the chunk itself can be released). A tail longer than
+'tailCapBytes' is scanned as a line at once -- a hard break -- so resident
+memory is one chunk plus a bounded carry, never a whole document; a link or
+fence marker split by such a break is not matched, which only a line longer
+than the cap can cause.
+-}
+scanStep :: ScanState -> BS.ByteString -> (ScanState, [Link])
+scanStep st chunk =
+    let buffer = if BS.null (scanCarry st) then chunk else BS.append (scanCarry st) chunk
+        (inFence, tailStart, links) = scanLines (scanInFence st) (scanBase st) False buffer
+        carry = if tailStart >= BS.length buffer then BS.empty else BS.copy (BS.drop tailStart buffer)
+     in (ScanState inFence carry (scanBase st + tailStart), links)
+
+-- | Ends a scan: the links in the carried final line (a body need not end in a newline).
+scanFinish :: ScanState -> [Link]
+scanFinish st
+    | BS.null (scanCarry st) = []
+    | otherwise = let (_, _, links) = scanLines (scanInFence st) (scanBase st) True (scanCarry st) in links
+
+-- | The links of a body presented as chunks: 'scanStep' over each, then 'scanFinish'.
+scanChunks :: [BS.ByteString] -> [Link]
+scanChunks chunks =
+    let (final, linksPerChunk) = List.mapAccumL scanStep initialScan chunks
+     in concat linksPerChunk ++ scanFinish final
+
+{- | The links of a body arriving as a stream: 'scanStep' per chunk, 'scanFinish' at
+end of stream. Holds the links found so far (O(links)) and the bounded carry, never
+the body, so a producer such as 'MicroHttp.Stream.fileEnumeratorChunked' scans a
+document in constant space.
+-}
+linksI :: Iteratee.Iter e [Link]
+linksI = go initialScan []
+  where
+    go st acc = Iteratee.NeedInput (step st acc)
+    step st acc stream = case stream of
+        Iteratee.Chunk bytes
+            | BS.null bytes -> go st acc
+            | otherwise -> let (st', links) = scanStep st bytes in go st' (reverse links ++ acc)
+        Iteratee.EndOfStream Nothing -> Iteratee.Done (reverse acc ++ scanFinish st) stream
+        Iteratee.EndOfStream (Just err) -> Iteratee.IterFailed err stream
+
+-- | The longest incomplete line 'scanStep' carries before scanning it as a hard break.
+tailCapBytes :: Int
+tailCapBytes = 65536
+
+{- | The scanner core: the links in a buffer's complete lines from a fence state,
+returning the fence state after them, the offset of the incomplete tail (the buffer
+length when there is none, or when @final@ or the tail cap made it a line too), and
+the links with @base@ added to their spans.
+
+The scan is driven by libc @memchr@ over one marshalled copy of the buffer:
 newline hits delimit lines (for the fence state), @]@ hits find the @](@
 candidates, and a bounded @)@ search closes each target -- so the interpreter
 touches only those positions, never every byte. On mhs this is ~5.6x fewer
 cells (85MB -> 15MB per 73KB page) and ~4.5x faster than the previous per-byte
 'BS.index' walk (@make bench-link-parse@); no pure-Haskell arrangement came
-close, because any full scan pays ~50-100 interpreted cells per byte. Pure
-despite the FFI: @memchr@ only reads the copied bytes, so the result depends
-on the argument alone.
+close, because any full scan pays ~50-100 interpreted cells per byte.
+
+Pure despite the FFI, per ADR-0086: 'BS.useAsCStringLen' marshals the buffer
+into a private copy, @memchr@ only reads that copy, and the result is a function
+of the bytes alone.
 -}
-pageLinks :: BS.ByteString -> [Link]
-pageLinks text = Unsafe.unsafePerformIO $
+scanLines :: Bool -> Int -> Bool -> BS.ByteString -> (Bool, Int, [Link])
+scanLines inFence0 base final text = Unsafe.unsafePerformIO $
     BS.useAsCStringLen text $ \(basePtr, len) -> do
         let
             -- The first `wanted` byte at or after `i` but before `bound`, via memchr.
@@ -80,16 +168,28 @@ pageLinks text = Unsafe.unsafePerformIO $
                     p <- c_memchr (Ptr.plusPtr basePtr i) (fromIntegral (Char.ord wanted)) (fromIntegral (bound - i))
                     pure (if p == Ptr.nullPtr then Nothing else Just (Ptr.minusPtr p basePtr))
 
-            -- One line per iteration: fence lines toggle, in-fence lines skip, others scan.
-            scanLines inFence lineStart = do
-                lineEnd <- Maybe.fromMaybe len <$> findFrom lineStart len '\n'
-                let continue fence rest = if lineEnd >= len then pure rest else fmap (rest ++) (scanLines fence (lineEnd + 1))
-                if fenceLineAt lineStart lineEnd
-                    then continue (not inFence) []
-                    else
-                        if inFence
-                            then continue inFence []
-                            else lineLinksAt lineStart lineEnd >>= continue inFence
+            -- One line per iteration, links accumulated in reverse; stops at an incomplete tail
+            -- unless the scan is final or the tail is past the cap.
+            scanFrom inFence lineStart acc = do
+                newline <- findFrom lineStart len '\n'
+                case newline of
+                    Just lineEnd -> do
+                        (inFence', acc') <- scanLine inFence lineStart lineEnd acc
+                        scanFrom inFence' (lineEnd + 1) acc'
+                    Nothing
+                        | lineStart >= len -> pure (inFence, len, reverse acc)
+                        | final || len - lineStart > tailCapBytes -> do
+                            (inFence', acc') <- scanLine inFence lineStart len acc
+                            pure (inFence', len, reverse acc')
+                        | otherwise -> pure (inFence, lineStart, reverse acc)
+
+            -- Fence lines toggle, in-fence lines skip, others are scanned for links.
+            scanLine inFence lineStart lineEnd acc
+                | fenceLineAt lineStart lineEnd = pure (not inFence, acc)
+                | inFence = pure (inFence, acc)
+                | otherwise = do
+                    links <- lineLinksAt lineStart lineEnd
+                    pure (inFence, reverse links ++ acc)
 
             -- The links between two candidate-scan positions on one (non-fence) line.
             lineLinksAt i lineEnd
@@ -109,7 +209,7 @@ pageLinks text = Unsafe.unsafePerformIO $
                                         let inner = BS.take (close - j - 2) (BS.drop (j + 2) text)
                                             raw = BS.takeWhile (\c -> c /= ' ' && c /= '\t') inner
                                             token = BS.unpack (stripAngles raw)
-                                            link = Link (j + 2) (j + 2 + BS.length raw) token
+                                            link = Link (base + j + 2) (base + j + 2 + BS.length raw) token
                                          in (link :) <$> lineLinksAt (j + 2 + BS.length raw) lineEnd
 
             -- Fence marker (``` or ~~~) after optional indent, checked byte-wise (O(indent), not O(line)).
@@ -124,7 +224,7 @@ pageLinks text = Unsafe.unsafePerformIO $
                 | BS.length t >= 2 && BS.head t == '<' && BS.last t == '>' = BS.init (BS.drop 1 t)
                 | otherwise = t
 
-        if len == 0 then pure [] else scanLines False 0
+        if len == 0 then pure (inFence0, 0, []) else scanFrom inFence0 0 []
 
 {- | Splits a target token into its path part and a trailing @#anchor@/@?query@
 suffix (empty when there is none), so a path can be rewritten while the suffix is

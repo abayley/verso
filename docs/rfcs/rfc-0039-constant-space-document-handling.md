@@ -247,7 +247,10 @@ Riskiest-value-first, each a small commit with `make check` green, the heap left
 4. The shared `scanStep` core with capped tail-carry, expressed so `pageLinks` is its single-chunk case;
    golden equality across chunk sizes; `bench-link-parse` at 4K/64K/128K against the whole-body baseline
    and the cello-docs build time -- this is the profiling gate, and it decides whether a `cbits` scanner is
-   needed.
+   needed. **Done (2026-09-10).** `bench-link-parse` on the 76KB page: whole-body 7.4ms, chunked at
+   4K/64K/128K 7.1 to 7.2ms, cells equal (15.2MB per parse either way), so no `cbits` scanner. Equality
+   holds at every split point of a fixture and byte-by-byte; the tail cap is 64KB, and a line past it is
+   scanned as a hard break with the carry emptied. The build time is measured in step 5.
 5. Stream the link-index cold build and reload over the core.
 6. The fused streaming rewrite on move, with temp-then-rename; stream the asset copy.
 7. The minor reads (`Log` size via `stat`, `OperationLog` streaming parse).
@@ -260,5 +263,6 @@ Riskiest-value-first, each a small commit with `make check` green, the heap left
   final number should come from the largest real documents plus a concurrency factor, decided in step 5.
 - ~~Whether a `cbits` escaper is needed.~~ Decided by the step-2 benchmark: it is (see the escaper
   benchmark ref).
-- The tail cap size. It only has to exceed the longest `](target)` plus a fence marker; a few KB is
-  expected to be ample, confirmed by the boundary fixtures in step 4.
+- ~~The tail cap size.~~ 64KB (`DocumentLinks.tailCapBytes`): far beyond any `](target)` plus fence
+  marker, and still a bounded carry beside a 64KB chunk. A single line longer than that (a data URI, say)
+  is scanned as a hard break, and only a link or fence marker split by that break is affected.

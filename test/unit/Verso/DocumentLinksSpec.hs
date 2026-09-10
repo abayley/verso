@@ -2,6 +2,7 @@ module Verso.DocumentLinksSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as List
+import qualified MicroHttp.Iteratee as Iteratee
 import Test.Hspec
 import qualified Verso.DocumentLinks as DocumentLinks
 
@@ -54,6 +55,25 @@ spec =
 
             it "given a link inside an unterminated fence, when extracted, then nothing is returned" $ do
                 map DocumentLinks.linkTarget (DocumentLinks.pageLinks (bs "```\n[x](./a.md)\n")) `shouldBe` []
+
+        describe "scanStep" $ do
+            it "given every split point of a page, when scanned in two chunks, then the links equal the whole-body scan" $ do
+                let whole = DocumentLinks.pageLinks chunkFixture
+                    splits = [DocumentLinks.scanChunks [a, b] | k <- [0 .. BS.length chunkFixture], let (a, b) = BS.splitAt k chunkFixture]
+                null whole `shouldBe` False
+                List.nub splits `shouldBe` [whole]
+            it "given a page fed one byte at a time, when scanned, then the links equal the whole-body scan" $
+                DocumentLinks.scanChunks (map BS.singleton (BS.unpack chunkFixture)) `shouldBe` DocumentLinks.pageLinks chunkFixture
+            it "given a single line longer than the tail cap, when fed in chunks, then the carry stays bounded and later links are still found" $ do
+                let longLine = BS.replicate (DocumentLinks.tailCapBytes + 4096) 'x'
+                    chunks = chunksOf 4096 (BS.concat [longLine, bs "\n[after](./after.md)\n"])
+                    (final, carries) = List.mapAccumL (\st c -> let (st', _) = DocumentLinks.scanStep st c in (st', DocumentLinks.carriedBytes st')) DocumentLinks.initialScan chunks
+                maximum carries <= DocumentLinks.tailCapBytes `shouldBe` True
+                DocumentLinks.carriedBytes final `shouldBe` 0
+                map DocumentLinks.linkTarget (DocumentLinks.scanChunks chunks) `shouldBe` ["./after.md"]
+            it "given the page as a stream, when consumed by linksI, then the links equal the whole-body scan" $ do
+                outcome <- Iteratee.run (feedChunks (chunksOf 7 chunkFixture) DocumentLinks.linksI)
+                outcome `shouldBe` (Right (DocumentLinks.pageLinks chunkFixture) :: Either () [DocumentLinks.Link])
 
         describe "splitTargetSuffix" $ do
             it "given a target with an anchor or query, when split, then the path and the suffix are returned" $ do
@@ -203,3 +223,34 @@ spec =
                     inSubtree t = t == "sec" || ("sec/" `List.isPrefixOf` t)
                 DocumentLinks.referrersMatching inSubtree ["sec/inside.md"] pages
                     `shouldBe` [("top.md", "./sec/sub/x.md")]
+
+{- | A page with the things a chunk boundary must not break: a link target, a title, angle
+brackets, a CRLF line, a fence marker, a link inside the fence, and a final line without a newline.
+-}
+chunkFixture :: BS.ByteString
+chunkFixture =
+    bs
+        "# Title\n\
+        \See [Runbook](./runbook.md) and ![diagram](assets/d.png \"Diagram\").\r\n\
+        \A link in <angles> [y](<./b c.md>#frag) here.\n\
+        \```\n\
+        \[code](./ignored.md)\n\
+        \```\n\
+        \   ~~~\n\
+        \[code](./also-ignored.md)\n\
+        \~~~\n\
+        \broken ]( then [x](./a.md) after\n\
+        \[last](../up/last.md)"
+
+-- | Splits bytes into chunks of at most n bytes.
+chunksOf :: Int -> BS.ByteString -> [BS.ByteString]
+chunksOf n bytes
+    | BS.null bytes = []
+    | otherwise = let (a, b) = BS.splitAt n bytes in a : chunksOf n b
+
+-- | Feeds chunks to a waiting consumer in order, leaving it to 'Iteratee.run' to signal end of stream.
+feedChunks :: [BS.ByteString] -> Iteratee.Iter e a -> Iteratee.Iter e a
+feedChunks [] it = it
+feedChunks (c : rest) it = case it of
+    Iteratee.NeedInput k -> feedChunks rest (k (Iteratee.Chunk c))
+    _ -> it

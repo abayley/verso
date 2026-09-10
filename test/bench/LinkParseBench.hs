@@ -41,6 +41,9 @@ main = do
         )
     putStrLn "strategy      | cells/parse | MB/parse | ms/parse"
     bench "pageLinks" (length . DocumentLinks.pageLinks) body
+    bench "scan-4k" (length . DocumentLinks.scanChunks . chunksOf 4096) body
+    bench "scan-64k" (length . DocumentLinks.scanChunks . chunksOf 65536) body
+    bench "scan-128k" (length . DocumentLinks.scanChunks . chunksOf 131072) body
     bench "updatePage" (weigh . applyUpdate) body
     bench "lines-only" (length . BS.split '\n') body
     bench "unpack-walk" (length . unpackWalkLinks) body
@@ -157,6 +160,12 @@ pageBody = BS.pack (concat (replicate 90 section))
             , "```haskell\nmain :: IO ()\nmain = putStrLn \"hello\"\n```\n\n"
             ]
     prose = "The quick brown fox jumps over the lazy dog's back near the riverbank at dusk while herons watch quietly.\n"
+
+-- | Splits a body into chunks of at most n bytes, as a file enumerator would feed it.
+chunksOf :: Int -> ByteString -> [ByteString]
+chunksOf n bytes
+    | BS.null bytes = []
+    | otherwise = let (a, b) = BS.splitAt n bytes in a : chunksOf n b
 
 pad :: Int -> String -> String
 pad n s = s ++ replicate (max 0 (n - length s)) ' '

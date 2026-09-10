@@ -14,11 +14,11 @@ superseded_by: null
 
 # Haskell style cleanups -- qualified imports, Haddock, Http inlining
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-28       |
-| Started   | 2026-06-28       |
-| Completed | 2026-06-28       |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-28            |
+| Started   | 2026-06-28 20:31 NZST |
+| Completed | 2026-06-28 21:18 NZST |
 
 ## Summary
 
@@ -85,25 +85,25 @@ Local last segment for project modules; standard short aliases for stdlib. Where
 two modules share a last segment, the framework one keeps the short alias and the
 application one is distinguished.
 
-| Module | Alias |
-| --- | --- |
-| `Data.ByteString.Char8` | `BS` (sole) / `BSC` (when `Data.ByteString` also imported) |
-| `Data.ByteString` | `BS` (sole) / `B` (alongside Char8) |
-| `Data.Map` / `.Strict` | `Map` |
-| `Data.Char` | `Char` |
-| `Data.List` | `List` |
-| `Data.Maybe` | `Maybe` |
-| `Data.Word` | `Word` |
-| `Control.Monad` | `Monad` |
-| `Control.Concurrent.MVar` | `MVar` |
-| `System.Directory` | `Directory` |
-| `System.Environment` | `Environment` |
-| `System.Exit` | `Exit` |
-| `System.IO` / `System.IO.*` | `IO` / last segment (`Base`, `Open`, `TimeMilli`) |
-| `Foreign.Ptr` / `.Storable` / `.Marshal.Alloc` | `Ptr` / `Storable` / `Alloc` |
-| `Foreign.C.String` / `.Types` | `CStr` / `CTypes` |
-| `MicroHttp.*`, `Verso.*` | last segment (`Http`, `Stream`, `Router`, `LinkIndex`, ...) |
-| `MicroHttp.Config` vs `Verso.Config` | `Config` vs `VConfig` |
+| Module                                         | Alias                                                       |
+| ---------------------------------------------- | ----------------------------------------------------------- |
+| `Data.ByteString.Char8`                        | `BS` (sole) / `BSC` (when `Data.ByteString` also imported)  |
+| `Data.ByteString`                              | `BS` (sole) / `B` (alongside Char8)                         |
+| `Data.Map` / `.Strict`                         | `Map`                                                       |
+| `Data.Char`                                    | `Char`                                                      |
+| `Data.List`                                    | `List`                                                      |
+| `Data.Maybe`                                   | `Maybe`                                                     |
+| `Data.Word`                                    | `Word`                                                      |
+| `Control.Monad`                                | `Monad`                                                     |
+| `Control.Concurrent.MVar`                      | `MVar`                                                      |
+| `System.Directory`                             | `Directory`                                                 |
+| `System.Environment`                           | `Environment`                                               |
+| `System.Exit`                                  | `Exit`                                                      |
+| `System.IO` / `System.IO.*`                    | `IO` / last segment (`Base`, `Open`, `TimeMilli`)           |
+| `Foreign.Ptr` / `.Storable` / `.Marshal.Alloc` | `Ptr` / `Storable` / `Alloc`                                |
+| `Foreign.C.String` / `.Types`                  | `CStr` / `CTypes`                                           |
+| `MicroHttp.*`, `Verso.*`                       | last segment (`Http`, `Stream`, `Router`, `LinkIndex`, ...) |
+| `MicroHttp.Config` vs `Verso.Config`           | `Config` vs `VConfig`                                       |
 
 ### Haddock
 

@@ -12,11 +12,11 @@ superseded_by: null
 
 # Editor Shell Decomposition
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-10       |
-| Started   | 2026-06-15 22:08 |
-| Completed | 2026-06-16 08:50 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-10            |
+| Started   | 2026-06-15 22:08 NZST |
+| Completed | 2026-06-16 08:50 NZST |
 
 ## Summary
 

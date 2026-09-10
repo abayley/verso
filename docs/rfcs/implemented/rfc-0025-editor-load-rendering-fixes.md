@@ -14,11 +14,11 @@ superseded_by: null
 
 # Editor load-rendering fixes
 
-| Stage     | Timestamp          |
-|-----------|--------------------|
-| Authored  | 2026-06-21 18:53   |
-| Started   | 2026-06-21 18:55   |
-| Completed | 2026-06-21 19:14   |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-21 18:53 NZST |
+| Started   | 2026-06-21 18:55 NZST |
+| Completed | 2026-06-21 19:14 NZST |
 
 ## Summary
 

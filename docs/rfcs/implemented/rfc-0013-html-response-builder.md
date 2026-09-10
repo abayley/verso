@@ -12,11 +12,11 @@ superseded_by: null
 
 # HTML Response Builder
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-13       |
-| Started   | 2026-06-15 17:51 |
-| Completed | 2026-06-15 20:06 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-13            |
+| Started   | 2026-06-15 17:51 NZST |
+| Completed | 2026-06-15 20:06 NZST |
 
 ## Summary
 

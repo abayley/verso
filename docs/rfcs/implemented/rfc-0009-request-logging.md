@@ -12,11 +12,11 @@ superseded_by: null
 
 # Request Logging
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-12       |
-| Started   | 2026-06-12 20:51 |
-| Completed | 2026-06-12 20:51 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-12            |
+| Started   | 2026-06-12 20:51 NZST |
+| Completed | 2026-06-12 20:51 NZST |
 
 ## Summary
 

@@ -12,11 +12,11 @@ superseded_by: null
 
 # Iteratee Streaming IO
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-10       |
-| Started   | 2026-06-11 21:02 |
-| Completed | 2026-06-12 09:35 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-10            |
+| Started   | 2026-06-11 21:02 NZST |
+| Completed | 2026-06-12 09:35 NZST |
 
 ## Summary
 

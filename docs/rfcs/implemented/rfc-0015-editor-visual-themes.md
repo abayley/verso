@@ -12,11 +12,11 @@ superseded_by: null
 
 # Editor Visual Themes
 
-| Stage     | Timestamp  |
-|-----------|------------|
-| Authored  | 2026-06-15 |
-| Started   | 2026-06-15 |
-| Completed | 2026-06-15 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-15            |
+| Started   | 2026-06-15 15:27 NZST |
+| Completed | 2026-06-15 15:46 NZST |
 
 ## Summary
 

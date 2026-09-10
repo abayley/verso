@@ -12,11 +12,11 @@ superseded_by: null
 
 # Zero-Copy File Responses
 
-| Stage     | Timestamp  |
-|-----------|------------|
-| Authored  | 2026-06-14 |
-| Started   | 2026-06-14 |
-| Completed | 2026-06-14 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-14            |
+| Started   | 2026-06-14 21:10 NZST |
+| Completed | 2026-06-14 21:10 NZST |
 
 ## Summary
 

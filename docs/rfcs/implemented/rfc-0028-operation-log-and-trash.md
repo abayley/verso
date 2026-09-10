@@ -14,11 +14,11 @@ superseded_by: null
 
 # Operation Log, Replay, and Trash
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-23       |
-| Started   | 2026-06-24       |
-| Completed | 2026-06-24       |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-23            |
+| Started   | 2026-06-24 08:11 NZST |
+| Completed | 2026-06-24 16:24 NZST |
 
 ## Summary
 

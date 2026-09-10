@@ -12,11 +12,11 @@ superseded_by: null
 
 # Configuration File
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-12       |
-| Started   | 2026-06-14 18:30 |
-| Completed | 2026-06-14 19:36 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-12            |
+| Started   | 2026-06-14 18:30 NZST |
+| Completed | 2026-06-14 19:36 NZST |
 
 ## Summary
 

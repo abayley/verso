@@ -14,11 +14,11 @@ superseded_by: null
 
 # Client-error telemetry sink
 
-| Stage     | Timestamp          |
-|-----------|--------------------|
-| Authored  | 2026-06-20 23:40   |
-| Started   | 2026-06-21 16:02   |
-| Completed | 2026-06-21 16:16   |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-20 23:40 NZST |
+| Started   | 2026-06-21 16:02 NZST |
+| Completed | 2026-06-21 16:16 NZST |
 
 ## Summary
 

@@ -12,11 +12,11 @@ superseded_by: null
 
 # Application As A Stream Consumer, Logging As Middleware
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-13       |
-| Started   | 2026-06-14 17:00 |
-| Completed | 2026-06-14 18:05 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-13            |
+| Started   | 2026-06-14 17:00 NZST |
+| Completed | 2026-06-14 18:05 NZST |
 
 ## Summary
 

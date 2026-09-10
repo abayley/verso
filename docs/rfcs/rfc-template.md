@@ -12,6 +12,12 @@ superseded_by: null
 
 # RFC-XXXX: Short name
 
+| Stage     | Timestamp              |
+| --------- | ---------------------- |
+| Authored  | yyyy-mm-dd hh:mm NZST  |
+| Started   |                        |
+| Completed |                        |
+
 ## Summary
 
 One paragraph: what this RFC proposes and why it is worth doing.

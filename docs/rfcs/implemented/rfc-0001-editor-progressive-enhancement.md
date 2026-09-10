@@ -12,11 +12,11 @@ superseded_by: null
 
 # Editor Progressive Enhancement
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-10       |
-| Started   | 2026-06-15 20:50 |
-| Completed | 2026-06-15 21:29 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-10            |
+| Started   | 2026-06-15 20:50 NZST |
+| Completed | 2026-06-15 21:29 NZST |
 
 ## Summary
 

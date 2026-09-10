@@ -12,11 +12,11 @@ superseded_by: null
 
 # Static File Serving
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-12       |
-| Started   | 2026-06-12 23:39 |
-| Completed | 2026-06-12 23:39 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-12            |
+| Started   | 2026-06-12 23:39 NZST |
+| Completed | 2026-06-12 23:39 NZST |
 
 ## Summary
 

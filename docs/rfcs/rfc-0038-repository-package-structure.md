@@ -16,6 +16,12 @@ related_refs:
 
 # RFC-0038: Repository package structure and Haskell/TypeScript separation
 
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-09-11 08:01 NZST |
+| Started   | 2026-09-09 21:59 NZST |
+| Completed |                       |
+
 ## Summary
 
 Restructure the repository so that application code lives in real packages, dev and quality tooling lives

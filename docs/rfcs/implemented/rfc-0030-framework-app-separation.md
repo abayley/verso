@@ -14,11 +14,11 @@ superseded_by: null
 
 # Separate the MicroHttp framework from the Verso wiki application
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-28       |
-| Started   | 2026-06-28       |
-| Completed | 2026-06-28       |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-28            |
+| Started   | 2026-06-28 19:03 NZST |
+| Completed | 2026-06-28 19:30 NZST |
 
 ## Summary
 

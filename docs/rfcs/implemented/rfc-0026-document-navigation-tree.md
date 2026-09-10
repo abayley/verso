@@ -14,11 +14,11 @@ superseded_by: null
 
 # Document Navigation Tree
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-23       |
-| Started   | 2026-06-23       |
-| Completed | 2026-06-23       |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-23 13:41 NZST |
+| Started   | 2026-06-23 13:41 NZST |
+| Completed | 2026-06-23 17:09 NZST |
 
 ## Summary
 

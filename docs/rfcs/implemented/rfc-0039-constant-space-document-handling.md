@@ -17,6 +17,12 @@ related_refs:
 
 # RFC-0039: Constant-space document handling and a fail-fast heap
 
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-09-10 10:06 NZST |
+| Started   | 2026-09-10 12:38 NZST |
+| Completed | 2026-09-10 13:56 NZST |
+
 ## Summary
 
 Make the server handle documents in space proportional to the work, not to document or corpus size, by

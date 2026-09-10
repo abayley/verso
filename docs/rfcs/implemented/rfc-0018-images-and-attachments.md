@@ -12,11 +12,11 @@ superseded_by: null
 
 # Images and Attachments
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-17 11:29 |
-| Started   | 2026-06-17 11:29 |
-| Completed | 2026-06-17 12:25 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-17 11:29 NZST |
+| Started   | 2026-06-17 11:29 NZST |
+| Completed | 2026-06-17 12:25 NZST |
 
 ## Summary
 

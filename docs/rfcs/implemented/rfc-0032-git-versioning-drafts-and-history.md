@@ -14,11 +14,11 @@ superseded_by: null
 
 # Git-backed page versioning with drafts, publish, and revision history
 
-| Stage     | Timestamp              |
-| --------- | ---------------------- |
-| Authored  | 2026-06-30 10:18 NZST  |
-| Started   | 2026-06-30 10:21 NZST  |
-| Completed | 2026-06-30 11:40 NZST  |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-30 10:18 NZST |
+| Started   | 2026-06-30 10:21 NZST |
+| Completed | 2026-06-30 11:40 NZST |
 
 ## Summary
 

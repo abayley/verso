@@ -12,11 +12,11 @@ superseded_by: null
 
 # Editor Studio Theme
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-15       |
-| Started   | 2026-06-15 16:02 |
-| Completed | 2026-06-15 17:51 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-15            |
+| Started   | 2026-06-15 16:02 NZST |
+| Completed | 2026-06-15 17:51 NZST |
 
 ## Summary
 

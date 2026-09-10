@@ -12,11 +12,11 @@ superseded_by: null
 
 # Explicit Editor Content Pipelines
 
-| Stage     | Timestamp  |
-|-----------|------------|
-| Authored  | 2026-08-07 |
-| Started   | 2026-08-07 |
-| Completed | 2026-08-07 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-08-07 11:35 NZST |
+| Started   | 2026-08-07 10:57 NZST |
+| Completed | 2026-08-07 11:41 NZST |
 
 ## Summary
 

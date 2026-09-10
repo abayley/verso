@@ -14,11 +14,11 @@ superseded_by: null
 
 # Log rotation
 
-| Stage     | Timestamp          |
-|-----------|--------------------|
-| Authored  | 2026-06-21 15:48   |
-| Started   | 2026-06-21 15:50   |
-| Completed | 2026-06-21 16:02   |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-21 15:48 NZST |
+| Started   | 2026-06-21 15:50 NZST |
+| Completed | 2026-06-21 16:02 NZST |
 
 ## Summary
 

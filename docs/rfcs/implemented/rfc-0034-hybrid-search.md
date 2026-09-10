@@ -14,11 +14,11 @@ superseded_by: null
 
 # Hybrid Search With Embeddings, Full-Text, and LanceDB
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-07-03       |
-| Started   | 2026-07-04       |
-| Completed | 2026-07-05       |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-07-03            |
+| Started   | 2026-07-04 22:32 NZST |
+| Completed | 2026-07-05 17:34 NZST |
 
 ## Summary
 
@@ -304,15 +304,15 @@ in Haskell, so `cn_embed` takes token ids, not text.
 
 One Lance table, `chunks`:
 
-| Column       | Type     | Notes                                            |
-|--------------|----------|--------------------------------------------------|
-| `page_id`    | utf8     | tree path, e.g. `guides/setup.md`                |
-| `anchor`     | utf8     | heading anchor, empty for preamble               |
-| `seq`        | int32    | chunk order within the page                      |
-| `text`       | utf8     | chunk Markdown text (FTS-indexed)                |
-| `vector`     | f32[384] | unit vector (vector-indexed)                     |
-| `stat_fp`    | utf8     | per-page stat fingerprint, same on all rows      |
-| `content_fp` | utf8     | per-page content fingerprint, same on all rows   |
+| Column       | Type     | Notes                                          |
+| ------------ | -------- | ---------------------------------------------- |
+| `page_id`    | utf8     | tree path, e.g. `guides/setup.md`              |
+| `anchor`     | utf8     | heading anchor, empty for preamble             |
+| `seq`        | int32    | chunk order within the page                    |
+| `text`       | utf8     | chunk Markdown text (FTS-indexed)              |
+| `vector`     | f32[384] | unit vector (vector-indexed)                   |
+| `stat_fp`    | utf8     | per-page stat fingerprint, same on all rows    |
+| `content_fp` | utf8     | per-page content fingerprint, same on all rows |
 
 ### Query Flow
 

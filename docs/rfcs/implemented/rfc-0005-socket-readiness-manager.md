@@ -12,11 +12,11 @@ superseded_by: null
 
 # Socket Readiness Waiting
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-12       |
-| Started   | 2026-06-12 12:22 |
-| Completed | 2026-06-12 12:30 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-12            |
+| Started   | 2026-06-12 12:22 NZST |
+| Completed | 2026-06-12 12:30 NZST |
 
 ## Summary
 

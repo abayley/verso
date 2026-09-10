@@ -14,11 +14,11 @@ superseded_by: null
 
 # Badge Lozenges As A Content Extension
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-20 13:01 |
-| Started   | 2026-06-20 14:30 |
-| Completed | 2026-06-20 16:15 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-20 13:01 NZST |
+| Started   | 2026-06-20 14:30 NZST |
+| Completed | 2026-06-20 16:15 NZST |
 
 ## Summary
 

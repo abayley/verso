@@ -12,11 +12,11 @@ superseded_by: null
 
 # Basecoat Chrome (shadcn Styling without React)
 
-| Stage     | Timestamp  |
-|-----------|------------|
-| Authored  | 2026-07-08 |
-| Started   | 2026-07-08 |
-| Completed | 2026-07-08 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-07-08 16:06 NZST |
+| Started   | 2026-07-08 14:52 NZST |
+| Completed | 2026-07-08 16:06 NZST |
 
 ## Summary
 

@@ -14,11 +14,11 @@ superseded_by: null
 
 # Rich code fences — syntax highlighting and Mermaid diagrams
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-07-01       |
-| Started   | 2026-07-02       |
-| Completed | 2026-07-02       |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-07-01            |
+| Started   | 2026-07-02 10:26 NZST |
+| Completed | 2026-07-02 10:49 NZST |
 
 ## Summary
 

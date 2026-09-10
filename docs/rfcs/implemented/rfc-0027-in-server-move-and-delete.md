@@ -14,11 +14,11 @@ superseded_by: null
 
 # In-Server Move and Delete
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-23       |
-| Started   | 2026-06-23       |
-| Completed | 2026-06-24       |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-23            |
+| Started   | 2026-06-23 21:04 NZST |
+| Completed | 2026-06-24 09:59 NZST |
 
 ## Summary
 

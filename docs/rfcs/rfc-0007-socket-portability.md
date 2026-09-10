@@ -12,11 +12,11 @@ superseded_by: null
 
 # Socket Portability (Linux and Windows)
 
-| Stage     | Timestamp  |
-|-----------|------------|
-| Authored  | 2026-06-12 |
-| Started   |            |
-| Completed |            |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-12 16:16 NZST |
+| Started   |                       |
+| Completed |                       |
 
 ## Summary
 

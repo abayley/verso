@@ -14,12 +14,12 @@ superseded_by: null
 
 # In-Memory Link Index
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-24       |
-| Started   | 2026-06-24       |
-| Completed | 2026-06-24       |
-| Revised   | 2026-06-26       |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-24            |
+| Started   | 2026-06-24 21:28 NZST |
+| Completed | 2026-06-24 22:16 NZST |
+| Revised   | 2026-06-26 12:54 NZST |
 
 ## Revision (2026-06-26): freshness and persistence reversed
 

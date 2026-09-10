@@ -12,11 +12,11 @@ superseded_by: null
 
 # RESTful Writes Without htmx
 
-| Stage     | Timestamp  |
-|-----------|------------|
-| Authored  | 2026-07-12 |
-| Started   | 2026-07-12 |
-| Completed | 2026-07-13 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-07-12 22:38 NZST |
+| Started   | 2026-07-12 23:00 NZST |
+| Completed | 2026-07-13 10:30 NZST |
 
 ## Summary
 
@@ -112,19 +112,19 @@ helpers the tree borrows from `Verso.Attachment` (percent-decoding, page
 attachment types) move to their tree call sites or a smaller module. The
 rest of this proposal then only has one mode to describe.
 
-| Operation       | Today                            | After                              |
-|-----------------|----------------------------------|------------------------------------|
-| autosave        | htmx form POST `/documents/*p`   | `PUT /drafts/*p` (raw body)        |
-| discard draft   | POST `?discard-draft`            | `DELETE /drafts/*p`                |
-| publish         | POST `/documents/*p?publish`     | `PUT /documents/*p` (raw body)     |
-| delete to trash | POST `/tree/*p?delete`           | `DELETE /tree/*p`                  |
-| no-JS save      | form POST `/documents/*p`        | unchanged (forms only do GET/POST) |
-| create          | POST `/tree/*parent`             | unchanged (POST to collection)     |
-| move            | POST `/tree/*p?move`             | unchanged (two-phase controller)   |
-| rollback        | POST `/documents/*p?rollback`    | unchanged (creates a revision)     |
-| undo            | POST `/undo`                     | unchanged (appends to the op log)  |
-| restore         | POST `/trash/*id`                | unchanged (trash-entry controller) |
-| image titles    | fields on every save/publish     | POST `/documents/*p?image-titles`  |
+| Operation       | Today                          | After                              |
+| --------------- | ------------------------------ | ---------------------------------- |
+| autosave        | htmx form POST `/documents/*p` | `PUT /drafts/*p` (raw body)        |
+| discard draft   | POST `?discard-draft`          | `DELETE /drafts/*p`                |
+| publish         | POST `/documents/*p?publish`   | `PUT /documents/*p` (raw body)     |
+| delete to trash | POST `/tree/*p?delete`         | `DELETE /tree/*p`                  |
+| no-JS save      | form POST `/documents/*p`      | unchanged (forms only do GET/POST) |
+| create          | POST `/tree/*parent`           | unchanged (POST to collection)     |
+| move            | POST `/tree/*p?move`           | unchanged (two-phase controller)   |
+| rollback        | POST `/documents/*p?rollback`  | unchanged (creates a revision)     |
+| undo            | POST `/undo`                   | unchanged (appends to the op log)  |
+| restore         | POST `/trash/*id`              | unchanged (trash-entry controller) |
+| image titles    | fields on every save/publish   | POST `/documents/*p?image-titles`  |
 
 Rationale for the split: `PUT` and `DELETE` fit operations that transfer or
 remove resource state and are idempotent -- autosave is a retry-prone

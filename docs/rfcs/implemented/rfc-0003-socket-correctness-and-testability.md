@@ -12,11 +12,11 @@ superseded_by: null
 
 # Socket Payload Correctness and Testability
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-10       |
-| Started   | 2026-06-10       |
-| Completed | 2026-06-11       |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-10            |
+| Started   | 2026-06-10 17:16 NZST |
+| Completed | 2026-06-11 17:45 NZST |
 
 ## Summary
 

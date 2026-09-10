@@ -14,11 +14,11 @@ superseded_by: null
 
 # Sidecar Metadata Maintenance and the Attachments Panel
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-18 20:34 |
-| Started   | 2026-06-18 20:34 |
-| Completed | 2026-06-18 21:10 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-18 20:34 NZST |
+| Started   | 2026-06-18 20:34 NZST |
+| Completed | 2026-06-18 21:10 NZST |
 
 ## Summary
 

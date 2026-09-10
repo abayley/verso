@@ -12,11 +12,11 @@ superseded_by: null
 
 # Idle Write Timeout
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-12       |
-| Started   | 2026-06-12 17:58 |
-| Completed | 2026-06-12 17:58 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-12            |
+| Started   | 2026-06-12 17:58 NZST |
+| Completed | 2026-06-12 17:58 NZST |
 
 ## Summary
 

@@ -14,11 +14,11 @@ superseded_by: null
 
 # Retire the client validation gate
 
-| Stage     | Timestamp          |
-|-----------|--------------------|
-| Authored  | 2026-06-20 23:40   |
-| Started   | 2026-06-21 00:12   |
-| Completed | 2026-06-21 00:30   |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-20 23:40 NZST |
+| Started   | 2026-06-21 00:12 NZST |
+| Completed | 2026-06-21 00:30 NZST |
 
 ## Summary
 

@@ -12,11 +12,11 @@ superseded_by: null
 
 # Editor Content Extensions
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-16       |
-| Started   | 2026-06-16       |
-| Completed | 2026-06-17       |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-16            |
+| Started   | 2026-06-16 22:05 NZST |
+| Completed | 2026-06-17 00:58 NZST |
 
 ## Summary
 

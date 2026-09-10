@@ -14,11 +14,11 @@ superseded_by: null
 
 # Reading Is The Default, Rendered Read-Only View
 
-| Stage     | Timestamp        |
-|-----------|------------------|
-| Authored  | 2026-06-19 08:43 |
-| Started   | 2026-06-19 10:30 |
-| Completed | 2026-06-19 11:19 |
+| Stage     | Timestamp             |
+| --------- | --------------------- |
+| Authored  | 2026-06-19 08:43 NZST |
+| Started   | 2026-06-19 10:30 NZST |
+| Completed | 2026-06-19 11:19 NZST |
 
 ## Summary
 

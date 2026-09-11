@@ -57,7 +57,10 @@ import `System.IO.Unsafe`, so any new scanner or comparator is an `IO` action.
 Phase 1 has since measured the three request paths on the real corpus at the current heap
 (`docs/rfcs/refs/rfc-0040-baseline-20260911.md`), and it corrected the survey twice. The save path is not a
 memory multiplier but a functional limit: a 32KB form body saves in 0.02s, a 64KB body takes 30s, a 128KB
-body 161s, and a body near the 1 MiB cap does not finish at all. Documents of 263KB, 190KB and 150KB already
+body 161s, and a body near the 1 MiB cap does not finish at all. A heap-control run pinned the cause: the
+same saves take 0.044s and 0.085s in a four-times-larger arena, so the code is linear and the time was
+collection, but the cliff merely moves with the arena (128KB to 256KB at 32M cells) because the live set is
+proportional to the body. Only removing the `String` round-trip fixes it. Documents of 263KB, 190KB and 150KB already
 exist in the corpus, so editing a large document is broken today rather than merely expensive. The upload
 path costs about 56x the body in transient RSS, not the two copies the survey assumed, and because that
 memory is `malloc`'d ByteString payload outside the cell arena it never reports `heap exhausted`. The
@@ -311,9 +314,12 @@ about to change so the fix is justified and the win is recorded. The heap defaul
       corpus at 8,000,000 cells: time, peak RSS, and whether the heap survives. **Done (2026-09-11.)** No
       path reports `heap exhausted`: the save path spends CPU at flat RSS, and the upload path inflates RSS
       outside the cell arena.
-- [ ] The heap-control experiment for the save cliff: re-run the 64KB and 128KB saves at `-H32000000` to
-      test whether the super-quadratic time is arena pressure rather than per-character cost. Single
-      request, bounded; phase 2 needs the answer.
+- [x] The heap-control experiment for the save cliff. **Done (2026-09-11.)** At `-H32000000` the 64KB save
+      takes 0.044s against 30.08s (~685x) and the 128KB save 0.085s against 160.72s (~1,900x), and the
+      scaling is linear (2x body, 1.93x time). So nothing is algorithmically quadratic; the 8M figures were
+      measuring collection. But the cliff only *moves*: at 32M cells it sits between 128KB and 256KB, four
+      times the arena for four times the body. Raising the heap is not the fix -- removing the `String` live
+      set is, which is phase 2, and it should leave the 8,000,000-cell default comfortable.
 - [ ] Take a GHC cost-centre profile of the save path for the algorithmic shape, not for cell counts.
 - [x] Record the numbers as a ref, and correct this RFC's inventory where the measurement disagrees with
       the survey's cost-model estimate. **Done (2026-09-11)**, three corrections, in the baseline ref.

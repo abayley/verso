@@ -19,6 +19,7 @@ import qualified MicroHttp.ProcessSpec as ProcessSpec
 import qualified MicroHttp.RouterSpec as RouterSpec
 import qualified MicroHttp.ServerSpec as ServerSpec
 import qualified MicroHttp.StaticSpec as StaticSpec
+import qualified MicroHttp.StreamSpec as StreamSpec
 import qualified MicroHttpSpec as FacadeSpec
 import Test.Hspec
 import qualified Verso.AppSpec as AppSpec
@@ -71,6 +72,7 @@ main = hspec $ do
     RouterSpec.spec
     ServerSpec.spec
     StaticSpec.spec
+    StreamSpec.spec
     TrashSpec.spec
     TreeMoveSpec.spec
     IterateeSpec.spec

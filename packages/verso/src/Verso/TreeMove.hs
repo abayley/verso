@@ -359,9 +359,10 @@ assetConflicts root srcDir destDir names =
                 destExists <- Directory.doesFileExist df
                 if srcExists && destExists
                     then do
-                        sb <- BS.readFile sf
-                        db <- BS.readFile df
-                        pure [name | sb /= db]
+                        -- streamed, size first: neither asset is read whole (RFC-0040 phase 3);
+                        -- a file that cannot be compared counts as a conflict, which refuses the move
+                        same <- Stream.filesEqual sf df
+                        pure [name | same /= Right True]
                     else pure []
             _ -> pure []
 

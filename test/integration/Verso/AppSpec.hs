@@ -5,9 +5,11 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as List
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Http as Http
+import qualified MicroHttp.Http.Parse as Parse
 import qualified MicroHttp.Log as Log
 import qualified MicroHttp.Process as Process
 import qualified MicroHttp.Server as Server
+import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
 import Test.Hspec
 import qualified Verso.App as App
@@ -192,6 +194,16 @@ spec = do
             saved <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 303
             saved `shouldBe` "<!-- note -->\n\n# H"
+        it "given an asset upload over the cap, when routing, then it is refused and no partial or temporary file is left in the assets folder" $ do
+            root <- setupTreeFixture
+            let declared = 10485761 :: Int
+                head = "POST /documents/sec/page.md?asset HTTP/1.1\r\nX-Attachment-Filename: huge.png\r\nContent-Length: " ++ show declared ++ "\r\n\r\n"
+            outcome <- Server.respondToRequestBytes (App.appWithDocumentTree root) (BS.append (BS.pack head) (BS.replicate 4096 'x'))
+            -- the bare application fails the stream; the failure-handling middleware renders that as 413
+            either Just (const Nothing) outcome `shouldBe` Just (Stream.StreamParseError Parse.BodyTooLarge)
+            exists <- Directory.doesDirectoryExist (root ++ "/sec/assets")
+            leftovers <- if exists then Directory.listDirectory (root ++ "/sec/assets") else pure []
+            filter (/= "pixel.png") leftovers `shouldBe` []
         it "given an asset upload, when routing, then it is stored in the page's assets folder and a relative URL is returned" $ do
             root <- setupTreeFixture
             outcome <-

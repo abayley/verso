@@ -1084,18 +1084,27 @@ page-relative reference the editor inserts, matching the tree's layout.
 -}
 treeUpload :: FilePath -> Router.Handler
 treeUpload root captures request = do
-    bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) treeAssetMaxBytes
     let path = capture "path" captures
         name = Attachment.uploadFilename request
-    if not (Attachment.allowedExtension (Attachment.extensionOf name))
-        then pure (statusResponse 415 "Unsupported Media Type" "attachment type is not allowed\n")
-        else case assetsDirectoryFor root path of
-            Nothing -> pure treeNotFound
-            Just assetsDir -> do
+    -- The body never exists as a value: it streams into a reserved temp file beside its
+    -- final home and is renamed into place (RFC-0040 phase 3). The refusals still consume
+    -- the body, as the strict read did, so nothing is left on the connection.
+    case assetsDirectoryFor root path of
+        Nothing -> drainBody >> pure treeNotFound
+        Just assetsDir
+            | not (Attachment.allowedExtension (Attachment.extensionOf name)) ->
+                drainBody >> pure (statusResponse 415 "Unsupported Media Type" "attachment type is not allowed\n")
+            | otherwise -> do
                 Iteratee.liftIO (Directory.createDirectoryIfMissing True assetsDir)
-                stored <- Iteratee.liftIO (storeAsset assetsDir name bytes)
+                tmp <- Iteratee.liftIO (FileSystem.reserveTempFile assetsDir ".upload")
+                _ <- Stream.fileSinkI treeAssetMaxBytes (Stream.StreamParseError Parse.BodyTooLarge) tmp
+                stored <- Iteratee.liftIO (storeAsset assetsDir name tmp)
                 Iteratee.liftIO (recordAssetMetadata root path stored (Attachment.originalUploadFilename request))
                 pure (jsonResponse (View.jsonObject [("url", View.jsonString ("assets/" ++ stored))]))
+
+-- | Consumes and discards the rest of the request body in constant space.
+drainBody :: Iteratee.Iter Stream.StreamError ()
+drainBody = Iteratee.byteSinkI (\_ -> pure (Right ()))
 
 {- | Record a freshly stored asset in the page's sidecar metadata (ADR-0049): an
 inline image in @images.yaml@ (with the original filename as its initial
@@ -1127,29 +1136,34 @@ loadPageAttachments :: FilePath -> String -> IO [(String, String)]
 loadPageAttachments root path =
     maybe (pure []) DocumentMeta.readAttachmentEntries (DocumentMeta.metaDirectoryFor root path)
 
-{- | Stores bytes in an assets folder under a meaningful name, returning the name
-actually used. An identical file already present is reused (dedup); a name taken
-by different content is suffixed (@diagram.png@ -> @diagram-2.png@ -> ...).
+{- | Places an uploaded temp file in the assets folder under a meaningful name,
+returning the name actually used. An identical file already present is reused
+(dedup; the temp file is removed); a name taken by different content is suffixed
+(@diagram.png@ -> @diagram-2.png@ -> ...). The comparison is streamed, size first,
+so neither file is read whole (RFC-0040 phase 3).
 -}
-storeAsset :: FilePath -> String -> BS.ByteString -> IO String
-storeAsset assetsDir name bytes =
+storeAsset :: FilePath -> String -> FilePath -> IO String
+storeAsset assetsDir name tmp =
     tryCandidate (candidateNames name)
   where
-    tryCandidate [] = do
-        BS.writeFile (assetsDir ++ "/" ++ name) bytes
-        pure name
+    tryCandidate [] = place name
     tryCandidate (candidate : rest) = do
         let target = assetsDir ++ "/" ++ candidate
         exists <- Directory.doesFileExist target
         if not exists
-            then do
-                BS.writeFile target bytes
-                pure candidate
+            then place candidate
             else do
-                existing <- BS.readFile target
-                if existing == bytes
-                    then pure candidate
-                    else tryCandidate rest
+                same <- Stream.filesEqual tmp target
+                case same of
+                    Right True -> do
+                        _ <- FileSystem.removeFilePath tmp
+                        pure candidate
+                    _ -> tryCandidate rest
+    place candidate = do
+        moved <- FileSystem.renamePath tmp (assetsDir ++ "/" ++ candidate)
+        case moved of
+            Left e -> ioError (userError ("cannot place uploaded asset: " ++ show e))
+            Right () -> pure candidate
 
 {- | A filename and its collision-suffixed alternatives: @x.png@, @x-2.png@,
 @x-3.png@, ... (the suffix goes before the extension).

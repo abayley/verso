@@ -12,9 +12,12 @@ module MicroHttp.Stream (
     fileEnumerator,
     fileEnumeratorChunked,
     copyFile,
+    fileSinkI,
+    filesEqual,
 ) where
 
 import qualified Data.ByteString as BS
+import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Http.Parse as Parse
 import MicroHttp.Iteratee (strictEnumerator)
 import qualified MicroHttp.Iteratee as Iteratee
@@ -113,3 +116,75 @@ copyFile from to = do
             outcome <- fileEnumerator from (Iteratee.byteSinkI (\bytes -> BS.hPut handle bytes >> pure (Right ()))) >>= Iteratee.run
             Base.hClose handle
             pure outcome
+
+{- | Sinks a stream to a file, chunk by chunk, and yields the byte count. The
+body never exists as a value: this is what a handler uses when the bytes'
+destination is a file, in place of 'Iteratee.readBodyStrict' (RFC-0040).
+
+The cap is checked before each write, so an over-cap stream fails with the
+supplied error having written at most @limit@ bytes, and the partial file is
+removed. A transport failure at end of stream, or a file that will not open,
+also removes the partial file; the caller sees only a complete file or none.
+The file is opened on first demand and closed on every exit path.
+-}
+fileSinkI :: Int -> StreamError -> FilePath -> Iteratee.Iter StreamError Int
+fileSinkI limit tooLarge path = Iteratee.IterM $ do
+    opened <- Open.openBinaryFileM path Base.WriteMode
+    pure $ case opened of
+        Nothing -> Iteratee.IterFailed (StreamSourceError ("cannot open file: " ++ path)) (Iteratee.Chunk BS.empty)
+        Just handle -> loop handle 0
+  where
+    loop handle count = Iteratee.NeedInput (consume handle count)
+    consume handle count s = case s of
+        Iteratee.Chunk bytes
+            | BS.null bytes -> loop handle count
+            | count + BS.length bytes > limit -> abandon handle (Iteratee.IterFailed tooLarge (Iteratee.Chunk bytes))
+            | otherwise -> Iteratee.IterM (BS.hPut handle bytes >> pure (loop handle (count + BS.length bytes)))
+        Iteratee.EndOfStream Nothing -> Iteratee.IterM (Base.hClose handle >> pure (Iteratee.Done count (Iteratee.EndOfStream Nothing)))
+        Iteratee.EndOfStream (Just err) -> abandon handle (Iteratee.IterFailed err (Iteratee.EndOfStream (Just err)))
+    -- close and remove the partial file, then resolve to the given failure
+    abandon handle failure = Iteratee.IterM $ do
+        Base.hClose handle
+        _ <- FileSystem.removeFilePath path
+        pure failure
+
+{- | Whether two files hold identical bytes, without reading either whole: a size
+check by @stat@ answers most mismatches for free, and equal sizes are then
+compared a 64KB block at a time. Replaces reading both files into memory to
+compare them (asset de-duplication and move conflict checks, RFC-0040). A file
+that cannot be stat-ed or opened is a failure, not a verdict.
+-}
+filesEqual :: FilePath -> FilePath -> IO (Either StreamError Bool)
+filesEqual pathA pathB = do
+    statA <- FileSystem.fileStat pathA
+    statB <- FileSystem.fileStat pathB
+    case (statA, statB) of
+        (Left e, _) -> pure (Left (StreamSourceError ("cannot stat " ++ pathA ++ ": " ++ show e)))
+        (_, Left e) -> pure (Left (StreamSourceError ("cannot stat " ++ pathB ++ ": " ++ show e)))
+        (Right a, Right b)
+            | FileSystem.fsSize a /= FileSystem.fsSize b -> pure (Right False)
+            | otherwise -> compareContents
+  where
+    compareContents = do
+        openedA <- Open.openBinaryFileM pathA Base.ReadMode
+        case openedA of
+            Nothing -> pure (Left (StreamSourceError ("cannot open file: " ++ pathA)))
+            Just handleA -> do
+                openedB <- Open.openBinaryFileM pathB Base.ReadMode
+                case openedB of
+                    Nothing -> Base.hClose handleA >> pure (Left (StreamSourceError ("cannot open file: " ++ pathB)))
+                    Just handleB -> do
+                        verdict <- loop handleA handleB
+                        Base.hClose handleA
+                        Base.hClose handleB
+                        pure (Right verdict)
+    loop handleA handleB = do
+        blockA <- BS.hGet handleA compareBlockBytes
+        blockB <- BS.hGet handleB compareBlockBytes
+        if blockA /= blockB
+            then pure False
+            else if BS.null blockA then pure True else loop handleA handleB
+
+-- | The block size for the streamed comparison.
+compareBlockBytes :: Int
+compareBlockBytes = 65536

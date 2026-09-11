@@ -46,6 +46,7 @@ import qualified Foreign.Marshal.Alloc as Alloc
 import qualified Foreign.Marshal.Array as Array
 import qualified Foreign.Ptr as Ptr
 import qualified Foreign.Storable as Storable
+import qualified MicroHttp.FileSystem as FileSystem
 import qualified System.Directory as Directory
 import qualified System.Exit as Exit
 import qualified System.IO as IO
@@ -87,12 +88,12 @@ child's standard input; when 'Nothing', the child inherits the server's stdin.
 runProcess :: FilePath -> [String] -> Maybe FilePath -> Maybe BS.ByteString -> IO ProcResult
 runProcess executable args mCwd mStdin = do
     tmp <- Directory.getTemporaryDirectory
-    outPath <- reserveTempFile tmp "micro-http-out"
-    errPath <- reserveTempFile tmp "micro-http-err"
+    outPath <- FileSystem.reserveTempFile tmp "micro-http-out"
+    errPath <- FileSystem.reserveTempFile tmp "micro-http-err"
     inPath <- case mStdin of
         Nothing -> pure Nothing
         Just bytes -> do
-            p <- reserveTempFile tmp "micro-http-in"
+            p <- FileSystem.reserveTempFile tmp "micro-http-in"
             BS.writeFile p bytes
             pure (Just p)
     result <- spawnAndWait executable args mCwd outPath errPath inPath
@@ -156,11 +157,6 @@ closeFd fd = Monad.when (fd >= 0) (Monad.void (c_close fd))
 handle is closed immediately; only the path is used). Wraps @openTempFile@ so
 concurrent runs never collide on a capture file.
 -}
-reserveTempFile :: FilePath -> String -> IO FilePath
-reserveTempFile dir template = do
-    (path, handle) <- IO.openTempFile dir template
-    IO.hClose handle
-    pure path
 
 -- | Removes the given temporary files, ignoring any that are already gone.
 cleanup :: [FilePath] -> IO ()

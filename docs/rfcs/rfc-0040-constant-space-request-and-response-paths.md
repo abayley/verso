@@ -107,9 +107,9 @@ tracker: a site is not closed until its phase is done or its row says why it sta
 | `Iteratee.readBodyStrict` ([Iteratee.hs:147](../../packages/micro-http/src/MicroHttp/Iteratee.hs)) | whole body, `BS.concat` over k pieces | per request cap | 2, 3 |
 | `treeSave` body ([App.hs:1615](../../packages/verso/src/Verso/App.hs)) | whole body, then `String` round-trip | measured: unusable past ~64KB (no-JS fallback only) | 2 |
 | `treePublish`, `treeDiscard`, history posts (App.hs:1576, 1652, 1676) | whole body, then `String` | 1 MiB per request | 2 |
-| `treeUpload` body ([App.hs:1085](../../packages/verso/src/Verso/App.hs)) | whole body, `BS.concat` over ~2,560 chunks | measured: ~560MB per 10 MiB body | 3 |
-| `storeAsset` write and dedup compare ([App.hs:1132](../../packages/verso/src/Verso/App.hs)) | whole write, plus whole read to compare | 2 x 10 MiB | 3 |
-| `TreeMove.assetConflicts` ([TreeMove.hs:361](../../packages/verso/src/Verso/TreeMove.hs)) | two whole files compared | 2 x asset size | 3 |
+| `treeUpload` body ([App.hs:1085](../../packages/verso/src/Verso/App.hs)) | whole body, `BS.concat` over ~2,560 chunks | fixed: `Stream.fileSinkI`, +11MB per 10 MiB body | 3 |
+| `storeAsset` write and dedup compare ([App.hs:1132](../../packages/verso/src/Verso/App.hs)) | whole write, plus whole read to compare | fixed: rename plus `Stream.filesEqual` | 3 |
+| `TreeMove.assetConflicts` ([TreeMove.hs:361](../../packages/verso/src/Verso/TreeMove.hs)) | two whole files compared | fixed: `Stream.filesEqual` | 3 |
 | `htmlResponseChunks` ([App.hs:1926](../../packages/verso/src/Verso/App.hs)) | `BS.concat` of the whole page | per response | 4 |
 | `treeEdit`, `treeRead`, `treeReadAt` (App.hs:1007, 1029, 1737) | whole document, escaped whole, in a whole page | measured: ~6MB at 263KB | 4 |
 | `treeDiff` via `Git.diffBetween` ([Git.hs:163](../../packages/verso/src/Verso/Git.hs)) | whole diff, then `String` | unbounded | 5 |
@@ -366,12 +366,22 @@ about to change so the fix is justified and the win is recorded. The heap defaul
 
 ### Phase 3: streaming upload and streamed comparison
 
-- [ ] The framework body sink, with cap enforcement ahead of the write and temp-file cleanup on failure.
-- [ ] `FileSystem` streamed byte-equality helper with a size pre-check.
-- [ ] `treeUpload` sinks to a temp file and renames; `storeAsset` de-duplicates by size then stream.
-- [ ] `TreeMove.assetConflicts` uses the same helper, closing RFC-0039 step 6's recorded leftover.
-- [ ] Balanced concat lifted into the framework and used by `readBodyStrict` for the small-cap handlers.
-- [ ] Re-measure the upload, including the concurrency case; record the win and the ADR if confirmed.
+- [x] The framework body sink, `Stream.fileSinkI`, with the cap checked ahead of every write and the partial
+      file removed on the cap, on a transport failure and on a file that will not open. **Done (2026-09-11.)**
+- [x] Streamed byte equality, `Stream.filesEqual`: a size check by `stat`, then 64KB blocks. It lives in
+      `Stream` rather than `FileSystem` because it is handle I/O beside the file producers. **Done (2026-09-11.)**
+- [x] `treeUpload` sinks to a temp file reserved in the assets folder (`FileSystem.reserveTempFile`, moved
+      from `Process`) and `storeAsset` renames it into place, de-duplicating by `filesEqual`; the 404 and 415
+      paths drain the body so nothing is left on the connection. **Done (2026-09-11.)**
+- [x] `TreeMove.assetConflicts` compares by `filesEqual`; a file that cannot be compared counts as a conflict.
+      **Done (2026-09-11)**, closing RFC-0039 step 6's leftover, with the refusal now covered by unit tests.
+- [x] ~~Balanced concat for `readBodyStrict`.~~ **Not needed (2026-09-11.)** Phase 1 measured a body at the
+      1 MiB cap through `readBodyStrict` at 9ms: it arrives in ~256 chunks, and the fold only bit at the
+      upload's ~2,560, which the sink removes. Revisit if a strict-body caller's cap grows.
+- [x] Re-measure the upload. **Done (2026-09-11.)** 10 MiB: 5.57s and +560MB resident before; 1.03s and
+      +11MB after, bytes identical, no temp file left. ADR-0088 records the decision.
+- [ ] The bounded concurrency measurement from phase 1: now safe in principle (expected ~11MB per request),
+      still to be run with two requests, a memory cap on the server process and an abort threshold.
 
 ### Phase 4: streaming HTML responses
 

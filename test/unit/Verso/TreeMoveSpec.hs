@@ -167,6 +167,18 @@ spec = do
             bIndex <- readAt "b/index.md"
             ("[Mover](./mover.md)" `infixOf` bIndex) `shouldBe` True
 
+        it "given a destination assets folder holding a different file of the same name, when a page move is requested, then it is refused" $ do
+            seedPageFixture
+            writeAt "b/assets/excl.png" "SOMETHING ELSE"
+            result <- TreeMove.movePage TreeMove.scanRelevant root "a/mover.md" "b" "mover" True
+            isLeft result `shouldBe` True
+            Directory.doesFileExist (root ++ "/a/mover.md") `shouldReturn` True
+        it "given a destination assets folder holding an identical file of the same name, when a page move is requested, then it proceeds" $ do
+            seedPageFixture
+            writeAt "b/assets/excl.png" "EXCL"
+            result <- TreeMove.movePage TreeMove.scanRelevant root "a/mover.md" "b" "mover" True
+            isLeft result `shouldBe` False
+            Directory.doesFileExist (root ++ "/b/mover.md") `shouldReturn` True
         it "given a page with meta and inbound links, when it is renamed in place, then the meta travels with it and the links are fixed" $ do
             seedPageFixture
             result <- TreeMove.movePage TreeMove.scanRelevant root "a/mover.md" "a" "renamed" True

@@ -30,6 +30,7 @@ module MicroHttp.FileSystem (
     FileStat (..),
     fileStat,
     readFileStrict,
+    reserveTempFile,
 ) where
 
 import qualified Foreign.C.String as CStr
@@ -37,6 +38,7 @@ import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Marshal.Alloc as Alloc
 import qualified Foreign.Ptr as Ptr
 import qualified Foreign.Storable as Storable
+import qualified System.IO as IO
 
 -- The microhttp_fs.c wrappers: 0 on success, the syscall's errno on failure.
 foreign import ccall "microhttp_fs.h mhfs_rename"
@@ -136,3 +138,13 @@ readFileStrict :: FilePath -> IO String
 readFileStrict path = do
     text <- readFile path
     length text `seq` pure text
+
+{- | Reserves a uniquely named, empty file in @dir@ (name from @template@) and
+returns its path. Used for a temp-then-rename write into that directory, so the
+final rename never crosses a filesystem.
+-}
+reserveTempFile :: FilePath -> String -> IO FilePath
+reserveTempFile dir template = do
+    (path, handle) <- IO.openTempFile dir template
+    IO.hClose handle
+    pure path

@@ -9,3 +9,6 @@
 2026-09-11 15:22:05  packages/verso/src/Verso/TreeMove.hs:collect:752: Motivation: BS.isInfixOf unpacks each whole page in the no-index walk. Substitute Algorithm.
 2026-09-11 15:22:05  packages/verso/src/Concordance/Fingerprint.hs:contentFingerprint:18: Motivation: BS.foldl' unpacks each whole page on index and reconcile. Substitute Algorithm.
 2026-09-11 15:22:06  packages/verso/src/Concordance/WordPiece.hs:mkVocab:68: Motivation: BS.split over the 231KB vocab file at startup. Substitute Algorithm.
+2026-09-11 16:23:02  packages/micro-http/src/MicroHttp/Stream.hs:fileSinkI:130: Duplicated Code. Deferred: fileSinkI's consume loop repeats readBodyStrict's cap-and-count shape; the only shared combinator, takeN, truncates silently rather than failing at the cap, so a cap-with-error combinator would be a new Iteratee seam -- RFC-0040 phase 3 notes it for when a third caller appears.
+2026-09-11 16:26:19  packages/micro-http/src/MicroHttp/Stream.hs:filesEqual:170: no refactoring needed
+2026-09-11 16:33:34  packages/verso/src/Verso/App.hs:treeUpload:1085: no refactoring needed

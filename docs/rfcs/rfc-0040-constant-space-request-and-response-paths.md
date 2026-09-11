@@ -60,8 +60,10 @@ memory multiplier but a functional limit: a 32KB form body saves in 0.02s, a 64K
 body 161s, and a body near the 1 MiB cap does not finish at all. A heap-control run pinned the cause: the
 same saves take 0.044s and 0.085s in a four-times-larger arena, so the code is linear and the time was
 collection, but the cliff merely moves with the arena (128KB to 256KB at 32M cells) because the live set is
-proportional to the body. Only removing the `String` round-trip fixes it. Documents of 263KB, 190KB and 150KB already
-exist in the corpus, so editing a large document is broken today rather than merely expensive. The upload
+proportional to the body. Only removing the `String` round-trip fixes it. That path is `treeSave`, the
+no-JavaScript form fallback, and not the editor's own save: the editor `PUT`s raw bytes to
+`draftPut`/`treePutDocument`, which handle a body at the full 1 MiB cap in 9ms. The defect is confined to the
+fallback, so phase 2 serves this RFC's no-document-sized-`String` goal rather than an outage. The upload
 path costs about 56x the body in transient RSS, not the two copies the survey assumed, and because that
 memory is `malloc`'d ByteString payload outside the cell arena it never reports `heap exhausted`. The
 document render, ranked highest by the survey, turns out to be the cheapest of the three at corpus sizes.
@@ -103,7 +105,7 @@ tracker: a site is not closed until its phase is done or its row says why it sta
 | Site | Cost class | Bound | Phase |
 | --- | --- | --- | --- |
 | `Iteratee.readBodyStrict` ([Iteratee.hs:147](../../packages/micro-http/src/MicroHttp/Iteratee.hs)) | whole body, `BS.concat` over k pieces | per request cap | 2, 3 |
-| `treeSave` body ([App.hs:1615](../../packages/verso/src/Verso/App.hs)) | whole body, then `String` round-trip | measured: unusable past ~64KB | 2 |
+| `treeSave` body ([App.hs:1615](../../packages/verso/src/Verso/App.hs)) | whole body, then `String` round-trip | measured: unusable past ~64KB (no-JS fallback only) | 2 |
 | `treePublish`, `treeDiscard`, history posts (App.hs:1576, 1652, 1676) | whole body, then `String` | 1 MiB per request | 2 |
 | `treeUpload` body ([App.hs:1085](../../packages/verso/src/Verso/App.hs)) | whole body, `BS.concat` over ~2,560 chunks | measured: ~560MB per 10 MiB body | 3 |
 | `storeAsset` write and dedup compare ([App.hs:1132](../../packages/verso/src/Verso/App.hs)) | whole write, plus whole read to compare | 2 x 10 MiB | 3 |
@@ -320,7 +322,12 @@ about to change so the fix is justified and the win is recorded. The heap defaul
       measuring collection. But the cliff only *moves*: at 32M cells it sits between 128KB and 256KB, four
       times the arena for four times the body. Raising the heap is not the fix -- removing the `String` live
       set is, which is phase 2, and it should leave the 8,000,000-cell default comfortable.
-- [ ] Take a GHC cost-centre profile of the save path for the algorithmic shape, not for cell counts.
+- [x] ~~Take a GHC cost-centre profile of the save path.~~ **Skipped deliberately (2026-09-11.)** The
+      heap-control run already established the shape (linear code, collection-bound at the default heap) and
+      the cause (the `String` live set), so a cost-centre profile would only confirm it.
+- [x] Establish which handler each client actually uses, before changing either. **Done (2026-09-11.)** The
+      editor saves with a raw-body `PUT`; the measured form `POST` is the no-JavaScript fallback. Recorded
+      in the baseline ref as a correction.
 - [x] Record the numbers as a ref, and correct this RFC's inventory where the measurement disagrees with
       the survey's cost-model estimate. **Done (2026-09-11)**, three corrections, in the baseline ref.
 - [ ] The concurrency measurement is **deferred to after phase 3, and must be bounded.** The first attempt

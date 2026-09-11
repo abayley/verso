@@ -1086,9 +1086,9 @@ treeUpload :: FilePath -> Router.Handler
 treeUpload root captures request = do
     let path = capture "path" captures
         name = Attachment.uploadFilename request
-    -- The body never exists as a value: it streams into a reserved temp file beside its
-    -- final home and is renamed into place (RFC-0040 phase 3). The refusals still consume
-    -- the body, as the strict read did, so nothing is left on the connection.
+    -- The body never exists as a value: it streams into a temp file beside its final
+    -- home and is renamed into place (RFC-0040 phase 3). The refusals still consume the
+    -- body, as the strict read did, so nothing is left on the connection.
     case assetsDirectoryFor root path of
         Nothing -> drainBody >> pure treeNotFound
         Just assetsDir
@@ -1096,7 +1096,7 @@ treeUpload root captures request = do
                 drainBody >> pure (statusResponse 415 "Unsupported Media Type" "attachment type is not allowed\n")
             | otherwise -> do
                 Iteratee.liftIO (Directory.createDirectoryIfMissing True assetsDir)
-                tmp <- Iteratee.liftIO (FileSystem.reserveTempFile assetsDir ".upload")
+                tmp <- Iteratee.liftIO (FileSystem.uniqueTempPath assetsDir ".upload")
                 _ <- Stream.fileSinkI treeAssetMaxBytes (Stream.StreamParseError Parse.BodyTooLarge) tmp
                 stored <- Iteratee.liftIO (storeAsset assetsDir name tmp)
                 Iteratee.liftIO (recordAssetMetadata root path stored (Attachment.originalUploadFilename request))

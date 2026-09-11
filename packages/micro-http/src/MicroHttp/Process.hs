@@ -49,7 +49,6 @@ import qualified Foreign.Storable as Storable
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified System.Directory as Directory
 import qualified System.Exit as Exit
-import qualified System.IO as IO
 
 -- mhp_spawn wraps posix_spawnp(3) and its opaque file-actions setup (redirect
 -- stdio, chdir, exec) in one C call; it resolves the executable via PATH and
@@ -88,12 +87,12 @@ child's standard input; when 'Nothing', the child inherits the server's stdin.
 runProcess :: FilePath -> [String] -> Maybe FilePath -> Maybe BS.ByteString -> IO ProcResult
 runProcess executable args mCwd mStdin = do
     tmp <- Directory.getTemporaryDirectory
-    outPath <- FileSystem.reserveTempFile tmp "micro-http-out"
-    errPath <- FileSystem.reserveTempFile tmp "micro-http-err"
+    outPath <- FileSystem.uniqueTempPath tmp "micro-http-out"
+    errPath <- FileSystem.uniqueTempPath tmp "micro-http-err"
     inPath <- case mStdin of
         Nothing -> pure Nothing
         Just bytes -> do
-            p <- FileSystem.reserveTempFile tmp "micro-http-in"
+            p <- FileSystem.uniqueTempPath tmp "micro-http-in"
             BS.writeFile p bytes
             pure (Just p)
     result <- spawnAndWait executable args mCwd outPath errPath inPath

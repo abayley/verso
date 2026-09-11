@@ -343,13 +343,11 @@ about to change so the fix is justified and the win is recorded. The heap defaul
       in the baseline ref as a correction.
 - [x] Record the numbers as a ref, and correct this RFC's inventory where the measurement disagrees with
       the survey's cost-model estimate. **Done (2026-09-11)**, three corrections, in the baseline ref.
-- [ ] The concurrency measurement is **deferred to after phase 3, and must be bounded.** The first attempt
-      (four simultaneous at-the-cap uploads) took the server above 25GB resident, exhausted the host's RAM
-      and restarted its desktop session. That was a test-design error rather than a discovered limit, but
-      the 25GB is itself a finding: the per-request cost rises under concurrency, which points at
-      `malloc`'d ByteString payload being invisible to the collector's trigger. When taken, the measurement
-      needs two requests rather than four, a 1 MiB body scaled arithmetically, a memory cap on the server
-      process, and an abort threshold in the harness.
+- [x] The concurrency measurement, **deferred to after phase 3 and taken there (2026-09-11)** with two
+      requests and an abort guard. The first attempt (four simultaneous at-the-cap uploads) had taken the
+      server above 25GB resident and exhausted the host; the per-request cost rose under concurrency
+      because `malloc`'d ByteString payload is invisible to the collector's trigger. After phase 3 two
+      concurrent uploads cost 3-31MB together.
 
 ### Phase 2: byte-level form decoding on the save path
 
@@ -380,8 +378,16 @@ about to change so the fix is justified and the win is recorded. The heap defaul
       upload's ~2,560, which the sink removes. Revisit if a strict-body caller's cap grows.
 - [x] Re-measure the upload. **Done (2026-09-11.)** 10 MiB: 5.57s and +560MB resident before; 1.03s and
       +11MB after, bytes identical, no temp file left. ADR-0088 records the decision.
-- [ ] The bounded concurrency measurement from phase 1: now safe in principle (expected ~11MB per request),
-      still to be run with two requests, a memory cap on the server process and an abort threshold.
+- [x] The bounded concurrency measurement from phase 1. **Done (2026-09-11.)** Two concurrent 10 MiB uploads,
+      three runs, an abort guard at 500MB: all succeed in ~1.05s each with peak resident memory 3-31MB above
+      baseline, bytes identical, no temp files. The first attempt exposed a defect: reserving the temp file
+      with `IO.openTempFile` (probe by open-and-close, then open) from one connection thread stranded the
+      other connection every time, leaving a 0-byte temp file. `FileSystem.uniqueTempPath` names the path by
+      thread id and a `stat` probe instead, and `Process` moved onto it too. Recorded in the baseline ref.
+- [ ] **Open, found in passing:** `Server.runCappedHandler` runs `handleClient` with no exception handler,
+      so an exception escaping a handler kills the connection thread silently and leaks its semaphore slot;
+      after `max_active_handlers` such deaths the server stops accepting. Not phase 3's cause, but it is
+      what made the defect above invisible. A robustness item for its own slice.
 
 ### Phase 4: streaming HTML responses
 

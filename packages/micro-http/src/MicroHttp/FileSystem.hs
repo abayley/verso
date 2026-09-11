@@ -30,9 +30,11 @@ module MicroHttp.FileSystem (
     FileStat (..),
     fileStat,
     readFileStrict,
-    reserveTempFile,
+    uniqueTempPath,
 ) where
 
+import qualified Control.Concurrent as Concurrent
+import qualified Data.Char as Char
 import qualified Foreign.C.String as CStr
 import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Marshal.Alloc as Alloc
@@ -139,12 +141,28 @@ readFileStrict path = do
     text <- readFile path
     length text `seq` pure text
 
-{- | Reserves a uniquely named, empty file in @dir@ (name from @template@) and
-returns its path. Used for a temp-then-rename write into that directory, so the
-final rename never crosses a filesystem.
+{- | A path in @dir@ that no file currently occupies, for a temp-then-rename
+write into that directory so the final rename never crosses a filesystem. The
+file is not created: the caller opens it, and must do so before reserving the
+same template again from the same thread, since only existing files and other
+threads' names are excluded. Callers that need several at once use distinct
+templates.
+
+Deliberately not 'IO.openTempFile'. MicroHs's version probes each candidate by
+opening it for reading and closing it, then opens the winner; done from one
+connection thread while another connection is streaming, that open-and-close
+stranded the other connection (RFC-0040 phase 3 baseline ref), and its probe is
+not atomic across threads either. Here the name carries the calling thread's id,
+so two threads can never contend for a candidate, and the probe is a @stat@.
 -}
-reserveTempFile :: FilePath -> String -> IO FilePath
-reserveTempFile dir template = do
-    (path, handle) <- IO.openTempFile dir template
-    IO.hClose handle
-    pure path
+uniqueTempPath :: FilePath -> String -> IO FilePath
+uniqueTempPath dir template = do
+    tid <- Concurrent.myThreadId
+    let prefix = dir ++ "/" ++ template ++ "-" ++ filter Char.isDigit (show tid) ++ "-"
+        probe n = do
+            let candidate = prefix ++ show (n :: Int)
+            taken <- fileStat candidate
+            case taken of
+                Left _ -> pure candidate
+                Right _ -> probe (n + 1)
+    probe 0

@@ -1,11 +1,40 @@
 module MicroHttp.FileSystemSpec (spec) where
 
+import qualified Control.Concurrent as Concurrent
+import qualified Control.Concurrent.MVar as MVar
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Process as Process
 import qualified System.Directory as Directory
 import Test.Hspec
+
+uniqueTempPathSpec :: Spec
+uniqueTempPathSpec =
+    describe "MicroHttp.FileSystem.uniqueTempPath" $ do
+        it "given two concurrent callers, when each reserves a temp path, then the paths differ and neither file exists" $ do
+            freshDir
+            done1 <- MVar.newEmptyMVar
+            done2 <- MVar.newEmptyMVar
+            _ <- Concurrent.forkIO (FileSystem.uniqueTempPath ioDir ".upload" >>= MVar.putMVar done1)
+            _ <- Concurrent.forkIO (FileSystem.uniqueTempPath ioDir ".upload" >>= MVar.putMVar done2)
+            p1 <- MVar.takeMVar done1
+            p2 <- MVar.takeMVar done2
+            (p1 /= p2) `shouldBe` True
+            Directory.doesFileExist p1 `shouldReturn` False
+            Directory.doesFileExist p2 `shouldReturn` False
+        it "given one caller with two templates, when it reserves both, then the paths differ and live in the directory" $ do
+            freshDir
+            p1 <- FileSystem.uniqueTempPath ioDir "micro-http-out"
+            p2 <- FileSystem.uniqueTempPath ioDir "micro-http-err"
+            (p1 /= p2) `shouldBe` True
+            take (length ioDir + 1) p1 `shouldBe` (ioDir ++ "/")
+        it "given a path already reserved and created, when the same template is reserved again, then a different path is returned" $ do
+            freshDir
+            p1 <- FileSystem.uniqueTempPath ioDir ".upload"
+            BS.writeFile p1 (BS.pack "")
+            p2 <- FileSystem.uniqueTempPath ioDir ".upload"
+            (p1 /= p2) `shouldBe` True
 
 -- | A scratch directory under build/, reset at the start of each IO test.
 ioDir :: FilePath
@@ -39,7 +68,8 @@ writeText :: FilePath -> String -> IO ()
 writeText path = BS.writeFile path . BS.pack
 
 spec :: Spec
-spec =
+spec = do
+    uniqueTempPathSpec
     describe "MicroHttp.FileSystem" $ do
         describe "renamePath" $ do
             it "given an existing file, when it is renamed, then it moves and success is reported" $ do

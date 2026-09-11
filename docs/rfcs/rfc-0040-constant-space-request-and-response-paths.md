@@ -340,10 +340,16 @@ about to change so the fix is justified and the win is recorded. The heap defaul
 
 ### Phase 2: byte-level form decoding on the save path
 
-- [ ] Byte-valued `Http.decodeFormValue`, byte-valued `formFields`, byte `normaliseNewlines`.
-- [ ] `treeSave`, publish, discard and the history posts take the `markdown` field as bytes end to end.
-- [ ] Golden byte-identity tests for multibyte, percent-encoded and CRLF content, versioning on and off.
-- [ ] Re-measure the save; record the win.
+- [x] Byte-valued decoding: `Http.decodeFormValueBytes` and `Http.parseFormBody` in the framework;
+      `formFields` reimplemented over them; byte `normaliseNewlineBytes`. **Done (2026-09-11.)**
+- [x] `treeSave` takes the `markdown` field as bytes from socket to file. **Done (2026-09-11.)** The other
+      form handlers carry only identifiers and keep the `String` wrapper over the byte parser.
+- [x] Byte-identity tests: multibyte, `%20` and `+` spaces, CRLF and lone CR, versioning on (draft) and
+      off (tree), plus the decoder's contract against the `String` decoder. **Done (2026-09-11.)**
+- [x] Re-measure. **Done (2026-09-11.)** 64KB 30.08s to 0.16s; 256KB 0.23s; 512KB 0.42s; a body at the
+      1 MiB cap 0.92s, all at the 8,000,000-cell default. The first cut overflowed the runtime stack past
+      ~250KB; the cause was two mhs library scans (`elemIndex`, `notElem`) whose in-progress state the
+      collector marks on the shared 250,000-slot stack, not the decoder. Recorded in the baseline ref.
 
 ### Phase 3: streaming upload and streamed comparison
 

@@ -12,6 +12,7 @@ module Verso.App (
     clientErrorRoute,
     searchResultsJson,
     linkedFolderPaths,
+    normaliseNewlineBytes,
     orderTreeNodes,
     slugify,
     treeChildrenJson,
@@ -1613,8 +1614,10 @@ apply to first-party files).
 treeSave :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
 treeSave versioning maint root captures _request = do
     bodyBytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) formBodyLimit
-    let fields = formFields (BS.unpack bodyBytes)
-        markdown = normaliseNewlines (capture "markdown" fields)
+    -- The document field stays bytes from socket to file: widening it to a String
+    -- costs a cons cell per byte in every pass, which the arena cannot hold for a
+    -- document-sized body (RFC-0040).
+    let markdown = normaliseNewlineBytes (captureBytes "markdown" (Http.parseFormBody bodyBytes))
         path = capture "path" captures
     case Static.resolveStaticPath root (pathSegments path) of
         Nothing -> pure treeNotFound
@@ -1623,11 +1626,11 @@ treeSave versioning maint root captures _request = do
                 then do
                     -- Versioning on: autosave stages a draft; the live page, its sidecar
                     -- metadata, and the link index are untouched until Publish (RFC-0032).
-                    Iteratee.liftIO (Draft.writeDraft (draftStagingRoot versioning) path (BS.pack markdown))
+                    Iteratee.liftIO (Draft.writeDraft (draftStagingRoot versioning) path markdown)
                     saveResponse path
                 else do
                     Iteratee.liftIO (Directory.createDirectoryIfMissing True (parentDirectory fsPath))
-                    Iteratee.liftIO (writeDocumentText fsPath markdown)
+                    Iteratee.liftIO (writeDocumentBytes fsPath markdown)
                     -- The page's body (and so its outbound links) changed; maintain its index entry.
                     Iteratee.liftIO (onSave maint path)
                     saveResponse path
@@ -1978,6 +1981,35 @@ editorMode request =
 textarea newlines as @CRLF@ (HTML form submission, RFC-0001), so the document
 contract stays line-feed only regardless of submission mode.
 -}
+normaliseNewlineBytes :: BS.ByteString -> BS.ByteString
+normaliseNewlineBytes bytes
+    | not (hasCarriageReturn 0) = bytes
+    | otherwise = BS.pack (go 0)
+  where
+    len = BS.length bytes
+    -- A strict index scan, not BS.notElem: under MicroHs that is a Data.List scan over
+    -- unpack whose per-element state overflows the collector's stack on a body past
+    -- ~250KB (see MicroHttp.Http.byteIndex). This is the hot case: browsers submit a
+    -- textarea with CRLF line ends, so every no-JS save takes the rewrite branch.
+    hasCarriageReturn i
+        | i >= len = False
+        | BS.index bytes i == '\r' = True
+        | otherwise = hasCarriageReturn (i + 1)
+    go i
+        | i >= len = []
+        | c /= '\r' = c : go (i + 1)
+        | i + 1 < len && BS.index bytes (i + 1) == '\n' = '\n' : go (i + 2)
+        | otherwise = '\n' : go (i + 1)
+      where
+        c = BS.index bytes i
+
+-- | The first value bound to a byte-valued field key, or empty bytes when absent.
+captureBytes :: String -> [(BS.ByteString, BS.ByteString)] -> BS.ByteString
+captureBytes _ [] = BS.empty
+captureBytes name ((key, value) : rest)
+    | BS.pack name == key = value
+    | otherwise = captureBytes name rest
+
 normaliseNewlines :: String -> String
 normaliseNewlines [] = []
 normaliseNewlines ('\r' : '\n' : rest) = '\n' : normaliseNewlines rest
@@ -1986,16 +2018,8 @@ normaliseNewlines (c : rest) = c : normaliseNewlines rest
 
 -- | Parses an @application/x-www-form-urlencoded@ body into decoded key/value pairs.
 formFields :: String -> [(String, String)]
-formFields "" = []
 formFields body =
-    map parseField (splitOn '&' body)
-
--- | Parses one @key=value@ form field, URL-decoding both sides (empty value when no @=@).
-parseField :: String -> (String, String)
-parseField field =
-    case break (== '=') field of
-        (key, '=' : value) -> (Http.decodeFormValue key, Http.decodeFormValue value)
-        (key, _) -> (Http.decodeFormValue key, "")
+    [(BS.unpack key, BS.unpack value) | (key, value) <- Http.parseFormBody (BS.pack body)]
 
 -- | Splits a string on a separator character, keeping empty segments.
 splitOn :: Char -> String -> [String]

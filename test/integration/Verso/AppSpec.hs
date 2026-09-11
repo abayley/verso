@@ -108,6 +108,14 @@ spec = do
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=caf%C3%A9%20%E2%9C%93"))
             saved <- BS.readFile (root ++ "/sec/page.md")
             saved `shouldBe` BS.pack "caf\xc3\xa9 \xe2\x9c\x93"
+        it "given a save whose spaces are plus-encoded, when routing, then the stored bytes hold real spaces" $ do
+            root <- setupTreeFixture
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTree root)
+                    (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Heading%0A%0Aplain+text+here"))
+            saved <- BS.readFile (root ++ "/sec/page.md")
+            saved `shouldBe` BS.pack "# Heading\n\nplain text here"
         it "given a save with CRLF (and lone CR) newlines, when routing, then the file is written LF-only" $ do
             root <- setupTreeFixture
             _ <-

@@ -29,6 +29,7 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
+import qualified MicroHttp.Bytes as Bytes
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http as Http
@@ -1983,18 +1984,13 @@ contract stays line-feed only regardless of submission mode.
 -}
 normaliseNewlineBytes :: BS.ByteString -> BS.ByteString
 normaliseNewlineBytes bytes
-    | not (hasCarriageReturn 0) = bytes
+    -- Bytes.indexOf, not BS.notElem: the library scan unpacks and can overflow the
+    -- collector's stack on a body past ~250KB (MicroHttp.Bytes). This is the hot case:
+    -- browsers submit a textarea with CRLF line ends, so every no-JS save rewrites.
+    | Maybe.isNothing (Bytes.indexOf '\r' bytes) = bytes
     | otherwise = BS.pack (go 0)
   where
     len = BS.length bytes
-    -- A strict index scan, not BS.notElem: under MicroHs that is a Data.List scan over
-    -- unpack whose per-element state overflows the collector's stack on a body past
-    -- ~250KB (see MicroHttp.Http.byteIndex). This is the hot case: browsers submit a
-    -- textarea with CRLF line ends, so every no-JS save takes the rewrite branch.
-    hasCarriageReturn i
-        | i >= len = False
-        | BS.index bytes i == '\r' = True
-        | otherwise = hasCarriageReturn (i + 1)
     go i
         | i >= len = []
         | c /= '\r' = c : go (i + 1)

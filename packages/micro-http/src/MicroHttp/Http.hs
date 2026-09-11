@@ -47,6 +47,7 @@ module MicroHttp.Http (
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.Char as Char
+import qualified MicroHttp.Bytes as Bytes
 import MicroHttp.Http.Parse (ParseError (..), ParseLimits (..), defaultParseLimits)
 import qualified MicroHttp.Http.Parse as Parse
 import qualified MicroHttp.Iteratee as Iteratee
@@ -237,46 +238,25 @@ value survives. An empty body has no fields at all; an empty field between two
 separators is a field with an empty name, which is what the string parser this
 replaces also produced.
 
-Fields are cut out with 'byteIndex' and O(1) 'BS.take'\/'BS.drop' views, not
+Fields are cut out with 'Bytes.indexOf' and O(1) 'BS.take'\/'BS.drop' views, not
 with 'BSC.split' or 'BSC.elemIndex'. Under MicroHs @split@ is
 @map pack . splitWith . unpack@ and @elemIndex@ is @Data.List.elemIndex . unpack@;
 both widen the body to a list, and the scan's per-element state overflows the
-collector's stack on a body past ~250KB (see 'byteIndex'). A search costs one
-pass per field, and a form carries a handful of fields (RFC-0040).
+collector's stack on a body past ~250KB (see 'MicroHttp.Bytes'). A search costs one
+pass per field, and a form carries a handful of fields (RFC-0040; the trap is
+documented on 'MicroHttp.Bytes').
 -}
 parseFormBody :: BS.ByteString -> [(BS.ByteString, BS.ByteString)]
 parseFormBody body
     | BS.null body = []
     | otherwise = fields body
   where
-    fields rest = case byteIndex '&' rest of
+    fields rest = case Bytes.indexOf '&' rest of
         Nothing -> [splitField rest]
         Just i -> splitField (BS.take i rest) : fields (BS.drop (i + 1) rest)
-    splitField field = case byteIndex '=' field of
+    splitField field = case Bytes.indexOf '=' field of
         Nothing -> (decodeFormValueBytes field, BS.empty)
         Just i -> (decodeFormValueBytes (BS.take i field), decodeFormValueBytes (BS.drop (i + 1) field))
-
-{- | The index of the first occurrence of a byte, as a strict index loop over
-'BSC.index' (an O(1) view).
-
-Do not reach for 'BSC.elemIndex', 'BSC.elem', 'BSC.notElem', 'BSC.findIndex',
-'BSC.any' or 'BSC.all' on a body-sized value under MicroHs. Every one of them is
-@Data.List.f . unpack@, and the list scan (@findIndices@) leaves one unevaluated
-application per element live while it runs. The collector marks the live graph
-on the same fixed 250,000-slot stack the evaluator uses, pushing one slot per
-such node, so a collection that lands during a scan of more than ~250K bytes
-overflows the stack and kills the process. This loop forces its index on every
-step and holds nothing per element, so it marks in constant stack (RFC-0040
-phase 2; the measurements are in its baseline ref).
--}
-byteIndex :: Char -> BS.ByteString -> Maybe Int
-byteIndex c bytes = go 0
-  where
-    len = BS.length bytes
-    go i
-        | i >= len = Nothing
-        | BSC.index bytes i == c = Just i
-        | otherwise = go (i + 1)
 
 {- | Percent-decodes a string; when the flag is set, a literal @+@ becomes a
 space.

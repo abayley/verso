@@ -36,6 +36,7 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
+import qualified MicroHttp.Bytes as Bytes
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Static as Static
 import qualified MicroHttp.Stream as Stream
@@ -749,7 +750,9 @@ enumerateRelevant root hint subtreePrefix = walk ""
                     if ".md" `List.isSuffixOf` name
                         then do
                             bytes <- BS.readFile childFs
-                            if BS.isInfixOf hint bytes || inSubtree childRel
+                            -- Bytes.isInfixOf, not BS.isInfixOf: the library unpacks the whole page and a
+                            -- collection mid-scan can overflow the collector's stack (MicroHttp.Bytes).
+                            if Bytes.isInfixOf hint bytes || inSubtree childRel
                                 then do
                                     links <- DocumentLinks.pageLinks bytes
                                     length links `seq` pure [(childRel, links)]

@@ -2,3 +2,10 @@
 2026-09-11 13:03:47  packages/micro-http/src/MicroHttp/Http.hs:decodeFormValueBytes:196: Motivation: Decoding in bounded blocks was added to stop a 1 MiB value overflowing the fixed 250,000-slot evaluator stack, but measurement showed it did not move the threshold, so it was unexplained complexity. Inline Function.
 2026-09-11 14:40:41  packages/micro-http/src/MicroHttp/Http.hs:parseFormBody:230: Motivation: BSC.elemIndex is Data.List.elemIndex over unpack; its in-progress scan leaves one application per element live and the collector marks it on the shared 250K-slot stack, killing the server on a body past ~250KB. Substitute Algorithm.
 2026-09-11 14:40:41  packages/verso/src/Verso/App.hs:normaliseNewlineBytes:1990: Motivation: BS.notElem routes through the same elemIndex scan; replaced by a strict BS.index loop for the same reason, and CRLF is the hot path for a no-JS textarea save. Substitute Algorithm.
+2026-09-11 15:13:04  packages/micro-http/src/MicroHttp/Http.hs:parseFormBody:230: Duplicated Code. Move Function.
+2026-09-11 15:13:04  packages/verso/src/Verso/App.hs:normaliseNewlineBytes:1985: Duplicated Code. Replace Inline Code with Function Call.
+2026-09-11 15:14:35  packages/micro-http/src/MicroHttp/Bytes.hs:isInfixOf:60: no refactoring needed
+2026-09-11 15:22:05  packages/verso/src/Verso/LinkIndexStore.hs:parseRows:234: Motivation: BS.split over the 1.2MB persisted index widens it to a list; a collection mid-scan can overflow the collector's fixed stack. Substitute Algorithm.
+2026-09-11 15:22:05  packages/verso/src/Verso/TreeMove.hs:collect:752: Motivation: BS.isInfixOf unpacks each whole page in the no-index walk. Substitute Algorithm.
+2026-09-11 15:22:05  packages/verso/src/Concordance/Fingerprint.hs:contentFingerprint:18: Motivation: BS.foldl' unpacks each whole page on index and reconcile. Substitute Algorithm.
+2026-09-11 15:22:06  packages/verso/src/Concordance/WordPiece.hs:mkVocab:68: Motivation: BS.split over the 231KB vocab file at startup. Substitute Algorithm.

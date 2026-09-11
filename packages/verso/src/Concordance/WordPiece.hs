@@ -21,6 +21,7 @@ import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Maybe as Maybe
+import qualified MicroHttp.Bytes as Bytes
 
 {- | A WordPiece vocabulary as two character tries: word-start pieces and
 @##@ continuation pieces (stored with the @##@ stripped). A trie makes the
@@ -65,7 +66,7 @@ skipped (an empty piece could otherwise match without consuming input).
 mkVocab :: BS.ByteString -> Vocab
 mkVocab bytes = List.foldl' add (Vocab emptyTrie emptyTrie) pieces
   where
-    pieces = zip (map (Utf8.decodeUtf8 . BS.unpack) (BS.split '\n' bytes)) [0 ..]
+    pieces = zip (map (Utf8.decodeUtf8 . BS.unpack) (Bytes.split '\n' bytes)) [0 ..]
     add vocab ('#' : '#' : rest, tokenId)
         | not (null rest) =
             vocab{vocabContinuation = insertTrie rest tokenId (vocabContinuation vocab)}

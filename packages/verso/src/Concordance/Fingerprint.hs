@@ -12,10 +12,11 @@ import qualified Data.Bits as Bits
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
 import Data.Word (Word64)
+import qualified MicroHttp.Bytes as Bytes
 
 -- | The FNV-1a 64 fingerprint of the bytes, as 16 lowercase hex digits.
 contentFingerprint :: BS.ByteString -> String
-contentFingerprint bytes = toHex (BS.foldl' step fnvOffset bytes)
+contentFingerprint bytes = toHex (Bytes.foldl' step fnvOffset bytes)
   where
     step acc c = (acc `Bits.xor` fromIntegral (Char.ord c)) * fnvPrime
 

@@ -36,6 +36,7 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as List
 import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
+import qualified MicroHttp.Bytes as Bytes
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Stream as Stream
@@ -221,17 +222,18 @@ serialiseState st = BS.pack (unlines (edgeLines ++ fpLines))
         ]
 
 {- | Parses a serialised index into rows; 'Nothing' if any line is malformed (treated as
-corrupt -> rebuild). Lines are split with @BS.split '\n'@, not @BS.lines@: mhs's
-'Data.ByteString.Char8.lines' is a recursive @BS.elemIndex '\n'@ loop, and @elemIndex@ is
-@elemIndex . unpack@ -- it unpacks the whole remaining string on every call, so @lines@
-re-unpacks the shrinking tail and is O(n^2) (it dominated reload, ~22 s on the corpus
-index). 'BS.split' unpacks once and is linear. The trailing empty element @split@ leaves
-after the final newline is dropped by the @null@ filter, so the row set is identical. (mhs
-ByteString cost model: docs/design/link-index-performance.md.)
+corrupt -> rebuild). Lines and fields are split with 'Bytes.split', a strict index
+scan over O(1) views: the library's @BS.lines@ is a recursive @elemIndex@ loop that
+re-unpacks the shrinking tail (O(n^2); ~22 s on the corpus index), and @BS.split@,
+though linear, is @map pack . splitWith . unpack@ -- it widens the whole 1.2MB file to
+a list, and a collection landing during that scan can overflow the collector's fixed
+stack (RFC-0040 phase 2; 'MicroHttp.Bytes'). The trailing empty element the split
+leaves after the final newline is dropped by the @null@ filter, so the row set is
+identical. (mhs ByteString cost model: docs/design/link-index-performance.md.)
 -}
 parseRows :: BS.ByteString -> Maybe [Row]
 parseRows bytes =
-    let rows = map (map BS.unpack . BS.split '\t') (filter (not . BS.null) (BS.split '\n' bytes))
+    let rows = map (map BS.unpack . Bytes.split '\t') (filter (not . BS.null) (Bytes.split '\n' bytes))
         parsed = map parseRow rows
      in if any Maybe.isNothing parsed then Nothing else Just (Maybe.catMaybes parsed)
 

@@ -126,11 +126,24 @@ tracker: a site is not closed until its phase is done or its row says why it sta
 | `Concordance.Store.withPackedBytes` and `packStrings` (Store.hs:246, 253) | `BS.concat` of all chunk texts, one via `String` | page's chunks | 7 |
 | `LinkIndexStore.serialiseState` ([LinkIndexStore.hs:215](../../packages/verso/src/Verso/LinkIndexStore.hs)) | whole index as `String` before packing | ~24x index | 8 |
 | `Html.escapeChars` ([Html.hs:453](../../packages/micro-http/src/MicroHttp/Html.hs)) | `String` escape path | input size | 8 |
+| `LinkIndexStore.parseRows` ([LinkIndexStore.hs:234](../../packages/verso/src/Verso/LinkIndexStore.hs)) | `BS.split` over the 1.2MB persisted index (unpack scan; collector-stack hazard) | fixed: `Bytes.split` | 2 audit |
+| `TreeMove` `collect` `isInfixOf` ([TreeMove.hs:752](../../packages/verso/src/Verso/TreeMove.hs)) | `BS.isInfixOf` unpacks each whole page | fixed: `Bytes.isInfixOf` | 2 audit |
+| `Concordance.Fingerprint` ([Fingerprint.hs:18](../../packages/verso/src/Concordance/Fingerprint.hs)) | `BS.foldl'` unpacks each whole page | fixed: `Bytes.foldl'` | 2 audit |
+| `Concordance.WordPiece.mkVocab` ([WordPiece.hs:68](../../packages/verso/src/Concordance/WordPiece.hs)) | `BS.split` over the 231KB vocab | fixed: `Bytes.split` | 2 audit |
 
 Sites the survey cleared, recorded so a later reader does not re-open them: static asset serving already
 uses `FileBody` (App.hs:1060); `Log.rotatingAppender` stats rather than reads (Log.hs:197); the header
 builders' `BS.concat`s are over small fixed lists (Http.hs:433-487); `LinkIndexStore.loadValidState` reads a
 file whose size is the index's own, which RFC-0029 accepts.
+
+The phase-2 audit of unpack-based `ByteString` scans (every non-primitive `Data.ByteString` function under
+MicroHs is `Data.List.f . unpack`; see `MicroHttp.Bytes`) found sixteen call sites. Four had document- or
+corpus-sized inputs and are in the table above. The rest are bounded and stay on the library functions:
+`Middleware.parseRequestLine`'s `words` and the head `breakSubstring` see at most `maxHeaderBytes` (8KB);
+`OperationLog.operationsI`'s `split` sees one 64KB stream chunk plus a line carry; `DocumentLinks`'
+`takeWhile` sees one link target within a line under the 64KB tail cap; `Git.parseLog`'s `lines` sees one
+`git log` output, 4KB today on the real corpus and growing only with a page's history; `Git.parseRevision`'s
+`split` sees one log line.
 
 ### Streaming request bodies to a file
 

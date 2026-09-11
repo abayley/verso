@@ -3,6 +3,7 @@ module Main (main) where
 import qualified Concordance.FingerprintSpec as FingerprintSpec
 import qualified Concordance.FuseSpec as FuseSpec
 import qualified Concordance.WordPieceSpec as WordPieceSpec
+import qualified MicroHttp.BytesSpec as BytesSpec
 import qualified MicroHttp.ConfigSpec as ConfigSpec
 import qualified MicroHttp.FileSystemSpec as FileSystemSpec
 import qualified MicroHttp.HtmlSpec as HtmlSpec
@@ -63,6 +64,7 @@ main = hspec $ do
     SearchQueueSpec.spec
     LinkIndexStoreSpec.spec
     LinkRewriteSpec.spec
+    BytesSpec.spec
     HttpSpec.spec
     ParserSpec.spec
     ResponseSpec.spec

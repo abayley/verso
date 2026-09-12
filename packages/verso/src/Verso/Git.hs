@@ -25,6 +25,7 @@ module Verso.Git (
     logForPath,
     diffBetween,
     showFileAtRevision,
+    showFileAtRevisionCaptured,
 ) where
 
 import qualified Data.ByteString.Char8 as BS
@@ -170,6 +171,17 @@ showFileAtRevision :: FilePath -> String -> FilePath -> IO BS.ByteString
 showFileAtRevision root rev path = do
     res <- git root ["show", rev ++ ":" ++ path]
     pure (case Process.procExit res of Exit.ExitSuccess -> Process.procOut res; _ -> BS.empty)
+
+{- | A page's content at a revision, left in a capture file on disk rather than
+read into the heap (RFC-0040): 'showFileAtRevision' without materialising the
+bytes. The caller owns the capture -- it streams or renames the stdout capture
+into place and then 'Process.removeCapture' -- so a large document at a revision
+never enters the heap. @git show@ exits non-zero when the path did not exist at
+that revision, which the caller reads from 'Process.captureExit'.
+-}
+showFileAtRevisionCaptured :: FilePath -> String -> FilePath -> IO Process.ProcCapture
+showFileAtRevisionCaptured root rev path =
+    Process.runProcessCaptured "git" ["-C", root, "show", rev ++ ":" ++ path] Nothing Nothing
 
 -- | The @--format@ string: fields separated by a unit-separator byte that cannot appear in the values.
 logFormat :: String

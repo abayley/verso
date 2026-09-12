@@ -38,11 +38,13 @@ import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Log as Log
 import qualified MicroHttp.Middleware as Middleware
 import qualified MicroHttp.Network.Socket as Socket
+import qualified MicroHttp.Process as Process
 import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
 import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
+import qualified System.Exit as Exit
 import qualified System.IO as IO
 import qualified System.IO.TimeMilli as TimeMilli
 import qualified Verso.Attachment as Attachment
@@ -1767,17 +1769,23 @@ page did not exist is a @404@.
 treeReadAt :: FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
 treeReadAt root path request = do
     let rev = queryValue "at" request
-    content <- Iteratee.liftIO (Git.showFileAtRevision root rev path)
-    if BS.null content
-        then pure treeNotFound
+    -- RFC-0040 phase 5: the revision is captured to a file, streamed as the document, and removed
+    -- when the body finishes; it never enters the heap.
+    cap <- Iteratee.liftIO (Git.showFileAtRevisionCaptured root rev path)
+    outSize <- Iteratee.liftIO (Socket.fileSizeBytes (Process.captureOut cap))
+    -- git show exits non-zero, or yields nothing, when the path did not exist at that revision.
+    if Process.captureExit cap /= Exit.ExitSuccess || Maybe.isNothing outSize || outSize == Just 0
+        then Iteratee.liftIO (Process.removeCapture cap) >> pure treeNotFound
         else do
+            -- The stderr capture is not needed here; the stdout capture streams as the document.
+            Iteratee.liftIO (Monad.void (FileSystem.removeFilePath (Process.captureErr cap)))
+            block <- Iteratee.liftIO (Frontmatter.readBlock (Process.captureOut cap))
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
-            breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path content)
+            breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path block)
             spine <- Iteratee.liftIO (treeSpineFor root path)
-            title <- Iteratee.liftIO (documentPageTitle False path content)
-            -- RFC-0040: the git capture is in memory (phase 5 leaves it on disk); emit it as a sized stream.
+            title <- Iteratee.liftIO (documentPageTitle False path block)
             let (before, after) = View.editorShell path (editorMode request) title False False False attachments breadcrumbs spine
-            Iteratee.liftIO (documentBytesResponse before after content)
+            Iteratee.liftIO (documentTempFileResponse before after (Process.captureOut cap))
 
 {- | The rollback action (RFC-0032): @POST /documents/\<path\>?rollback@ with a
 @rev@ field restores the page's content at that revision, writes it through the
@@ -1793,16 +1801,23 @@ treeRollback versioning maint root captures request = do
     case Static.resolveStaticPath root (pathSegments path) of
         Nothing -> pure treeNotFound
         Just fsPath -> do
-            content <- Iteratee.liftIO (Git.showFileAtRevision root rev path)
-            if BS.null content
-                then pure (statusResponse 409 "Conflict" "cannot read that revision\n")
+            -- RFC-0040 phase 5: the revision is captured to a file and streamed into place, never
+            -- routed through the heap.
+            cap <- Iteratee.liftIO (Git.showFileAtRevisionCaptured root rev path)
+            outSize <- Iteratee.liftIO (Socket.fileSizeBytes (Process.captureOut cap))
+            if Process.captureExit cap /= Exit.ExitSuccess || Maybe.isNothing outSize || outSize == Just 0
+                then Iteratee.liftIO (Process.removeCapture cap) >> pure (statusResponse 409 "Conflict" "cannot read that revision\n")
                 else do
-                    Iteratee.liftIO (BS.writeFile fsPath content)
-                    Iteratee.liftIO (onSave maint path)
-                    let author = Identity.currentIdentity (versioningIdentity versioning) request
-                    _ <- Iteratee.liftIO (Git.commitAll root author ("Roll back " ++ path ++ " to " ++ rev))
-                    -- Rollback is a plain history-page form post: classic POST -> 303 -> GET.
-                    pure (seeOtherResponse ("/documents/" ++ path))
+                    copied <- Iteratee.liftIO (Stream.copyFile (Process.captureOut cap) fsPath)
+                    Iteratee.liftIO (Process.removeCapture cap)
+                    case copied of
+                        Left _ -> pure (statusResponse 500 "Internal Server Error" "could not restore that revision\n")
+                        Right () -> do
+                            Iteratee.liftIO (onSave maint path)
+                            let author = Identity.currentIdentity (versioningIdentity versioning) request
+                            _ <- Iteratee.liftIO (Git.commitAll root author ("Roll back " ++ path ++ " to " ++ rev))
+                            -- Rollback is a plain history-page form post: classic POST -> 303 -> GET.
+                            pure (seeOtherResponse ("/documents/" ++ path))
 
 {- | Answers @GET /search?q=...@ (RFC-0034): the search page with its form
 and, for a non-empty query, the fused hybrid results -- one per page, best
@@ -1980,13 +1995,36 @@ The document is never held whole. A file that will not open (it vanished between
 the existence check and here) is a @404@.
 -}
 documentFileResponse :: Html.Html () -> Html.Html () -> FilePath -> IO Http.Response
-documentFileResponse beforeHtml afterHtml fsPath = do
+documentFileResponse = documentStreamedResponse Stream.transformedFileBody (pure ())
+
+{- | As 'documentFileResponse', but for a temporary capture served once (a
+document at a git revision, RFC-0040): the streaming pass removes the file when
+the body finishes, and a count failure removes it before the @404@. The caller
+still owns any sibling capture (e.g. the stderr file) and removes that itself.
+-}
+documentTempFileResponse :: Html.Html () -> Html.Html () -> FilePath -> IO Http.Response
+documentTempFileResponse beforeHtml afterHtml tmpPath =
+    documentStreamedResponse Stream.transformedTempFileBody (Monad.void (FileSystem.removeFilePath tmpPath)) beforeHtml afterHtml tmpPath
+
+{- | Shared core of the streamed document responses: count the escaped document
+length over the file, then build a sized stream whose body is @before@, the
+document escaped block by block through @producer@, then @after@. @onMissing@
+runs when the file cannot be read for the count (it cleans up a temp capture).
+-}
+documentStreamedResponse ::
+    (Int -> BS.ByteString -> (BS.ByteString -> IO BS.ByteString) -> FilePath -> BS.ByteString -> Iteratee.Enumerator Stream.StreamError ()) ->
+    IO () ->
+    Html.Html () ->
+    Html.Html () ->
+    FilePath ->
+    IO Http.Response
+documentStreamedResponse producer onMissing beforeHtml afterHtml fsPath = do
     counted <- Stream.foldFileBlocks docBlockBytes addEscapedLength 0 fsPath
     case counted of
-        Left _ -> pure treeNotFound
+        Left _ -> onMissing >> pure treeNotFound
         Right docLen ->
             let total = BS.length before + docLen + BS.length after
-                body = Stream.transformedFileBody docBlockBytes before Html.escapeBlockBytes fsPath after
+                body = producer docBlockBytes before Html.escapeBlockBytes fsPath after
              in pure (Http.Response Http.okStatus documentHtmlHeaders (Http.SizedStreamBody total body))
   where
     before = documentShellBytes beforeHtml

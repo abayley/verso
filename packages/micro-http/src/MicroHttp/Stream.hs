@@ -13,11 +13,13 @@ module MicroHttp.Stream (
     fileEnumeratorChunked,
     foldFileBlocks,
     transformedFileBody,
+    transformedTempFileBody,
     copyFile,
     fileSinkI,
     filesEqual,
 ) where
 
+import qualified Control.Monad as Monad
 import qualified Data.ByteString as BS
 import qualified Data.IORef as IORef
 import qualified MicroHttp.FileSystem as FileSystem
@@ -150,7 +152,32 @@ transformedFileBody ::
     FilePath ->
     BS.ByteString ->
     Iteratee.Enumerator StreamError a
-transformedFileBody blockSize before transform path after =
+transformedFileBody = transformedFileBodyImpl False
+
+{- | As 'transformedFileBody', but removes @path@ once the body is fully produced
+(or the consumer stops or fails mid-stream): for a temporary capture served once,
+such as a document at a git revision (RFC-0040). The removal runs on the same
+resource-release path as the handle close, so a client that disconnects part-way
+still cleans up.
+-}
+transformedTempFileBody ::
+    Int ->
+    BS.ByteString ->
+    (BS.ByteString -> IO BS.ByteString) ->
+    FilePath ->
+    BS.ByteString ->
+    Iteratee.Enumerator StreamError a
+transformedTempFileBody = transformedFileBodyImpl True
+
+transformedFileBodyImpl ::
+    Bool ->
+    Int ->
+    BS.ByteString ->
+    (BS.ByteString -> IO BS.ByteString) ->
+    FilePath ->
+    BS.ByteString ->
+    Iteratee.Enumerator StreamError a
+transformedFileBodyImpl removeAfter blockSize before transform path after =
     Iteratee.resourceEnumerator acquire release readChunk acquireError
   where
     acquireError = StreamSourceError ("cannot open file: " ++ path)
@@ -161,7 +188,9 @@ transformedFileBody blockSize before transform path after =
             Just handle -> do
                 phase <- IORef.newIORef SendBefore
                 pure (Just (phase, handle))
-    release (_, handle) = Base.hClose handle
+    release (_, handle) = do
+        Base.hClose handle
+        Monad.when removeAfter (Monad.void (FileSystem.removeFilePath path))
     readChunk resource@(phase, handle) = do
         current <- IORef.readIORef phase
         case current of

@@ -462,10 +462,22 @@ phase-1 baseline for the largest document: 141ms and ~6MB above baseline for the
 
 ### Phase 5: subprocess capture and the git paths
 
-- [ ] `Process` entry point returning capture paths, with the same cleanup guarantees.
-- [ ] `Git.showFileAtRevision` and rollback stop routing a document through the heap.
-- [ ] `treeDiff` serves the diff without a `String` copy.
-- [ ] Record the subprocess-capture ADR.
+- [x] `Process` entry point returning capture paths, with the same cleanup guarantees
+      (`Process.runProcessCaptured`/`ProcCapture`/`removeCapture`; `runProcess` is now it plus a read).
+- [x] `Git.showFileAtRevisionCaptured` plus rollback and view-at-revision stop routing a document through the
+      heap: rollback streams the capture into place with `Stream.copyFile`, and `treeReadAt` streams it as a
+      sized document (`documentTempFileResponse`, removing the capture when the body finishes). The
+      byte-returning `Git.showFileAtRevision` stays for tests.
+- [~] `treeDiff` serves the diff without a `String` copy. **Deferred, with reason:** the diff is not served
+      raw -- `View.diffBody`/`sideBySide` parse git's unified diff line by line and render it side-by-side into
+      HTML -- so a raw `FileBody` (the original idea) does not apply. The remaining cost is the `BS.unpack` in
+      `Git.diffBetween`; the diff is bounded by a single page (at most ~2x the `formBodyLimit` cap, since it is
+      the difference of two revisions of one page), and removing the `String` would require rewriting the
+      side-by-side parser onto a streamed `ByteString` line reader, which under MicroHs risks the list-scan
+      crash class (`BS.lines`/`split`, see the memory notes) unless written as a careful `Bytes`-style loop.
+      The payoff is page-bounded and the path is a rare admin view, so this is recorded rather than done;
+      revisit if diffs ever become corpus-scale. See ADR-0090's "Reopens when".
+- [x] Recorded the subprocess-capture ADR (ADR-0090).
 
 ### Phase 6: the remaining whole-file reads in the tree operations
 

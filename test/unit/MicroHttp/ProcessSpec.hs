@@ -62,3 +62,29 @@ spec =
                 res <- Process.runProcess "cat" ["marker.txt"] (Just ioDir) Nothing
                 Process.procExit res `shouldBe` Exit.ExitSuccess
                 Process.procOut res `shouldBe` BS.pack "in-cwd"
+
+        describe "runProcessCaptured" $ do
+            it "given a program, when captured, then stdout is left in a file the caller reads and removes" $ do
+                cap <- Process.runProcessCaptured "echo" ["captured"] Nothing Nothing
+                Process.captureExit cap `shouldBe` Exit.ExitSuccess
+                out <- BS.readFile (Process.captureOut cap)
+                out `shouldBe` BS.pack "captured\n"
+                err <- BS.readFile (Process.captureErr cap)
+                err `shouldBe` BS.empty
+                Process.removeCapture cap
+                Directory.doesFileExist (Process.captureOut cap) `shouldReturn` False
+                Directory.doesFileExist (Process.captureErr cap) `shouldReturn` False
+
+            it "given input bytes, when captured, then they are fed to stdin and the output capture holds them" $ do
+                cap <- Process.runProcessCaptured "cat" [] Nothing (Just (BS.pack "piped capture"))
+                Process.captureExit cap `shouldBe` Exit.ExitSuccess
+                out <- BS.readFile (Process.captureOut cap)
+                out `shouldBe` BS.pack "piped capture"
+                Process.removeCapture cap
+
+            it "given an executable that does not exist, when captured, then exit 127 and the stderr capture names the failure" $ do
+                cap <- Process.runProcessCaptured "micro-http-no-such-program" [] Nothing Nothing
+                Process.captureExit cap `shouldBe` Exit.ExitFailure 127
+                err <- BS.readFile (Process.captureErr cap)
+                BS.null err `shouldBe` False
+                Process.removeCapture cap

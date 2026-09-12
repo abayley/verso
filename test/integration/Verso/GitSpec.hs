@@ -4,6 +4,7 @@ import qualified Data.ByteString.Char8 as BS
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Process as Process
 import qualified System.Directory as Directory
+import qualified System.Exit as Exit
 import Test.Hspec
 import qualified Verso.Git as Git
 
@@ -88,6 +89,25 @@ spec =
             atV1 `shouldBe` BS.pack "alpha beta\n"
             diff <- Git.diffBetween root (hashOf c1) (hashOf c2) "p.md"
             (("beta" `isIn` diff) && ("gamma" `isIn` diff)) `shouldBe` True
+
+        it "given a revision, when captured to disk, then the stdout capture holds the exact bytes and is the caller's to remove (RFC-0040)" $ do
+            root <- freshRepo
+            writeText (root ++ "/p.md") "alpha beta\n"
+            c1 <- Git.commitPaths root author "v1" ["p.md"]
+            cap <- Git.showFileAtRevisionCaptured root (hashOf c1) "p.md"
+            Process.captureExit cap `shouldBe` Exit.ExitSuccess
+            captured <- BS.readFile (Process.captureOut cap)
+            captured `shouldBe` BS.pack "alpha beta\n"
+            Process.removeCapture cap
+            Directory.doesFileExist (Process.captureOut cap) `shouldReturn` False
+
+        it "given a path absent at a revision, when captured, then git exits non-zero" $ do
+            root <- freshRepo
+            writeText (root ++ "/p.md") "only page\n"
+            c1 <- Git.commitPaths root author "v1" ["p.md"]
+            cap <- Git.showFileAtRevisionCaptured root (hashOf c1) "absent.md"
+            (Process.captureExit cap == Exit.ExitSuccess) `shouldBe` False
+            Process.removeCapture cap
 
         it "given a page that has been renamed, when its history is read, then it is followed across the rename" $ do
             root <- freshRepo

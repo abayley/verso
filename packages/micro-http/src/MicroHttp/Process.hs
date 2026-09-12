@@ -36,6 +36,9 @@ The capture mechanism uses @creat(3)@ for the output files and @open(2)@ with
 module MicroHttp.Process (
     ProcResult (..),
     runProcess,
+    ProcCapture (..),
+    runProcessCaptured,
+    removeCapture,
 ) where
 
 import qualified Control.Monad as Monad
@@ -86,6 +89,33 @@ child's standard input; when 'Nothing', the child inherits the server's stdin.
 -}
 runProcess :: FilePath -> [String] -> Maybe FilePath -> Maybe BS.ByteString -> IO ProcResult
 runProcess executable args mCwd mStdin = do
+    cap <- runProcessCaptured executable args mCwd mStdin
+    out <- BS.readFile (captureOut cap)
+    err <- BS.readFile (captureErr cap)
+    cleanup [captureOut cap, captureErr cap]
+    pure (ProcResult (captureExit cap) out err)
+
+{- | The outcome of a subprocess whose stdout and stderr are left in capture
+files on disk rather than read into memory (RFC-0040). The caller owns
+'captureOut' and 'captureErr' and must remove them (see 'removeCapture') once it
+has consumed them -- by renaming or streaming the stdout capture into place, so a
+large captured page (a document at a revision, a diff) never enters the heap.
+-}
+data ProcCapture = ProcCapture
+    { captureExit :: Exit.ExitCode
+    , captureOut :: FilePath
+    , captureErr :: FilePath
+    }
+    deriving (Eq, Show)
+
+{- | As 'runProcess', but leaves the child's stdout and stderr in the capture
+files and returns their paths rather than reading them. The caller owns the two
+files and removes them (see 'removeCapture'); the internal stdin capture, if any,
+is cleaned here. This is the entry point for a subprocess whose output is a
+file-sized payload the caller will rename or stream rather than hold as a value.
+-}
+runProcessCaptured :: FilePath -> [String] -> Maybe FilePath -> Maybe BS.ByteString -> IO ProcCapture
+runProcessCaptured executable args mCwd mStdin = do
     tmp <- Directory.getTemporaryDirectory
     outPath <- FileSystem.uniqueTempPath tmp "micro-http-out"
     errPath <- FileSystem.uniqueTempPath tmp "micro-http-err"
@@ -95,18 +125,23 @@ runProcess executable args mCwd mStdin = do
             p <- FileSystem.uniqueTempPath tmp "micro-http-in"
             BS.writeFile p bytes
             pure (Just p)
-    result <- spawnAndWait executable args mCwd outPath errPath inPath
-    cleanup (outPath : errPath : maybe [] pure inPath)
-    pure result
+    code <- spawnCapturing executable args mCwd outPath errPath inPath
+    cleanup (maybe [] pure inPath)
+    pure (ProcCapture code outPath errPath)
+
+-- | Removes a capture's stdout and stderr files, ignoring any already gone.
+removeCapture :: ProcCapture -> IO ()
+removeCapture cap = cleanup [captureOut cap, captureErr cap]
 
 {- | Spawns the child with its stdio redirected to the capture files (via
-@posix_spawn@ file actions), then waits. The capture files are opened in the
-parent so it can read them after the child exits; no code of ours runs in the
-child. A spawn failure (executable not found, bad working directory) reports
-exit 127, matching the exec-failure convention.
+@posix_spawn@ file actions), waits, and returns its exit code, leaving the
+capture files on disk for the caller. The capture files are opened in the parent;
+no code of ours runs in the child. A spawn failure (executable not found, bad
+working directory) writes its message to the stderr capture and reports exit 127,
+matching the exec-failure convention.
 -}
-spawnAndWait :: FilePath -> [String] -> Maybe FilePath -> FilePath -> FilePath -> Maybe FilePath -> IO ProcResult
-spawnAndWait executable args mCwd outPath errPath mInPath = do
+spawnCapturing :: FilePath -> [String] -> Maybe FilePath -> FilePath -> FilePath -> Maybe FilePath -> IO Exit.ExitCode
+spawnCapturing executable args mCwd outPath errPath mInPath = do
     outFd <- CStr.withCString outPath (`c_creat` 0o600)
     errFd <- CStr.withCString errPath (`c_creat` 0o600)
     inFd <- case mInPath of
@@ -115,12 +150,10 @@ spawnAndWait executable args mCwd outPath errPath mInPath = do
     pid <- spawn executable args mCwd outFd errFd inFd
     mapM_ closeFd [outFd, errFd, inFd]
     if pid < 0
-        then pure (ProcResult (Exit.ExitFailure 127) BS.empty (BS.pack ("spawn failed (errno " ++ show (negate pid) ++ ")")))
-        else do
-            code <- waitFor (fromIntegral pid)
-            out <- BS.readFile outPath
-            err <- BS.readFile errPath
-            pure (ProcResult code out err)
+        then do
+            BS.writeFile errPath (BS.pack ("spawn failed (errno " ++ show (negate pid) ++ ")"))
+            pure (Exit.ExitFailure 127)
+        else waitFor (fromIntegral pid)
 
 {- | Marshals the argv vector and optional working directory and calls
 @mhp_spawn@, returning the child pid (>= 0) or a negated @errno@ (< 0).

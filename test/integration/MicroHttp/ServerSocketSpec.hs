@@ -111,6 +111,17 @@ spec =
                 result `shouldBe` Right ()
                 BS.unpack received
                     `shouldBe` "HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\nzero-copy!"
+        it "given a sized streaming body, when handled over a socket, then the client receives a head with an exact Content-Length and the streamed bytes" $
+            withConnectedPair $ \client served conn -> do
+                BS.writeFile fileBodyFile (BS.pack "streamed-body!")
+                sent <- Socket.sendAll client (BS.pack "GET / HTTP/1.1\r\n\r\n")
+                sent `shouldBe` Right ()
+                result <- Server.handleClient Server.defaultSettings (sizedStreamApp fileBodyFile 14) served conn
+                received <- recvAll client
+                Directory.removeFile fileBodyFile
+                result `shouldBe` Right ()
+                BS.unpack received
+                    `shouldBe` "HTTP/1.1 200 OK\r\nContent-Length: 14\r\nConnection: close\r\n\r\nstreamed-body!"
         it "given a reader that stops draining a large file body, when handled with a short idle write timeout, then the sendfile write fails within the bound instead of hanging" $
             withConnectedPair $ \client served conn -> do
                 BS.writeFile largeFileBodyFile (BS.replicate largeFileBodyBytes 'x')
@@ -131,6 +142,10 @@ spec =
 -- | An application that serves a file body for a fixed path and size.
 fileBodyApp :: FilePath -> Int -> Middleware.Application
 fileBodyApp path size _ = pure (Http.Response Http.okStatus [] (Http.FileBody path size))
+
+-- | An application that serves a file's bytes as a sized streaming body (RFC-0040).
+sizedStreamApp :: FilePath -> Int -> Middleware.Application
+sizedStreamApp path size _ = pure (Http.Response Http.okStatus [] (Http.SizedStreamBody size (Stream.fileEnumerator path)))
 
 fileBodyFile :: FilePath
 fileBodyFile = "server-filebody-test.tmp"

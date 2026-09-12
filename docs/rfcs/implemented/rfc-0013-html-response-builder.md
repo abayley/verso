@@ -96,7 +96,13 @@ mark it as complete in the phase checklist.
   no whole-page concatenation or `pack`-copy of constant structure.
 - No streaming of partially-rendered pages to the socket before rendering
   finishes: the chunk list is built in memory (so `Content-Length` is exact),
-  then written. Lazy/incremental production is out of scope.
+  then written. Lazy/incremental production is out of scope. **Superseded by
+  RFC-0040 (ADR-0089):** once RFC-0020 embedded documents in the page the
+  premise expired, and document pages now stream in bounded memory behind a
+  counted, still-exact `Content-Length`. The deferred `ChunksBody [ByteString]`
+  discussed below is superseded by that RFC's `SizedStreamBody Int Enumerator`,
+  which generalises it so the segments need not exist before the head is written;
+  `Html.coalesce` is now lazy to feed it.
 - No new HTML combinators or template features; the surface is unchanged.
 - No keep-alive or chunked transfer-encoding; bodies stay `Connection: close`
   with an exact length (consistent with RFC-0014).

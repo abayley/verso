@@ -9,12 +9,16 @@ module MicroHttp.Html (
     body_,
     Escaped,
     escapeBytes,
+    escapeBlockBytes,
+    escapedLength,
     escapedText,
     class_,
     custom,
     div,
     div_,
     el,
+    elOpen,
+    elClose,
     form_,
     h1,
     h1_,
@@ -47,7 +51,9 @@ module MicroHttp.Html (
     p,
     p_,
     rawTrusted,
+    coalesce,
     renderChunks,
+    renderChunksRaw,
     renderHtml,
     section,
     section_,
@@ -128,7 +134,15 @@ hundreds of per-fragment writes (RFC-0013). A page below the buffer is a single
 segment.
 -}
 renderChunks :: Html a -> [BS.ByteString]
-renderChunks = coalesce coalesceBufferSize . runBuilder . htmlBuilder
+renderChunks = coalesce coalesceBufferSize . renderChunksRaw
+
+{- | The builder's fragment list before coalescing: many small chunks, one per
+emitted fragment. The response path coalesces these (via 'renderChunks'); a
+caller that streams a page around a document hole coalesces the shell segments
+itself, so it needs the raw fragments.
+-}
+renderChunksRaw :: Html a -> [BS.ByteString]
+renderChunksRaw = runBuilder . htmlBuilder
 
 -- | The accumulated builder of a rendered document.
 htmlBuilder :: Html a -> Builder
@@ -138,17 +152,20 @@ htmlBuilder (Html (out, _)) = out
 coalesceBufferSize :: Int
 coalesceBufferSize = 16384
 
-{- | Packs a chunk list into segments of at least @bufSize@ bytes, in one pass,
-so the socket sees few large writes rather than one fragment per chunk.
+{- | Packs a chunk list into segments of at least @bufSize@ bytes, yielding each
+segment as soon as it fills rather than folding the whole list first, so the
+builder's lazy fragment list flows through with only one segment in hand
+(RFC-0040). A page below the buffer is a single segment. Byte-identical, segment
+for segment, to the strict coalescer it replaced: a segment accumulates chunks
+until its total reaches @bufSize@, and the next chunk starts a fresh segment.
 -}
 coalesce :: Int -> [BS.ByteString] -> [BS.ByteString]
-coalesce bufSize = finish . foldl step ([], [], 0)
+coalesce bufSize = go [] 0
   where
-    step (out, cur, len) c
-        | len >= bufSize = (BS.concat (reverse cur) : out, [c], BS.length c)
-        | otherwise = (out, c : cur, len + BS.length c)
-    finish (out, cur, _) =
-        reverse (if null cur then out else BS.concat (reverse cur) : out)
+    go cur _ [] = [BS.concat (reverse cur) | not (null cur)]
+    go cur len (c : cs)
+        | len >= bufSize = BS.concat (reverse cur) : go [c] (BS.length c) cs
+        | otherwise = go (c : cur) (len + BS.length c) cs
 
 -- | Emit escaped text from a 'String', decoding via the 'String' path.
 text :: String -> Html ()
@@ -175,17 +192,39 @@ reserves 'unsafePerformIO' for read-only scans. An input with no specials is
 returned as-is, without a copy.
 -}
 escapeBytes :: BS.ByteString -> IO Escaped
-escapeBytes input
-    | BS.null input = pure (Escaped input)
+escapeBytes = fmap Escaped . escapeBlockBytes
+
+{- | Escapes one block of already-UTF-8 bytes to its raw escaped bytes, the same
+five entities as 'escapeBytes' with everything else verbatim. Because the C pass
+works byte by byte, a block boundary can never split an expansion, so escaping a
+document a block at a time and concatenating the results is byte-identical to
+escaping it whole (RFC-0040): this is what lets a document response stream from
+disk in blocks. A block with no specials is returned as-is, without a copy.
+-}
+escapeBlockBytes :: BS.ByteString -> IO BS.ByteString
+escapeBlockBytes input
+    | BS.null input = pure input
     | otherwise = BSU.unsafeUseAsCStringLen input $ \(inPtr, len) -> do
         let inBytes = Ptr.castPtr inPtr
             cLen = fromIntegral len
         escapedLen <- c_escapedLength inBytes cLen
         if escapedLen == cLen
-            then pure (Escaped input)
+            then pure input
             else Alloc.allocaBytes (fromIntegral escapedLen) $ \outBytes -> do
                 written <- c_escape inBytes cLen outBytes
-                Escaped <$> BS.packCStringLen (Ptr.castPtr outBytes, fromIntegral written)
+                BS.packCStringLen (Ptr.castPtr outBytes, fromIntegral written)
+
+{- | The number of bytes one block escapes to, without producing the escaped
+bytes. Summed over a document's blocks it gives the exact escaped length for a
+sized response's @Content-Length@ (RFC-0040); byte-wise like 'escapeBlockBytes',
+so the per-block sum equals the whole document's escaped length.
+-}
+escapedLength :: BS.ByteString -> IO Int
+escapedLength input
+    | BS.null input = pure 0
+    | otherwise = BSU.unsafeUseAsCStringLen input $ \(inPtr, len) -> do
+        escapedLen <- c_escapedLength (Ptr.castPtr inPtr) (fromIntegral len)
+        pure (fromIntegral escapedLen)
 
 -- | Emit already-escaped bytes as text content, as one chunk.
 escapedText :: Escaped -> Html ()
@@ -207,6 +246,18 @@ el name attrs children = do
 -- | A void element: a single self-closing-style opening tag with no children.
 voidEl :: String -> [(String, String)] -> Html ()
 voidEl name attrs = emit (openTag name attrs)
+
+{- | Emit only an element's opening tag. Paired with 'elClose', it lets a caller
+place a streamed hole between the tags rather than passing the whole child value:
+@elOpen n a@ then content then @elClose n@ is byte-identical to @el n a content@,
+which is how a document page streams around its content (RFC-0040).
+-}
+elOpen :: String -> [(String, String)] -> Html ()
+elOpen name attrs = emit (openTag name attrs)
+
+-- | Emit only an element's closing tag; see 'elOpen'.
+elClose :: String -> Html ()
+elClose name = emit (closeTag name)
 
 -- | An attribute as a (name, value) pair.
 attr :: String -> String -> (String, String)

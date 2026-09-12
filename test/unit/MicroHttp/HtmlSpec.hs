@@ -39,6 +39,18 @@ spec =
             let segments = Html.renderChunks largeDocument
             (length segments > 1) `shouldBe` True
             (BS.length (head segments) >= 16384) `shouldBe` True
+        it "given the HtmlSpec pages, when coalesced, then the segments equal the strict coalescer" $ do
+            let render = Html.renderChunksRaw
+            Html.coalesce 16384 (render todoItem) `shouldBe` strictCoalesce 16384 (render todoItem)
+            Html.coalesce 16384 (render document) `shouldBe` strictCoalesce 16384 (render document)
+            Html.coalesce 16384 (render largeDocument) `shouldBe` strictCoalesce 16384 (render largeDocument)
+        it "given a chunk list spanning several buffers, when coalesced, then it equals the strict coalescer" $
+            Html.coalesce 16 manyChunks `shouldBe` strictCoalesce 16 manyChunks
+        it "given empty and singleton chunk lists, when coalesced, then it equals the strict coalescer" $ do
+            Html.coalesce 16 [] `shouldBe` strictCoalesce 16 []
+            Html.coalesce 16 [BS.pack "abc"] `shouldBe` strictCoalesce 16 [BS.pack "abc"]
+        it "given an unbounded chunk source, when coalesced, then the first buffer-sized segment is yielded without forcing the rest" $
+            (BS.length (head (Html.coalesce 16 (repeat (BS.pack "abcd")))) >= 16) `shouldBe` True
 
 todoItem :: Html.Html ()
 todoItem =
@@ -140,3 +152,19 @@ referenceEscape = BS.pack . concatMap escapeChar . BS.unpack
     escapeChar '"' = "&quot;"
     escapeChar '\'' = "&#39;"
     escapeChar c = [c]
+
+-- | A chunk list spanning several coalescing buffers, with uneven chunk sizes.
+manyChunks :: [BS.ByteString]
+manyChunks = take 400 (cycle [BS.pack "a", BS.pack "bcde", BS.pack "", BS.pack "fghijklmno", BS.pack "pq"])
+
+{- | The strict coalescer 'Html.coalesce' replaced, kept as the oracle: it folds the whole
+chunk list before yielding, so the lazy coalescer is checked against it segment for segment.
+-}
+strictCoalesce :: Int -> [BS.ByteString] -> [BS.ByteString]
+strictCoalesce bufSize = finish . foldl step ([], [], 0)
+  where
+    step (out, cur, len) c
+        | len >= bufSize = (BS.concat (reverse cur) : out, [c], BS.length c)
+        | otherwise = (out, c : cur, len + BS.length c)
+    finish (out, cur, _) =
+        reverse (if null cur then out else BS.concat (reverse cur) : out)

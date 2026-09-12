@@ -40,6 +40,7 @@ module MicroHttp.Http (
     ResponseSink (..),
     serialiseResponse,
     serialiseHead,
+    serialiseSizedHead,
     serialiseFileHead,
     writeResponse,
 ) where
@@ -147,10 +148,17 @@ fallback remains @StreamBody (fileEnumerator path)@.
 data ResponseBody
     = StrictBody BS.ByteString
     | StreamBody (Iteratee.Enumerator Stream.StreamError ())
+    | {- | A streaming body whose total length is known before the first byte is
+      written, so the head carries an exact @Content-Length@ (RFC-0040). The
+      enumerator produces the body a segment at a time; the length is the sum
+      of those segments' bytes, resolved once where the body is built.
+      -}
+      SizedStreamBody Int (Iteratee.Enumerator Stream.StreamError ())
     | FileBody FilePath Int
 
 {- | Equality compares strict bodies, and file paths with sizes; a streaming
-body is never equal, because it carries an opaque producer.
+body (sized or close-delimited) is never equal, because it carries an opaque
+producer.
 -}
 instance Eq ResponseBody where
     StrictBody a == StrictBody b = a == b
@@ -160,6 +168,7 @@ instance Eq ResponseBody where
 instance Show ResponseBody where
     show (StrictBody body) = "StrictBody " ++ show body
     show (StreamBody _) = "StreamBody <stream>"
+    show (SizedStreamBody size _) = "SizedStreamBody " ++ show size ++ " <stream>"
     show (FileBody path size) = "FileBody " ++ show path ++ " " ++ show size
 
 -- | An HTTP response status: a numeric code and its reason phrase.
@@ -471,13 +480,16 @@ serialiseResponse response =
     case responseBody response of
         StrictBody body -> Right (serialiseStrict response body)
         StreamBody _ -> Left CannotSerialiseStreamBody
+        SizedStreamBody _ _ -> Left CannotSerialiseStreamBody
         FileBody _ _ -> Left CannotSerialiseStreamBody
 
 {- | Writes a response through a 'ResponseSink': a strict body goes out as one
-serialised chunk with @Content-Length@; a streaming body writes a
-close-delimited head then drives the body enumerator into the chunk writer; a
-file body is handed whole to 'sinkFile', which sizes the file, writes the head
-with an exact @Content-Length@, and sends the bytes.
+serialised chunk with @Content-Length@; a close-delimited streaming body writes
+a head with no length then drives the body enumerator into the chunk writer; a
+sized streaming body writes a head with an exact @Content-Length@ then drives
+its enumerator the same way (RFC-0040); a file body is handed whole to
+'sinkFile', which sizes the file, writes the head with an exact @Content-Length@,
+and sends the bytes.
 -}
 writeResponse :: ResponseSink -> Response -> IO (Either Stream.StreamError ())
 writeResponse sink response =
@@ -485,6 +497,11 @@ writeResponse sink response =
         StrictBody body -> sinkChunk sink (serialiseStrict response body)
         StreamBody enumerator -> do
             sent <- sinkChunk sink (serialiseHead response)
+            case sent of
+                Left err -> return (Left err)
+                Right () -> enumerator (Iteratee.byteSinkI (sinkChunk sink)) >>= Iteratee.run
+        SizedStreamBody size enumerator -> do
+            sent <- sinkChunk sink (serialiseSizedHead response size)
             case sent of
                 Left err -> return (Left err)
                 Right () -> enumerator (Iteratee.byteSinkI (sinkChunk sink)) >>= Iteratee.run
@@ -515,13 +532,15 @@ serialiseHead response =
         , BSC.pack "Connection: close\r\n\r\n"
         ]
 
-{- | The response head for a file body (RFC-0014): status line, headers, and an
-exact @Content-Length@ from the file @size@, then @Connection: close@. The body
-bytes follow from @sendfile@; @Connection: close@ stays (keep-alive is a later
-RFC, though an exact length now makes a file response eligible).
+{- | The response head for a body of known length: status line, headers, an
+exact @Content-Length@ from @size@, then @Connection: close@. Used by a file
+body (RFC-0014, the bytes following from @sendfile@) and by a sized streaming
+body (RFC-0040, the bytes following from its enumerator). @Connection: close@
+stays (keep-alive is a later RFC, though an exact length now makes such a
+response eligible).
 -}
-serialiseFileHead :: Response -> Int -> BS.ByteString
-serialiseFileHead response size =
+serialiseSizedHead :: Response -> Int -> BS.ByteString
+serialiseSizedHead response size =
     BS.concat
         [ statusLine (responseStatus response)
         , responseHeadersBytes (responseHeaders response)
@@ -529,6 +548,10 @@ serialiseFileHead response size =
         , BSC.pack (show size)
         , BSC.pack "\r\nConnection: close\r\n\r\n"
         ]
+
+-- | The response head for a file body: 'serialiseSizedHead' with the file size.
+serialiseFileHead :: Response -> Int -> BS.ByteString
+serialiseFileHead = serialiseSizedHead
 
 -- | Renders the @HTTP/1.1 <code> <reason>@ status line, CRLF-terminated.
 statusLine :: Status -> BS.ByteString

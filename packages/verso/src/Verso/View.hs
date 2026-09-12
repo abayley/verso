@@ -10,6 +10,7 @@ module Verso.View (
     diffBody,
     diffPage,
     editorPage,
+    editorShell,
     excerptOf,
     historyPage,
     jsonArray,
@@ -421,49 +422,59 @@ breadcrumbsJson crumbs = jsonArray (map crumbObject crumbs)
 
 editorPage :: String -> Maybe String -> String -> Html.Escaped -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Html.Html ()
 editorPage docId mode pageTitle content versioned editable hasDraft attachments breadcrumbs treeSpine =
-    Html.html [Html.lang "en"] $ do
+    before >> Html.escapedText content >> after
+  where
+    (before, after) = editorShell docId mode pageTitle versioned editable hasDraft attachments breadcrumbs treeSpine
+
+{- | The editor page split at the document hole (RFC-0040): the shell before the
+@\<textarea\>@'s content and the shell after it, as two 'Html' values. A caller
+that has the content rebuilds the whole page with 'editorPage'; a caller streaming
+the document from disk emits @before@, the escaped document, then @after@, with a
+@Content-Length@ summed from the shells' lengths and the escaped document's length.
+
+The read view (RFC-0020) has no write path: the element is rendered without the
+surrounding autosave form and marked read-only so the editors and chrome disable
+editing. @data-readonly@, @data-versioning@ (RFC-0036) and @data-has-draft@
+(RFC-0032) are the same server-set attributes the whole page carried. The split
+is byte-identical to the un-split page: 'Html.elOpen' and 'Html.elClose' emit the
+tags the content nested between.
+-}
+editorShell :: String -> Maybe String -> String -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> (Html.Html (), Html.Html ())
+editorShell docId mode pageTitle versioned editable hasDraft attachments breadcrumbs treeSpine =
+    (before, after)
+  where
+    editorAttrs =
+        [Html.attr "name" "markdown", Html.attr "data-document" docId]
+            ++ maybe [] (\m -> [Html.attr "mode" m]) mode
+            ++ [Html.attr "data-attachments" (attachmentsJson attachments) | not (null attachments)]
+            ++ [Html.attr "data-breadcrumbs" (breadcrumbsJson breadcrumbs) | not (null breadcrumbs)]
+            ++ [Html.attr "data-tree-spine" treeSpine | not (null treeSpine)]
+            ++ [Html.attr "data-readonly" "" | not editable]
+            ++ [Html.attr "data-versioning" "" | versioned]
+            ++ [Html.attr "data-has-draft" "" | hasDraft]
+    textareaAttrs =
+        [Html.attr "name" "markdown", Html.attr "aria-label" "Markdown source", Html.class_ "markdown-editor__fallback"]
+    before = do
+        Html.elOpen "html" [Html.lang "en"]
         Html.head [] $ do
             Html.meta [Html.attr "charset" "utf-8"]
             Html.rawTrusted "<script src=\"/static/editor/appearance-bootstrap.js\"></script>"
             Html.title [] (Html.text pageTitle)
             chromeHeadAssets
             Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\" defer></script>"
-        Html.body [Html.class_ "markdown-editor-page"] $
-            Html.main [] $
-                -- The read view (RFC-0020) has no write path: the element is rendered without the
-                -- surrounding autosave form, and marked read-only so the editors and chrome disable editing.
-                if editable
-                    then Html.form_
-                        [ Html.attr "action" ("/documents/" ++ docId)
-                        , Html.attr "method" "post"
-                        ]
-                        $ do
-                            editorElement docId mode versioned editable hasDraft attachments breadcrumbs treeSpine content
-                            Html.custom "noscript" [] $
-                                Html.button_ [Html.attr "type" "submit"] (Html.text "Save")
-                    else editorElement docId mode versioned editable hasDraft attachments breadcrumbs treeSpine content
-
-{- | The @\<markdown-editor\>@ custom element with its server-set attributes and the
-no-script @\<textarea\>@ fallback holding the document. @data-readonly@ is set in the
-read view (RFC-0020); the element disables editing and hides the editing chrome.
--}
-editorElement :: String -> Maybe String -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Html.Escaped -> Html.Html ()
-editorElement docId mode versioned editable hasDraft attachments breadcrumbs treeSpine content =
-    Html.custom
-        "markdown-editor"
-        ( [Html.attr "name" "markdown", Html.attr "data-document" docId]
-            ++ maybe [] (\m -> [Html.attr "mode" m]) mode
-            ++ [Html.attr "data-attachments" (attachmentsJson attachments) | not (null attachments)]
-            ++ [Html.attr "data-breadcrumbs" (breadcrumbsJson breadcrumbs) | not (null breadcrumbs)]
-            ++ [Html.attr "data-tree-spine" treeSpine | not (null treeSpine)]
-            ++ [Html.attr "data-readonly" "" | not editable]
-            -- RFC-0036: versioning on means autosave targets the draft resource (PUT /drafts/<path>).
-            ++ [Html.attr "data-versioning" "" | versioned]
-            -- RFC-0032: marks a page that has an unpublished draft, so the read view can flag it.
-            ++ [Html.attr "data-has-draft" "" | hasDraft]
-        )
-        ( Html.custom
-            "textarea"
-            [Html.attr "name" "markdown", Html.attr "aria-label" "Markdown source", Html.class_ "markdown-editor__fallback"]
-            (Html.escapedText content)
-        )
+        Html.elOpen "body" [Html.class_ "markdown-editor-page"]
+        Html.elOpen "main" []
+        Monad.when editable $
+            Html.elOpen "form" [Html.attr "action" ("/documents/" ++ docId), Html.attr "method" "post"]
+        Html.elOpen "markdown-editor" editorAttrs
+        Html.elOpen "textarea" textareaAttrs
+    after = do
+        Html.elClose "textarea"
+        Html.elClose "markdown-editor"
+        Monad.when editable $ do
+            Html.custom "noscript" [] $
+                Html.button_ [Html.attr "type" "submit"] (Html.text "Save")
+            Html.elClose "form"
+        Html.elClose "main"
+        Html.elClose "body"
+        Html.elClose "html"

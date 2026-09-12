@@ -2,10 +2,12 @@ module Verso.AppSpec (spec) where
 
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.IORef as IORef
 import qualified Data.List as List
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Http as Http
 import qualified MicroHttp.Http.Parse as Parse
+import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Log as Log
 import qualified MicroHttp.Process as Process
 import qualified MicroHttp.Server as Server
@@ -60,7 +62,7 @@ spec = do
         it "given an edit request for a tree document, when routing, then the editor page is returned with its content" $ do
             root <- setupTreeFixture
             outcome <-
-                Server.respondToRequestBytes
+                respondDocument
                     (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/sec/page.md?edit"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
@@ -69,7 +71,7 @@ spec = do
         it "given a default GET of a page, when routing, then a read-only editor shell is returned with its content" $ do
             root <- setupTreeFixture
             outcome <-
-                Server.respondToRequestBytes
+                respondDocument
                     (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/sec/page.md"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
@@ -96,7 +98,7 @@ spec = do
             root <- setupTreeFixture
             BS.writeFile (root ++ "/sec/utf8.md") (BS.pack "# T\n\nnbsp[\xc2\xa0] acute[\xc3\xa9] emoji[\xf0\x9f\x98\x80]\n")
             outcome <-
-                Server.respondToRequestBytes
+                respondDocument
                     (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/sec/utf8.md"))
             fmap (bodyContains (BS.pack "nbsp[\xc2\xa0]")) outcome `shouldBe` Right True
@@ -145,7 +147,7 @@ spec = do
         it "given a GET of /documents/, when routing, then the tree root index.md renders read-only" $ do
             root <- setupTreeFixture
             outcome <-
-                Server.respondToRequestBytes
+                respondDocument
                     (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
@@ -154,7 +156,7 @@ spec = do
         it "given an ?edit request for a missing page, when routing, then it still seeds a starter document" $ do
             root <- setupTreeFixture
             outcome <-
-                Server.respondToRequestBytes
+                respondDocument
                     (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/sec/missing.md?edit"))
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 200
@@ -275,7 +277,7 @@ spec = do
                     (App.appWithDocumentTree root)
                     (BS.pack (uploadRequest "/documents/sec/page.md?asset" "My Report.pdf" "PDFDATA"))
             outcome <-
-                Server.respondToRequestBytes
+                respondDocument
                     (App.appWithDocumentTree root)
                     (BS.pack (getRequest "/documents/sec/page.md?edit"))
             fmap (bodyContains (BS.pack "data-attachments")) outcome `shouldBe` Right True
@@ -337,7 +339,7 @@ spec = do
                     (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=%23+Drafted+heading"))
             outcome <-
-                Server.respondToRequestBytes
+                respondDocument
                     (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (getRequest "/documents/sec/page.md?edit"))
             fmap (bodyContains (BS.pack "Drafted heading")) outcome `shouldBe` Right True
@@ -362,7 +364,7 @@ spec = do
                     (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/drafts/sec/page.md" "# Drafted via PUT"))
             outcome <-
-                Server.respondToRequestBytes
+                respondDocument
                     (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (getRequest "/documents/sec/page.md?edit"))
             fmap (bodyContains (BS.pack "Drafted via PUT")) outcome `shouldBe` Right True
@@ -756,7 +758,7 @@ spec = do
                     (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/documents/sec/page.md" "# Second version"))
             atFirst <-
-                Server.respondToRequestBytes
+                respondDocument
                     (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (getRequest ("/documents/sec/page.md?at=" ++ firstRev)))
             fmap (Http.statusCode . Http.responseStatus) atFirst `shouldBe` Right 200
@@ -915,6 +917,38 @@ removeIfExists :: FilePath -> IO ()
 removeIfExists path = do
     exists <- Directory.doesFileExist path
     Monad.when exists (Directory.removeFile path)
+
+{- | Like 'Server.respondToRequestBytes', but materialises a streamed body into a
+strict one, so the byte-inspecting helpers can read a document page that now
+streams from disk (RFC-0040).
+-}
+respondDocument :: Http.Application -> BS.ByteString -> IO (Either Stream.StreamError Http.Response)
+respondDocument app req = do
+    outcome <- Server.respondToRequestBytes app req
+    case outcome of
+        Left err -> pure (Left err)
+        Right response -> Right <$> materialiseBody response
+
+-- | Collapses any response body to a strict one: a file is read, a stream is run.
+materialiseBody :: Http.Response -> IO Http.Response
+materialiseBody response =
+    case Http.responseBody response of
+        Http.StrictBody _ -> pure response
+        Http.FileBody path _ -> do
+            bytes <- BS.readFile path
+            pure response{Http.responseBody = Http.StrictBody bytes}
+        Http.StreamBody enumerator -> collect enumerator
+        Http.SizedStreamBody _ enumerator -> collect enumerator
+  where
+    collect enumerator = do
+        acc <- IORef.newIORef []
+        final <- enumerator (Iteratee.byteSinkI (\bytes -> IORef.modifyIORef acc (bytes :) >> pure (Right ())))
+        result <- Iteratee.run final
+        case result of
+            Right () -> do
+                chunks <- IORef.readIORef acc
+                pure response{Http.responseBody = Http.StrictBody (BS.concat (reverse chunks))}
+            Left err -> error ("materialiseBody: " ++ show err)
 
 bodyContains :: BS.ByteString -> Http.Response -> Bool
 bodyContains needle response =

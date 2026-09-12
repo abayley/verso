@@ -66,6 +66,7 @@ fuseBody stage response =
         Http.StrictBody _ -> response
         Http.FileBody _ _ -> response
         Http.StreamBody enumerator -> response{Http.responseBody = Http.StreamBody (fuse enumerator)}
+        Http.SizedStreamBody size enumerator -> response{Http.responseBody = Http.SizedStreamBody size (fuse enumerator)}
   where
     fuse :: Iteratee.Enumerator Stream.StreamError () -> Iteratee.Enumerator Stream.StreamError ()
     fuse enumerator sink = enumerator (stage sink)
@@ -160,6 +161,10 @@ logRequests logger inner conn = Iteratee.IterM start
                 let headLength = BS.length (Http.serialiseHead response)
                     counted = countingBody startMillis lineState reqBytes (Http.responseStatus response) headLength enumerator
                  in Iteratee.Done response{Http.responseBody = Http.StreamBody counted} residue
+            Http.SizedStreamBody size enumerator ->
+                let headLength = BS.length (Http.serialiseSizedHead response size)
+                    counted = countingBody startMillis lineState reqBytes (Http.responseStatus response) headLength enumerator
+                 in Iteratee.Done response{Http.responseBody = Http.SizedStreamBody size counted} residue
 
     logCompleted startMillis lineState reqBytes status respBytes = do
         endMillis <- TimeMilli.getTimeMilli

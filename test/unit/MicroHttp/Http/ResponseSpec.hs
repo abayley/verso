@@ -40,6 +40,13 @@ spec =
             streamChunks <- recordResponse (Http.Response Http.okStatus [] (Http.StreamBody (Iteratee.strictEnumerator (bs "streamed"))))
             streamChunks
                 `shouldBe` Right [bs "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n", bs "streamed"]
+        it "given a sized streaming body, when pure serialising, then a serialise error is returned" $
+            Http.serialiseResponse (Http.Response Http.okStatus [] (Http.SizedStreamBody 8 (Iteratee.strictEnumerator (bs "streamed"))))
+                `shouldBe` Left Http.CannotSerialiseStreamBody
+        it "given a sized streaming body, when writing, then the head carries the exact Content-Length and the body follows" $ do
+            sizedChunks <- recordResponse (Http.Response Http.okStatus [] (Http.SizedStreamBody 8 (Iteratee.strictEnumerator (bs "streamed"))))
+            sizedChunks
+                `shouldBe` Right [bs "HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\n", bs "streamed"]
 
 recordResponse :: Http.Response -> IO (Either Stream.StreamError [BS.ByteString])
 recordResponse response = do

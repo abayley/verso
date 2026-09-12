@@ -41,6 +41,11 @@ spec =
                 appearsBefore "appearance-bootstrap.js" "basecoat.css" out `shouldBe` True
                 appearsBefore "appearance-bootstrap.js" "markdown-editor.css" out `shouldBe` True
 
+            it "given the edit view, when split into a shell around the content, then it is byte-identical to the whole page (RFC-0040)" $
+                shellSplitMatchesWholePage True `shouldReturn` True
+            it "given the read view, when split into a shell around the content, then it is byte-identical to the whole page (RFC-0040)" $
+                shellSplitMatchesWholePage False `shouldReturn` True
+
         describe "jsonObject" $ do
             it "given no fields, when rendered, then it is an empty object" $
                 View.jsonObject [] `shouldBe` "{}"
@@ -104,3 +109,31 @@ appearsBefore first second input =
         _ -> False
   where
     indexOf needle = List.findIndex (List.isPrefixOf needle) . List.tails
+
+{- | Whether 'View.editorPage' is byte-identical to its 'View.editorShell' split
+around the escaped content, for the edit or read view (RFC-0040). Exercised with a
+large document carrying every escaped byte and with the data-* attributes set, so
+the shell's attribute branches are covered. The content bytes are the escaped
+document as 'Html.escapedText' renders it, which is what the streamed path emits.
+-}
+shellSplitMatchesWholePage :: Bool -> IO Bool
+shellSplitMatchesWholePage editable = do
+    escaped <- Html.escapeBytes largeContent
+    let contentBytes = BS.concat (Html.renderChunks (Html.escapedText escaped))
+        whole = BS.concat (Html.renderChunks (View.editorPage docId mode title escaped versioned editable hasDraft attachments breadcrumbs spine))
+        (before, after) = View.editorShell docId mode title versioned editable hasDraft attachments breadcrumbs spine
+        split = BS.concat (Html.renderChunksRaw before) `BS.append` contentBytes `BS.append` BS.concat (Html.renderChunksRaw after)
+    pure (whole == split)
+  where
+    docId = "sec/page.md"
+    mode = Just "wysiwyg"
+    title = "A <Titled> & \"quoted\" page"
+    versioned = True
+    hasDraft = True
+    attachments = [("assets/My_Report.pdf", "My Report.pdf")]
+    breadcrumbs = [View.Crumb "Section" (Just "/documents/sec/"), View.Crumb "Page" Nothing]
+    spine = "[{\"path\":\"sec/page.md\"}]"
+
+-- | A ~260KB document with every escaped byte, at and across block boundaries.
+largeContent :: BS.ByteString
+largeContent = BS.concat (replicate 6000 (BS.pack "line <a> & \"b\" 'c' \xc3\xa9 \xf0\x9f\x98\x80 text >here<\n"))

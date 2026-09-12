@@ -1001,19 +1001,33 @@ treeEdit versioning root path request =
                 if versioningOn versioning
                     then Iteratee.liftIO (Draft.readDraft (draftStagingRoot versioning) path)
                     else pure Nothing
-            (content, isNew) <- case mDraft of
-                Just drafted -> pure (drafted, False)
+            case mDraft of
+                -- A staged draft (in memory): mark it as a draft; emit it as a sized stream.
+                Just drafted -> editFromBytes drafted False True
                 Nothing -> do
                     exists <- Iteratee.liftIO (Directory.doesFileExist fsPath)
                     if exists
-                        then (,False) <$> Iteratee.liftIO (BS.readFile fsPath)
-                        else pure (BS.pack seededMarkdown, True)
-            attachments <- Iteratee.liftIO (loadPageAttachments root path)
-            breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path content)
-            spine <- Iteratee.liftIO (treeSpineFor root path)
-            escaped <- Iteratee.liftIO (Html.escapeBytes content)
-            title <- Iteratee.liftIO (documentPageTitle isNew path content)
-            pure (documentResponse (View.editorPage path (editorMode request) title escaped (versioningOn versioning) True (Maybe.isJust mDraft) attachments breadcrumbs spine))
+                        then editFromFile fsPath -- RFC-0040: stream the published page from disk.
+                        else editFromBytes (BS.pack seededMarkdown) True False -- a new page seeds in memory.
+  where
+    -- The editable shell around the document hole, with the draft flag the read view sets.
+    editShell hasDraft title =
+        View.editorShell path (editorMode request) title (versioningOn versioning) True hasDraft
+    editFromFile fsPath = do
+        block <- Iteratee.liftIO (Frontmatter.readBlock fsPath)
+        attachments <- Iteratee.liftIO (loadPageAttachments root path)
+        breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path block)
+        spine <- Iteratee.liftIO (treeSpineFor root path)
+        title <- Iteratee.liftIO (documentPageTitle False path block)
+        let (before, after) = editShell False title attachments breadcrumbs spine
+        Iteratee.liftIO (documentFileResponse before after fsPath)
+    editFromBytes content isNew hasDraft = do
+        attachments <- Iteratee.liftIO (loadPageAttachments root path)
+        breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path content)
+        spine <- Iteratee.liftIO (treeSpineFor root path)
+        title <- Iteratee.liftIO (documentPageTitle isNew path content)
+        let (before, after) = editShell hasDraft title attachments breadcrumbs spine
+        Iteratee.liftIO (documentBytesResponse before after content)
 
 {- | Renders the read-only view for a tree document (the default @GET@, RFC-0020):
 the editor shell with editing disabled. A missing page is a @404@ -- reading never
@@ -1028,18 +1042,19 @@ treeRead versioning root path request =
             if not exists
                 then pure treeNotFound
                 else do
-                    content <- Iteratee.liftIO (BS.readFile fsPath)
+                    block <- Iteratee.liftIO (Frontmatter.readBlock fsPath)
                     attachments <- Iteratee.liftIO (loadPageAttachments root path)
-                    breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path content)
+                    breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path block)
                     spine <- Iteratee.liftIO (treeSpineFor root path)
                     -- RFC-0032: flag an unpublished draft so the read view can mark it next to "Edit".
                     hasDraft <-
                         if versioningOn versioning
                             then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
                             else pure False
-                    escaped <- Iteratee.liftIO (Html.escapeBytes content)
-                    title <- Iteratee.liftIO (documentPageTitle False path content)
-                    pure (documentResponse (View.editorPage path (editorMode request) title escaped (versioningOn versioning) False hasDraft attachments breadcrumbs spine))
+                    title <- Iteratee.liftIO (documentPageTitle False path block)
+                    -- RFC-0040: stream the document from disk between the shell halves; never held whole.
+                    let (before, after) = View.editorShell path (editorMode request) title (versioningOn versioning) False hasDraft attachments breadcrumbs spine
+                    Iteratee.liftIO (documentFileResponse before after fsPath)
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
 treeServeFile :: FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
@@ -1759,9 +1774,10 @@ treeReadAt root path request = do
             attachments <- Iteratee.liftIO (loadPageAttachments root path)
             breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path content)
             spine <- Iteratee.liftIO (treeSpineFor root path)
-            escaped <- Iteratee.liftIO (Html.escapeBytes content)
             title <- Iteratee.liftIO (documentPageTitle False path content)
-            pure (documentResponse (View.editorPage path (editorMode request) title escaped False False False attachments breadcrumbs spine))
+            -- RFC-0040: the git capture is in memory (phase 5 leaves it on disk); emit it as a sized stream.
+            let (before, after) = View.editorShell path (editorMode request) title False False False attachments breadcrumbs spine
+            Iteratee.liftIO (documentBytesResponse before after content)
 
 {- | The rollback action (RFC-0032): @POST /documents/\<path\>?rollback@ with a
 @rev@ field restores the page's content at that revision, writes it through the
@@ -1947,6 +1963,50 @@ htmlResponseChunks page =
 documentResponse :: Html.Html () -> Http.Response
 documentResponse page =
     htmlResponseChunks (Html.rawTrusted "<!doctype html>" >> page)
+
+-- | The @Content-Type@ header a document page carries.
+documentHtmlHeaders :: [Http.Header]
+documentHtmlHeaders = [(Http.normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/html")]
+
+-- | The block size, in bytes, for counting and streaming a document's escaped bytes.
+docBlockBytes :: Int
+docBlockBytes = 65536
+
+{- | A document page streamed in constant memory (RFC-0040): the shell before the
+content, the document escaped and streamed from disk a block at a time, then the
+shell after, behind an exact @Content-Length@ summed from the shells' lengths and
+the document's escaped length (a first pass counts it without holding the file).
+The document is never held whole. A file that will not open (it vanished between
+the existence check and here) is a @404@.
+-}
+documentFileResponse :: Html.Html () -> Html.Html () -> FilePath -> IO Http.Response
+documentFileResponse beforeHtml afterHtml fsPath = do
+    counted <- Stream.foldFileBlocks docBlockBytes addEscapedLength 0 fsPath
+    case counted of
+        Left _ -> pure treeNotFound
+        Right docLen ->
+            let total = BS.length before + docLen + BS.length after
+                body = Stream.transformedFileBody docBlockBytes before Html.escapeBlockBytes fsPath after
+             in pure (Http.Response Http.okStatus documentHtmlHeaders (Http.SizedStreamBody total body))
+  where
+    before = documentShellBytes beforeHtml
+    after = BS.concat (Html.renderChunksRaw afterHtml)
+    addEscapedLength n block = (n +) <$> Html.escapedLength block
+
+{- | A document page whose content is already in memory -- a staged draft, a seed,
+or a revision captured from git -- escaped once and emitted as a sized stream, so
+its response takes the same shape as a page streamed from disk (RFC-0040). Phase 5
+leaves the git capture on disk, at which point 'treeReadAt' streams like the rest.
+-}
+documentBytesResponse :: Html.Html () -> Html.Html () -> BS.ByteString -> IO Http.Response
+documentBytesResponse beforeHtml afterHtml content = do
+    escaped <- Html.escapeBlockBytes content
+    let body = BS.concat [documentShellBytes beforeHtml, escaped, BS.concat (Html.renderChunksRaw afterHtml)]
+    pure (Http.Response Http.okStatus documentHtmlHeaders (Http.SizedStreamBody (BS.length body) (Iteratee.strictEnumerator body)))
+
+-- | The @before@ shell bytes, with the HTML5 doctype 'documentResponse' prepends.
+documentShellBytes :: Html.Html () -> BS.ByteString
+documentShellBytes beforeHtml = BS.concat (BS.pack "<!doctype html>" : Html.renderChunksRaw beforeHtml)
 
 -- | A @303 See Other@ redirect to the given location, with an empty body.
 seeOtherResponse :: String -> Http.Response

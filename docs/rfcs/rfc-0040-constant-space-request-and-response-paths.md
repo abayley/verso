@@ -439,20 +439,26 @@ about to change so the fix is justified and the win is recorded. The heap defaul
 Reverses RFC-0013's "no streaming before rendering finishes" non-goal; see the proposal for why. Before is the
 phase-1 baseline for the largest document: 141ms and ~6MB above baseline for the read view.
 
-- [ ] Lazy `Html.coalesce`, yielding a segment at 16KB, golden-equal to the strict coalescer on the `HtmlSpec`
+- [x] Lazy `Html.coalesce`, yielding a segment at 16KB, golden-equal to the strict coalescer on the `HtmlSpec`
       cases and on a page over several buffers.
-- [ ] A sized streaming `ResponseBody` (known length plus enumerator): the head carries the exact
+- [x] A sized streaming `ResponseBody` (known length plus enumerator): the head carries the exact
       `Content-Length`, the segments go out through `sinkChunk`, the request logger counts them; a socket-level
       test reads the head and body back and checks the length is exact.
-- [ ] The escaped-length count over a file in blocks, equal to `BS.length` of the whole escaping on a fixture
-      with every expanded byte at and across block boundaries; C or `Bytes` by measurement.
-- [ ] Block-wise escaping producer over `fileEnumeratorChunked`, equal to whole escaping at every boundary.
-- [ ] `View.editorPage` as a template with one hole; `treeRead`, `treeEdit` and `treeReadAt` stream the
-      document through it. Byte-identity tests against today's output for all three views, including the
-      263KB document.
-- [ ] Re-measure the largest document: time and resident memory above baseline; record, with the ADR for the
-      response contract (a sized stream is the shape every page response takes).
-- [ ] Record `ChunksBody` in RFC-0013 as superseded by the sized stream.
+- [x] The escaped-length count over a file in blocks, equal to `BS.length` of the whole escaping on a fixture
+      with every expanded byte at and across block boundaries. Done as `Stream.foldFileBlocks` summing the
+      existing C `mhhtml_escaped_length` per block (`Html.escapedLength`), byte-identical to the whole escaping
+      by construction; no separate `Bytes` scan needed.
+- [x] Block-wise escaping producer over `fileEnumeratorChunked`, equal to whole escaping at every boundary
+      (`Stream.transformedFileBody` with `Html.escapeBlockBytes`).
+- [x] `View.editorPage` as a template with one hole (`View.editorShell`); `treeRead`, `treeEdit` and
+      `treeReadAt` stream the document through it. Byte-identity proven for the read and edit views against a
+      build of the pre-change `HEAD` on the 263KB corpus document (both identical to the byte), and the shell
+      split is tested directly in `Verso.ViewSpec`. `treeReadAt` and the draft/seed paths emit their in-memory
+      content through the same sized stream until phase 5 leaves the git capture on disk.
+- [x] Re-measured the largest document: warm read ~32ms, resident memory plateaus with no per-request growth
+      (`docs/rfcs/refs/rfc-0040-baseline-20260911.md`, "Phase 4 result"). Response contract recorded as
+      ADR-0089.
+- [x] Recorded `ChunksBody` in RFC-0013 as superseded by the sized stream.
 
 ### Phase 5: subprocess capture and the git paths
 

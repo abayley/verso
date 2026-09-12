@@ -11,12 +11,15 @@ module MicroHttp.Stream (
     socketSinkI,
     fileEnumerator,
     fileEnumeratorChunked,
+    foldFileBlocks,
+    transformedFileBody,
     copyFile,
     fileSinkI,
     filesEqual,
 ) where
 
 import qualified Data.ByteString as BS
+import qualified Data.IORef as IORef
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Http.Parse as Parse
 import MicroHttp.Iteratee (strictEnumerator)
@@ -102,6 +105,78 @@ fileEnumeratorChunked chunkBytes path =
 -- | The default chunk size, in bytes, used when streaming a file.
 fileChunkBytes :: Int
 fileChunkBytes = 4096
+
+{- | Folds a per-block step over a file read in @blockSize@ blocks, holding only
+one block at a time. Used to compute a document's escaped length before it is
+streamed, so the sized response has an exact @Content-Length@ (RFC-0040) without
+holding the whole file. A file that will not open is a 'StreamSourceError'; the
+handle is closed on the ordinary path.
+-}
+foldFileBlocks :: Int -> (a -> BS.ByteString -> IO a) -> a -> FilePath -> IO (Either StreamError a)
+foldFileBlocks blockSize step initial path = do
+    opened <- Open.openBinaryFileM path Base.ReadMode
+    case opened of
+        Nothing -> pure (Left (StreamSourceError ("cannot open file: " ++ path)))
+        Just handle -> do
+            result <- loop handle initial
+            Base.hClose handle
+            pure (Right result)
+  where
+    loop handle acc = do
+        block <- BS.hGet handle blockSize
+        if BS.null block
+            then pure acc
+            else do
+                acc' <- step acc block
+                loop handle acc'
+
+-- | The producer's phase: the prefix, the file's blocks, the suffix, then done.
+data BodyPhase = SendBefore | SendBlocks | SendAfter | SendDone
+
+{- | A body producer that emits @before@, then each @blockSize@ block of @path@
+passed through @transform@, then @after@ (RFC-0040). The file is the one resource:
+opened on demand, closed on every exit path, including a consumer that completes
+early or fails mid-stream. It carries no whole-file value, so the response is
+bounded by @before@, one block, and @after@ whatever the file's size. With
+@transform@ the byte-wise HTML escaper and @before@/@after@ the shell either side
+of the document hole, this is the streamed document page; the exact
+@Content-Length@ comes from 'foldFileBlocks' over the same @transform@'s length.
+An empty @before@ or @after@ contributes nothing.
+-}
+transformedFileBody ::
+    Int ->
+    BS.ByteString ->
+    (BS.ByteString -> IO BS.ByteString) ->
+    FilePath ->
+    BS.ByteString ->
+    Iteratee.Enumerator StreamError a
+transformedFileBody blockSize before transform path after =
+    Iteratee.resourceEnumerator acquire release readChunk acquireError
+  where
+    acquireError = StreamSourceError ("cannot open file: " ++ path)
+    acquire = do
+        opened <- Open.openBinaryFileM path Base.ReadMode
+        case opened of
+            Nothing -> pure Nothing
+            Just handle -> do
+                phase <- IORef.newIORef SendBefore
+                pure (Just (phase, handle))
+    release (_, handle) = Base.hClose handle
+    readChunk resource@(phase, handle) = do
+        current <- IORef.readIORef phase
+        case current of
+            SendBefore -> do
+                IORef.writeIORef phase SendBlocks
+                if BS.null before then readChunk resource else pure before
+            SendBlocks -> do
+                block <- BS.hGet handle blockSize
+                if BS.null block
+                    then IORef.writeIORef phase SendAfter >> readChunk resource
+                    else transform block
+            SendAfter -> do
+                IORef.writeIORef phase SendDone
+                pure after
+            SendDone -> pure BS.empty
 
 {- | Copies a file in 'fileChunkBytes' chunks, so a large file is never held whole. A
 destination that will not open, or a source that will not, is a 'StreamSourceError';

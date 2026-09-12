@@ -115,10 +115,10 @@ tracker: a site is not closed until its phase is done or its row says why it sta
 | `treeDiff` via `Git.diffBetween` ([Git.hs:163](../../packages/verso/src/Verso/Git.hs)) | whole diff, then `String` | unbounded | 5 |
 | `Process.runProcess` capture ([Process.hs:121](../../packages/micro-http/src/MicroHttp/Process.hs)) | whole stdout and stderr | unbounded | 5 |
 | `Git.showFileAtRevision` and rollback write (Git.hs:169, App.hs:1766) | whole file | document size | 5 |
-| `TreeMove` `collect` ([TreeMove.hs:751](../../packages/verso/src/Verso/TreeMove.hs)) | whole file per document, whole corpus walked | one document at a time | 6 |
-| `TreeMove.readRel` and `writeRel` (TreeMove.hs:786, 795) | whole file, then `String` | index.md size | 6 |
-| Trash manifests and asset sidecar reads (TreeMove.hs:334, 505, 608) | whole file, then `String` | manifest size | 6 |
-| `DocumentMeta.readMetaFile` ([DocumentMeta.hs:188](../../packages/verso/src/Verso/DocumentMeta.hs)) | whole file, then `String`, rewritten per upload | sidecar size | 6 |
+| `TreeMove` `collect` ([TreeMove.hs:751](../../packages/verso/src/Verso/TreeMove.hs)) | whole file per document, whole corpus walked | fixed: `Stream.fileContains` + `scanPageLinks` | 6 |
+| `TreeMove.readRel` and `writeRel` (TreeMove.hs:786, 795) | whole file, then `String` | recorded bound: index.md (`formBodyLimit`) | 6 |
+| Trash manifests and asset sidecar reads (TreeMove.hs:334, 505, 608) | whole file, then `String` | recorded bound: manifest/sidecar | 6 |
+| `DocumentMeta.readMetaFile` ([DocumentMeta.hs:188](../../packages/verso/src/Verso/DocumentMeta.hs)) | whole file, then `String`, rewritten per upload | recorded bound: sidecar | 6 |
 | `Draft.readDraft` and `writeDraft` (Draft.hs:36, 44) | whole document | document size | 4 |
 | `SearchIndex.indexPage` ([SearchIndex.hs:267](../../packages/verso/src/Verso/SearchIndex.hs)) | whole page, plus chunk texts, tokens, embeddings retained | multiple of page | 7 |
 | `SearchChunks.chunkPage` line ranges and chunk copies (SearchChunks.hs:53, 82) | list per line, `BS.concat` per chunk | multiple of page | 7 |
@@ -127,7 +127,7 @@ tracker: a site is not closed until its phase is done or its row says why it sta
 | `LinkIndexStore.serialiseState` ([LinkIndexStore.hs:215](../../packages/verso/src/Verso/LinkIndexStore.hs)) | whole index as `String` before packing | ~24x index | 8 |
 | `Html.escapeChars` ([Html.hs:453](../../packages/micro-http/src/MicroHttp/Html.hs)) | `String` escape path | input size | 8 |
 | `LinkIndexStore.parseRows` ([LinkIndexStore.hs:234](../../packages/verso/src/Verso/LinkIndexStore.hs)) | `BS.split` over the 1.2MB persisted index (unpack scan; collector-stack hazard) | fixed: `Bytes.split` | 2 audit |
-| `TreeMove` `collect` `isInfixOf` ([TreeMove.hs:752](../../packages/verso/src/Verso/TreeMove.hs)) | `BS.isInfixOf` unpacks each whole page | fixed: `Bytes.isInfixOf` | 2 audit |
+| `TreeMove` `collect` `isInfixOf` ([TreeMove.hs:752](../../packages/verso/src/Verso/TreeMove.hs)) | `BS.isInfixOf` unpacks each whole page | fixed: `Stream.fileContains` (streamed, `Bytes.isInfixOf` per block) | 6 |
 | `Concordance.Fingerprint` ([Fingerprint.hs:18](../../packages/verso/src/Concordance/Fingerprint.hs)) | `BS.foldl'` unpacks each whole page | fixed: `Bytes.foldl'` | 2 audit |
 | `Concordance.WordPiece.mkVocab` ([WordPiece.hs:68](../../packages/verso/src/Concordance/WordPiece.hs)) | `BS.split` over the 231KB vocab | fixed: `Bytes.split` | 2 audit |
 
@@ -481,10 +481,23 @@ phase-1 baseline for the largest document: 141ms and ~6MB above baseline for the
 
 ### Phase 6: the remaining whole-file reads in the tree operations
 
-- [ ] `TreeMove` `collect` moves onto `LinkIndexStore.scanPageLinks`, matching what `linksRel` beside it
-      already does.
-- [ ] `readRel`, `writeRel`, the trash manifests, the asset sidecar reads and `DocumentMeta` stop
-      unpacking to `String`; each remaining whole-file read gets a recorded bound or a fix.
+- [x] `TreeMove` `collect` (in `enumerateRelevant`) no longer reads a page whole: the hint pre-filter is a
+      streamed substring scan (`Stream.fileContains`, one block plus the needle's overlap so a match across a
+      block boundary is still found), and a relevant page's links come from `LinkIndexStore.scanPageLinks`,
+      the same streamed scanner `linksRel` uses. A move that walks the whole corpus now holds one block per
+      page, not the page.
+- [~] `readRel`, `writeRel`, the trash manifests, the asset sidecar reads and `DocumentMeta`: **recorded
+      bounds** rather than rewritten. Each is a small metadata file, not a document body, and each is parsed
+      by String-based logic (`DocumentListing` card editing, `Trash.parseManifest`, `DocumentMeta`'s sidecar
+      YAML), so removing the `String` would mean rewriting those parsers onto `ByteString` for a
+      metadata-sized win:
+      - `readRel`/`writeRel` (index.md listing-card edit on a move): bounded by an index.md, itself capped by
+        `formBodyLimit` (~1 MiB); a move is a rare, serialised admin operation, so the transient `String` is
+        bounded and not attacker-driven.
+      - trash manifests (`restoreFromTrash`, `entryFor`): a handful of fields; bounded by the manifest.
+      - asset sidecar reads (`readLocalPaths`) and `DocumentMeta.readMetaFile`: a list of attachment names or
+        metadata rows; bounded by the sidecar, which grows with the page's attachment count, not its body.
+      Revisit only if any of these files becomes document-sized. See the inventory table's bound column.
 
 ### Phase 7: search-side retention
 

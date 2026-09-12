@@ -36,7 +36,6 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
-import qualified MicroHttp.Bytes as Bytes
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Static as Static
 import qualified MicroHttp.Stream as Stream
@@ -750,12 +749,18 @@ enumerateRelevant root hint subtreePrefix = walk ""
                 else
                     if ".md" `List.isSuffixOf` name
                         then do
-                            bytes <- BS.readFile childFs
-                            -- Bytes.isInfixOf, not BS.isInfixOf: the library unpacks the whole page and a
-                            -- collection mid-scan can overflow the collector's stack (MicroHttp.Bytes).
-                            if Bytes.isInfixOf hint bytes || inSubtree childRel
+                            -- RFC-0040 phase 6: the page is never read whole. The hint pre-filter is a
+                            -- streamed substring scan (Stream.fileContains, block plus overlap), and a
+                            -- relevant page's links come from the streamed scanner that linksRel uses.
+                            mentioned <-
+                                if inSubtree childRel
+                                    then pure True
+                                    else do
+                                        contained <- Stream.fileContains hint childFs
+                                        pure (contained == Right True)
+                            if mentioned
                                 then do
-                                    links <- DocumentLinks.pageLinks bytes
+                                    links <- fmap (Maybe.fromMaybe []) (LinkIndexStore.scanPageLinks childFs)
                                     length links `seq` pure [(childRel, links)]
                                 else pure []
                         else pure []

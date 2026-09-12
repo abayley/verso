@@ -12,6 +12,7 @@ module MicroHttp.Stream (
     fileEnumerator,
     fileEnumeratorChunked,
     foldFileBlocks,
+    fileContains,
     transformedFileBody,
     transformedTempFileBody,
     copyFile,
@@ -22,6 +23,7 @@ module MicroHttp.Stream (
 import qualified Control.Monad as Monad
 import qualified Data.ByteString as BS
 import qualified Data.IORef as IORef
+import qualified MicroHttp.Bytes as Bytes
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Http.Parse as Parse
 import MicroHttp.Iteratee (strictEnumerator)
@@ -131,6 +133,35 @@ foldFileBlocks blockSize step initial path = do
             else do
                 acc' <- step acc block
                 loop handle acc'
+
+{- | Whether @needle@ occurs anywhere in the file at @path@, read in blocks so the
+file is never held whole (RFC-0040). Each block is scanned with 'Bytes.isInfixOf'
+after prepending the last @length needle - 1@ bytes of the previous block, so a
+match straddling a block boundary is still found; memory is one block plus that
+overlap, whatever the file's size. Used to keep a tree walk's per-page pre-filter
+constant-space. A file that will not open is a 'StreamSourceError'.
+-}
+fileContains :: BS.ByteString -> FilePath -> IO (Either StreamError Bool)
+fileContains needle path
+    | BS.null needle = do
+        -- An empty needle is contained in any readable file (BS.isInfixOf semantics).
+        opened <- Open.openBinaryFileM path Base.ReadMode
+        case opened of
+            Nothing -> pure (Left (StreamSourceError ("cannot open file: " ++ path)))
+            Just handle -> Base.hClose handle >> pure (Right True)
+    | otherwise = fmap (fmap fst) (foldFileBlocks containsBlockBytes step (False, BS.empty) path)
+  where
+    overlap = BS.length needle - 1
+    step (found, carry) block
+        | found = pure (True, BS.empty)
+        | otherwise =
+            let hay = if BS.null carry then block else BS.append carry block
+                carry' = if BS.length hay <= overlap then hay else BS.drop (BS.length hay - overlap) hay
+             in pure (Bytes.isInfixOf needle hay, carry')
+
+-- | The block size for 'fileContains'.
+containsBlockBytes :: Int
+containsBlockBytes = 65536
 
 -- | The producer's phase: the prefix, the file's blocks, the suffix, then done.
 data BodyPhase = SendBefore | SendBlocks | SendAfter | SendDone

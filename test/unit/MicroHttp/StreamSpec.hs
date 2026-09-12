@@ -29,6 +29,39 @@ spec = do
     fileSinkSpec
     filesEqualSpec
     escapedBodySpec
+    fileContainsSpec
+
+{- | The streamed substring pre-filter (RFC-0040): a file is scanned in blocks for
+a needle without being held whole, and a match straddling a block boundary is
+still found because each block carries the previous block's tail.
+-}
+fileContainsSpec :: Spec
+fileContainsSpec =
+    describe "MicroHttp.Stream fileContains" $ do
+        it "given a needle present within a block, when scanned, then it is found" $ do
+            resetScratch
+            BS.writeFile docPath (bs "the quick brown fox")
+            Stream.fileContains (bs "brown") docPath >>= (`shouldBe` Right True)
+        it "given a needle absent, when scanned, then it is not found" $ do
+            resetScratch
+            BS.writeFile docPath (bs "the quick brown fox")
+            Stream.fileContains (bs "purple") docPath >>= (`shouldBe` Right False)
+        it "given a needle straddling a 64KB block boundary, when scanned, then it is still found" $ do
+            resetScratch
+            BS.writeFile docPath (BS.concat [BS.replicate (65536 - 3) 'x', bs "NEEDLE", bs "yyy"])
+            Stream.fileContains (bs "NEEDLE") docPath >>= (`shouldBe` Right True)
+        it "given a needle only at the very end past a boundary, when scanned, then it is found" $ do
+            resetScratch
+            BS.writeFile docPath (BS.concat [BS.replicate 70000 'x', bs "TAILWORD"])
+            Stream.fileContains (bs "TAILWORD") docPath >>= (`shouldBe` Right True)
+        it "given an empty needle, when scanned, then it is found in any readable file" $ do
+            resetScratch
+            BS.writeFile docPath (bs "anything")
+            Stream.fileContains (bs "") docPath >>= (`shouldBe` Right True)
+        it "given a missing file, when scanned, then the failure is reported rather than a verdict" $ do
+            resetScratch
+            outcome <- Stream.fileContains (bs "x") (scratch ++ "/absent.md")
+            either (const True) (const False) outcome `shouldBe` True
 
 {- | The escaped document producer and its length count (RFC-0040). The escaper
 is byte-wise, so escaping a document a block at a time must equal escaping it

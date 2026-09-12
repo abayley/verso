@@ -110,8 +110,8 @@ tracker: a site is not closed until its phase is done or its row says why it sta
 | `treeUpload` body ([App.hs:1085](../../packages/verso/src/Verso/App.hs)) | whole body, `BS.concat` over ~2,560 chunks | fixed: `Stream.fileSinkI`, +11MB per 10 MiB body | 3 |
 | `storeAsset` write and dedup compare ([App.hs:1132](../../packages/verso/src/Verso/App.hs)) | whole write, plus whole read to compare | fixed: rename plus `Stream.filesEqual` | 3 |
 | `TreeMove.assetConflicts` ([TreeMove.hs:361](../../packages/verso/src/Verso/TreeMove.hs)) | two whole files compared | fixed: `Stream.filesEqual` | 3 |
-| `htmlResponseChunks` ([App.hs:1926](../../packages/verso/src/Verso/App.hs)) | `BS.concat` of the whole page | per response | 4 |
-| `treeEdit`, `treeRead`, `treeReadAt` (App.hs:1007, 1029, 1737) | whole document, escaped whole, in a whole page | measured: ~6MB at 263KB | 4 |
+| `htmlResponseChunks` ([App.hs:1926](../../packages/verso/src/Verso/App.hs)) | `BS.concat` of the whole page, on top of a strict coalesce | per response | 4 |
+| `treeEdit`, `treeRead`, `treeReadAt` (App.hs:1007, 1029, 1737) | whole document read, escaped as one value, in a whole page | measured: ~6MB at 263KB; design: block + segment | 4 |
 | `treeDiff` via `Git.diffBetween` ([Git.hs:163](../../packages/verso/src/Verso/Git.hs)) | whole diff, then `String` | unbounded | 5 |
 | `Process.runProcess` capture ([Process.hs:121](../../packages/micro-http/src/MicroHttp/Process.hs)) | whole stdout and stderr | unbounded | 5 |
 | `Git.showFileAtRevision` and rollback write (Git.hs:169, App.hs:1766) | whole file | document size | 5 |
@@ -168,22 +168,57 @@ constructed. The `String`-valued `formFields` stays only where the fields are ge
 This is the phase with the largest expected win for the least structural change, and it is confined to
 `Verso.App` plus one `MicroHttp.Http` function.
 
-### Streaming HTML responses
+### Streaming HTML responses in constant memory, with an exact Content-Length
 
-`Html.renderChunks` already produces coalesced buffer-sized segments; `htmlResponseChunks` concatenates
-them again. The fix is an `Html` response that carries the chunk list as a `StreamBody` through
-`Iteratee.strictEnumerator`'s list analogue, so the segments reach the socket as they are produced.
+What the server sends for a document view is not rendered Markdown. It is the editor shell -- a
+`<markdown-editor>` element around a `<textarea name="markdown">` -- with the document's **raw Markdown,
+HTML-escaped**, as the textarea's content; the client renders it (RFC-0020). So a page is a ~14KB shell of
+combinator output plus the document's bytes with `<`, `>`, `&` and `"` expanded to entities. For the largest
+corpus document that is a 356KB response, and today it is built whole: `renderChunks` coalesces with a strict
+`foldl` over every chunk, `Html.escapeBytes` produces the escaped document as one value, and
+`htmlResponseChunks` concatenates the segments into one more page-sized buffer.
 
-The document views are the reason this matters: `treeEdit`, `treeRead` and `treeReadAt` read a whole
-document, escape it whole, embed it in a whole page, and concatenate that. Making the response a stream
-removes two of those copies. Removing the other two means the escaped document reaches the page as a
-producer rather than a value, which is the one genuine interface question in this RFC: an `Html` fragment
-whose content is an enumerator rather than bytes. The phase is scoped to answer it with a measurement
-first, because a chunk-at-a-time `Escaped` changes the `Html` type's shape and that decision is
-ADR-worthy (see below).
+RFC-0013 designed it that way on purpose. Its non-goal reads: "No streaming of partially-rendered pages to
+the socket before rendering finishes: the chunk list is built in memory (so `Content-Length` is exact), then
+written." It deferred even the segment-wise write (`ChunksBody`) because "no current page approaches 16 KB",
+which was true in June and stopped being true when RFC-0020 embedded documents in the page. **This RFC
+reverses that non-goal**: a page is always streamed, in memory bounded by a block and a segment, whatever the
+document's size. The premise for materialising has expired, and the rest of this RFC has made every other
+path constant-space.
 
-Content-Length is already computed per body variant in `Middleware` (Middleware.hs:149-162), so a streamed
-page uses the counted-stream path that `StreamBody` responses already use.
+The exact `Content-Length` is kept. It is not free -- the escaped document's length depends on its content,
+so the file must be read once to count before it is read again to send -- but two reads from the page cache
+is a fair price for being a well-behaved producer to proxies and clients, and it avoids the close-delimited
+framing that `StreamBody` uses today. The design:
+
+- **A sized streaming body.** `Http.ResponseBody` gains a constructor carrying a known total length and an
+  enumerator. `writeResponse` writes the head with that `Content-Length` and drives the enumerator through
+  `sinkChunk`; the request logger counts it as it does a `StreamBody`. This is RFC-0013's deferred
+  `ChunksBody`, generalised so the segments need not exist before the head is written.
+- **A lazy coalescer.** `Html.coalesce` yields a segment as soon as at least 16KB has accumulated instead of
+  folding the whole list first, so the builder's difference list -- which is already lazy -- flows through
+  with one segment in hand. Byte-identical to the strict coalescer on every `HtmlSpec` case.
+- **The document as a sized producer.** Its escaped length is `n + 3 * count('<') + 3 * count('>') +
+  4 * count('&') + 5 * count('"')`, computed by a counting scan over the file in blocks. It is then read
+  again in 64KB blocks (`Stream.fileEnumeratorChunked`) and escaped per block by the existing C escaper --
+  which works byte by byte, so a block boundary cannot split an expansion -- each block becoming a chunk.
+  Whether the count is a small C sibling of `mhhtml_escape` or a `MicroHttp.Bytes` scan is decided by
+  measurement.
+- **The page as a template with one hole.** `View.editorPage` yields the shell before and after the
+  textarea's content as two ordinary `Html` values. The response is `before`, then the document producer,
+  then `after`, with length `length(before) + escapedLength + length(after)`; summing the shell's chunk
+  lengths forces the shell, which is bounded by the shell, not the document. The `Html` type is unchanged;
+  the document is the only part that streams from disk. Title and breadcrumbs already come from the streamed
+  frontmatter reader (RFC-0039), so nothing else needs the whole file.
+
+Memory per document response becomes the shell plus one 64KB block plus one 16KB segment, independent of
+document size. The byte-identity contract is checkable directly: the streamed page equals today's page for
+the read, edit and read-at-revision views, including the largest corpus document, and block-wise escaping
+equals whole escaping at every block boundary.
+
+`treeReadAt` renders a revision's content from `Git.showFileAtRevision`, which is a value from a subprocess
+capture; it takes the same shape once phase 5 leaves the capture on disk, and until then streams from the
+value through the same producer interface.
 
 ### Streamed file comparison
 
@@ -235,8 +270,16 @@ the change is not worth making records that instead, in this RFC.
   where the per-byte work is trivial. Percent-decoding is trivial per byte, so this may be tempting. Not
   proposed: the byte-level Haskell version removes the ~24x multiplier, which is the whole win, and the
   project's standing preference is Haskell where the cost allows. Revisit only with a measurement.
-- **Chunked transfer encoding for streamed pages.** Not needed: `Middleware` already counts a stream to
-  produce Content-Length, and the pages are bounded by the document. Out of scope.
+- **Close-delimited streaming for pages.** `StreamBody` already streams without a length by closing the
+  connection after the body, and behind a proxy that would be tolerable. Rejected in favour of counting the
+  escaped length first: two reads from the page cache buys an exact `Content-Length`, which is what a
+  well-behaved producer owes proxies and clients, and it keeps the response contract uniform.
+- **Chunked transfer encoding for streamed pages.** Not needed once the length is counted up front; the
+  framing stays `Content-Length`. Out of scope.
+- **Streaming the Markdown straight from disk with its `stat` size.** Tempting, and it is what a first
+  reading of the design suggests, but the bytes are transformed on the way out -- `<`, `>`, `&` and `"`
+  become entities inside the textarea -- so the file's size is not the body's size. The counting pass is
+  what recovers an exact length.
 
 ## Security Impact
 
@@ -391,15 +434,25 @@ about to change so the fix is justified and the win is recorded. The heap defaul
       closes the socket and returns `ServerHandlerCrashed`, which the connection loop reports to stderr, and
       the slot is released under `finally`. Covered by a socket-level test with a throwing application.
 
-### Phase 4: streaming HTML responses
+### Phase 4: streaming HTML responses in constant memory
 
-- [ ] Measure how much of the document-page cost is the page concat versus the escaped-document value, to
-      decide whether the escaped document must reach the page as a producer.
-- [ ] `htmlResponseChunks` becomes a `StreamBody` over the coalesced chunks.
-- [ ] Depending on the measurement: an `Html` fragment whose content is a producer, or a recorded decision
-      that the value-shaped `Escaped` stays.
-- [ ] Byte-identity tests for the edit, read and read-at-revision pages, including the largest document.
-- [ ] Record the response-contract ADR.
+Reverses RFC-0013's "no streaming before rendering finishes" non-goal; see the proposal for why. Before is the
+phase-1 baseline for the largest document: 141ms and ~6MB above baseline for the read view.
+
+- [ ] Lazy `Html.coalesce`, yielding a segment at 16KB, golden-equal to the strict coalescer on the `HtmlSpec`
+      cases and on a page over several buffers.
+- [ ] A sized streaming `ResponseBody` (known length plus enumerator): the head carries the exact
+      `Content-Length`, the segments go out through `sinkChunk`, the request logger counts them; a socket-level
+      test reads the head and body back and checks the length is exact.
+- [ ] The escaped-length count over a file in blocks, equal to `BS.length` of the whole escaping on a fixture
+      with every expanded byte at and across block boundaries; C or `Bytes` by measurement.
+- [ ] Block-wise escaping producer over `fileEnumeratorChunked`, equal to whole escaping at every boundary.
+- [ ] `View.editorPage` as a template with one hole; `treeRead`, `treeEdit` and `treeReadAt` stream the
+      document through it. Byte-identity tests against today's output for all three views, including the
+      263KB document.
+- [ ] Re-measure the largest document: time and resident memory above baseline; record, with the ADR for the
+      response contract (a sized stream is the shape every page response takes).
+- [ ] Record `ChunksBody` in RFC-0013 as superseded by the sized stream.
 
 ### Phase 5: subprocess capture and the git paths
 
@@ -430,8 +483,8 @@ about to change so the fix is justified and the win is recorded. The heap defaul
 
 ## Open Questions
 
-- Whether an `Html` fragment can carry a producer without making the `Html` type harder to use for the
-  ordinary case. Phase 4's measurement decides whether the question needs answering at all.
+- ~~Whether an `Html` fragment can carry a producer.~~ Resolved by design (2026-09-12): the page is a
+  template with one hole, and only the document streams; the `Html` type is unchanged.
 - Whether `formBodyLimit` should be documented as a document-size ceiling in
   `docs/reference/configuration.md`, or replaced by a configuration key, once the save path no longer
   multiplies it. Out of scope to change here; in scope to decide where it is written down.

@@ -124,8 +124,8 @@ tracker: a site is not closed until its phase is done or its row says why it sta
 | `SearchChunks.chunkPage` line ranges and chunk copies (SearchChunks.hs:53, 82) | list per line, `BS.concat` per chunk | recorded reason: ~0.26MB of copies vs the ~200MB embedder transient | 7 |
 | `SearchIndex.reconcile` fingerprint read ([SearchIndex.hs:373](../../packages/verso/src/Verso/SearchIndex.hs)) | whole page to hash | fixed: `Fingerprint.contentFingerprintFile` (streamed) | 7 |
 | `Concordance.Store.withPackedBytes` and `packStrings` (Store.hs:246, 253) | `BS.concat` of all chunk texts, one via `String` | recorded: the upsert C ABI takes a page's chunks at once | 7 |
-| `LinkIndexStore.serialiseState` ([LinkIndexStore.hs:215](../../packages/verso/src/Verso/LinkIndexStore.hs)) | whole index as `String` before packing | ~24x index | 8 |
-| `Html.escapeChars` ([Html.hs:453](../../packages/micro-http/src/MicroHttp/Html.hs)) | `String` escape path | input size | 8 |
+| `LinkIndexStore.persistState` ([LinkIndexStore.hs:203](../../packages/verso/src/Verso/LinkIndexStore.hs)) | whole index as `String` before packing | fixed: `Stream.writeFileLines` (one line at a time) | 8 |
+| `Html.escapeChars` ([Html.hs:502](../../packages/micro-http/src/MicroHttp/Html.hs)) | `String` escape path | recorded: static/attribute text only, never document-sized (body uses the byte escaper) | 8 |
 | `LinkIndexStore.parseRows` ([LinkIndexStore.hs:234](../../packages/verso/src/Verso/LinkIndexStore.hs)) | `BS.split` over the 1.2MB persisted index (unpack scan; collector-stack hazard) | fixed: `Bytes.split` | 2 audit |
 | `TreeMove` `collect` `isInfixOf` ([TreeMove.hs:752](../../packages/verso/src/Verso/TreeMove.hs)) | `BS.isInfixOf` unpacks each whole page | fixed: `Stream.fileContains` (streamed, `Bytes.isInfixOf` per block) | 6 |
 | `Concordance.Fingerprint` ([Fingerprint.hs:18](../../packages/verso/src/Concordance/Fingerprint.hs)) | `BS.foldl'` unpacks each whole page | fixed: `Bytes.foldl'` | 2 audit |
@@ -516,9 +516,44 @@ phase-1 baseline for the largest document: 141ms and ~6MB above baseline for the
 
 ### Phase 8: the remaining String spikes
 
-- [ ] `LinkIndexStore.serialiseState` writes bytes without building the whole index as a `String`.
-- [ ] `Html.escapeChars`: either retire the `String` escape path or record which callers may keep it and why.
-- [ ] Close the inventory: every row is fixed or carries its reason.
+- [x] `LinkIndexStore.persistState` writes the index one line at a time (`Stream.writeFileLines`), so the
+      ~1.2MB index is never built as a whole `String` (the ~24x spike) nor a whole-file `BS.concat`;
+      byte-identical to the old `unlines`-then-`BS.pack` form (the previous `serialiseState` is now
+      `stateLines`, a lazy `[ByteString]`).
+- [x] `Html.escapeChars` (the `String` escape path) is **kept, with the reason recorded:** it serves the HTML
+      combinators' static text (`Html.text` -- page titles, UI labels, the search string) and attribute values
+      (`escapeAttr` -- class names, hrefs, and the per-page `data-*` JSON: breadcrumbs, attachments, tree
+      spine). All are developer-authored constants or per-page metadata, bounded and never document-sized; the
+      document body uses the byte escaper (`escapeBytes`/`escapedText`, phase 4), so no document-sized value
+      crosses the `String` path. Retiring it would mean reshaping the combinator API onto `ByteString` for
+      strings that are already small, and it is deliberately one packed chunk per string for render cost
+      (see its Haddock).
+- [ ] Close the inventory: every row is fixed or carries its reason. **Left open at the owner's request** so
+      the deferred/recorded items stay easy to refer to; see "Deferred and recorded items" below. The RFC is
+      not stamped complete.
+
+## Deferred and recorded items
+
+The sites left unchanged, each with the reason and the condition that would reopen it. Kept here as a single
+reference; the inventory rows above and the phase checklists carry the same dispositions.
+
+- **`treeDiff` `String` copy (phase 5).** The diff is parsed line by line and rendered side-by-side into HTML
+  (`View.diffBody`/`sideBySide`), not served raw, so a `FileBody` does not apply. It is bounded by a single
+  page (the difference of two revisions of one page), and removing the `String` would need a streamed
+  `ByteString` line parser that risks the MicroHs list-scan crash class. Reopen if diffs become corpus-scale.
+- **Phase-6 metadata reads:** `readRel`/`writeRel` (index.md listing-card edit, bounded by `formBodyLimit`),
+  the trash manifests, the asset sidecar reads, and `DocumentMeta.readMetaFile`. Each is a small metadata
+  file parsed by `String`-based logic (`DocumentListing`, `Trash.parseManifest`, `DocumentMeta` YAML);
+  removing the `String` would mean rewriting those parsers for a metadata-sized win. Reopen if any becomes
+  document-sized.
+- **Phase-7 search retention:** `SearchChunks.chunkPage`'s chunk-text copies and `indexPage`'s embedding
+  accumulation. Measured: the `indexPage` peak (~200MB on the 263KB document) is a transient dominated by the
+  ONNX runtime and lancedb (C libraries, an explicit non-goal); the Verso-side retention these represent is
+  sub-megabyte. `Store.upsertPage`'s C ABI takes a page's chunks at once regardless. Reopen if the store
+  upsert or the ONNX arena is ever streamed.
+- **`Html.escapeChars` `String` path (phase 8).** Serves the combinators' static text and attribute values
+  (titles, labels, per-page `data-*` JSON), all bounded and never document-sized; the document body uses the
+  byte escaper. Reopen only if a document-sized value is ever routed through `Html.text`/an attribute.
 
 ## Open Questions
 

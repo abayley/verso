@@ -30,6 +30,29 @@ spec = do
     filesEqualSpec
     escapedBodySpec
     fileContainsSpec
+    writeFileLinesSpec
+
+{- | The streamed line writer (RFC-0040): writing lines one at a time is
+byte-identical to packing @unlines@ of them whole, so a large line-oriented file
+(the persisted link index) is written without a whole-String or whole-file spike.
+-}
+writeFileLinesSpec :: Spec
+writeFileLinesSpec =
+    describe "MicroHttp.Stream writeFileLines" $ do
+        it "given several lines, when written, then the file equals BS.pack (unlines them)" $ do
+            resetScratch
+            let ls = [bs "E\tsec/page.md\ttarget.md", bs "E\tempty.md", bs "F\ta.md\t1\t2\t3"]
+            Stream.writeFileLines docPath ls >>= (`shouldBe` Right ())
+            written <- BS.readFile docPath
+            written `shouldBe` BS.pack (unlines (map BS.unpack ls))
+        it "given no lines, when written, then the file is empty" $ do
+            resetScratch
+            Stream.writeFileLines docPath [] >>= (`shouldBe` Right ())
+            BS.readFile docPath >>= (`shouldBe` BS.empty)
+        it "given an unwritable path, when written, then the failure is reported" $ do
+            resetScratch
+            outcome <- Stream.writeFileLines (scratch ++ "/no-such-dir/f") [bs "x"]
+            either (const True) (const False) outcome `shouldBe` True
 
 {- | The streamed substring pre-filter (RFC-0040): a file is scanned in blocks for
 a needle without being held whole, and a match straddling a block boundary is

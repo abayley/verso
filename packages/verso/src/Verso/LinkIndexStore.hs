@@ -203,17 +203,22 @@ loadValidState root indexPath = do
 persistState :: FilePath -> IndexState -> Except.ExceptT String IO ()
 persistState indexPath st = do
     let tmp = indexPath ++ ".tmp"
-    tryIO (BS.writeFile tmp (serialiseState st))
+    -- RFC-0040 phase 8: write the rows one line at a time, so the ~1.2MB index is never built as a whole
+    -- String (a ~24x spike) nor a whole-file BS.concat. Byte-identical to the previous unlines form.
+    written <- tryIO (Stream.writeFileLines tmp (stateLines st))
+    case written of
+        Left e -> Except.throwError (show e)
+        Right () -> pure ()
     _ <- tryIO (FileSystem.renamePath tmp indexPath) -- best-effort; a failed persist just means a rebuild next start
     pure ()
 
-{- | Serialises the index as line-oriented text: @E\<TAB>page\<TAB>target...@ for each
-page's edges (a linkless page is just @E\<TAB>page@), then
-@F\<TAB>path\<TAB>sec\<TAB>nsec\<TAB>size@ for each fingerprint entry. Tree paths contain
-no tabs.
+{- | The index as line-oriented rows, one 'ByteString' per line, lazily: @E\<TAB>page\<TAB>target...@ for
+each page's edges (a linkless page is just @E\<TAB>page@), then @F\<TAB>path\<TAB>sec\<TAB>nsec\<TAB>size@
+for each fingerprint entry. Tree paths contain no tabs. 'Stream.writeFileLines' appends the newline after
+each, so this is byte-identical to the old @unlines@-then-@BS.pack@ whole-index form.
 -}
-serialiseState :: IndexState -> BS.ByteString
-serialiseState st = BS.pack (unlines (edgeLines ++ fpLines))
+stateLines :: IndexState -> [BS.ByteString]
+stateLines st = map BS.pack (edgeLines ++ fpLines)
   where
     edgeLines = [List.intercalate "\t" ("E" : page : targets) | (page, targets) <- LinkIndex.outboundEdges (stIndex st)]
     fpLines =

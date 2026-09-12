@@ -16,6 +16,7 @@ module MicroHttp.Stream (
     transformedFileBody,
     transformedTempFileBody,
     copyFile,
+    writeFileLines,
     fileSinkI,
     filesEqual,
 ) where
@@ -237,6 +238,27 @@ transformedFileBodyImpl removeAfter blockSize before transform path after =
                 IORef.writeIORef phase SendDone
                 pure after
             SendDone -> pure BS.empty
+
+{- | Writes a sequence of byte lines to a file, each followed by a newline, one at
+a time so neither the whole text nor a whole-file `BS.concat` is built (RFC-0040):
+byte-identical to @BS.writeFile path (BS.pack (unlines ...))@ but constant-space in
+the number of lines. The lines are consumed lazily, so a caller can generate them
+on demand. A file that will not open is a 'StreamSourceError'; a write failure
+part-way leaves a partial file (the caller renames only on success).
+-}
+writeFileLines :: FilePath -> [BS.ByteString] -> IO (Either StreamError ())
+writeFileLines path linesToWrite = do
+    opened <- Open.openBinaryFileM path Base.WriteMode
+    case opened of
+        Nothing -> pure (Left (StreamSourceError ("cannot open file: " ++ path)))
+        Just handle -> do
+            mapM_ (\line -> BS.hPut handle line >> BS.hPut handle newlineByte) linesToWrite
+            Base.hClose handle
+            pure (Right ())
+
+-- | A single newline byte, appended after each line by 'writeFileLines'.
+newlineByte :: BS.ByteString
+newlineByte = BS.singleton 10
 
 {- | Copies a file in 'fileChunkBytes' chunks, so a large file is never held whole. A
 destination that will not open, or a source that will not, is a 'StreamSourceError';

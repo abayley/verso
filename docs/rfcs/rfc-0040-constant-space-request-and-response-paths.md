@@ -384,10 +384,12 @@ about to change so the fix is justified and the win is recorded. The heap defaul
       with `IO.openTempFile` (probe by open-and-close, then open) from one connection thread stranded the
       other connection every time, leaving a 0-byte temp file. `FileSystem.uniqueTempPath` names the path by
       thread id and a `stat` probe instead, and `Process` moved onto it too. Recorded in the baseline ref.
-- [ ] **Open, found in passing:** `Server.runCappedHandler` runs `handleClient` with no exception handler,
-      so an exception escaping a handler kills the connection thread silently and leaks its semaphore slot;
-      after `max_active_handlers` such deaths the server stops accepting. Not phase 3's cause, but it is
-      what made the defect above invisible. A robustness item for its own slice.
+- [x] **Found in passing, fixed (2026-09-12):** `Server.runCappedHandler` ran `handleClient` with no
+      exception handler, so an exception escaping a handler killed the connection thread silently and leaked
+      its semaphore slot; after `max_active_handlers` such deaths the server would accept nothing. Not phase
+      3's cause, but what made the defect above invisible. `handleClient` is now total: an escaping exception
+      closes the socket and returns `ServerHandlerCrashed`, which the connection loop reports to stderr, and
+      the slot is released under `finally`. Covered by a socket-level test with a throwing application.
 
 ### Phase 4: streaming HTML responses
 

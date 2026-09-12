@@ -65,6 +65,18 @@ spec =
                 received <- Socket.recv client 4096
                 result `shouldBe` Right ()
                 fmap (List.isInfixOf "200 OK" . BS.unpack) received `shouldBe` Right True
+        it "given a handler that throws, when handled over a socket, then the crash is reported as a server error and the connection is closed" $
+            withConnectedPair $ \client served conn -> do
+                sent <- Socket.sendAll client (BS.pack "GET / HTTP/1.1\r\n\r\n")
+                sent `shouldBe` Right ()
+                result <- Server.handleClient smallBufferSettings crashingApp served conn
+                let crashed = case result of
+                        Left (Server.ServerHandlerCrashed _) -> True
+                        _ -> False
+                crashed `shouldBe` True
+                -- the peer sees the connection closed, not a hang: an empty read or a reset
+                received <- Socket.recv client 4096
+                either (const True) BS.null received `shouldBe` True
         it "given a peer that sends a partial request and stalls, when handled with a short idle timeout, then a 408 is returned" $
             withConnectedPair $ \client served conn -> do
                 sent <- Socket.sendAll client (BS.pack "GET / HTTP/1.1\r\n")
@@ -205,6 +217,10 @@ saveHandler _ _ = do
     bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) 1048576
     Iteratee.liftIO (BS.writeFile documentFile (BS.drop (length "markdown=") bytes))
     pure okResponse
+
+-- | An application whose handler throws mid-request, as a bug in a handler would.
+crashingApp :: Http.Application
+crashingApp _ = Iteratee.liftIO (ioError (userError "handler bug"))
 
 -- | A minimal @200@ response for the fixture routes.
 okResponse :: Http.Response

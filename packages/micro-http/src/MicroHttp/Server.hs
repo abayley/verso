@@ -13,6 +13,7 @@ module MicroHttp.Server (
 
 import qualified Control.Concurrent as Concurrent
 import qualified Control.Concurrent.QSem as QSem
+import qualified Control.Exception as Exception
 import qualified Data.ByteString.Char8 as BS
 import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Ptr as Ptr
@@ -32,6 +33,8 @@ data ServerError
     | ServerReadFailed Socket.SocketError
     | ServerWriteFailed Stream.StreamError
     | ServerStreamFailed Stream.StreamError
+    | -- | The application threw out of its handler; the connection was closed and the exception is shown.
+      ServerHandlerCrashed String
     deriving (Eq, Show)
 
 -- signal(2): ignore SIGPIPE process-wide so that a client disconnecting mid-response
@@ -119,9 +122,12 @@ acceptLoop settings app sem socket = do
 runCappedHandler :: Settings.Settings -> Http.Application -> QSem.QSem -> Socket.ClientSocket -> Socket.ConnectionInfo -> IO ()
 runCappedHandler settings app sem client conn = do
     QSem.waitQSem sem
-    result <- handleClient settings app client conn
-    reportConnectionFailure conn result
-    QSem.signalQSem sem
+    -- 'handleClient' is total, but the slot is released under 'finally' regardless: a leaked
+    -- slot is a permanent loss of capacity, and after max_active_handlers of them the server
+    -- accepts nothing (RFC-0040 phase 3 found a handler dying silently here).
+    Exception.finally
+        (handleClient settings app client conn >>= reportConnectionFailure conn)
+        (QSem.signalQSem sem)
 
 {- | Surfaces a connection-level failure (RFC-0032 robustness): a read/parse/write
 or idle-timeout error that happens before or outside the application stack is
@@ -162,18 +168,27 @@ connection with nothing written.
 -}
 handleClient :: Settings.Settings -> Http.Application -> Socket.ClientSocket -> Socket.ConnectionInfo -> IO (Either ServerError ())
 handleClient settings app client conn = do
-    final <-
-        Stream.socketEnumerator
-            client
-            (Settings.settingsReadBufferBytes settings)
-            (Settings.settingsIdleReadTimeoutMicros settings)
-            (app conn)
-    outcome <- Iteratee.run final
-    result <- case outcome of
-        Right response -> writeClientResponse settings client response
-        Left err -> return (Left (streamFailure err))
+    -- An exception escaping the application is a bug in a handler, not a protocol event. It
+    -- must not kill the connection thread silently: the socket is closed and the crash is
+    -- returned so the caller reports it and releases its resources.
+    attempted <- Exception.try (exchange :: IO (Either ServerError ()))
+    result <- case attempted of
+        Right outcome -> pure outcome
+        Left err -> pure (Left (ServerHandlerCrashed (show (err :: Exception.SomeException))))
     _ <- Socket.closeClientSocketGraceful client
     return result
+  where
+    exchange = do
+        final <-
+            Stream.socketEnumerator
+                client
+                (Settings.settingsReadBufferBytes settings)
+                (Settings.settingsIdleReadTimeoutMicros settings)
+                (app conn)
+        outcome <- Iteratee.run final
+        case outcome of
+            Right response -> writeClientResponse settings client response
+            Left err -> return (Left (streamFailure err))
 
 -- | Write a response to the client socket, mapping any write failure to a 'ServerError'.
 writeClientResponse :: Settings.Settings -> Socket.ClientSocket -> Http.Response -> IO (Either ServerError ())

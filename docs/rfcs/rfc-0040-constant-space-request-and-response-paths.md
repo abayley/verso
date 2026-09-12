@@ -120,10 +120,10 @@ tracker: a site is not closed until its phase is done or its row says why it sta
 | Trash manifests and asset sidecar reads (TreeMove.hs:334, 505, 608) | whole file, then `String` | recorded bound: manifest/sidecar | 6 |
 | `DocumentMeta.readMetaFile` ([DocumentMeta.hs:188](../../packages/verso/src/Verso/DocumentMeta.hs)) | whole file, then `String`, rewritten per upload | recorded bound: sidecar | 6 |
 | `Draft.readDraft` and `writeDraft` (Draft.hs:36, 44) | whole document | document size | 4 |
-| `SearchIndex.indexPage` ([SearchIndex.hs:267](../../packages/verso/src/Verso/SearchIndex.hs)) | whole page, plus chunk texts, tokens, embeddings retained | multiple of page | 7 |
-| `SearchChunks.chunkPage` line ranges and chunk copies (SearchChunks.hs:53, 82) | list per line, `BS.concat` per chunk | multiple of page | 7 |
-| `SearchIndex.reconcile` fingerprint read ([SearchIndex.hs:373](../../packages/verso/src/Verso/SearchIndex.hs)) | whole page to hash | document size | 7 |
-| `Concordance.Store.withPackedBytes` and `packStrings` (Store.hs:246, 253) | `BS.concat` of all chunk texts, one via `String` | page's chunks | 7 |
+| `SearchIndex.indexPage` ([SearchIndex.hs:267](../../packages/verso/src/Verso/SearchIndex.hs)) | whole page, plus chunk texts, tokens, embeddings retained | recorded: Verso retention is a few MB; the ~200MB peak is the C embedder/lancedb (non-goal) | 7 |
+| `SearchChunks.chunkPage` line ranges and chunk copies (SearchChunks.hs:53, 82) | list per line, `BS.concat` per chunk | recorded reason: ~0.26MB of copies vs the ~200MB embedder transient | 7 |
+| `SearchIndex.reconcile` fingerprint read ([SearchIndex.hs:373](../../packages/verso/src/Verso/SearchIndex.hs)) | whole page to hash | fixed: `Fingerprint.contentFingerprintFile` (streamed) | 7 |
+| `Concordance.Store.withPackedBytes` and `packStrings` (Store.hs:246, 253) | `BS.concat` of all chunk texts, one via `String` | recorded: the upsert C ABI takes a page's chunks at once | 7 |
 | `LinkIndexStore.serialiseState` ([LinkIndexStore.hs:215](../../packages/verso/src/Verso/LinkIndexStore.hs)) | whole index as `String` before packing | ~24x index | 8 |
 | `Html.escapeChars` ([Html.hs:453](../../packages/micro-http/src/MicroHttp/Html.hs)) | `String` escape path | input size | 8 |
 | `LinkIndexStore.parseRows` ([LinkIndexStore.hs:234](../../packages/verso/src/Verso/LinkIndexStore.hs)) | `BS.split` over the 1.2MB persisted index (unpack scan; collector-stack hazard) | fixed: `Bytes.split` | 2 audit |
@@ -501,10 +501,18 @@ phase-1 baseline for the largest document: 141ms and ~6MB above baseline for the
 
 ### Phase 7: search-side retention
 
-- [ ] Measure `indexPage`'s peak on the largest corpus document.
-- [ ] Stream `contentFingerprint` in `reconcile`; batch the chunk embedding rather than accumulating it.
-- [ ] Decide, with the measurement, whether `chunkPage` is reshaped to yield ranges or left with a recorded
-      reason.
+- [x] Measured `indexPage`'s peak on the largest document (263KB, 26 chunks): ~200MB above idle, but
+      **transient** (RSS returns to ~54MB straight after) and dominated by the ONNX runtime and lancedb, both
+      C libraries outside the cell arena and an explicit non-goal. The Verso-side retention the phase targeted
+      is a few MB, a small fraction. See `docs/rfcs/refs/rfc-0040-baseline-20260911.md`, "Phase 7 result".
+- [x] `contentFingerprint` streams in `reconcile`: a changed page is hashed in blocks
+      (`Concordance.Fingerprint.contentFingerprintFile`, `Stream.foldFileBlocks` over FNV-1a) rather than read
+      whole to be hashed. **The embedding accumulation is left as is, with the measurement as the reason:** the
+      accumulated Haskell embeddings are a few KB against the ~200MB C-side peak, and `Store.upsertPage`'s C
+      ABI takes a page's chunks all at once regardless, so batching would not move the peak.
+- [~] `chunkPage` **left materialised, recorded reason:** reshaping it to yield ranges would save at most one
+      page's chunk-text copies (~0.26MB) out of the ~200MB embedder/lancedb transient; not worth the change.
+      Revisit only if the store upsert or the ONNX arena is ever streamed (a non-goal today).
 
 ### Phase 8: the remaining String spikes
 

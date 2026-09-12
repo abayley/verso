@@ -370,12 +370,11 @@ needsReindex runtime storedMap (treePath, fsPath) =
                 Right fileStat
                     | statFingerprint fileStat == Store.pageFpStat entry -> pure False
                     | otherwise -> do
-                        bytes <- BS.readFile fsPath
+                        -- RFC-0040 phase 7: hash the page in blocks; it is not read into the heap to be hashed.
+                        fp <- Fingerprint.contentFingerprintFile fsPath
                         Concurrent.yield
-                        pure
-                            ( Fingerprint.contentFingerprint bytes
-                                /= Store.pageFpContent entry
-                            )
+                        -- An unreadable page (a mid-sweep race) is left for the next reconcile rather than enqueued.
+                        pure (either (const False) (/= Store.pageFpContent entry) fp)
 
 {- | Answers a search: embed the query (skipping the embed on a cache hit),
 run the engine's hybrid search, and collapse to one hit per page. The

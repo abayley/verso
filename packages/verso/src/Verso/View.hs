@@ -9,6 +9,12 @@ module Verso.View (
     chromeHeadAssets,
     diffBody,
     diffPage,
+    DiffScan,
+    diffScanInit,
+    diffScanStep,
+    diffScanFlush,
+    diffPageHalves,
+    diffPaneHalves,
     editorPage,
     editorShell,
     excerptOf,
@@ -314,18 +320,29 @@ historyScript =
 -- | Renders the standalone diff page (a back link plus the diff body), for a direct @?diff@ link.
 diffPage :: String -> String -> String -> String -> String -> Html.Html ()
 diffPage title path fromRev toRev diff =
-    versionPageShell ("Diff: " ++ title) $ do
-        Html.el "h1" [] (Html.text "Diff")
-        Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href ("/documents/" ++ path ++ "?history")] (Html.text "Back to history"))
-        diffBody fromRev toRev diff
+    versionPageShell ("Diff: " ++ title) (diffChrome path >> diffBody fromRev toRev diff)
+
+-- | The page-only chrome above the diff content: the heading and the back link.
+diffChrome :: String -> Html.Html ()
+diffChrome path = do
+    Html.el "h1" [] (Html.text "Diff")
+    Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href ("/documents/" ++ path ++ "?history")] (Html.text "Back to history"))
 
 -- | The diff content (a revision-range caption and the side-by-side table), shared by the diff page and the history pane.
 diffBody :: String -> String -> String -> Html.Html ()
 diffBody fromRev toRev diff = do
-    Html.p [Html.class_ "verso-diff-revs"] (Html.text (take 12 fromRev ++ " to " ++ take 12 toRev))
+    diffRevs fromRev toRev
     if null diff
         then Html.p [] (Html.text "No differences.")
-        else sideBySideHtml (sideBySide diff)
+        else diffTable (sideBySide diff)
+
+-- | The revision-range caption above a diff.
+diffRevs :: String -> String -> Html.Html ()
+diffRevs fromRev toRev = Html.p [Html.class_ "verso-diff-revs"] (Html.text (take 12 fromRev ++ " to " ++ take 12 toRev))
+
+-- | The side-by-side table wrapper around its rows.
+diffTable :: [SideRow] -> Html.Html ()
+diffTable rows = Html.el "table" [Html.class_ "verso-diff verso-diff-side"] (Html.el "tbody" [] (mapM_ renderSideRow rows))
 
 -- | A side-by-side diff row: a hunk header, a context line shown on both sides, or a change (removed left, added right; either side may be absent).
 data SideRow
@@ -333,39 +350,111 @@ data SideRow
     | SideContext String
     | SideChange (Maybe String) (Maybe String)
 
+-- | Renders one side-by-side row as a table row with per-cell add/remove highlighting.
+renderSideRow :: SideRow -> Html.Html ()
+renderSideRow (SideHunk h) = Html.el "tr" [Html.class_ "verso-diff-hunk"] (Html.el "td" [Html.attr "colspan" "2"] (Html.text h))
+renderSideRow (SideContext s) = Html.el "tr" [] (cell "verso-diff-ctx" (Just s) >> cell "verso-diff-ctx" (Just s))
+renderSideRow (SideChange ml mr) = Html.el "tr" [] (cell "verso-diff-del" ml >> cell "verso-diff-add" mr)
+
+-- | One diff table cell: a class and its text, or an empty cell.
+cell :: String -> Maybe String -> Html.Html ()
+cell _ Nothing = Html.el "td" [Html.class_ "verso-diff-empty"] (Html.text "")
+cell cls (Just s) = Html.el "td" [Html.class_ cls] (Html.text s)
+
 {- | Parses git's unified (line-based) diff into side-by-side rows: context lines
 appear on both sides; within a change block removed lines pair positionally with
 added lines (surplus removals show left-only, surplus additions right-only). The
-pre-hunk headers (@diff@\/@index@\/@---@\/@+++@) are dropped.
+pre-hunk headers (@diff@\/@index@\/@---@\/@+++@) are dropped. Kept for the
+whole-string callers; the streamed diff response uses 'diffScanStep' over the same
+rules (RFC-0040).
 -}
 sideBySide :: String -> [SideRow]
 sideBySide input = go (dropWhile (not . isHunk) (lines input)) [] []
   where
-    isHunk l = take 2 l == "@@"
-    go [] dels adds = flush dels adds
+    go [] dels adds = flushChange dels adds
     go (l : ls) dels adds = case l of
-        ('@' : '@' : _) -> flush dels adds ++ (SideHunk l : go ls [] [])
-        (' ' : rest) -> flush dels adds ++ (SideContext rest : go ls [] [])
+        ('@' : '@' : _) -> flushChange dels adds ++ (SideHunk l : go ls [] [])
+        (' ' : rest) -> flushChange dels adds ++ (SideContext rest : go ls [] [])
         ('-' : rest) -> go ls (rest : dels) adds
         ('+' : rest) -> go ls dels (rest : adds)
         _ -> go ls dels adds
-    flush dels adds = pair (reverse dels) (reverse adds)
+
+-- | Whether a diff line is a hunk header.
+isHunk :: String -> Bool
+isHunk l = take 2 l == "@@"
+
+-- | Pairs buffered removed and added lines (given oldest-first) into change rows.
+flushChange :: [String] -> [String] -> [SideRow]
+flushChange dels adds = pair (reverse dels) (reverse adds)
+  where
     pair (d : ds) (a : as) = SideChange (Just d) (Just a) : pair ds as
     pair (d : ds) [] = SideChange (Just d) Nothing : pair ds []
     pair [] (a : as) = SideChange Nothing (Just a) : pair [] as
     pair [] [] = []
 
--- | Renders side-by-side rows as a two-column table with per-cell add/remove highlighting.
-sideBySideHtml :: [SideRow] -> Html.Html ()
-sideBySideHtml rows =
-    Html.el "table" [Html.class_ "verso-diff verso-diff-side"] $
-        Html.el "tbody" [] (mapM_ row rows)
-  where
-    row (SideHunk h) = Html.el "tr" [Html.class_ "verso-diff-hunk"] (Html.el "td" [Html.attr "colspan" "2"] (Html.text h))
-    row (SideContext s) = Html.el "tr" [] (cell "verso-diff-ctx" (Just s) >> cell "verso-diff-ctx" (Just s))
-    row (SideChange ml mr) = Html.el "tr" [] (cell "verso-diff-del" ml >> cell "verso-diff-add" mr)
-    cell _ Nothing = Html.el "td" [Html.class_ "verso-diff-empty"] (Html.text "")
-    cell cls (Just s) = Html.el "td" [Html.class_ cls] (Html.text s)
+{- | The streamed diff parser's state: whether the first hunk has been seen (lines
+before it are dropped), and the removed/added lines buffered within the current
+change block (newest-first). Bounded by one change block, never the whole diff.
+-}
+data DiffScan = DiffScan Bool [String] [String]
+
+-- | The initial scan state, before any line.
+diffScanInit :: DiffScan
+diffScanInit = DiffScan False [] []
+
+{- | Folds one diff line into the scan, returning the new state and the HTML bytes
+of any rows it completed. Byte-identical, row for row, to 'sideBySide' followed by
+'renderSideRow': the same rules, applied a line at a time so no whole-diff value is
+built (RFC-0040).
+-}
+diffScanStep :: DiffScan -> BS.ByteString -> (DiffScan, BS.ByteString)
+diffScanStep (DiffScan haveHunk dels adds) lineBytes =
+    let line = BS.unpack lineBytes
+     in if not haveHunk
+            then
+                if isHunk line
+                    then (DiffScan True [] [], renderRows [SideHunk line])
+                    else (DiffScan False dels adds, BS.empty)
+            else case line of
+                ('@' : '@' : _) -> (DiffScan True [] [], renderRows (flushChange dels adds ++ [SideHunk line]))
+                (' ' : rest) -> (DiffScan True [] [], renderRows (flushChange dels adds ++ [SideContext rest]))
+                ('-' : rest) -> (DiffScan True (rest : dels) adds, BS.empty)
+                ('+' : rest) -> (DiffScan True dels (rest : adds), BS.empty)
+                _ -> (DiffScan True dels adds, BS.empty)
+
+-- | The HTML bytes of the rows still buffered at end of input.
+diffScanFlush :: DiffScan -> BS.ByteString
+diffScanFlush (DiffScan _ dels adds) = renderRows (flushChange dels adds)
+
+-- | The HTML bytes of a list of rows, concatenated.
+renderRows :: [SideRow] -> BS.ByteString
+renderRows = BS.concat . map (BS.concat . Html.renderChunksRaw . renderSideRow)
+
+{- | The chrome bytes before and after the streamed rows for the full diff page,
+obtained by rendering the real page with a single sentinel row and splitting there,
+so the halves are byte-identical to 'diffPage' with its rows in place (RFC-0040).
+The caller prepends the doctype, as 'documentResponse' does.
+-}
+diffPageHalves :: String -> String -> String -> String -> (BS.ByteString, BS.ByteString)
+diffPageHalves title path fromRev toRev =
+    splitAroundSentinel (versionPageShell ("Diff: " ++ title) (diffChrome path >> diffRevs fromRev toRev >> diffTable [sentinelRow]))
+
+-- | As 'diffPageHalves', for the bare history-pane fragment (no page shell).
+diffPaneHalves :: String -> String -> (BS.ByteString, BS.ByteString)
+diffPaneHalves fromRev toRev =
+    splitAroundSentinel (diffRevs fromRev toRev >> diffTable [sentinelRow])
+
+-- | A unique row whose rendered bytes mark where the streamed rows are spliced in.
+sentinelRow :: SideRow
+sentinelRow = SideHunk "\SOH\SOHverso-diff-rows-hole\SOH\SOH"
+
+-- | Splits rendered HTML around the sentinel row's bytes into (before, after).
+splitAroundSentinel :: Html.Html () -> (BS.ByteString, BS.ByteString)
+splitAroundSentinel html =
+    let whole = BS.concat (Html.renderChunks html)
+        needle = BS.concat (Html.renderChunksRaw (renderSideRow sentinelRow))
+        (before, rest) = BS.breakSubstring needle whole
+     in (before, BS.drop (BS.length needle) rest)
 
 {- | The page's attachments as a compact JSON array of @{"name","localPath"}@
 objects, embedded on the editor element for the metadata panel (RFC-0019). Strings

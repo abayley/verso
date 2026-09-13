@@ -15,6 +15,7 @@ module MicroHttp.Iteratee (
     strictEnumerator,
     resourceEnumerator,
     byteSinkI,
+    feedChunk,
 ) where
 
 import qualified Control.Monad as Monad
@@ -229,3 +230,23 @@ byteSinkI writeBytes = go
         case sent of
             Left err -> return (IterFailed err (Chunk BS.empty))
             Right () -> return go
+
+{- | Feeds one chunk to a consumer and resolves any effect it triggers, WITHOUT
+signalling end of stream, returning the consumer ready for more input. This is
+how a producer that draws from several sources in turn (a page shell, then a
+streamed file, then another shell) drives one sink without closing it between
+sources; the final end of stream is delivered once, by 'run', when the producer
+returns. A resolved or failed consumer is returned unchanged (an empty chunk is
+a no-op, matching 'byteSinkI').
+-}
+feedChunk :: BS.ByteString -> Iter e a -> IO (Iter e a)
+feedChunk bytes it
+    | BS.null bytes = resolve it
+    | otherwise = case it of
+        NeedInput k -> resolve (k (Chunk bytes))
+        IterM m -> m >>= feedChunk bytes
+        other -> return other
+  where
+    resolve x = case x of
+        IterM m -> m >>= resolve
+        other -> return other

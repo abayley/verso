@@ -31,6 +31,39 @@ spec = do
     escapedBodySpec
     fileContainsSpec
     writeFileLinesSpec
+    foldFileLinesSpec
+
+{- | The streamed line reader (RFC-0040): folding over a file's lines block by
+block reproduces 'Prelude.lines' exactly -- including blank lines, a final line
+with no trailing newline, and a line spanning a block boundary -- without holding
+the file whole.
+-}
+foldFileLinesSpec :: Spec
+foldFileLinesSpec =
+    describe "MicroHttp.Stream foldFileLines" $ do
+        let collect path = do
+                outcome <- Stream.foldFileLines (\acc l -> pure (l : acc)) [] path
+                pure (fmap reverse outcome)
+            expected content = map BS.pack (lines (BS.unpack content))
+            check content = do
+                resetScratch
+                BS.writeFile docPath content
+                got <- collect docPath
+                got `shouldBe` Right (expected content)
+        it "given plain lines with a trailing newline, then it matches lines" $
+            check (bs "alpha\nbeta\ngamma\n")
+        it "given no trailing newline, then the final line is still folded" $
+            check (bs "alpha\nbeta\ngamma")
+        it "given blank lines, then they are preserved as empty lines" $
+            check (bs "a\n\n\nb\n")
+        it "given an empty file, then no lines are folded" $
+            check (bs "")
+        it "given a line spanning a 64KB block boundary, then it is read whole" $
+            check (BS.concat [BS.replicate (65536 - 3) 'x', bs "LINE-ACROSS-BOUNDARY\ntail\n"])
+        it "given a missing file, then the failure is reported" $ do
+            resetScratch
+            outcome <- Stream.foldFileLines (\acc l -> pure (l : acc)) [] (scratch ++ "/absent")
+            either (const True) (const False) outcome `shouldBe` True
 
 {- | The streamed line writer (RFC-0040): writing lines one at a time is
 byte-identical to packing @unlines@ of them whole, so a large line-oriented file

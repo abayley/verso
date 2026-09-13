@@ -12,6 +12,7 @@ module MicroHttp.Stream (
     fileEnumerator,
     fileEnumeratorChunked,
     foldFileBlocks,
+    foldFileLines,
     fileContains,
     transformedFileBody,
     transformedTempFileBody,
@@ -112,28 +113,54 @@ fileChunkBytes :: Int
 fileChunkBytes = 4096
 
 {- | Folds a per-block step over a file read in @blockSize@ blocks, holding only
-one block at a time. Used to compute a document's escaped length before it is
-streamed, so the sized response has an exact @Content-Length@ (RFC-0040) without
-holding the whole file. A file that will not open is a 'StreamSourceError'; the
-handle is closed on the ordinary path.
+one block at a time (RFC-0040). Used to compute a document's escaped length before
+it is streamed and to hash a page for change detection, without reading the file
+into the heap. Built on 'fileEnumeratorChunked', the one file-reading bracket, so
+the open/read/close discipline lives in a single place (ADR-0091). A file that
+will not open is a 'StreamSourceError'.
 -}
 foldFileBlocks :: Int -> (a -> BS.ByteString -> IO a) -> a -> FilePath -> IO (Either StreamError a)
-foldFileBlocks blockSize step initial path = do
-    opened <- Open.openBinaryFileM path Base.ReadMode
-    case opened of
-        Nothing -> pure (Left (StreamSourceError ("cannot open file: " ++ path)))
-        Just handle -> do
-            result <- loop handle initial
-            Base.hClose handle
-            pure (Right result)
+foldFileBlocks blockSize step initial path =
+    fileEnumeratorChunked blockSize path (foldBlocksI step initial) >>= Iteratee.run
+
+-- | A consumer that folds the effectful @step@ over every non-empty chunk it receives.
+foldBlocksI :: (a -> BS.ByteString -> IO a) -> a -> Iteratee.Iter StreamError a
+foldBlocksI step = go
   where
-    loop handle acc = do
-        block <- BS.hGet handle blockSize
-        if BS.null block
-            then pure acc
-            else do
-                acc' <- step acc block
-                loop handle acc'
+    go acc = Iteratee.NeedInput (consume acc)
+    consume acc s = case s of
+        Iteratee.Chunk block
+            | BS.null block -> go acc
+            | otherwise -> Iteratee.IterM (fmap go (step acc block))
+        Iteratee.EndOfStream Nothing -> Iteratee.Done acc (Iteratee.EndOfStream Nothing)
+        Iteratee.EndOfStream (Just err) -> Iteratee.IterFailed err (Iteratee.EndOfStream (Just err))
+
+{- | Folds a per-line step over a file read in blocks, one line at a time, so a
+line-oriented file (a git diff, a persisted index) is parsed without being held
+whole or split with a whole-file @BS.lines@ (the MicroHs list-scan hazard). Lines
+carry no trailing newline; a final line without a trailing newline is folded too.
+Reproduces 'Prelude.lines' semantics (a blank line between two newlines is a line;
+a trailing newline yields no extra empty line). A file that will not open is a
+'StreamSourceError'. Built on 'foldFileBlocks', so it shares the one read bracket
+(ADR-0091).
+-}
+foldFileLines :: (a -> BS.ByteString -> IO a) -> a -> FilePath -> IO (Either StreamError a)
+foldFileLines step initial path = do
+    folded <- foldFileBlocks lineBlockBytes blockStep (initial, BS.empty) path
+    case folded of
+        Left err -> pure (Left err)
+        Right (acc, carry) ->
+            if BS.null carry then pure (Right acc) else Right <$> step acc carry
+  where
+    blockStep (acc, carry) block = do
+        let hay = if BS.null carry then block else BS.append carry block
+            parts = Bytes.split '\n' hay -- non-empty; last part is the line still open across the boundary
+        acc' <- Monad.foldM step acc (init parts)
+        pure (acc', last parts)
+
+-- | The block size for 'foldFileLines'.
+lineBlockBytes :: Int
+lineBlockBytes = 65536
 
 {- | Whether @needle@ occurs anywhere in the file at @path@, read in blocks so the
 file is never held whole (RFC-0040). Each block is scanned with 'Bytes.isInfixOf'

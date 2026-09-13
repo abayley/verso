@@ -112,7 +112,7 @@ tracker: a site is not closed until its phase is done or its row says why it sta
 | `TreeMove.assetConflicts` ([TreeMove.hs:361](../../packages/verso/src/Verso/TreeMove.hs)) | two whole files compared | fixed: `Stream.filesEqual` | 3 |
 | `htmlResponseChunks` ([App.hs:1926](../../packages/verso/src/Verso/App.hs)) | `BS.concat` of the whole page, on top of a strict coalesce | per response | 4 |
 | `treeEdit`, `treeRead`, `treeReadAt` (App.hs:1007, 1029, 1737) | whole document read, escaped as one value, in a whole page | measured: ~6MB at 263KB; design: block + segment | 4 |
-| `treeDiff` via `Git.diffBetween` ([Git.hs:163](../../packages/verso/src/Verso/Git.hs)) | whole diff, then `String` | unbounded | 5 |
+| `treeDiff` via `Git.diffBetween` ([Git.hs:163](../../packages/verso/src/Verso/Git.hs)) | whole diff, then `String` | fixed: `diffBetweenCaptured` + `foldFileLines` streamed into a `StreamBody` (ADR-0091) | 5, 9 |
 | `Process.runProcess` capture ([Process.hs:121](../../packages/micro-http/src/MicroHttp/Process.hs)) | whole stdout and stderr | unbounded | 5 |
 | `Git.showFileAtRevision` and rollback write (Git.hs:169, App.hs:1766) | whole file | document size | 5 |
 | `TreeMove` `collect` ([TreeMove.hs:751](../../packages/verso/src/Verso/TreeMove.hs)) | whole file per document, whole corpus walked | fixed: `Stream.fileContains` + `scanPageLinks` | 6 |
@@ -532,15 +532,28 @@ phase-1 baseline for the largest document: 141ms and ~6MB above baseline for the
       the deferred/recorded items stay easy to refer to; see "Deferred and recorded items" below. The RFC is
       not stamped complete.
 
+### Phase 9: consolidate the streaming readers, and stream the diff
+
+Follow-on from the phase-5 diff deferral and the observation that the file readers had drifted into two
+brackets. Establishes the standing rule as ADR-0091 (I/O is block-streaming by default).
+
+- [x] One read bracket: `Stream.foldFileBlocks` is now built on `fileEnumeratorChunked`/`resourceEnumerator`
+      rather than its own open/read/close loop, so there is a single place that opens a file for reading.
+- [x] `Stream.foldFileLines`: a streamed line reader over the block bracket (block plus a carried partial
+      line), reproducing `Prelude.lines` semantics without a whole-file `BS.lines`. `Iteratee.feedChunk` feeds
+      one chunk to a sink without closing it, so a producer can draw from several sources in turn.
+- [x] `treeDiff` streams: `Git.diffBetweenCaptured` captures the diff to a file; `View.diffScanStep`/`Flush`
+      fold its lines into side-by-side HTML rows a line at a time (bounded by one change block); the response
+      is a `StreamBody` (close-delimited) of the chrome halves around the streamed rows. Byte-identical to the
+      old whole-render, guarded by a `Verso.ViewSpec` golden test for both the page and the pane. Removes the
+      whole-diff `String` and the whole-render HTML from the heap.
+- [x] Record the standing rule: ADR-0091, network and file I/O is block-streaming by default.
+
 ## Deferred and recorded items
 
 The sites left unchanged, each with the reason and the condition that would reopen it. Kept here as a single
 reference; the inventory rows above and the phase checklists carry the same dispositions.
 
-- **`treeDiff` `String` copy (phase 5).** The diff is parsed line by line and rendered side-by-side into HTML
-  (`View.diffBody`/`sideBySide`), not served raw, so a `FileBody` does not apply. It is bounded by a single
-  page (the difference of two revisions of one page), and removing the `String` would need a streamed
-  `ByteString` line parser that risks the MicroHs list-scan crash class. Reopen if diffs become corpus-scale.
 - **Phase-6 metadata reads:** `readRel`/`writeRel` (index.md listing-card edit, bounded by `formBodyLimit`),
   the trash manifests, the asset sidecar reads, and `DocumentMeta.readMetaFile`. Each is a small metadata
   file parsed by `String`-based logic (`DocumentListing`, `Trash.parseManifest`, `DocumentMeta` YAML);

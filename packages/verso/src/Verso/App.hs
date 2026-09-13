@@ -1753,12 +1753,52 @@ treeDiff :: FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.Strea
 treeDiff root path request = do
     let fromRev = queryValue "from" request
         toRev = queryValue "to" request
-    diff <- Iteratee.liftIO (Git.diffBetween root fromRev toRev path)
-    if hasQueryFlag "pane" request
-        then pure (htmlResponseChunks (View.diffBody fromRev toRev diff))
+        pane = hasQueryFlag "pane" request
+    -- RFC-0040 phase 5/9: the diff is captured to a file and streamed through the side-by-side transform
+    -- a line at a time, so neither the whole diff nor the rendered table is held in the heap.
+    cap <- Iteratee.liftIO (Git.diffBetweenCaptured root fromRev toRev path)
+    outSize <- Iteratee.liftIO (Socket.fileSizeBytes (Process.captureOut cap))
+    Iteratee.liftIO (Monad.void (FileSystem.removeFilePath (Process.captureErr cap)))
+    if Process.captureExit cap /= Exit.ExitSuccess || Maybe.isNothing outSize || outSize == Just 0
+        then do
+            -- No differences (or the command failed): a small whole response, no streaming.
+            Iteratee.liftIO (Monad.void (FileSystem.removeFilePath (Process.captureOut cap)))
+            if pane
+                then pure (htmlResponseChunks (View.diffBody fromRev toRev ""))
+                else do
+                    title <- Iteratee.liftIO (treePageTitle root path)
+                    pure (documentResponse (View.diffPage title path fromRev toRev ""))
         else do
-            title <- Iteratee.liftIO (treePageTitle root path)
-            pure (documentResponse (View.diffPage title path fromRev toRev diff))
+            (before, after) <-
+                if pane
+                    then pure (View.diffPaneHalves fromRev toRev)
+                    else do
+                        title <- Iteratee.liftIO (treePageTitle root path)
+                        let (b, a) = View.diffPageHalves title path fromRev toRev
+                        pure (BS.pack "<!doctype html>" `BS.append` b, a)
+            pure (Http.Response Http.okStatus documentHtmlHeaders (Http.StreamBody (diffStreamBody before (Process.captureOut cap) after)))
+
+{- | Streams a diff response body (RFC-0040): the chrome before the rows, then the
+capture file's lines folded through the side-by-side transform into HTML row bytes,
+then the chrome after, and the capture removed when the body finishes. Only one line
+and the current change block are held at a time. A read failure mid-body leaves a
+truncated body (the head is already sent), as any streamed response can.
+-}
+diffStreamBody :: BS.ByteString -> FilePath -> BS.ByteString -> Iteratee.Enumerator Stream.StreamError ()
+diffStreamBody before capturePath after sink0 = do
+    sink1 <- Iteratee.feedChunk before sink0
+    folded <- Stream.foldFileLines lineStep (sink1, View.diffScanInit) capturePath
+    _ <- FileSystem.removeFilePath capturePath
+    case folded of
+        Left _ -> pure sink1
+        Right (sink2, scanState) -> do
+            sink3 <- Iteratee.feedChunk (View.diffScanFlush scanState) sink2
+            Iteratee.feedChunk after sink3
+  where
+    lineStep (sink, scanState) line = do
+        let (scanState', rowBytes) = View.diffScanStep scanState line
+        sink' <- Iteratee.feedChunk rowBytes sink
+        pure (sink', scanState')
 
 {- | View a page as it was at a revision (RFC-0032): @GET /documents/\<path\>?at=\<rev\>@
 renders the read-only editor over the page's content at that revision. Assets

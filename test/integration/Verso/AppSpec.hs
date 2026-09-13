@@ -732,11 +732,11 @@ spec = do
             toRev <- gitRevParse root "HEAD"
             fromRev <- gitRevParse root "HEAD^"
             diff <-
-                Server.respondToRequestBytes
+                respondDocument
                     (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (getRequest ("/documents/sec/page.md?diff&from=" ++ fromRev ++ "&to=" ++ toRev)))
             pane <-
-                Server.respondToRequestBytes
+                respondDocument
                     (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (getRequest ("/documents/sec/page.md?diff&pane&from=" ++ fromRev ++ "&to=" ++ toRev)))
             fmap (Http.statusCode . Http.responseStatus) diff `shouldBe` Right 200

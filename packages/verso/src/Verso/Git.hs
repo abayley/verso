@@ -24,6 +24,7 @@ module Verso.Git (
     commitAll,
     logForPath,
     diffBetween,
+    diffBetweenCaptured,
     showFileAtRevision,
     showFileAtRevisionCaptured,
 ) where
@@ -162,6 +163,15 @@ diffBetween :: FilePath -> String -> String -> FilePath -> IO String
 diffBetween root fromRev toRev path = do
     res <- git root ["diff", fromRev, toRev, "--", path]
     pure (BS.unpack (Process.procOut res))
+
+{- | The unified diff of a page between two revisions, left in a capture file on
+disk rather than read into the heap (RFC-0040): 'diffBetween' without the whole-diff
+@String@. The caller owns the capture -- it streams the stdout capture and then
+'Process.removeCapture' -- and reads the exit code from 'Process.captureExit'.
+-}
+diffBetweenCaptured :: FilePath -> String -> String -> FilePath -> IO Process.ProcCapture
+diffBetweenCaptured root fromRev toRev path =
+    Process.runProcessCaptured "git" ["-C", root, "diff", fromRev, toRev, "--", path] Nothing Nothing
 
 {- | A page's exact content at a revision (@git show \<rev\>:\<path\>@), as bytes
 so it round-trips losslessly; empty bytes when the path did not exist there or the

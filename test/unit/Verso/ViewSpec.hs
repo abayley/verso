@@ -46,6 +46,12 @@ spec =
             it "given the read view, when split into a shell around the content, then it is byte-identical to the whole page (RFC-0040)" $
                 shellSplitMatchesWholePage False `shouldReturn` True
 
+        describe "streamed diff" $ do
+            it "given a diff, when streamed as page chrome plus scanned rows, then it equals the whole diffPage render (RFC-0040)" $
+                streamedDiffMatchesWhole False `shouldBe` True
+            it "given a diff, when streamed as pane chrome plus scanned rows, then it equals the whole diffBody render" $
+                streamedDiffMatchesWhole True `shouldBe` True
+
         describe "jsonObject" $ do
             it "given no fields, when rendered, then it is an empty object" $
                 View.jsonObject [] `shouldBe` "{}"
@@ -137,3 +143,44 @@ shellSplitMatchesWholePage editable = do
 -- | A ~260KB document with every escaped byte, at and across block boundaries.
 largeContent :: BS.ByteString
 largeContent = BS.concat (replicate 6000 (BS.pack "line <a> & \"b\" 'c' \xc3\xa9 \xf0\x9f\x98\x80 text >here<\n"))
+
+{- | Whether the streamed diff (chrome halves plus rows scanned a line at a time)
+is byte-identical to the whole-render 'View.diffPage'/'View.diffBody' (RFC-0040).
+Exercises pairing, a surplus removal, a context flush, and an end-of-input flush.
+-}
+streamedDiffMatchesWhole :: Bool -> Bool
+streamedDiffMatchesWhole pane =
+    let lns = map BS.pack (lines diffText)
+        (finalState, rowsAcc) = foldl step (View.diffScanInit, BS.empty) lns
+        step (st, acc) line = let (st', b) = View.diffScanStep st line in (st', BS.append acc b)
+        streamedRows = BS.append rowsAcc (View.diffScanFlush finalState)
+        (before, after) =
+            if pane
+                then View.diffPaneHalves fromRev toRev
+                else View.diffPageHalves title path fromRev toRev
+        streamed = BS.concat [before, streamedRows, after]
+        whole =
+            BS.concat
+                ( Html.renderChunks
+                    (if pane then View.diffBody fromRev toRev diffText else View.diffPage title path fromRev toRev diffText)
+                )
+     in streamed == whole
+  where
+    title = "Doc"
+    path = "sec/p.md"
+    fromRev = "aaaaaaaaaaaa"
+    toRev = "bbbbbbbbbbbb"
+    diffText =
+        unlines
+            [ "diff --git a/p.md b/p.md"
+            , "index 1111111..2222222 100644"
+            , "--- a/p.md"
+            , "+++ b/p.md"
+            , "@@ -1,3 +1,4 @@"
+            , " a context line"
+            , "-removed one"
+            , "-removed two"
+            , "+added one"
+            , " another context"
+            , "+added solo"
+            ]

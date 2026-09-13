@@ -111,6 +111,29 @@ spec =
                 result `shouldBe` Right ()
                 BS.unpack received
                     `shouldBe` "HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\nzero-copy!"
+        it "given a file body whose file was replaced by a shorter one after its size was resolved, when handled over a socket, then the head's Content-Length is the size of the file actually sent" $
+            withConnectedPair $ \client served conn -> do
+                -- the handler resolved 10 bytes; a concurrent save then renamed a 6-byte file into place
+                BS.writeFile fileBodyFile (BS.pack "short!")
+                sent <- Socket.sendAll client (BS.pack "GET / HTTP/1.1\r\n\r\n")
+                sent `shouldBe` Right ()
+                result <- Server.handleClient Server.defaultSettings (fileBodyApp fileBodyFile 10) served conn
+                received <- recvAll client
+                Directory.removeFile fileBodyFile
+                result `shouldBe` Right ()
+                BS.unpack received
+                    `shouldBe` "HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nshort!"
+        it "given a file body whose file was replaced by a longer one after its size was resolved, when handled over a socket, then the whole current file is sent under its own length" $
+            withConnectedPair $ \client served conn -> do
+                BS.writeFile fileBodyFile (BS.pack "now much longer")
+                sent <- Socket.sendAll client (BS.pack "GET / HTTP/1.1\r\n\r\n")
+                sent `shouldBe` Right ()
+                result <- Server.handleClient Server.defaultSettings (fileBodyApp fileBodyFile 10) served conn
+                received <- recvAll client
+                Directory.removeFile fileBodyFile
+                result `shouldBe` Right ()
+                BS.unpack received
+                    `shouldBe` "HTTP/1.1 200 OK\r\nContent-Length: 15\r\nConnection: close\r\n\r\nnow much longer"
         it "given a sized streaming body, when handled over a socket, then the client receives a head with an exact Content-Length and the streamed bytes" $
             withConnectedPair $ \client served conn -> do
                 BS.writeFile fileBodyFile (BS.pack "streamed-body!")

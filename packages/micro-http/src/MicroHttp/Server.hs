@@ -217,18 +217,27 @@ socketChunkWriter settings client bytes = do
         Right () -> return (Right ())
 
 {- | Sends a file response zero-copy: open the file read-only, write the head
-with the carried size as @Content-Length@, @sendfile@ the body, then close. The
-size is the one resolved when the 'FileBody' was built, so no @lseek@ happens
-here. An open failure -- a rare time-of-check/time-of-use race after
-'MicroHttp.Static.serveStatic' already found the file -- aborts the connection,
-like a streamed body that fails mid-flight.
+with the file's size as @Content-Length@, @sendfile@ the body, then close.
+
+The size in the head is that of the file this sink opened, not the one carried
+by the 'FileBody'. The carried size was resolved when the handler built the
+response, and a save can replace the file between then and now -- the raw
+@PUT@ and the form save rename a new page into place atomically (RFC-0040,
+RFC-0042), so a concurrent @?raw@ read that resolved the old size would
+otherwise promise one length and send another, and the client sees a short
+body and a closed socket. One @lseek@ on the opened descriptor keeps the head
+and the bytes consistent whatever happened to the path in between; the carried
+size still serves the access log's byte count, which is allowed to be stale.
+An open failure -- the path gone between the handler's check and this open --
+aborts the connection, like a streamed body that fails mid-flight.
 -}
 socketSinkFile :: Settings.Settings -> Socket.ClientSocket -> Http.Response -> FilePath -> Int -> IO (Either Stream.StreamError ())
-socketSinkFile settings client response path size = do
+socketSinkFile settings client response path _resolvedSize = do
     opened <- Socket.openFileRead path
     case opened of
         Nothing -> return (Left (Stream.StreamSourceError ("cannot open file: " ++ path)))
         Just fd -> do
+            size <- Socket.fileSize fd
             result <- sendHeadThenFile settings client response fd size
             Socket.closeFileFd fd
             return result

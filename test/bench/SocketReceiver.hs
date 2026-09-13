@@ -9,11 +9,11 @@ scripts/socket-saturated-bench.sh or `make bench-socket-saturated`.
 module Main (main) where
 
 import qualified Data.ByteString as BS
-import Data.Time.Clock (diffUTCTime, getCurrentTime)
-import MicroHttp.Network.Socket
+import qualified Data.Time.Clock as Clock
+import qualified MicroHttp.Network.Socket as Socket
 
-listenPort :: Port
-listenPort = Port 8090
+listenPort :: Socket.Port
+listenPort = Socket.Port 8090
 
 -- | The server's default read buffer size.
 recvBufferSize :: Int
@@ -21,27 +21,27 @@ recvBufferSize = 8192
 
 main :: IO ()
 main = do
-    opened <- listenTcp HostAny listenPort 1
+    opened <- Socket.listenTcp Socket.HostAny listenPort 1
     case opened of
         Left err -> error ("listenTcp failed: " ++ show err)
         Right socket -> do
             putStrLn "receiver: listening on 8090"
-            accepted <- accept socket
+            accepted <- Socket.accept socket
             case accepted of
                 Left err -> error ("accept failed: " ++ show err)
-                Right client -> do
-                    start <- getCurrentTime
+                Right (client, _) -> do
+                    start <- Clock.getCurrentTime
                     total <- drain client 0
-                    end <- getCurrentTime
-                    report total (realToFrac (diffUTCTime end start))
-                    _ <- closeClientSocket client
-                    _ <- closeListenSocket socket
+                    end <- Clock.getCurrentTime
+                    report total (realToFrac (Clock.diffUTCTime end start))
+                    _ <- Socket.closeClientSocket client
+                    _ <- Socket.closeListenSocket socket
                     return ()
 
 -- | Reads to end of stream, returning the byte count.
-drain :: ClientSocket -> Int -> IO Int
+drain :: Socket.ClientSocket -> Int -> IO Int
 drain client total = do
-    received <- recv client recvBufferSize
+    received <- Socket.recv client recvBufferSize
     case received of
         Left err -> error ("recv failed: " ++ show err)
         Right bytes

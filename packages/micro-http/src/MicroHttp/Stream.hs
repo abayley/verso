@@ -6,7 +6,7 @@ closes its resource itself).
 -}
 module MicroHttp.Stream (
     StreamError (..),
-    strictEnumerator,
+    Iteratee.strictEnumerator,
     socketEnumerator,
     socketSinkI,
     fileEnumerator,
@@ -20,6 +20,7 @@ module MicroHttp.Stream (
     writeFileLines,
     fileSinkI,
     filesEqual,
+    compareBlockBytes,
 ) where
 
 import qualified Control.Exception as Exception
@@ -29,7 +30,6 @@ import qualified Data.IORef as IORef
 import qualified MicroHttp.Bytes as Bytes
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Http.Parse as Parse
-import MicroHttp.Iteratee (strictEnumerator)
 import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Network.Socket as Socket
 import qualified System.IO.Base as Base
@@ -97,11 +97,14 @@ stream with a 'StreamSourceError'. Chunks are 'fileChunkBytes', sized for
 socket traffic; 'fileEnumeratorChunked' takes the size for consumers that
 scan documents.
 -}
-fileEnumerator :: FilePath -> Iteratee.Enumerator StreamError a
+fileEnumerator :: (Iteratee.MonadRelease m) => FilePath -> Iteratee.EnumeratorT StreamError m a
 fileEnumerator = fileEnumeratorChunked fileChunkBytes
 
--- | 'fileEnumerator' with the chunk size in bytes chosen by the caller.
-fileEnumeratorChunked :: Int -> FilePath -> Iteratee.Enumerator StreamError a
+{- | 'fileEnumerator' with the chunk size in bytes chosen by the caller. Generic
+in the layer it feeds, so one file can be the inner stream of a two-source
+consumer and another its outer stream ('filesEqual', RFC-0041).
+-}
+fileEnumeratorChunked :: (Iteratee.MonadRelease m) => Int -> FilePath -> Iteratee.EnumeratorT StreamError m a
 fileEnumeratorChunked chunkBytes path =
     Iteratee.resourceEnumerator
         (Open.openBinaryFileM path Base.ReadMode)
@@ -342,9 +345,13 @@ fileSinkI limit tooLarge path = Iteratee.IterM $ do
 
 {- | Whether two files hold identical bytes, without reading either whole: a size
 check by @stat@ answers most mismatches for free, and equal sizes are then
-compared a 64KB block at a time. Replaces reading both files into memory to
-compare them (asset de-duplication and move conflict checks, RFC-0040). A file
-that cannot be stat-ed or opened is a failure, not a verdict.
+compared a block at a time by a two-source consumer (RFC-0041): the first file
+is its inner stream and the second its outer, each fed by its own
+'fileEnumeratorChunked' bracket, so both handles are closed however the compare
+stops. The blocks align because both readers ask for 'compareBlockBytes' from
+files of equal size. Replaces reading both files into memory to compare them
+(asset de-duplication and move conflict checks, RFC-0040). A file that cannot be
+stat-ed or opened is a failure, not a verdict.
 -}
 filesEqual :: FilePath -> FilePath -> IO (Either StreamError Bool)
 filesEqual pathA pathB = do
@@ -355,27 +362,22 @@ filesEqual pathA pathB = do
         (_, Left e) -> pure (Left (StreamSourceError ("cannot stat " ++ pathB ++ ": " ++ show e)))
         (Right a, Right b)
             | FileSystem.fsSize a /= FileSystem.fsSize b -> pure (Right False)
-            | otherwise -> compareContents
-  where
-    compareContents = do
-        openedA <- Open.openBinaryFileM pathA Base.ReadMode
-        case openedA of
-            Nothing -> pure (Left (StreamSourceError ("cannot open file: " ++ pathA)))
-            Just handleA -> do
-                openedB <- Open.openBinaryFileM pathB Base.ReadMode
-                case openedB of
-                    Nothing -> Base.hClose handleA >> pure (Left (StreamSourceError ("cannot open file: " ++ pathB)))
-                    Just handleB -> do
-                        verdict <- loop handleA handleB
-                        Base.hClose handleA
-                        Base.hClose handleB
-                        pure (Right verdict)
-    loop handleA handleB = do
-        blockA <- BS.hGet handleA compareBlockBytes
-        blockB <- BS.hGet handleB compareBlockBytes
-        if blockA /= blockB
-            then pure False
-            else if BS.null blockA then pure True else loop handleA handleB
+            | otherwise -> Iteratee.runNested2 (fileEnumeratorChunked compareBlockBytes pathA) (fileEnumeratorChunked compareBlockBytes pathB) equalBlocks
+
+{- | The lock-step compare: one block from each stream per step, equal until
+both end together; a block that differs, or one stream ending first, is a
+verdict of not equal.
+-}
+equalBlocks :: Iteratee.IterT StreamError (Iteratee.IterT StreamError IO) Bool
+equalBlocks = do
+    blockA <- Iteratee.headChunk
+    blockB <- Iteratee.lift Iteratee.headChunk
+    case (blockA, blockB) of
+        (Nothing, Nothing) -> pure True
+        (Just a, Just b)
+            | a == b -> equalBlocks
+            | otherwise -> pure False
+        _ -> pure False
 
 -- | The block size for the streamed comparison.
 compareBlockBytes :: Int

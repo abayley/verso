@@ -14,14 +14,14 @@ Run via scripts/egress-bench.sh or `make bench-egress`.
 module Main (main) where
 
 import qualified Data.ByteString as BS
-import Data.Time.Clock (diffUTCTime, getCurrentTime)
-import MicroHttp.Iteratee (Enumerator, Iter (..), Stream (..), run)
-import MicroHttp.Network.Socket
-import MicroHttp.Stream (socketSinkI)
-import System.IO (BufferMode (..), hSetBuffering, stdout)
+import qualified Data.Time.Clock as Clock
+import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Network.Socket as Socket
+import qualified MicroHttp.Stream as Stream
+import qualified System.IO as IO
 
-listenPort :: Port
-listenPort = Port 8090
+listenPort :: Socket.Port
+listenPort = Socket.Port 8090
 
 -- | Bytes per response-body chunk fed to the sink.
 chunkBytes :: Int
@@ -34,59 +34,59 @@ totalBytes = 512 * 1024 * 1024
 payload :: BS.ByteString
 payload = BS.replicate chunkBytes 0x78
 
-methods :: [(String, ClientSocket -> IO Int)]
+methods :: [(String, Socket.ClientSocket -> IO Int)]
 methods =
-    [ ("plain sendAll  ", plainSend)
+    [ ("plain Socket.sendAll  ", plainSend)
     , ("iteratee egress", iterateeSend)
     ]
 
 main :: IO ()
 main = do
-    hSetBuffering stdout LineBuffering
-    opened <- listenTcp HostAny listenPort 1
+    IO.hSetBuffering IO.stdout IO.LineBuffering
+    opened <- Socket.listenTcp Socket.HostAny listenPort 1
     case opened of
         Left err -> error ("listenTcp failed: " ++ show err)
         Right socket -> do
             putStrLn "egress sender: listening on 8090"
             putStrLn "method          | MB/s"
             mapM_ (measure socket) methods
-            _ <- closeListenSocket socket
+            _ <- Socket.closeListenSocket socket
             return ()
 
-measure :: ListenSocket -> (String, ClientSocket -> IO Int) -> IO ()
+measure :: Socket.ListenSocket -> (String, Socket.ClientSocket -> IO Int) -> IO ()
 measure socket (label, method) = do
-    accepted <- accept socket
+    accepted <- Socket.accept socket
     case accepted of
         Left err -> error ("accept failed: " ++ show err)
-        Right client -> do
-            start <- getCurrentTime
+        Right (client, _) -> do
+            start <- Clock.getCurrentTime
             sent <- method client
-            end <- getCurrentTime
-            let seconds = realToFrac (diffUTCTime end start) :: Double
+            end <- Clock.getCurrentTime
+            let seconds = realToFrac (Clock.diffUTCTime end start) :: Double
             putStrLn (label ++ " | " ++ showRounded (fromIntegral sent / 1000000 / seconds))
-            _ <- closeClientSocket client
+            _ <- Socket.closeClientSocket client
             return ()
 
--- | The raw sendAll loop, no iteratee: the reference throughput.
-plainSend :: ClientSocket -> IO Int
+-- | The raw Socket.sendAll loop, no iteratee: the reference throughput.
+plainSend :: Socket.ClientSocket -> IO Int
 plainSend client = go totalBytes
   where
     go remaining
         | remaining <= 0 = return totalBytes
         | otherwise = do
             let n = min remaining chunkBytes
-            sent <- sendAll client (BS.take n payload)
+            sent <- Socket.sendAll client (BS.take n payload)
             case sent of
                 Left err -> error ("sendAll failed: " ++ show err)
                 Right () -> go (remaining - n)
 
-{- | A chunked body enumerator driven into socketSinkI: the streaming egress
-machinery (enumerator, socketSinkI, the IterM send steps).
+{- | A chunked body enumerator driven into Stream.socketSinkI: the streaming egress
+machinery (enumerator, Stream.socketSinkI, the Iteratee.IterM send steps).
 -}
-iterateeSend :: ClientSocket -> IO Int
+iterateeSend :: Socket.ClientSocket -> IO Int
 iterateeSend client = do
-    final <- chunkedEnumerator payload totalBytes (socketSinkI client)
-    result <- run final
+    final <- chunkedEnumerator payload totalBytes (Stream.socketSinkI client)
+    result <- Iteratee.run final
     case result of
         Left err -> error ("egress failed: " ++ show err)
         Right () -> return totalBytes
@@ -94,16 +94,16 @@ iterateeSend client = do
 {- | Feeds a fixed chunk repeatedly until @total@ bytes are delivered, then end
 of stream; the shape a streaming response body (or fileEnumerator) takes.
 -}
-chunkedEnumerator :: BS.ByteString -> Int -> Enumerator e a
+chunkedEnumerator :: BS.ByteString -> Int -> Iteratee.Enumerator e a
 chunkedEnumerator chunk = loop
   where
     loop remaining it = case it of
-        NeedInput k
-            | remaining <= 0 -> return (k (EndOfStream Nothing))
+        Iteratee.NeedInput k
+            | remaining <= 0 -> return (k (Iteratee.EndOfStream Nothing))
             | otherwise ->
                 let n = min remaining (BS.length chunk)
-                 in loop (remaining - n) (k (Chunk (BS.take n chunk)))
-        IterM m -> m >>= loop remaining
+                 in loop (remaining - n) (k (Iteratee.Chunk (BS.take n chunk)))
+        Iteratee.IterM m -> m >>= loop remaining
         _ -> return it
 
 showRounded :: Double -> String

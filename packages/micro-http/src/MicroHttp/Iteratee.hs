@@ -1,15 +1,28 @@
 {- | A small, general-purpose iteratee and enumerator core over strict
-'BS.ByteString' input in 'IO'. It is deliberately free of any HTTP or
-socket vocabulary: the failure type is a parameter @e@, so producers and
-consumers in higher layers choose their own error domain. The core machinery
-only ever propagates a failure, never constructs one.
+'BS.ByteString' input. It is deliberately free of any HTTP or socket
+vocabulary: the failure type is a parameter @e@, so producers and consumers in
+higher layers choose their own error domain. The core machinery only ever
+propagates a failure, never constructs one.
+
+The effect layer is a parameter too (RFC-0041): 'IterT' @e m a@ runs its effect
+steps in any monad @m@, and 'Iter' @e a@ is the 'IO' instance every producer and
+consumer at the socket and HTTP boundary uses. A consumer that must read two
+streams in step nests a second iteratee as its base monad, reads the inner
+stream directly and the outer one through 'lift', and is driven by
+'runNested2'.
 -}
 module MicroHttp.Iteratee (
     Stream (..),
-    Iter (..),
+    IterT (..),
+    Iter,
+    EnumeratorT,
     Enumerator,
     run,
+    runNested2,
+    lift,
     liftIO,
+    MonadRelease (..),
+    headChunk,
     takeN,
     readBodyStrict,
     strictEnumerator,
@@ -22,6 +35,8 @@ module MicroHttp.Iteratee (
 
 import qualified Control.Exception as Exception
 import qualified Control.Monad as Monad
+import qualified Control.Monad.IO.Class as IOClass
+import qualified Control.Monad.Trans.Class as Trans
 import qualified Data.ByteString as BS
 
 {- | A unit of stream input: a chunk of bytes, or the end of the stream
@@ -33,48 +48,88 @@ data Stream e
     | EndOfStream (Maybe e)
     deriving (Eq, Show)
 
-{- | A stream consumer. @Done@ carries the result and the residual input
-beyond what was consumed; @NeedInput@ is a pure continuation awaiting more
-input; @IterM@ is an effect step resolved by a driver; @IterFailed@ is a
-terminal failure keeping the residue for a handler or keep-alive loop.
+{- | A stream consumer whose effect steps run in @m@. @Done@ carries the
+result and the residual input beyond what was consumed; @NeedInput@ is a pure
+continuation awaiting more input; @IterM@ is an effect step resolved by a
+driver; @IterFailed@ is a terminal failure keeping the residue for a handler or
+keep-alive loop.
 
-The continuation in @NeedInput@ is pure on purpose: with an @IO@
-continuation the 'Monad' instance cannot feed residue eagerly, which
-deadlocks a consumer that could complete from residue alone. All effects
-live in @IterM@ instead.
+The continuation in @NeedInput@ is pure on purpose: with an effectful
+continuation the 'Monad' instance cannot feed residue eagerly, which deadlocks
+a consumer that could complete from residue alone. All effects live in @IterM@
+instead.
 -}
-data Iter e a
+data IterT e m a
     = Done a (Stream e)
-    | NeedInput (Stream e -> Iter e a)
-    | IterM (IO (Iter e a))
+    | NeedInput (Stream e -> IterT e m a)
+    | IterM (m (IterT e m a))
     | IterFailed e (Stream e)
 
--- | An input producer: it drives an iteratee forward and returns its state.
-type Enumerator e a = Iter e a -> IO (Iter e a)
+-- | A consumer whose effects are 'IO': the instance at every socket and HTTP boundary.
+type Iter e a = IterT e IO a
 
-instance Functor (Iter e) where
+-- | An input producer: it drives an iteratee forward in its base monad and returns its state.
+type EnumeratorT e m a = IterT e m a -> m (IterT e m a)
+
+-- | A producer in 'IO'.
+type Enumerator e a = EnumeratorT e IO a
+
+instance (Functor m) => Functor (IterT e m) where
     fmap f it = case it of
         Done a residue -> Done (f a) residue
         NeedInput k -> NeedInput (fmap f . k)
         IterM m -> IterM (fmap (fmap f) m)
         IterFailed err residue -> IterFailed err residue
 
-instance Applicative (Iter e) where
+instance (Monad m) => Applicative (IterT e m) where
     pure a = Done a (Chunk BS.empty)
     mf <*> mx = mf >>= \f -> fmap f mx
 
-instance Monad (Iter e) where
+instance (Monad m) => Monad (IterT e m) where
     it >>= f = case it of
         Done a residue -> feedStream residue (f a)
         NeedInput k -> NeedInput (k Monad.>=> f)
         IterM m -> IterM (fmap (>>= f) m)
         IterFailed err residue -> IterFailed err residue
 
+{- | The base monad's actions run as effect steps that consume no input. This
+is what lets a consumer nest a second iteratee as its base monad and read that
+outer stream: @lift headChunk@ takes a chunk from the outer stream, a bare
+@headChunk@ from the inner one (RFC-0041).
+-}
+instance Trans.MonadTrans (IterT e) where
+    lift m = IterM (fmap (\a -> Done a (Chunk BS.empty)) m)
+
+-- | 'IO' reaches any layer whose base monad can run it, so one enumerator serves every layer.
+instance (IOClass.MonadIO m) => IOClass.MonadIO (IterT e m) where
+    liftIO = Trans.lift . IOClass.liftIO
+
+-- | 'Trans.lift' for this transformer, under the module's own name.
+lift :: (Monad m) => m a -> IterT e m a
+lift = Trans.lift
+
+{- | A base monad whose own failure can run a release first. 'IO' fails by
+exception; an iteratee layer fails by 'IterFailed' at that layer or by a failure
+of its own base. 'resourceEnumerator' guards every effect step it runs in its
+base monad with this, so a bracket at an inner layer of a nested consumer
+releases when the outer stream fails, not only when the consumer it feeds does
+(RFC-0041 review).
+-}
+class (IOClass.MonadIO m) => MonadRelease m where
+    -- | Runs the action; if it fails, runs the release once and propagates the failure unchanged.
+    releaseOnFailure :: IO () -> m a -> m a
+
+instance MonadRelease IO where
+    releaseOnFailure release action = Exception.onException action release
+
+instance (MonadRelease m) => MonadRelease (IterT e m) where
+    releaseOnFailure = onFailure
+
 {- | Hands a stream value to an iteratee. A waiting consumer receives it; a
 resolved consumer keeps its result but adopts the value as its residue, so
 bind threads unconsumed input (including an end-of-stream signal) forward.
 -}
-feedStream :: Stream e -> Iter e a -> Iter e a
+feedStream :: (Functor m) => Stream e -> IterT e m a -> IterT e m a
 feedStream s it = case it of
     NeedInput k -> k s
     Done a _ -> Done a s
@@ -85,7 +140,7 @@ feedStream s it = case it of
 still needs input and resolving effect steps. Converts the terminal failure
 constructor to 'Left' at the public boundary.
 -}
-run :: Iter e a -> IO (Either e a)
+run :: (Monad m) => IterT e m a -> m (Either e a)
 run it = case it of
     Done a _ -> return (Right a)
     IterFailed err _ -> return (Left err)
@@ -94,17 +149,53 @@ run it = case it of
 
 {- | Lifts an 'IO' action into an iteratee without consuming input, so a
 handler can perform effects between stream reads. Residue is threaded by
-bind, unchanged across the lifted action.
+bind, unchanged across the lifted action. At any layer whose base monad
+can run 'IO', which is every layer of a nested consumer over 'Iter'.
 -}
-liftIO :: IO a -> Iter e a
-liftIO m = IterM (fmap pure m)
+liftIO :: (IOClass.MonadIO m) => IO a -> IterT e m a
+liftIO = IOClass.liftIO
+
+{- | Runs a two-source consumer (RFC-0041): one whose base monad is itself an
+iteratee, so that it reads the inner stream directly and the outer stream
+through 'lift'. The inner enumerator feeds the inner layer, the outer feeds
+the base layer, and the two layers' outcomes are flattened to one: a failure
+at either layer is the failure. Each enumerator owns its own resource
+bracket, and each guards the effect steps it runs in its base layer, so both
+sources are released however the consumer stops, including when the outer
+stream fails while the inner bracket is open.
+-}
+runNested2 ::
+    (Monad m) =>
+    -- | Feeds the inner stream (the consumer's direct input).
+    EnumeratorT e (IterT e m) a ->
+    -- | Feeds the outer stream (the consumer's base monad).
+    EnumeratorT e m (Either e a) ->
+    IterT e (IterT e m) a ->
+    m (Either e a)
+runNested2 inner outer consumer = do
+    outcome <- outer (inner consumer >>= run) >>= run
+    pure (Monad.join outcome)
+
+{- | The next non-empty chunk of the stream, or @Nothing@ at its orderly end;
+a failed end fails the consumer. The reading primitive of a lock-step
+consumer, which takes one chunk from each of its streams per step.
+-}
+headChunk :: IterT e m (Maybe BS.ByteString)
+headChunk = NeedInput next
+  where
+    next s = case s of
+        Chunk bytes
+            | BS.null bytes -> headChunk
+            | otherwise -> Done (Just bytes) (Chunk BS.empty)
+        EndOfStream Nothing -> Done Nothing (EndOfStream Nothing)
+        EndOfStream (Just err) -> IterFailed err (EndOfStream (Just err))
 
 {- | Bounds an inner iteratee to at most @n@ bytes of the outer stream: the
 inner sees those bytes then end of stream, and any outer bytes beyond @n@
 are preserved as residue. If the inner completes before consuming @n@
 bytes, the remainder is not drained; it stays in the outer residue.
 -}
-takeN :: Int -> Iter e a -> Iter e a
+takeN :: (Functor m) => Int -> IterT e m a -> IterT e m a
 takeN = go
   where
     go budget inner = case inner of
@@ -148,7 +239,7 @@ per-chunk append would be O(bodySize * chunkCount). 'BS.concat' over k pieces is
 itself is superlinear -- if request ingest ever profiles slow, a single-allocation concat
 is the fix (mhs ByteString cost model: docs/design/link-index-performance.md).
 -}
-readBodyStrict :: e -> Int -> Iter e BS.ByteString
+readBodyStrict :: e -> Int -> IterT e m BS.ByteString
 readBodyStrict tooLarge limit = go 0 []
   where
     go count acc = NeedInput (consume count acc)
@@ -163,7 +254,7 @@ readBodyStrict tooLarge limit = go 0 []
 {- | Feeds a strict value to a consumer as a single chunk, then end of
 stream. The value is already in memory, so one chunk suffices.
 -}
-strictEnumerator :: BS.ByteString -> Enumerator e a
+strictEnumerator :: (Monad m) => BS.ByteString -> EnumeratorT e m a
 strictEnumerator = loop
   where
     loop remaining it = case it of
@@ -178,9 +269,14 @@ strictEnumerator = loop
 including a consumer that completes early or fails mid-stream. A failed
 acquire ends the stream with the supplied error and nothing to release.
 This is the model's resource-bracketing guarantee, expressed once and
-reused by file, and any future, producers.
+reused by file, and any future, producers. The acquire, read and release are
+'IO'; the layer fed is any that can run 'IO' and release on its own failure
+('MonadRelease'), so the same bracket serves a consumer at the base layer and
+either stream of a nested one (RFC-0041). A consumer that is mid-effect when
+acquire fails is driven to its next input before the failed end is delivered.
 -}
 resourceEnumerator ::
+    (MonadRelease m) =>
     -- | Acquire; @Nothing@ if it fails.
     IO (Maybe r) ->
     -- | Release, run on every exit after a successful acquire.
@@ -189,50 +285,49 @@ resourceEnumerator ::
     (r -> IO BS.ByteString) ->
     -- | Error delivered if acquire fails.
     e ->
-    Enumerator e a
+    EnumeratorT e m a
 resourceEnumerator acquire release readChunk acquireError it0 = do
-    opened <- acquire
+    opened <- IOClass.liftIO acquire
     case opened of
-        Nothing -> return (feedAcquireError it0)
+        Nothing -> feedAcquireError it0
         Just resource -> loop resource it0
   where
     feedAcquireError it = case it of
-        NeedInput k -> k (EndOfStream (Just acquireError))
-        _ -> it
+        NeedInput k -> return (k (EndOfStream (Just acquireError)))
+        IterM m -> m >>= feedAcquireError
+        _ -> return it
     loop resource it = case it of
         NeedInput k -> do
-            chunk <- readChunk resource
+            chunk <- IOClass.liftIO (readChunk resource)
             if BS.null chunk
                 then do
-                    release resource
+                    IOClass.liftIO (release resource)
                     return (k (EndOfStream Nothing))
                 else loop resource (k (Chunk chunk))
         IterM m -> do
-            next <- m
+            next <- releaseOnFailure (release resource) m
             loop resource next
         _ -> do
-            release resource
+            IOClass.liftIO (release resource)
             return it
 
 {- | A sink that writes each chunk with the supplied effectful writer until
 end of stream, failing with the writer's error on a failed write. A
 transport failure delivered at end of stream is propagated unchanged.
 -}
-byteSinkI :: (BS.ByteString -> IO (Either e ())) -> Iter e ()
+byteSinkI :: (IOClass.MonadIO m) => (BS.ByteString -> IO (Either e ())) -> IterT e m ()
 byteSinkI writeBytes = go
   where
     go = NeedInput consume
     consume s = case s of
         Chunk bytes
             | BS.null bytes -> go
-            | otherwise -> IterM (sendChunk bytes)
+            | otherwise -> IterM (fmap afterWrite (IOClass.liftIO (writeBytes bytes)))
         EndOfStream Nothing -> Done () (EndOfStream Nothing)
         EndOfStream (Just err) -> IterFailed err (EndOfStream (Just err))
-    sendChunk bytes = do
-        sent <- writeBytes bytes
-        case sent of
-            Left err -> return (IterFailed err (Chunk BS.empty))
-            Right () -> return go
+    afterWrite sent = case sent of
+        Left err -> IterFailed err (Chunk BS.empty)
+        Right () -> go
 
 {- | Feeds one chunk to a consumer and resolves any effect it triggers, WITHOUT
 signalling end of stream, returning the consumer ready for more input. This is
@@ -242,7 +337,7 @@ sources; the final end of stream is delivered once, by 'run', when the producer
 returns. A resolved or failed consumer is returned unchanged (an empty chunk is
 a no-op, matching 'byteSinkI').
 -}
-feedChunk :: BS.ByteString -> Iter e a -> IO (Iter e a)
+feedChunk :: (Monad m) => BS.ByteString -> IterT e m a -> m (IterT e m a)
 feedChunk bytes it
     | BS.null bytes = resolve it
     | otherwise = case it of
@@ -259,14 +354,15 @@ unchanged; a consumer that completes runs nothing. This is how a handler that
 has reserved a resource for a consumer (a temp file a sink writes into) releases
 it when the consumer, or the stream feeding it, fails part-way (RFC-0042). The
 cleanup runs once, at the first terminal failure, whether that is a failed
-iteratee value or an exception thrown by one of its effect steps (a write that
-fails with the disk full); the exception is rethrown after the cleanup.
+iteratee value, a failure of the base layer under a nested consumer, or an
+exception thrown by one of its effect steps (a write that fails with the disk
+full); the exception is rethrown after the cleanup.
 -}
-onFailure :: IO () -> Iter e a -> Iter e a
+onFailure :: (MonadRelease m) => IO () -> IterT e m a -> IterT e m a
 onFailure cleanup = go
   where
     go it = case it of
         Done a residue -> Done a residue
-        IterFailed err residue -> IterM (cleanup >> return (IterFailed err residue))
-        IterM m -> IterM (Exception.onException (fmap go m) cleanup)
+        IterFailed err residue -> IterM (IOClass.liftIO cleanup >> return (IterFailed err residue))
+        IterM m -> IterM (releaseOnFailure cleanup (fmap go m))
         NeedInput k -> NeedInput (go . k)

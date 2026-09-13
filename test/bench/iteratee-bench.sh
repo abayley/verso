@@ -17,8 +17,8 @@ CONSUMERS=2
 mkdir -p "$BUILD"
 
 # Receiver: MicroHs, the subject under test.
-cc -O2 -Wall -c "$ROOT/cbits/microhttp_fs.c" -o "$BUILD/microhttp_fs.o" -I"$ROOT/cbits"
-mhs -a"$DB" -optc -I"$ROOT/cbits" -optl "$BUILD/microhttp_fs.o" -i"$ROOT/src" -i"$ROOT/test/bench" "$ROOT/test/bench/IterateeReceiver.hs" -o "$BUILD/iteratee-receiver"
+# The framework and its C shims come from the installed micro-http package (RFC-0038).
+mhs -a"$DB" -i"$ROOT/test/bench" "$ROOT/test/bench/IterateeReceiver.hs" -o "$BUILD/iteratee-receiver"
 
 # Sender: GHC + network, blocking sends.
 (cd "$ROOT/test/bench/sender" && cabal build >/dev/null 2>&1)

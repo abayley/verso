@@ -70,18 +70,15 @@ exceptions today are the small metadata parsers (`Trash`, `DocumentMeta`, `Docum
 and `Html.escapeChars`'s `String` path for static UI text; see RFC-0040's "Deferred and recorded items". This
 ADR does not compel rewriting those, only that a new unbounded path streams.
 
-A second multi-source consumer appears. The push enumerator drives one consumer with a single input channel,
-which fits produce -> transform -> consume pipelines and sequential fan-in (feed one sink from several
-sources in turn, as the streamed diff does via `Iteratee.feedChunk`). It does not fit a lock-step *combination*
-of two sources -- the two-file compare `Stream.filesEqual` reads both handles in step and is hand-rolled for
-that reason (not via the readers). The principled way to express lock-step or k-way source combination stays
-inside the iteratee paradigm rather than adding a second one: generalise `Iteratee.Iter e a` from its fixed
-`IO` base to a base-monad-parametric transformer (`IterT e m a`, `IterM (m ...)`), so a consumer can nest a
-second iteratee as its base monad and read both streams under its own control (Oleg Kiselyov's iteratee
-"several sources to one sink", the 2enum1iter construction). That touches the core's monad plumbing
-everywhere, so it is deferred until a second lock-step or merge consumer (merging sorted index shards is the
-plausible one) justifies it; at that point `filesEqual` moves onto nested iteratees and the hand-rolled loop
-retires. The design, the discussion, and a working spike are written up in RFC-0041.
+A consumer needs more than two sources in step, or a k-way merge. The push enumerator drives one consumer
+with a single input channel per layer, which fits produce -> transform -> consume pipelines, sequential
+fan-in (feed one sink from several sources in turn, as the streamed diff does via `Iteratee.feedChunk`) and,
+since RFC-0041 (2026-09-13), lock-step combination of two sources: the iteratee is a transformer
+(`IterT e m a`, `IterM (m ...)`), a consumer nests a second iteratee as its base monad and reads the outer
+stream through `lift`, and `Iteratee.runNested2` drives the two layers from two enumerators (Oleg Kiselyov's
+"several sources to one sink"). `Stream.filesEqual` is that consumer over two `fileEnumeratorChunked`
+brackets. A three-source zip or a merge with an output sink is the same construction one layer deeper; the
+arity-specific driver for it (`runNested3`) is written when such a consumer appears.
 
 ## Consequences
 
@@ -90,6 +87,6 @@ retires. The design, the discussion, and a working spike are written up in RFC-0
 - Streaming shifts some costs: a sized response reads its source twice (count, then stream); a streamed
   response that fails mid-body has already sent its status line (true of every streamed body, RFC-0040
   reliability impact); a close-delimited body carries no `Content-Length`.
-- The two-file-lockstep comparison (`Stream.filesEqual`) and the write side (`fileSinkI`, `writeFileLines`)
-  do not fit the single read enumerator and are their own brackets; that is expected for now, with the
-  principled unification (a base-monad-parametric iteratee) recorded under "Reopens when".
+- The write side (`fileSinkI`, `writeFileLines`) does not fit the read enumerator and is its own bracket.
+  The two-file lock-step comparison (`Stream.filesEqual`) was the other exception until RFC-0041 put it on
+  the read enumerator as a two-source consumer (see "Reopens when").

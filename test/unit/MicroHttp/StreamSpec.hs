@@ -1,12 +1,15 @@
 module MicroHttp.StreamSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.List as List
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http.Parse as Parse
 import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Process as Process
 import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
 import Test.Hspec
+import qualified TestSupport.Iteratee as Support
 import qualified TestSupport.Scratch as Scratch
 
 -- | A scratch directory under build/, reset at the start of each IO test.
@@ -212,11 +215,49 @@ filesEqualSpec =
             BS.writeFile (scratch ++ "/a") (bs "short")
             BS.writeFile (scratch ++ "/b") (bs "longer than short")
             Stream.filesEqual (scratch ++ "/a") (scratch ++ "/b") >>= (`shouldBe` Right False)
+        it "given two empty files, when compared, then they are equal" $ do
+            resetScratch
+            BS.writeFile (scratch ++ "/a") BS.empty
+            BS.writeFile (scratch ++ "/b") BS.empty
+            Stream.filesEqual (scratch ++ "/a") (scratch ++ "/b") >>= (`shouldBe` Right True)
+        it "given identical files spanning several compare blocks, when compared, then they are equal (RFC-0041)" $ do
+            resetScratch
+            let content = BS.concat (replicate 3 (BS.replicate Stream.compareBlockBytes 'q')) `BS.append` bs "tail"
+            BS.writeFile (scratch ++ "/a") content
+            BS.writeFile (scratch ++ "/b") content
+            Stream.filesEqual (scratch ++ "/a") (scratch ++ "/b") >>= (`shouldBe` Right True)
+        it "given files whose difference straddles a compare-block boundary, when compared, then they are not equal (RFC-0041)" $ do
+            resetScratch
+            let prefix = BS.replicate (Stream.compareBlockBytes - 1) 'p'
+                suffix = BS.replicate 10 's'
+            BS.writeFile (scratch ++ "/a") (BS.concat [prefix, bs "XY", suffix])
+            BS.writeFile (scratch ++ "/b") (BS.concat [prefix, bs "xy", suffix])
+            Stream.filesEqual (scratch ++ "/a") (scratch ++ "/b") >>= (`shouldBe` Right False)
+        it "given same-size files differing only in the last byte, when compared, then they are not equal after reading both whole" $ do
+            resetScratch
+            let body = BS.replicate (Stream.compareBlockBytes + 7) 'z'
+            BS.writeFile (scratch ++ "/a") (BS.append body (bs "1"))
+            BS.writeFile (scratch ++ "/b") (BS.append body (bs "2"))
+            Stream.filesEqual (scratch ++ "/a") (scratch ++ "/b") >>= (`shouldBe` Right False)
         it "given a missing file, when compared, then the failure is reported rather than a verdict" $ do
             resetScratch
             BS.writeFile (scratch ++ "/a") (bs "present")
             outcome <- Stream.filesEqual (scratch ++ "/a") (scratch ++ "/absent")
-            either (const True) (const False) outcome `shouldBe` True
+            either (List.isPrefixOf "StreamSourceError \"cannot stat" . show) (const False) outcome `shouldBe` True
+        it "given a same-size second file that cannot be opened, when compared, then the open failure is reported rather than a verdict (RFC-0041 review)" $ do
+            resetScratch
+            BS.writeFile (scratch ++ "/a") (bs "readable")
+            BS.writeFile (scratch ++ "/b") (bs "readable")
+            _ <- Process.runProcess "chmod" ["000", scratch ++ "/b"] Nothing Nothing
+            outcome <- Stream.filesEqual (scratch ++ "/a") (scratch ++ "/b")
+            _ <- Process.runProcess "chmod" ["644", scratch ++ "/b"] Nothing Nothing
+            outcome `shouldBe` Left (Stream.StreamSourceError ("cannot open file: " ++ scratch ++ "/b"))
+        it "given a file enumerator feeding the inner layer of a two-source consumer, when it reads one block from each of two files, then it sees the first block of each (RFC-0041)" $ do
+            resetScratch
+            BS.writeFile (scratch ++ "/a") (bs "alphabet")
+            BS.writeFile (scratch ++ "/b") (bs "betamax")
+            outcome <- Iteratee.runNested2 (Stream.fileEnumeratorChunked 4 (scratch ++ "/a")) (Stream.fileEnumeratorChunked 4 (scratch ++ "/b")) Support.headOfEach
+            outcome `shouldBe` Right (Just (bs "alph"), Just (bs "beta"))
 
 fileSinkSpec :: Spec
 fileSinkSpec =

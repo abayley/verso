@@ -1,7 +1,7 @@
 ---
 id: RFC-0041
 name: Multi-source iteratees
-status: Draft
+status: Implemented
 owners:
     - Alistair Bayley
 created: 2026-09-13
@@ -17,8 +17,8 @@ related_refs: []
 | Stage     | Timestamp             |
 | --------- | --------------------- |
 | Authored  | 2026-09-13 14:00 NZST |
-| Started   |                       |
-| Completed |                       |
+| Started   | 2026-09-13 21:30 NZST |
+| Completed | 2026-09-13 23:30 NZST |
 
 ## Summary
 
@@ -31,9 +31,10 @@ proposes generalising the iteratee from its fixed `IO` base to a base-monad-para
 (`IterT e m a`), so a consumer can nest a second iteratee as its base monad and read both streams under its
 own control -- Oleg Kiselyov's "several sources to one sink" (the 2enum1iter construction). A spike
 (`spike/iteratee-multisource/Spike.hs`, on the `spike/iteratee-multisource` branch) proves the shape and
-measures the cost. The change is **not proposed
-for adoption now**: it is recorded, with a working spike, so that when a second lock-step or merge consumer
-appears (merging sorted index shards is the plausible one) the design and its cost are already understood.
+measures the cost. As authored the change was **not proposed for adoption**: it was recorded so that when a
+second lock-step or merge consumer appeared the design and its cost were already understood. On 2026-09-13
+the owner waived that gate (see "Decision to proceed") so that file I/O is consistently streamed through the
+one bracket and the tree has a worked example of combining several streams into one consumer.
 
 ## Context
 
@@ -77,6 +78,11 @@ This RFC arose from the RFC-0040 phase-9 review. Consolidating the file readers 
 as the dual of the push enumerator" -- was wrong: it would introduce a second streaming paradigm to absorb
 one call site. Oleg Kiselyov's iteratee notes give the answer that stays inside the one paradigm.
 
+## Phase Item Completion Instructions
+
+Update this plan document as you go. When an item is complete, mark it complete in the phase checklist at
+once, with a dated "Done" note recording anything that deviated from the plan.
+
 ## Goals
 
 - Express a lock-step or k-way combination of streaming sources within the existing iteratee paradigm, with
@@ -90,13 +96,20 @@ one call site. Oleg Kiselyov's iteratee notes give the answer that stays inside 
 
 ## Non-Goals
 
-- **Adopting the change now.** This RFC records the design and a spike; it is gated on a second lock-step or
-  merge consumer. Rewriting the core for one call site is negative net simplicity.
+- A merge consumer. The sorted-shard merge that was the anticipated trigger is not built here; this RFC
+  delivers the generalised core, the two-source driver and `filesEqual` on it, which is what a merge would
+  reuse.
 - A second (pull) streaming paradigm alongside the push enumerator.
 - Changing the element type. Chunks stay `ByteString`; only the effect layer becomes a parameter.
 - Any change to socket or HTTP behaviour. Those layers pin `m = IO` and are unaffected at runtime.
 
 ## Proposal
+
+The shapes below are the spike's, kept as authored. The implementation renamed and reshaped them: `enumFile`
+with `toBase` became `resourceEnumerator` and `fileEnumeratorChunked` under a `MonadRelease` (originally
+`MonadIO`) base-monad constraint; `runZip2` became `runNested2`; `headMaybe` became `headChunk`; `equalZip`
+became `equalBlocks`; and the first parameter of `IterT` is the failure type `e`, not the element type the
+`Zip` synonym below suggests. See "Decision to proceed" and "Findings from implementation".
 
 ### The generalised iteratee
 
@@ -238,20 +251,172 @@ socket/HTTP boundary; it lands in one change with the suites as the gate.
   Open Questions): the generalisation uses `RankNTypes` and higher-kinded parametricity that must be
   confirmed to compile under MicroHs before adoption.
 
+## Decision to proceed (2026-09-13)
+
+The gate in the original Rollout Plan (a second lock-step consumer) was waived by the owner: the aim is that
+every file read goes through the one enumerator bracket (ADR-0091), and that the tree carries a worked
+example of a consumer combining several streams. Two of the open questions were settled before starting:
+
+- **MicroHs feasibility.** The spike compiles and runs under mhs 0.16.5.0 unchanged (`RankNTypes`, the
+  higher-kinded `IterT e m`, the nested `IterT e (IterT e IO)`), and passes its six oracle cases (MEASURED,
+  2026-09-13). A probe also confirmed that `Control.Monad.IO.Class.MonadIO` and
+  `Control.Monad.Trans.Class.MonadTrans` are available under mhs and that instances for a transformer build.
+- **The rank-2 `toBase` argument is replaced by `MonadIO`.** A generic enumerator's raw reads are `IO`; the
+  layer it feeds is any `MonadIO m`, and `IterT e m` is `MonadIO` whenever `m` is. So
+  `resourceEnumerator :: MonadIO m => ... -> EnumeratorT e m a` needs no per-call lifting function: at the
+  base layer `m = IO` and at an inner layer `m = Iter e`, both by inference. The existing
+  `Iteratee.liftIO :: IO a -> Iter e a` becomes the class method at `m = Iter e`, so its callers are
+  unchanged.
+- **Generic in the core, pinned at the boundary.** `MicroHttp.Iteratee` and the enumerators in
+  `MicroHttp.Stream` are generic in `m`. `type Iter e a = IterT e IO a` and
+  `type Enumerator e a = EnumeratorT e IO a` keep every existing signature in the HTTP, socket, middleware
+  and application layers as it is; nothing outside the two framework modules changes its text.
+
 ## Rollout Plan
 
-Gated: do nothing until the trigger fires.
+Each phase is test-first; the tests are listed before the implementation that makes them pass. The gate for
+every phase is `make check` green under both compilers.
 
-1. **Trigger.** A second lock-step or merge consumer is needed (the anticipated one is merging sorted link- or
-   search-index shards). Until then this RFC stays Draft and `filesEqual` stays hand-rolled (ADR-0091's
-   "reopens when").
-2. **Confirm MicroHs feasibility.** Port the spike's `IterT`/`lift`/`enumFile` to build under MicroHs, not
-   just GHC (Open Questions). If MicroHs cannot express it, this RFC is rejected in favour of the status quo,
-   recorded here.
-3. **Generalise the core.** Thread `m` through `MicroHttp.Iteratee` and `MicroHttp.Stream`; pin `m = IO` at
-   the socket/HTTP boundary; add `lift` and the `runZip2`/`runZip3` helpers. Suites green under both backends.
-4. **Move the consumers.** Rewrite `filesEqual` (and the new merge consumer) as nested zips; retire the
-   hand-rolled loop; update ADR-0091's `filesEqual` note to "fixed".
+### Phase 1: generalise the core
+
+Tests, in `test/unit/MicroHttp/IterateeSpec.hs`, over a pure two-layer consumer driven by
+`strictEnumerator` at each layer (no files involved):
+
+1. Given `lift` of a base-monad action, when the lifted iteratee is run, then the action's result is the
+   iteratee's result and the stream is untouched (a consumer bound after it still receives the chunk).
+2. Given a two-layer consumer that reads one chunk from the inner layer and one from the outer (`headChunk`
+   and `lift headChunk`), when the inner layer is enumerated with "A" and the base layer with "B", then the
+   result is the pair ("A", "B").
+3. Given a two-layer consumer whose inner stream ends first, when it reads both, then it sees the inner end
+   (`Nothing`) and still reads the outer chunk.
+4. Given a failure delivered at the inner layer, when the pair is run through the two-source driver, then
+   the outcome is that failure as a single `Left`.
+5. Given a failure delivered at the base layer, when run the same way, then the outcome is that failure as
+   a single `Left`.
+6. The existing `IterateeSpec`, `StreamSpec`, `FormSpec` and middleware cases pass unchanged: the `IO`
+   instance behaves as the monomorphic core did.
+
+Implementation:
+
+- [x] `data IterT e m a` with `IterM (m (IterT e m a))`; `type Iter e a = IterT e IO a`;
+      `type EnumeratorT e m a = IterT e m a -> m (IterT e m a)`; `type Enumerator e a = EnumeratorT e IO a`.
+      `Functor`, `Applicative`, `Monad` instances under `Monad m`.
+- [x] `instance MonadTrans (IterT e)` (`lift`), `instance MonadIO m => MonadIO (IterT e m)`; `liftIO`
+      re-exported as the class method so `Iteratee.liftIO` callers do not change.
+- [x] `run`, `feedStream`, `feedChunk`, `takeN`, `readBodyStrict`, `strictEnumerator`, `byteSinkI`
+      (its writer stays `IO`, so it needs `MonadIO`), `onFailure` generalised to `Monad m` or `MonadIO m`
+      as each needs; `headChunk :: IterT e m (Maybe ByteString)` added (the spike's `headMaybe`).
+      Done 2026-09-13 with one deviation: `onFailure` stayed at `IO` because it uses `Exception.onException`.
+      Done 2026-09-14 (review remediation): `onFailure` is generalised to `MonadRelease m`, a class whose
+      `IO` instance is `onException` and whose `IterT` instance is `onFailure` itself.
+- [x] The two-source driver: `runNested2 :: Monad m => EnumeratorT e (IterT e m) a -> EnumeratorT e m
+      (Either e a) -> IterT e (IterT e m) a -> m (Either e a)`, which enumerates the inner layer, runs it,
+      enumerates the base layer, runs that, and flattens the two `Either`s. A three-source variant is not
+      built until a consumer needs it.
+- [x] `make bench-iteratee` before and after, recorded below: the receive path is the hottest `IterM` loop,
+      and the dictionary passing `Monad m` adds under mhs is the one cost the type change could have at
+      runtime. Done 2026-09-13 with a deviation: the receiver binary was driven by a Python sender, not the
+      script's GHC sender, which does not build on this machine (see "Findings from implementation").
+
+### Phase 2: the resource bracket at any layer
+
+Tests, in `test/unit/MicroHttp/IterateeSpec.hs` and `test/unit/MicroHttp/StreamSpec.hs`:
+
+1. Given a `resourceEnumerator` at an inner layer (its consumer's base monad is another iteratee), when the
+   consumer completes before the resource is exhausted, then release ran exactly once.
+2. Given a `resourceEnumerator` at an inner layer whose consumer fails mid-stream, then release ran exactly
+   once.
+3. Given `fileEnumeratorChunked` at an inner layer, when a two-layer consumer reads one block from each of
+   two files, then it sees the first block of each.
+
+Implementation:
+
+- [x] `resourceEnumerator :: MonadIO m => IO (Maybe r) -> (r -> IO ()) -> (r -> IO ByteString) -> e ->
+      EnumeratorT e m a`; acquire, read and release are lifted with `liftIO` inside it. Done 2026-09-13.
+      Done 2026-09-14 (review remediation): the constraint is `MonadRelease m`, and each effect step the
+      enumerator runs in its base layer is guarded with `releaseOnFailure`, so the bracket also releases
+      when the outer stream of a nested consumer fails; a consumer that is mid-effect when acquire fails is
+      driven to its next input before the failed end is delivered.
+- [x] `fileEnumerator` and `fileEnumeratorChunked` generic in `MonadIO m`; every existing caller infers
+      `m = IO`. Done 2026-09-14: generic in `MonadRelease m`, for the reason above.
+
+### Phase 3: `filesEqual` as a nested zip
+
+Tests, in `test/unit/MicroHttp/StreamSpec.hs`, each against a whole-file oracle (`BS.readFile` on both):
+
+1. Identical small files (existing).
+2. Same size, one byte different (existing).
+3. Different sizes (existing; answered by the size check before any read).
+4. Both empty.
+5. Identical files spanning several compare blocks.
+6. Files that differ only in the block after a block boundary, with the difference straddling the boundary.
+7. Same size, differing in the last byte (the whole of both files is read).
+8. A missing second file is a failure, not a verdict (existing, with the exact error asserted).
+
+Implementation:
+
+- [x] `filesEqual` keeps its `stat` size shortcut and replaces the two-handle loop with the spike's
+      `equalZip` run through `runNested2` over two `fileEnumeratorChunked compareBlockBytes` brackets.
+- [x] The hand-rolled loop and its direct `openBinaryFileM`/`hClose` calls are gone from `Stream.hs`;
+      `Open` stays only for the write side.
+- [x] ADR-0091: the `filesEqual` exception in Consequences and the "Reopens when" paragraph are updated to
+      record that the lock-step case is now on the core; `module-index.md` if any row changes; this RFC is
+      stamped Implemented and moved to `docs/rfcs/implemented/`, `bun run rfc:index` and `bun run adr:index`
+      rerun.
+
+### Findings from implementation (2026-09-13)
+
+- Every phase landed as planned in one sitting; `make check` is green under both compilers with the unit
+  suite at 516 examples (was 504): five two-layer cases in `IterateeSpec`, two bracket-at-an-inner-layer
+  cases there, and five `filesEqual` and file-enumerator cases in `StreamSpec`.
+- Two things GHC and MicroHs disagree on surfaced. A type synonym cannot be partially applied under GHC, so
+  the base monad of a nested consumer is written `IterT e IO`, not `Iter e` (mhs accepted the latter). And
+  `Iter (..)` in an import list is an error once `Iter` is a synonym; the two bench programs that wrote it
+  now import `IterT (..)` and `Iter`.
+- `lift` is exported under the module's own name (`Iteratee.lift`) as well as through the `MonadTrans`
+  instance, so a nested consumer needs no second import. `liftIO`'s type widened to
+  `MonadIO m => IO a -> IterT e m a`; no caller changed.
+- `byteSinkI` and `resourceEnumerator` take `MonadIO m` rather than staying at `IO`, since their effects are
+  raw `IO` actions the caller supplies; `onFailure` stayed at `IO` because it uses `Exception.onException`
+  (superseded by the review remediation below).
+- `Stream.compareBlockBytes` is exported so the compare tests can place a difference exactly on a block edge.
+- The iteratee bench had rotted since RFC-0038 (it compiled `cbits/` and `src/` from the old layout, and its
+  receiver predated the `accept` that returns connection info); its three scripts and the iteratee receiver
+  were fixed in this session, and the review of 2026-09-14 found and fixed the same `accept` pattern in the
+  other two bench programs. Its GHC sender needs the `network` package, which this machine's cabal index
+  does not carry, so `make bench-iteratee` as committed was not what produced the numbers: they were driven
+  by a Python `sendall` loop over 256 MiB, two connections per run, against the receiver binary the script
+  builds. Before the
+  change, one run: plain recv 2068 MB/s, iteratee stream 1505 MB/s. After, three runs: 2054/2009, 2283/2132,
+  2120/1797. The iteratee path is not slower for carrying `Monad m`; run-to-run variance is larger than any
+  difference, and the single before-run looks like a cold outlier rather than a baseline the change beat.
+
+### Review remediation (2026-09-14)
+
+The code review (`docs/reviews/rfc-0041-code-review-2026-09-14.md`) found two contract breaches in the
+driver, both reachable from `filesEqual`, and fixed them:
+
+- An outer enumerator's acquire failure was dropped, because `feedAcquireError` only delivered it to a
+  consumer already waiting for input, and under `runNested2` the outer layer starts as an effect step (the
+  inner acquire). `filesEqual` then returned a verdict for a second file that stats but does not open.
+  `feedAcquireError` now drives effect steps to the next input first.
+- The inner bracket did not release when the outer stream failed, because the inner enumerator's effect
+  steps run as binds in the outer layer and an outer failure short-circuits past the release. The new
+  `MonadRelease` class (`releaseOnFailure :: IO () -> m a -> m a`; `IO` by `onException`, `IterT` by
+  `onFailure`) guards each such step. `onFailure` itself is generalised to `MonadRelease m`, so a cleanup
+  attached at an inner layer also runs when that layer's base fails.
+
+Four unit cases pin these (three in `IterateeSpec`: outer failure with a counted inner resource, inner
+failure with a counted outer resource, outer acquire failure; one in `StreamSpec`: an unopenable same-size
+second file is a `Left`), and the shared two-source consumer moved to `TestSupport.Iteratee`. The unit
+suite is 520 examples under both compilers.
+
+### Rollout Plan Escape Hatch
+
+- If implementation reaches behaviour that this RFC or its design contracts do not cover, stop changing the
+  affected scope before inventing a contract.
+- Add the smallest missing decision to `## Open Questions`, with evidence, impact, options and a
+  recommended path, and continue only with work that does not depend on it.
 
 ## Findings from the spike (2026-09-13)
 
@@ -286,14 +451,11 @@ against a naive oracle and passes all six cases above. What it shows about the c
 
 ## Open Questions
 
-- **MicroHs feasibility.** The spike builds and runs under GHC (`runghc`). The production core must build
-  under MicroHs as well. Does MicroHs support the `RankNTypes` argument to `enumFile` and the higher-kinded
-  base-monad parametricity `IterT` needs? This must be confirmed before rollout step 3; if not, the RFC is
-  rejected (step 2).
-- **Whether to keep `m` fully generic or pin it behind `Iter e a = IterT e IO a` almost everywhere.** Fully
-  generic signatures propagate the `m` and its constraints into places that only ever use `IO`; pinning early
-  keeps inference light but blocks nesting exactly where nesting is wanted. The likely answer is generic in
-  `MicroHttp.Iteratee`/`Stream`, pinned at every consumer boundary.
+- **MicroHs feasibility.** Settled 2026-09-13: the spike builds and passes under mhs 0.16.5.0 (see
+  "Decision to proceed").
+- **Whether to keep `m` fully generic or pin it.** Settled 2026-09-13: generic in `MicroHttp.Iteratee` and
+  the `Stream` enumerators, pinned by the `Iter`/`Enumerator` synonyms everywhere else (see "Decision to
+  proceed").
 - **The performance of nested `IterM`.** Each base-monad step in a nested consumer is an `IterM` wrapping an
   `IterM`; whether that matters for a file compare (few, large blocks) is almost certainly no, but a k-way
   merge over many small records should be measured before it ships.

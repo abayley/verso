@@ -5,6 +5,7 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.IORef as IORef
 import qualified MicroHttp.Iteratee as Iteratee
 import Test.Hspec
+import qualified TestSupport.Iteratee as Support
 
 {- | A domain-free error type, proving the core carries no HTTP or socket
 vocabulary of its own.
@@ -106,6 +107,51 @@ spec =
             outcome <- Exception.try (Iteratee.run (Iteratee.onFailure (IORef.modifyIORef ran (+ 1)) throwing))
             either (\e -> "threw: " ++ show (e :: Exception.SomeException)) (const "completed") outcome `shouldBe` "threw: user error (disk full)"
             IORef.readIORef ran `shouldReturn` 1
+        it "given a lifted base action, when the iteratee runs, then its result is the action's and the stream is untouched (RFC-0041)" $ do
+            final <- Iteratee.strictEnumerator (BS.pack "abc") (pair (Iteratee.lift (pure (5 :: Int))) Iteratee.headChunk :: Iteratee.Iter TestError (Int, Maybe BS.ByteString))
+            result <- Iteratee.run final
+            result `shouldBe` Right (5, Just (BS.pack "abc"))
+        it "given a two-layer consumer, when each layer is fed by its own enumerator, then it reads one chunk from each (RFC-0041)" $ do
+            outcome <- Iteratee.runNested2 (Iteratee.strictEnumerator (BS.pack "A")) (Iteratee.strictEnumerator (BS.pack "B")) headOfEach
+            outcome `shouldBe` Right (Just (BS.pack "A"), Just (BS.pack "B"))
+        it "given a two-layer consumer whose inner stream is empty, when it reads both, then it sees the inner end and still reads the outer chunk (RFC-0041)" $ do
+            outcome <- Iteratee.runNested2 (Iteratee.strictEnumerator BS.empty) (Iteratee.strictEnumerator (BS.pack "B")) headOfEach
+            outcome `shouldBe` Right (Nothing, Just (BS.pack "B"))
+        it "given a failure delivered at the inner layer, when the two layers are run, then it surfaces as the single outcome (RFC-0041)" $ do
+            outcome <- Iteratee.runNested2 (failingEnumerator Boom) (Iteratee.strictEnumerator (BS.pack "B")) headOfEach
+            outcome `shouldBe` Left Boom
+        it "given a failure delivered at the base layer, when the two layers are run, then it surfaces as the single outcome (RFC-0041)" $ do
+            outcome <- Iteratee.runNested2 (Iteratee.strictEnumerator (BS.pack "A")) (failingEnumerator Boom) headOfEach
+            outcome `shouldBe` Left Boom
+        it "given a bracketed resource enumerator feeding the inner layer, when the two-source consumer completes early, then the resource is released exactly once (RFC-0041)" $ do
+            (acquire, release, readChunk, closes) <- fakeResource ["one", "two", "three"]
+            outcome <- Iteratee.runNested2 (Iteratee.resourceEnumerator acquire release readChunk Boom) (Iteratee.strictEnumerator (BS.pack "B")) headOfEach
+            outcome `shouldBe` Right (Just (BS.pack "one"), Just (BS.pack "B"))
+            closes `shouldReturn` 1
+        it "given a bracketed resource enumerator feeding the inner layer, when the consumer fails mid-stream, then the resource is released exactly once (RFC-0041)" $ do
+            (acquire, release, readChunk, closes) <- fakeResource ["one", "two"]
+            let failAfterOne = Iteratee.headChunk >> Iteratee.IterFailed Boom (Iteratee.Chunk BS.empty) :: Iteratee.IterT TestError (Iteratee.IterT TestError IO) ()
+            outcome <- Iteratee.runNested2 (Iteratee.resourceEnumerator acquire release readChunk TooLarge) (Iteratee.strictEnumerator (BS.pack "B")) failAfterOne
+            outcome `shouldBe` Left Boom
+            closes `shouldReturn` 1
+        it "given a bracketed resource enumerator feeding the inner layer, when the outer stream fails, then the failure is the outcome and the inner resource is released exactly once (RFC-0041 review)" $ do
+            (acquire, release, readChunk, closes) <- fakeResource ["one", "two"]
+            outcome <- Iteratee.runNested2 (Iteratee.resourceEnumerator acquire release readChunk TooLarge) (failingEnumerator Boom) headOfEach
+            outcome `shouldBe` Left Boom
+            closes `shouldReturn` 1
+        it "given a bracketed resource enumerator feeding the outer layer, when the inner consumer fails after reading both, then the outer resource is released exactly once (RFC-0041 review)" $ do
+            (acquire, release, readChunk, closes) <- fakeResource ["one", "two"]
+            let failAfterBoth = headOfEach >> Iteratee.IterFailed Boom (Iteratee.Chunk BS.empty) :: Iteratee.IterT TestError (Iteratee.IterT TestError IO) ()
+            outcome <- Iteratee.runNested2 (Iteratee.strictEnumerator (BS.pack "A")) (Iteratee.resourceEnumerator acquire release readChunk TooLarge) failAfterBoth
+            outcome `shouldBe` Left Boom
+            closes `shouldReturn` 1
+        it "given an outer resource that fails to acquire, when the two layers are run, then the acquire error is the outcome and the inner resource is released (RFC-0041 review)" $ do
+            (acquire, release, readChunk, closes) <- fakeResource ["one", "two"]
+            (_, outerRelease, outerRead, outerCloses) <- fakeResource ["B"]
+            outcome <- Iteratee.runNested2 (Iteratee.resourceEnumerator acquire release readChunk TooLarge) (Iteratee.resourceEnumerator (pure Nothing) outerRelease outerRead Boom) headOfEach
+            outcome `shouldBe` Left Boom
+            closes `shouldReturn` 1
+            outerCloses `shouldReturn` 0
         it "given a waiting consumer, when fed chunks without an end of stream, then it holds them and completes on the later end" $ do
             fed <- Iteratee.feedChunk (BS.pack "ab") (Iteratee.readBodyStrict TooLarge 1000 :: Iteratee.Iter TestError BS.ByteString)
             fed' <- Iteratee.feedChunk (BS.pack "cd") fed
@@ -136,6 +182,17 @@ spec =
             result `shouldBe` Right (BS.pack "late")
 
 -- Test-local consumers, built from the exported Iter constructors.
+
+-- | The shared two-source consumer, pinned to the spec's error type.
+headOfEach :: Iteratee.IterT TestError (Iteratee.IterT TestError IO) (Maybe BS.ByteString, Maybe BS.ByteString)
+headOfEach = Support.headOfEach
+
+-- | An enumerator that delivers a failed end of stream at once, at whatever layer it is used.
+failingEnumerator :: (Monad m) => e -> Iteratee.EnumeratorT e m a
+failingEnumerator err it = case it of
+    Iteratee.NeedInput k -> pure (k (Iteratee.EndOfStream (Just err)))
+    Iteratee.IterM m -> m >>= failingEnumerator err
+    other -> pure other
 
 {- | Reads exactly @total@ bytes, keeping any surplus as residue; fails if the
 stream ends first.

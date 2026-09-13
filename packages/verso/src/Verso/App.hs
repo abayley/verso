@@ -1605,15 +1605,16 @@ is no draft resource, so the route answers 404.
 -}
 draftPut :: Versioning -> FilePath -> Router.Handler
 draftPut versioning root captures _ = do
-    bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) formBodyLimit
     let path = capture "path" captures
+    -- The body streams straight into the staging file (RFC-0040); the refusals
+    -- still consume it, so nothing is left on the connection.
     if not (versioningOn versioning)
-        then pure treeNotFound
+        then drainBody >> pure treeNotFound
         else case Static.resolveStaticPath root (pathSegments path) of
-            Nothing -> pure treeNotFound
+            Nothing -> drainBody >> pure treeNotFound
             Just _ -> do
-                Iteratee.liftIO (Draft.writeDraft (draftStagingRoot versioning) path bytes)
-                pure noContentResponse
+                staged <- sinkBodyToFile formBodyLimit (Draft.draftFsPath (draftStagingRoot versioning) path)
+                pure (either (const saveFailed) (const noContentResponse) staged)
 
 {- | The draft resource's @DELETE@ (RFC-0036): discards the page's staged draft
 without publishing. Idempotent -- deleting an absent draft is still a @204@.
@@ -1683,20 +1684,47 @@ draft.
 -}
 treePutDocument :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
 treePutDocument versioning maint root captures request = do
-    bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) formBodyLimit
     let path = capture "path" captures
     case Static.resolveStaticPath root (pathSegments path) of
-        Nothing -> pure treeNotFound
+        Nothing -> drainBody >> pure treeNotFound
         Just fsPath -> do
-            Iteratee.liftIO (Directory.createDirectoryIfMissing True (parentDirectory fsPath))
-            Iteratee.liftIO (writeDocumentBytes fsPath bytes)
-            Iteratee.liftIO (onSave maint path)
-            Monad.when (versioningOn versioning) $ do
-                let author = Identity.currentIdentity (versioningIdentity versioning) request
-                message <- Iteratee.liftIO (publishMessage path bytes)
-                _ <- Iteratee.liftIO (Git.commitPaths root author message [path])
-                Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) path)
-            pure noContentResponse
+            -- The body streams into a temp beside the page and is renamed into place
+            -- (RFC-0040): the document never exists as a value, and a crash mid-write
+            -- leaves the previous page intact.
+            written <- sinkBodyToFile formBodyLimit fsPath
+            case written of
+                Left _ -> pure saveFailed
+                Right () -> do
+                    Iteratee.liftIO (onSave maint path)
+                    Monad.when (versioningOn versioning) $ do
+                        let author = Identity.currentIdentity (versioningIdentity versioning) request
+                        message <- Iteratee.liftIO (publishMessage path fsPath)
+                        _ <- Iteratee.liftIO (Git.commitPaths root author message [path])
+                        Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) path)
+                    pure noContentResponse
+
+-- | The @500@ for a save whose body arrived but could not be placed as the page.
+saveFailed :: Http.Response
+saveFailed = statusResponse 500 "Internal Server Error" "could not store the page\n"
+
+{- | Sinks the request body into @target@ (RFC-0040): streamed into a temp file
+beside it, then renamed into place, so the body never exists as a value and the
+target is replaced atomically. An over-cap body fails the stream having removed
+the partial temp ('Stream.fileSinkI'); a rename that fails removes the temp and is
+reported as the expected outcome it is. The temp is a dotfile the tree walks skip.
+-}
+sinkBodyToFile :: Int -> FilePath -> Iteratee.Iter Stream.StreamError (Either String ())
+sinkBodyToFile limit target = do
+    let dir = parentDirectory target
+    Iteratee.liftIO (Directory.createDirectoryIfMissing True dir)
+    tmp <- Iteratee.liftIO (FileSystem.uniqueTempPath dir ".save")
+    _ <- Stream.fileSinkI limit (Stream.StreamParseError Parse.BodyTooLarge) tmp
+    moved <- Iteratee.liftIO (FileSystem.renamePath tmp target)
+    case moved of
+        Left e -> do
+            _ <- Iteratee.liftIO (FileSystem.removeFilePath tmp)
+            pure (Left ("cannot place the page: " ++ show e))
+        Right () -> pure (Right ())
 
 {- | The image-title sync controller (RFC-0036): @POST /documents/*path?image-titles@
 with the indexed @image_count@/@image_path_<i>@/@image_title_<i>@ form fields
@@ -1725,13 +1753,13 @@ imageTitlesBodyLimit :: Int
 imageTitlesBodyLimit = 65536
 
 {- | The auto-generated commit message for a publish: the page's frontmatter
-title, falling back to its path. Only the leading frontmatter block is decoded
-(never the page body): MicroHs's 'BS.unpack' builds the whole list eagerly, so
-unpacking the document would widen it to a String (RFC-0040).
+title, falling back to its path. Only the leading frontmatter block is read from
+the written page (never the body): MicroHs's 'BS.unpack' builds the whole list
+eagerly, so unpacking the document would widen it to a String (RFC-0040).
 -}
-publishMessage :: String -> BS.ByteString -> IO String
-publishMessage path markdown = do
-    block <- Frontmatter.slice markdown
+publishMessage :: String -> FilePath -> IO String
+publishMessage path fsPath = do
+    block <- Frontmatter.readBlock fsPath
     pure $ case Frontmatter.title (Utf8.decodeUtf8 (BS.unpack block)) of
         Just title -> "Publish " ++ title
         Nothing -> "Publish " ++ path

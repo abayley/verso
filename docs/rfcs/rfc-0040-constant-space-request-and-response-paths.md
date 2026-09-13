@@ -106,7 +106,7 @@ tracker: a site is not closed until its phase is done or its row says why it sta
 | --- | --- | --- | --- |
 | `Iteratee.readBodyStrict` ([Iteratee.hs:147](../../packages/micro-http/src/MicroHttp/Iteratee.hs)) | whole body, `BS.concat` over k pieces | per request cap | 2, 3 |
 | `treeSave` body ([App.hs:1615](../../packages/verso/src/Verso/App.hs)) | whole body, then `String` round-trip | measured: unusable past ~64KB (no-JS fallback only) | 2 |
-| `treePublish`, `treeDiscard`, history posts (App.hs:1576, 1652, 1676) | whole body, then `String` | 1 MiB per request | 2 |
+| `treePublish`, `treeDiscard`, history posts (App.hs:1576, 1652, 1676) | whole body, then `String` | fixed: `formFields` parses bytes and widens only the decoded fields; the identifier posts are capped at 8KB and `treeImageTitles` at 64KB (review, 2026-09-13) | 2, review |
 | `treeUpload` body ([App.hs:1085](../../packages/verso/src/Verso/App.hs)) | whole body, `BS.concat` over ~2,560 chunks | fixed: `Stream.fileSinkI`, +11MB per 10 MiB body | 3 |
 | `storeAsset` write and dedup compare ([App.hs:1132](../../packages/verso/src/Verso/App.hs)) | whole write, plus whole read to compare | fixed: rename plus `Stream.filesEqual` | 3 |
 | `TreeMove.assetConflicts` ([TreeMove.hs:361](../../packages/verso/src/Verso/TreeMove.hs)) | two whole files compared | fixed: `Stream.filesEqual` | 3 |
@@ -119,7 +119,7 @@ tracker: a site is not closed until its phase is done or its row says why it sta
 | `TreeMove.readRel` and `writeRel` (TreeMove.hs:786, 795) | whole file, then `String` | recorded bound: index.md (`formBodyLimit`) | 6 |
 | Trash manifests and asset sidecar reads (TreeMove.hs:334, 505, 608) | whole file, then `String` | recorded bound: manifest/sidecar | 6 |
 | `DocumentMeta.readMetaFile` ([DocumentMeta.hs:188](../../packages/verso/src/Verso/DocumentMeta.hs)) | whole file, then `String`, rewritten per upload | recorded bound: sidecar | 6 |
-| `Draft.readDraft` and `writeDraft` (Draft.hs:36, 44) | whole document | document size | 4 |
+| `Draft.readDraft` and `writeDraft` (Draft.hs:36, 44) | whole document | fixed: the edit view streams the staging file through `documentFileResponse`; the raw `PUT /drafts` and `PUT /documents` bodies stream into a temp beside the target and are renamed into place (`sinkBodyToFile`), so `formBodyLimit` bounds page size only, not memory (review, 2026-09-13). The no-JS form `POST` still reads its body whole: it must split fields and percent-decode | 4, review |
 | `SearchIndex.indexPage` ([SearchIndex.hs:267](../../packages/verso/src/Verso/SearchIndex.hs)) | whole page, plus chunk texts, tokens, embeddings retained | recorded: Verso retention is a few MB; the ~200MB peak is the C embedder/lancedb (non-goal) | 7 |
 | `SearchChunks.chunkPage` line ranges and chunk copies (SearchChunks.hs:53, 82) | list per line, `BS.concat` per chunk | recorded reason: ~0.26MB of copies vs the ~200MB embedder transient | 7 |
 | `SearchIndex.reconcile` fingerprint read ([SearchIndex.hs:373](../../packages/verso/src/Verso/SearchIndex.hs)) | whole page to hash | fixed: `Fingerprint.contentFingerprintFile` (streamed) | 7 |
@@ -568,6 +568,11 @@ reference; the inventory rows above and the phase checklists carry the same disp
 - **`Html.escapeChars` `String` path (phase 8).** Serves the combinators' static text and attribute values
   (titles, labels, per-page `data-*` JSON), all bounded and never document-sized; the document body uses the
   byte escaper. Reopen only if a document-sized value is ever routed through `Html.text`/an attribute.
+- **Per-line `String` in the streamed diff (review, 2026-09-13).** `View.diffScanStep` unpacks each diff line
+  to render its row, so the bound is one line, and a document with no newlines makes that line document-sized.
+  Moving `SideRow` to bytes needs an escaped-bytes cell renderer in `IO` and turns the pure scan step
+  effectful; the path is the history view. Reopen if the diff view is ever served to untrusted clients or the
+  row renderer gains a byte-valued escaper anyway. See `docs/reviews/rfc-0040-code-review-2026-09-13.md`.
 
 ## Open Questions
 
@@ -576,8 +581,9 @@ reference; the inventory rows above and the phase checklists carry the same disp
 - Whether `formBodyLimit` should be documented as a document-size ceiling in
   `docs/reference/configuration.md`, or replaced by a configuration key, once the save path no longer
   multiplies it. Out of scope to change here; in scope to decide where it is written down.
-- Whether the temp file for a streamed upload belongs in the target assets directory (same filesystem, so
-  the rename is atomic) or in the configured temp directory (tidier, but the rename may cross devices).
-  Phase 3 settles it.
-- Whether the phase-1 measurements justify all eight phases. A phase whose measurement shows no meaningful
-  cost is closed with that finding recorded, not implemented.
+- ~~Whether the temp file for a streamed upload belongs in the target assets directory or in the configured
+  temp directory.~~ Settled by phase 3: beside its final home in the assets directory, so the rename is
+  atomic and never crosses a device (ADR-0088).
+- ~~Whether the phase-1 measurements justify all eight phases.~~ Resolved by the rollout: phase 7 was closed
+  on its measurement (the `indexPage` peak is the C embedder, a non-goal) with the finding recorded rather
+  than implemented; every other phase was implemented.

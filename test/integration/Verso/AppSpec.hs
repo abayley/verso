@@ -421,6 +421,28 @@ spec = do
             stillDrafted `shouldBe` False
             any ((== "anonymous") . Git.revAuthor) revs `shouldBe` True
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 204
+        it "given a raw PUT over the document cap, when routing, then it is refused, the live page is unchanged, and no temp file is left beside it (RFC-0040)" $ do
+            root <- setupVersionedFixture
+            before <- FileSystem.readFileStrict (root ++ "/sec/page.md")
+            let declared = 1048577 :: Int
+                head = "PUT /documents/sec/page.md HTTP/1.1\r\nContent-Type: text/markdown\r\nContent-Length: " ++ show declared ++ "\r\n\r\n"
+            outcome <- Server.respondToRequestBytes (App.appWithDocumentTreeVersioned root treeDraftRoot) (BS.append (BS.pack head) (BS.replicate declared 'x'))
+            either Just (const Nothing) outcome `shouldBe` Just (Stream.StreamParseError Parse.BodyTooLarge)
+            after <- FileSystem.readFileStrict (root ++ "/sec/page.md")
+            after `shouldBe` before
+            leftovers <- Directory.listDirectory (root ++ "/sec")
+            filter (List.isPrefixOf ".save") leftovers `shouldBe` []
+        it "given a draft PUT over the document cap, when routing, then it is refused and nothing is staged (RFC-0040)" $ do
+            root <- setupVersionedFixture
+            removeIfExists (treeDraftRoot ++ "/sec/page.md")
+            let declared = 1048577 :: Int
+                head = "PUT /drafts/sec/page.md HTTP/1.1\r\nContent-Type: text/markdown\r\nContent-Length: " ++ show declared ++ "\r\n\r\n"
+            outcome <- Server.respondToRequestBytes (App.appWithDocumentTreeVersioned root treeDraftRoot) (BS.append (BS.pack head) (BS.replicate declared 'x'))
+            either Just (const Nothing) outcome `shouldBe` Just (Stream.StreamParseError Parse.BodyTooLarge)
+            Directory.doesFileExist (treeDraftRoot ++ "/sec/page.md") `shouldReturn` False
+            exists <- Directory.doesDirectoryExist (treeDraftRoot ++ "/sec")
+            leftovers <- if exists then Directory.listDirectory (treeDraftRoot ++ "/sec") else pure []
+            filter (List.isPrefixOf ".save") leftovers `shouldBe` []
         it "given a page with a frontmatter name, when published, then the commit subject carries that title" $ do
             root <- setupVersionedFixture
             _ <-

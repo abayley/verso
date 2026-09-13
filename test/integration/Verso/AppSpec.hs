@@ -2,6 +2,7 @@ module Verso.AppSpec (spec) where
 
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Http as Http
@@ -128,6 +129,36 @@ spec = do
                     (BS.pack (postRequest "/documents/sec/page.md" "markdown=line1%0D%0Aline2%0Dline3%0Aline4"))
             saved <- BS.readFile (root ++ "/sec/page.md")
             saved `shouldBe` BS.pack "line1\nline2\nline3\nline4"
+        it "given a form save larger than any stream chunk with every escape class, when routing, then the file equals the decoded, normalised text byte for byte (RFC-0042)" $ do
+            root <- setupTreeFixture
+            let plain = BS.concat (replicate 4000 (BS.pack "# T\xc3\xa9xt & more = 100% sure? a+b\r\nline\rend\n"))
+                body = BS.append (BS.pack "path=sec%2Fpage.md&markdown=") (formEncode plain)
+                head = "POST /documents/sec/page.md HTTP/1.1\r\nContent-Length: " ++ show (BS.length body) ++ "\r\n\r\n"
+            outcome <- Server.respondToRequestBytes (App.appWithDocumentTree root) (BS.append (BS.pack head) body)
+            fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 303
+            saved <- BS.readFile (root ++ "/sec/page.md")
+            saved `shouldBe` BS.concat (replicate 4000 (BS.pack "# T\xc3\xa9xt & more = 100% sure? a+b\nline\nend\n"))
+            leftovers <- Directory.listDirectory (root ++ "/sec")
+            filter (List.isPrefixOf ".save") leftovers `shouldBe` []
+        it "given a form save whose document is over the page cap, when routing, then it is refused, the page is unchanged, and no temp is left (RFC-0042)" $ do
+            root <- setupTreeFixture
+            before <- BS.readFile (root ++ "/sec/page.md")
+            let body = BS.append (BS.pack "markdown=") (BS.replicate 1048577 'x')
+                head = "POST /documents/sec/page.md HTTP/1.1\r\nContent-Length: " ++ show (BS.length body) ++ "\r\n\r\n"
+            outcome <- Server.respondToRequestBytes (App.appWithDocumentTree root) (BS.append (BS.pack head) body)
+            either Just (const Nothing) outcome `shouldBe` Just (Stream.StreamParseError Parse.BodyTooLarge)
+            after <- BS.readFile (root ++ "/sec/page.md")
+            after `shouldBe` before
+            leftovers <- Directory.listDirectory (root ++ "/sec")
+            filter (List.isPrefixOf ".save") leftovers `shouldBe` []
+        it "given a form save whose other field is over the field cap, when routing, then it is refused and no temp is left (RFC-0042)" $ do
+            root <- setupTreeFixture
+            let body = BS.concat [BS.pack "markdown=%23+H&note=", BS.replicate 9000 'n']
+                head = "POST /documents/sec/page.md HTTP/1.1\r\nContent-Length: " ++ show (BS.length body) ++ "\r\n\r\n"
+            outcome <- Server.respondToRequestBytes (App.appWithDocumentTree root) (BS.append (BS.pack head) body)
+            either Just (const Nothing) outcome `shouldBe` Just (Stream.StreamParseError Parse.BodyTooLarge)
+            leftovers <- Directory.listDirectory (root ++ "/sec")
+            filter (List.isPrefixOf ".save") leftovers `shouldBe` []
         it "given a GET of /, when routing, then it redirects to /documents/" $ do
             root <- setupTreeFixture
             outcome <-
@@ -1003,3 +1034,23 @@ setupVersionedFixture = do
     writeFile (root ++ "/sec/page.md") "# Hello tree\n\nA tree document."
     _ <- Git.ensureRepository root (Git.Identity "Verso Import" "verso@verso.local")
     return root
+
+{- | Encodes bytes as a urlencoded form value the way a browser does: unreserved
+bytes verbatim, a space as @+@, everything else as an upper-case @%XX@ escape.
+Written over 'BS.index' so the fixture does not build a byte list.
+-}
+formEncode :: BS.ByteString -> BS.ByteString
+formEncode bytes = BS.concat (map encodeSlice [0, 1024 .. BS.length bytes - 1])
+  where
+    -- One packed piece per kilobyte of input, so neither the list nor the concat is proportional to the whole.
+    encodeSlice start = BS.pack (concatMap encodeByte [start .. min (BS.length bytes) (start + 1024) - 1])
+    encodeByte i =
+        let c = BS.index bytes i
+         in if c == ' '
+                then "+"
+                else
+                    if unreserved c
+                        then [c]
+                        else ['%', hexDigit (fromEnum c `div` 16), hexDigit (fromEnum c `mod` 16)]
+    unreserved c = Char.isAsciiLower c || Char.isAsciiUpper c || Char.isDigit c || c `elem` "-_.~"
+    hexDigit n = "0123456789ABCDEF" !! n

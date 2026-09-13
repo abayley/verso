@@ -47,6 +47,18 @@ decoderSpec =
                 -- fed in socket-sized blocks, as the server does; a block, not the value, bounds each decode
             result <- feedIn 8192 input (Form.decodeFormValueI (Iteratee.readBodyStrict TooLarge 2000000)) >>= Iteratee.run
             fmap BS.length result `shouldBe` Right (7 * 131072)
+        it "given a value above the megabyte cap delivered as one chunk, when decoded, then the transformer's own slicing bounds the work and it completes" $ do
+            let unit = bs "%41+word%0A"
+                input = doubling 17 unit
+            result <- Iteratee.strictEnumerator input (Form.decodeFormValueI (Iteratee.readBodyStrict TooLarge 2000000)) >>= Iteratee.run
+            fmap BS.length result `shouldBe` Right (7 * 131072)
+        it "given a large value with escapes at every slice boundary, when decoded as one chunk, then it equals the oracle" $ do
+            -- 4095 plain bytes then an escape, repeated, so an escape straddles each 4096-byte slice
+            let unit = BS.append (BS.replicate 4095 'a') (bs "%2B")
+                input = BS.concat (replicate 40 unit)
+                expected = BS.concat (replicate 40 (BS.append (BS.replicate 4095 'a') (bs "+")))
+            result <- Iteratee.strictEnumerator input (Form.decodeFormValueI (Iteratee.readBodyStrict TooLarge 2000000)) >>= Iteratee.run
+            result `shouldBe` Right expected
 
 {- | The streaming newline normaliser: CRLF and lone CR become LF, including a
 CR at a block end whose LF arrives in the next block.

@@ -32,6 +32,7 @@ import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified MicroHttp.Bytes as Bytes
 import qualified MicroHttp.FileSystem as FileSystem
+import qualified MicroHttp.Form as Form
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http as Http
 import qualified MicroHttp.Http.Parse as Parse
@@ -1645,27 +1646,47 @@ apply to first-party files).
 -}
 treeSave :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
 treeSave versioning maint root captures _request = do
-    bodyBytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) formBodyLimit
-    -- The document field stays bytes from socket to file: widening it to a String
-    -- costs a cons cell per byte in every pass, which the arena cannot hold for a
-    -- document-sized body (RFC-0040).
-    let markdown = normaliseNewlineBytes (captureBytes "markdown" (Http.parseFormBody bodyBytes))
-        path = capture "path" captures
+    let path = capture "path" captures
     case Static.resolveStaticPath root (pathSegments path) of
-        Nothing -> pure treeNotFound
-        Just fsPath ->
-            if versioningOn versioning
-                then do
-                    -- Versioning on: autosave stages a draft; the live page, its sidecar
-                    -- metadata, and the link index are untouched until Publish (RFC-0032).
-                    Iteratee.liftIO (Draft.writeDraft (draftStagingRoot versioning) path markdown)
-                    saveResponse path
-                else do
-                    Iteratee.liftIO (Directory.createDirectoryIfMissing True (parentDirectory fsPath))
-                    Iteratee.liftIO (writeDocumentBytes fsPath markdown)
+        Nothing -> drainBody >> pure treeNotFound
+        Just fsPath -> do
+            -- Versioning on: autosave stages a draft; the live page, its sidecar
+            -- metadata, and the link index are untouched until Publish (RFC-0032).
+            let target = if versioningOn versioning then Draft.draftFsPath (draftStagingRoot versioning) path else fsPath
+            -- RFC-0042: the form streams through the part consumer. The document field
+            -- is decoded and newline-normalised on its way into a temp beside the target
+            -- and renamed into place; the other fields are collected under small caps.
+            -- The document never exists as a value, and the temp is removed on failure.
+            placed <- sinkToFile (formSaveSink formBodyLimit) target
+            case placed of
+                Left _ -> pure saveFailed
+                Right _ -> do
                     -- The page's body (and so its outbound links) changed; maintain its index entry.
-                    Iteratee.liftIO (onSave maint path)
+                    Monad.unless (versioningOn versioning) (Iteratee.liftIO (onSave maint path))
                     saveResponse path
+
+{- | The save form's part consumer, writing into @tmp@: the @markdown@ field is
+percent-decoded and newline-normalised block by block into a capped file sink;
+every other field is collected as a small value. The temp is created empty first,
+so a form with no @markdown@ field saves an empty page, as the whole-body parser
+did. The routing is decided from the field name alone, so the form puts any
+control field before the @\<textarea\>@ ('View.editorShell').
+-}
+formSaveSink :: Int -> FilePath -> Iteratee.Iter Stream.StreamError ([(BS.ByteString, BS.ByteString)], [(BS.ByteString, Int)])
+formSaveSink cap tmp = do
+    Iteratee.liftIO (BS.writeFile tmp BS.empty)
+    Form.formI saveFormLimits tooLarge route
+  where
+    tooLarge = Stream.StreamParseError Parse.BodyTooLarge
+    route name
+        | name == BS.pack "markdown" = Form.SinkPart (Form.decodeFormValueI (Form.normaliseNewlinesI (Stream.fileSinkI cap tooLarge tmp)))
+        | otherwise = Form.CollectField
+
+{- | The caps on the save form's collected fields: it carries identifiers beside
+the document, so a field is small and there are few of them.
+-}
+saveFormLimits :: Form.FormLimits
+saveFormLimits = Form.FormLimits{Form.maxFieldBytes = treeCreateMaxBytes, Form.maxCollectedBytes = 65536, Form.maxFields = 64}
 
 {- | The form-floor save response: post-redirect-get back to the edit page. (The
 editor's own saves are fetch PUTs answered with 204, RFC-0036.)
@@ -1694,7 +1715,7 @@ treePutDocument versioning maint root captures request = do
             written <- sinkBodyToFile formBodyLimit fsPath
             case written of
                 Left _ -> pure saveFailed
-                Right () -> do
+                Right _ -> do
                     Iteratee.liftIO (onSave maint path)
                     Monad.when (versioningOn versioning) $ do
                         let author = Identity.currentIdentity (versioningIdentity versioning) request
@@ -1713,18 +1734,28 @@ target is replaced atomically. An over-cap body fails the stream having removed
 the partial temp ('Stream.fileSinkI'); a rename that fails removes the temp and is
 reported as the expected outcome it is. The temp is a dotfile the tree walks skip.
 -}
-sinkBodyToFile :: Int -> FilePath -> Iteratee.Iter Stream.StreamError (Either String ())
-sinkBodyToFile limit target = do
+sinkBodyToFile :: Int -> FilePath -> Iteratee.Iter Stream.StreamError (Either String Int)
+sinkBodyToFile limit = sinkToFile (Stream.fileSinkI limit (Stream.StreamParseError Parse.BodyTooLarge))
+
+{- | Runs a consumer that writes into a temp file reserved beside @target@, then
+renames the temp into place (RFC-0040, RFC-0042). The consumer is built for the
+temp path so it can be a plain file sink or a form whose document field sinks
+there. A consumer or stream failure removes the temp and propagates; a rename
+that fails removes it and is reported as the expected outcome it is.
+-}
+sinkToFile :: (FilePath -> Iteratee.Iter Stream.StreamError a) -> FilePath -> Iteratee.Iter Stream.StreamError (Either String a)
+sinkToFile consumerFor target = do
     let dir = parentDirectory target
     Iteratee.liftIO (Directory.createDirectoryIfMissing True dir)
     tmp <- Iteratee.liftIO (FileSystem.uniqueTempPath dir ".save")
-    _ <- Stream.fileSinkI limit (Stream.StreamParseError Parse.BodyTooLarge) tmp
+    let discard = Monad.void (FileSystem.removeFilePath tmp)
+    result <- Iteratee.onFailure discard (consumerFor tmp)
     moved <- Iteratee.liftIO (FileSystem.renamePath tmp target)
     case moved of
         Left e -> do
-            _ <- Iteratee.liftIO (FileSystem.removeFilePath tmp)
+            Iteratee.liftIO discard
             pure (Left ("cannot place the page: " ++ show e))
-        Right () -> pure (Right ())
+        Right () -> pure (Right result)
 
 {- | The image-title sync controller (RFC-0036): @POST /documents/*path?image-titles@
 with the indexed @image_count@/@image_path_<i>@/@image_title_<i>@ form fields

@@ -80,6 +80,25 @@ spec =
             result <- Iteratee.run final
             result `shouldBe` Left Boom
             closeCount `shouldReturn` 0
+        it "given a failure cleanup, when the consumer completes, then the cleanup does not run" $ do
+            ran <- IORef.newIORef (0 :: Int)
+            final <- Iteratee.strictEnumerator (BS.pack "ok") (Iteratee.onFailure (IORef.modifyIORef ran (+ 1)) (Iteratee.readBodyStrict TooLarge 1000))
+            result <- Iteratee.run final
+            result `shouldBe` Right (BS.pack "ok")
+            IORef.readIORef ran `shouldReturn` 0
+        it "given a failure cleanup, when the consumer fails on input, then the cleanup runs once and the failure propagates" $ do
+            ran <- IORef.newIORef (0 :: Int)
+            final <- Iteratee.strictEnumerator (BS.pack "boom") (Iteratee.onFailure (IORef.modifyIORef ran (+ 1)) failOnInput)
+            result <- Iteratee.run final
+            result `shouldBe` Left Boom
+            IORef.readIORef ran `shouldReturn` 1
+        it "given a failure cleanup, when the stream fails at its end, then the cleanup runs" $ do
+            ran <- IORef.newIORef (0 :: Int)
+            let waiting = Iteratee.onFailure (IORef.modifyIORef ran (+ 1)) (Iteratee.readBodyStrict TooLarge 1000)
+            fed <- Iteratee.feedChunk (BS.pack "partial") waiting
+            result <- Iteratee.run (case fed of Iteratee.NeedInput k -> k (Iteratee.EndOfStream (Just Boom)); other -> other)
+            result `shouldBe` Left Boom
+            IORef.readIORef ran `shouldReturn` 1
         it "given a waiting consumer, when fed chunks without an end of stream, then it holds them and completes on the later end" $ do
             fed <- Iteratee.feedChunk (BS.pack "ab") (Iteratee.readBodyStrict TooLarge 1000 :: Iteratee.Iter TestError BS.ByteString)
             fed' <- Iteratee.feedChunk (BS.pack "cd") fed

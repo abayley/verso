@@ -553,6 +553,9 @@ editorShell docId mode pageTitle versioned editable hasDraft attachments breadcr
             Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\" defer></script>"
         Html.elOpen "body" [Html.class_ "markdown-editor-page"]
         Html.elOpen "main" []
+        -- The no-JavaScript save form (RFC-0042): the server routes each field by name
+        -- as it arrives, so any control field added to this form must come before the
+        -- textarea, never after it.
         Monad.when editable $
             Html.elOpen "form" [Html.attr "action" ("/documents/" ++ docId), Html.attr "method" "post"]
         Html.elOpen "markdown-editor" editorAttrs

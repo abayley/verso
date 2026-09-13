@@ -340,10 +340,21 @@ Gates: `make check` green under both compilers; the `HttpSpec` contract tests fo
 
 ### Phase 2: the save form
 
-- [ ] `treeSave` routes `markdown` to a decoded, normalised file sink and renames into place through the
+- [x] `treeSave` routes `markdown` to a decoded, normalised file sink and renames into place through the
       tail shared with `sinkBodyToFile`; both the versioning-on (draft) and versioning-off (page) branches.
-- [ ] The three integration tests above.
-- [ ] The sequencing constraint recorded on `formI` and beside the form in `View.editorShell`.
+      **Done (2026-09-13.)** The shared tail is `sinkToFile`, which reserves the temp, runs any consumer
+      built for it, and renames; `Iteratee.onFailure` (new, tested) removes the temp when the consumer or
+      the stream fails part-way, which `fileSinkI` alone could not cover once the form's other fields could
+      fail after the document had been sunk. The temp is created empty first so a form with no `markdown`
+      saves an empty page, as before.
+- [x] The three integration tests above. **Done (2026-09-13.)** Plus a fourth: a non-document field over
+      the field cap is refused and leaves no temp. Finding: the test harness (`respondToRequestBytes`) feeds
+      the whole request as one chunk, and the first run crashed the suite on the 400KB form, because a block
+      step's per-block list was proportional to the chunk. `transformI` now slices every chunk to 4KB before
+      the block step, so the slice, not the producer, bounds each intermediate; two unit cases fix it (a 1.4MB
+      single chunk, and escapes straddling every slice boundary).
+- [x] The sequencing constraint recorded on `formI` and beside the form in `View.editorShell`. **Done
+      (2026-09-13.)**
 
 ### Phase 3: retire the whole-body parser
 

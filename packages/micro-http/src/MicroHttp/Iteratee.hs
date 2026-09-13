@@ -16,6 +16,7 @@ module MicroHttp.Iteratee (
     resourceEnumerator,
     byteSinkI,
     feedChunk,
+    onFailure,
 ) where
 
 import qualified Control.Monad as Monad
@@ -250,3 +251,18 @@ feedChunk bytes it
     resolve x = case x of
         IterM m -> m >>= resolve
         other -> return other
+
+{- | Runs a cleanup action if the iteratee fails, then propagates the failure
+unchanged; a consumer that completes runs nothing. This is how a handler that
+has reserved a resource for a consumer (a temp file a sink writes into) releases
+it when the consumer, or the stream feeding it, fails part-way (RFC-0042). The
+cleanup runs once, at the first terminal failure.
+-}
+onFailure :: IO () -> Iter e a -> Iter e a
+onFailure cleanup = go
+  where
+    go it = case it of
+        Done a residue -> Done a residue
+        IterFailed err residue -> IterM (cleanup >> return (IterFailed err residue))
+        IterM m -> IterM (fmap go m)
+        NeedInput k -> NeedInput (go . k)

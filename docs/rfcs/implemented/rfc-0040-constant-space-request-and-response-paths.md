@@ -1,11 +1,11 @@
 ---
 id: RFC-0040
 name: Constant-space request and response paths
-status: Draft
+status: Implemented
 owners:
     - Alistair Bayley
 created: 2026-09-11
-updated: 2026-09-11
+updated: 2026-09-13
 supersedes: []
 superseded_by: null
 related_rfcs: [RFC-0012, RFC-0013, RFC-0014, RFC-0029, RFC-0032, RFC-0034, RFC-0039]
@@ -19,7 +19,7 @@ related_refs:
 | --------- | --------------------- |
 | Authored  | 2026-09-11 09:32 NZST |
 | Started   | 2026-09-11 11:57 NZST |
-| Completed |                       |
+| Completed | 2026-09-13 20:55 NZST |
 
 ## Summary
 
@@ -104,32 +104,32 @@ tracker: a site is not closed until its phase is done or its row says why it sta
 
 | Site | Cost class | Bound | Phase |
 | --- | --- | --- | --- |
-| `Iteratee.readBodyStrict` ([Iteratee.hs:147](../../packages/micro-http/src/MicroHttp/Iteratee.hs)) | whole body, `BS.concat` over k pieces | per request cap | 2, 3 |
-| `treeSave` body ([App.hs:1615](../../packages/verso/src/Verso/App.hs)) | whole body, then `String` round-trip | measured: unusable past ~64KB (no-JS fallback only) | 2 |
+| `Iteratee.readBodyStrict` ([Iteratee.hs:147](../../../packages/micro-http/src/MicroHttp/Iteratee.hs)) | whole body, `BS.concat` over k pieces | per request cap | 2, 3 |
+| `treeSave` body ([App.hs:1615](../../../packages/verso/src/Verso/App.hs)) | whole body, then `String` round-trip | fixed: the `String` round-trip is gone (bytes from socket to file); the remaining whole-body read is the form parser's, handed to RFC-0042 (streaming form consumer) | 2, RFC-0042 |
 | `treePublish`, `treeDiscard`, history posts (App.hs:1576, 1652, 1676) | whole body, then `String` | fixed: `formFields` parses bytes and widens only the decoded fields; the identifier posts are capped at 8KB and `treeImageTitles` at 64KB (review, 2026-09-13) | 2, review |
-| `treeUpload` body ([App.hs:1085](../../packages/verso/src/Verso/App.hs)) | whole body, `BS.concat` over ~2,560 chunks | fixed: `Stream.fileSinkI`, +11MB per 10 MiB body | 3 |
-| `storeAsset` write and dedup compare ([App.hs:1132](../../packages/verso/src/Verso/App.hs)) | whole write, plus whole read to compare | fixed: rename plus `Stream.filesEqual` | 3 |
-| `TreeMove.assetConflicts` ([TreeMove.hs:361](../../packages/verso/src/Verso/TreeMove.hs)) | two whole files compared | fixed: `Stream.filesEqual` | 3 |
-| `htmlResponseChunks` ([App.hs:1926](../../packages/verso/src/Verso/App.hs)) | `BS.concat` of the whole page, on top of a strict coalesce | per response | 4 |
+| `treeUpload` body ([App.hs:1085](../../../packages/verso/src/Verso/App.hs)) | whole body, `BS.concat` over ~2,560 chunks | fixed: `Stream.fileSinkI`, +11MB per 10 MiB body | 3 |
+| `storeAsset` write and dedup compare ([App.hs:1132](../../../packages/verso/src/Verso/App.hs)) | whole write, plus whole read to compare | fixed: rename plus `Stream.filesEqual` | 3 |
+| `TreeMove.assetConflicts` ([TreeMove.hs:361](../../../packages/verso/src/Verso/TreeMove.hs)) | two whole files compared | fixed: `Stream.filesEqual` | 3 |
+| `htmlResponseChunks` ([App.hs:1926](../../../packages/verso/src/Verso/App.hs)) | `BS.concat` of the whole page, on top of a strict coalesce | per response | 4 |
 | `treeEdit`, `treeRead`, `treeReadAt` (App.hs:1007, 1029, 1737) | whole document read, escaped as one value, in a whole page | measured: ~6MB at 263KB; design: block + segment | 4 |
-| `treeDiff` via `Git.diffBetween` ([Git.hs:163](../../packages/verso/src/Verso/Git.hs)) | whole diff, then `String` | fixed: `diffBetweenCaptured` + `foldFileLines` streamed into a `StreamBody` (ADR-0091) | 5, 9 |
-| `Process.runProcess` capture ([Process.hs:121](../../packages/micro-http/src/MicroHttp/Process.hs)) | whole stdout and stderr | unbounded | 5 |
+| `treeDiff` via `Git.diffBetween` ([Git.hs:163](../../../packages/verso/src/Verso/Git.hs)) | whole diff, then `String` | fixed: `diffBetweenCaptured` + `foldFileLines` streamed into a `StreamBody` (ADR-0091) | 5, 9 |
+| `Process.runProcess` capture ([Process.hs:121](../../../packages/micro-http/src/MicroHttp/Process.hs)) | whole stdout and stderr | unbounded | 5 |
 | `Git.showFileAtRevision` and rollback write (Git.hs:169, App.hs:1766) | whole file | document size | 5 |
-| `TreeMove` `collect` ([TreeMove.hs:751](../../packages/verso/src/Verso/TreeMove.hs)) | whole file per document, whole corpus walked | fixed: `Stream.fileContains` + `scanPageLinks` | 6 |
+| `TreeMove` `collect` ([TreeMove.hs:751](../../../packages/verso/src/Verso/TreeMove.hs)) | whole file per document, whole corpus walked | fixed: `Stream.fileContains` + `scanPageLinks` | 6 |
 | `TreeMove.readRel` and `writeRel` (TreeMove.hs:786, 795) | whole file, then `String` | recorded bound: index.md (`formBodyLimit`) | 6 |
 | Trash manifests and asset sidecar reads (TreeMove.hs:334, 505, 608) | whole file, then `String` | recorded bound: manifest/sidecar | 6 |
-| `DocumentMeta.readMetaFile` ([DocumentMeta.hs:188](../../packages/verso/src/Verso/DocumentMeta.hs)) | whole file, then `String`, rewritten per upload | recorded bound: sidecar | 6 |
+| `DocumentMeta.readMetaFile` ([DocumentMeta.hs:188](../../../packages/verso/src/Verso/DocumentMeta.hs)) | whole file, then `String`, rewritten per upload | recorded bound: sidecar | 6 |
 | `Draft.readDraft` and `writeDraft` (Draft.hs:36, 44) | whole document | fixed: the edit view streams the staging file through `documentFileResponse`; the raw `PUT /drafts` and `PUT /documents` bodies stream into a temp beside the target and are renamed into place (`sinkBodyToFile`), so `formBodyLimit` bounds page size only, not memory (review, 2026-09-13). The no-JS form `POST` still reads its body whole: it must split fields and percent-decode | 4, review |
-| `SearchIndex.indexPage` ([SearchIndex.hs:267](../../packages/verso/src/Verso/SearchIndex.hs)) | whole page, plus chunk texts, tokens, embeddings retained | recorded: Verso retention is a few MB; the ~200MB peak is the C embedder/lancedb (non-goal) | 7 |
+| `SearchIndex.indexPage` ([SearchIndex.hs:267](../../../packages/verso/src/Verso/SearchIndex.hs)) | whole page, plus chunk texts, tokens, embeddings retained | recorded: Verso retention is a few MB; the ~200MB peak is the C embedder/lancedb (non-goal) | 7 |
 | `SearchChunks.chunkPage` line ranges and chunk copies (SearchChunks.hs:53, 82) | list per line, `BS.concat` per chunk | recorded reason: ~0.26MB of copies vs the ~200MB embedder transient | 7 |
-| `SearchIndex.reconcile` fingerprint read ([SearchIndex.hs:373](../../packages/verso/src/Verso/SearchIndex.hs)) | whole page to hash | fixed: `Fingerprint.contentFingerprintFile` (streamed) | 7 |
+| `SearchIndex.reconcile` fingerprint read ([SearchIndex.hs:373](../../../packages/verso/src/Verso/SearchIndex.hs)) | whole page to hash | fixed: `Fingerprint.contentFingerprintFile` (streamed) | 7 |
 | `Concordance.Store.withPackedBytes` and `packStrings` (Store.hs:246, 253) | `BS.concat` of all chunk texts, one via `String` | recorded: the upsert C ABI takes a page's chunks at once | 7 |
-| `LinkIndexStore.persistState` ([LinkIndexStore.hs:203](../../packages/verso/src/Verso/LinkIndexStore.hs)) | whole index as `String` before packing | fixed: `Stream.writeFileLines` (one line at a time) | 8 |
-| `Html.escapeChars` ([Html.hs:502](../../packages/micro-http/src/MicroHttp/Html.hs)) | `String` escape path | recorded: static/attribute text only, never document-sized (body uses the byte escaper) | 8 |
-| `LinkIndexStore.parseRows` ([LinkIndexStore.hs:234](../../packages/verso/src/Verso/LinkIndexStore.hs)) | `BS.split` over the 1.2MB persisted index (unpack scan; collector-stack hazard) | fixed: `Bytes.split` | 2 audit |
-| `TreeMove` `collect` `isInfixOf` ([TreeMove.hs:752](../../packages/verso/src/Verso/TreeMove.hs)) | `BS.isInfixOf` unpacks each whole page | fixed: `Stream.fileContains` (streamed, `Bytes.isInfixOf` per block) | 6 |
-| `Concordance.Fingerprint` ([Fingerprint.hs:18](../../packages/verso/src/Concordance/Fingerprint.hs)) | `BS.foldl'` unpacks each whole page | fixed: `Bytes.foldl'` | 2 audit |
-| `Concordance.WordPiece.mkVocab` ([WordPiece.hs:68](../../packages/verso/src/Concordance/WordPiece.hs)) | `BS.split` over the 231KB vocab | fixed: `Bytes.split` | 2 audit |
+| `LinkIndexStore.persistState` ([LinkIndexStore.hs:203](../../../packages/verso/src/Verso/LinkIndexStore.hs)) | whole index as `String` before packing | fixed: `Stream.writeFileLines` (one line at a time) | 8 |
+| `Html.escapeChars` ([Html.hs:502](../../../packages/micro-http/src/MicroHttp/Html.hs)) | `String` escape path | recorded: static/attribute text only, never document-sized (body uses the byte escaper) | 8 |
+| `LinkIndexStore.parseRows` ([LinkIndexStore.hs:234](../../../packages/verso/src/Verso/LinkIndexStore.hs)) | `BS.split` over the 1.2MB persisted index (unpack scan; collector-stack hazard) | fixed: `Bytes.split` | 2 audit |
+| `TreeMove` `collect` `isInfixOf` ([TreeMove.hs:752](../../../packages/verso/src/Verso/TreeMove.hs)) | `BS.isInfixOf` unpacks each whole page | fixed: `Stream.fileContains` (streamed, `Bytes.isInfixOf` per block) | 6 |
+| `Concordance.Fingerprint` ([Fingerprint.hs:18](../../../packages/verso/src/Concordance/Fingerprint.hs)) | `BS.foldl'` unpacks each whole page | fixed: `Bytes.foldl'` | 2 audit |
+| `Concordance.WordPiece.mkVocab` ([WordPiece.hs:68](../../../packages/verso/src/Concordance/WordPiece.hs)) | `BS.split` over the 231KB vocab | fixed: `Bytes.split` | 2 audit |
 
 Sites the survey cleared, recorded so a later reader does not re-open them: static asset serving already
 uses `FileBody` (App.hs:1060); `Log.rotatingAppender` stats rather than reads (Log.hs:197); the header
@@ -529,9 +529,10 @@ phase-1 baseline for the largest document: 141ms and ~6MB above baseline for the
       crosses the `String` path. Retiring it would mean reshaping the combinator API onto `ByteString` for
       strings that are already small, and it is deliberately one packed chunk per string for render cost
       (see its Haddock).
-- [ ] Close the inventory: every row is fixed or carries its reason. **Left open at the owner's request** so
-      the deferred/recorded items stay easy to refer to; see "Deferred and recorded items" below. The RFC is
-      not stamped complete.
+- [x] Close the inventory: every row is fixed or carries its reason. Held open until 2026-09-13 so the
+      deferred items stayed easy to refer to; they now live in "Deferred and recorded items" below (which
+      moves with this RFC), in `docs/reviews/rfc-0040-code-review-2026-09-13.md`, and, for the form parser's
+      whole-body read, in RFC-0042. **Closed (2026-09-13.)**
 
 ### Phase 9: consolidate the streaming readers, and stream the diff
 
@@ -578,9 +579,11 @@ reference; the inventory rows above and the phase checklists carry the same disp
 
 - ~~Whether an `Html` fragment can carry a producer.~~ Resolved by design (2026-09-12): the page is a
   template with one hole, and only the document streams; the `Html` type is unchanged.
-- Whether `formBodyLimit` should be documented as a document-size ceiling in
-  `docs/reference/configuration.md`, or replaced by a configuration key, once the save path no longer
-  multiplies it. Out of scope to change here; in scope to decide where it is written down.
+- ~~Whether `formBodyLimit` should be documented as a document-size ceiling in
+  `docs/reference/configuration.md`, or replaced by a configuration key.~~ Decided 2026-09-13: catalogued as
+  a fixed ceiling. With the raw `PUT` bodies streamed to disk the constant bounds page size only, not memory,
+  so it is product policy; `docs/reference/configuration.md` lists it beside `max_body_bytes` with the other
+  application-level caps, and a `VERSO_` key is the recorded reopen condition should anyone need larger pages.
 - ~~Whether the temp file for a streamed upload belongs in the target assets directory or in the configured
   temp directory.~~ Settled by phase 3: beside its final home in the assets directory, so the rename is
   atomic and never crosses a device (ADR-0088).

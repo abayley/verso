@@ -45,5 +45,6 @@ Implemented RFC files live under `docs/rfcs/implemented/`. All other RFCs remain
 | [RFC-0037](implemented/rfc-0037-explicit-editor-content-pipelines.md)         | Implemented | Explicit Editor Content Pipelines                                               |
 | [RFC-0038](rfc-0038-repository-package-structure.md)                          | Draft       | Repository package structure and Haskell/TypeScript separation                  |
 | [RFC-0039](implemented/rfc-0039-constant-space-document-handling.md)          | Implemented | Constant-space document handling and a fail-fast heap                           |
-| [RFC-0040](rfc-0040-constant-space-request-and-response-paths.md)             | Draft       | Constant-space request and response paths                                       |
+| [RFC-0040](implemented/rfc-0040-constant-space-request-and-response-paths.md) | Implemented | Constant-space request and response paths                                       |
 | [RFC-0041](rfc-0041-multi-source-iteratees.md)                                | Draft       | Multi-source iteratees                                                          |
+| [RFC-0042](rfc-0042-streaming-form-consumer.md)                               | Draft       | Streaming form consumer                                                         |

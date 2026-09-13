@@ -70,6 +70,19 @@ exceptions today are the small metadata parsers (`Trash`, `DocumentMeta`, `Docum
 and `Html.escapeChars`'s `String` path for static UI text; see RFC-0040's "Deferred and recorded items". This
 ADR does not compel rewriting those, only that a new unbounded path streams.
 
+A second multi-source consumer appears. The push enumerator drives one consumer with a single input channel,
+which fits produce -> transform -> consume pipelines and sequential fan-in (feed one sink from several
+sources in turn, as the streamed diff does via `Iteratee.feedChunk`). It does not fit a lock-step *combination*
+of two sources -- the two-file compare `Stream.filesEqual` reads both handles in step and is hand-rolled for
+that reason (not via the readers). The principled way to express lock-step or k-way source combination stays
+inside the iteratee paradigm rather than adding a second one: generalise `Iteratee.Iter e a` from its fixed
+`IO` base to a base-monad-parametric transformer (`IterT e m a`, `IterM (m ...)`), so a consumer can nest a
+second iteratee as its base monad and read both streams under its own control (Oleg Kiselyov's iteratee
+"several sources to one sink", the 2enum1iter construction; a spike is on the `spike/iteratee-multisource`
+branch). That touches the core's monad plumbing everywhere, so it is deferred until a second lock-step or
+merge consumer (merging sorted index shards is the plausible one) justifies it; at that point `filesEqual`
+moves onto nested iteratees and the hand-rolled loop retires.
+
 ## Consequences
 
 - New handlers reach for the streaming vocabulary above; a whole-value read of an unbounded input is a
@@ -78,4 +91,5 @@ ADR does not compel rewriting those, only that a new unbounded path streams.
   response that fails mid-body has already sent its status line (true of every streamed body, RFC-0040
   reliability impact); a close-delimited body carries no `Content-Length`.
 - The two-file-lockstep comparison (`Stream.filesEqual`) and the write side (`fileSinkI`, `writeFileLines`)
-  do not fit the single read enumerator and are their own brackets; that is expected, not a gap.
+  do not fit the single read enumerator and are their own brackets; that is expected for now, with the
+  principled unification (a base-monad-parametric iteratee) recorded under "Reopens when".

@@ -78,10 +78,10 @@ that reason (not via the readers). The principled way to express lock-step or k-
 inside the iteratee paradigm rather than adding a second one: generalise `Iteratee.Iter e a` from its fixed
 `IO` base to a base-monad-parametric transformer (`IterT e m a`, `IterM (m ...)`), so a consumer can nest a
 second iteratee as its base monad and read both streams under its own control (Oleg Kiselyov's iteratee
-"several sources to one sink", the 2enum1iter construction; a spike is on the `spike/iteratee-multisource`
-branch). That touches the core's monad plumbing everywhere, so it is deferred until a second lock-step or
-merge consumer (merging sorted index shards is the plausible one) justifies it; at that point `filesEqual`
-moves onto nested iteratees and the hand-rolled loop retires.
+"several sources to one sink", the 2enum1iter construction). That touches the core's monad plumbing
+everywhere, so it is deferred until a second lock-step or merge consumer (merging sorted index shards is the
+plausible one) justifies it; at that point `filesEqual` moves onto nested iteratees and the hand-rolled loop
+retires. The design, the discussion, and a working spike are written up in RFC-0041.
 
 ## Consequences
 

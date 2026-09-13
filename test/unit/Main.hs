@@ -6,6 +6,7 @@ import qualified Concordance.WordPieceSpec as WordPieceSpec
 import qualified MicroHttp.BytesSpec as BytesSpec
 import qualified MicroHttp.ConfigSpec as ConfigSpec
 import qualified MicroHttp.FileSystemSpec as FileSystemSpec
+import qualified MicroHttp.FormSpec as FormSpec
 import qualified MicroHttp.HtmlSpec as HtmlSpec
 import qualified MicroHttp.Http.FramingSpec as FramingSpec
 import qualified MicroHttp.Http.ParserSpec as ParserSpec
@@ -57,6 +58,7 @@ main = hspec $ do
     DocumentListingSpec.spec
     DocumentMetaSpec.spec
     FileSystemSpec.spec
+    FormSpec.spec
     FramingSpec.spec
     HtmlSpec.spec
     LinkFingerprintSpec.spec

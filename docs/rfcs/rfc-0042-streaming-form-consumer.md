@@ -324,10 +324,19 @@ Gates: `make check` green under both compilers; the `HttpSpec` contract tests fo
 
 ### Phase 1: the decoder and the parser
 
-- [ ] `MicroHttp.Form` with `decodeFormValueI`, `normaliseNewlinesI` (framework-level, since it is a plain
-      byte transform), `FormLimits`, `PartSink` and `formI`, driven by the unit tests above.
-- [ ] `HttpSpec`'s `parseFormBody` contract cases re-expressed as `formI` all-collect cases, side by side
-      with the old parser, so the two are proven equal before anything moves.
+- [x] `MicroHttp.Form` with `decodeFormValueI`, `normaliseNewlinesI` (framework-level, since it is a plain
+      byte transform), `FormLimits`, `PartSink` and `formI`, driven by the unit tests above. **Done
+      (2026-09-13.)** Both transformers share one `transformI` (block step plus a small carry); the decoder
+      finds its carry by the same left-to-right walk it decodes with, so an escape's bytes are never split and
+      a `%` that is the tail of a malformed escape is not mistaken for a carry. `maxFields` counts every part,
+      routed or collected.
+- [x] `HttpSpec`'s `parseFormBody` contract cases re-expressed as `formI` all-collect cases, side by side
+      with the old parser, so the two are proven equal before anything moves. **Done (2026-09-13.)** The
+      `FormSpec` oracles are written over `String`, independent of both parsers, and every case is fed at
+      chunk sizes 1, 2, 3, 5, 7, 64 and whole. Note: `HttpSpec` already decoded a 1 MiB value through
+      `parseFormBody` in one piece, so the "350KB ceiling" in `decodeFormValueBytes`'s comment does not
+      reproduce there; the streaming decoder bounds each decode by a block regardless, and the comment is
+      retired with the function in phase 3.
 
 ### Phase 2: the save form
 

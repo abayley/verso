@@ -17,6 +17,7 @@ library
     MicroHttp.Bytes
     MicroHttp.Config
     MicroHttp.FileSystem
+    MicroHttp.Form
     MicroHttp.Html
     MicroHttp.Http
     MicroHttp.Http.Parse

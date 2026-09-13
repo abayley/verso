@@ -132,7 +132,7 @@ data PartSink e a
 -- | The caps a collected form observes.
 data FormLimits = FormLimits
     { maxFieldBytes :: Int   -- decoded bytes per collected field
-    , maxCollectedBytes :: Int  -- decoded bytes across all collected fields
+    , maxCollectedBytes :: Int  -- decoded bytes across all collected fields, names and values
     , maxFields :: Int
     }
 
@@ -177,8 +177,11 @@ carry and `Stream.fileContains`'s overlap:
 The sink for a part is driven with `Iteratee.feedChunk` (RFC-0040 phase 9), which feeds a chunk without
 closing the sink, exactly the mechanism the streamed diff uses to interleave several sources into one body,
 here used to interleave one source into several sinks. A part sink that fails (an over-cap file sink, a
-transport error) fails the form consumer with that error and the residue, so the middleware's failure
-handling answers as it does today (`413` for the too-large class).
+transport error) fails the form consumer with that error, so the middleware's failure handling answers as
+it does today (`413` for the too-large class). The residue of a failed form is not meaningful: the server
+answers the error and closes the connection without resuming the stream (review, 2026-09-13). A part whose
+value was streaming when the stream itself failed is handed the failed end before the form fails, so a
+file sink closes and removes its temp.
 
 `decodeFormValueI`'s carry is at most two bytes: a `%` with zero or one hex digits seen at a chunk end. A
 `+` needs no carry. A malformed escape passes through verbatim, as the old decoder did. Because decoding is
@@ -241,7 +244,8 @@ control field is placed before the `<textarea>`.
 
 - The per-field and total collected caps close a gap the body cap alone leaves: a body under `formBodyLimit`
   can today be one field of that size, decoded whole. After this RFC an unrouted field is bounded by
-  `maxFieldBytes` and the set of them by `maxCollectedBytes` and `maxFields`.
+  `maxFieldBytes` and the set of them by `maxCollectedBytes` (names and values together; the review found
+  the first cut counted values only) and `maxFields`.
 - A routed part is bounded by its own sink's cap (`fileSinkI`'s), which is where the page-size policy lives.
 - No new parsing of untrusted structure beyond what `parseFormBody` already accepts; the same malformed
   escapes pass through verbatim. The name is decoded before it is compared for routing, so an encoded name
@@ -265,6 +269,9 @@ control field is placed before the `<textarea>`.
   the save form the only large field is routed, so nothing that works today stops working.
 - `Http.parseFormBody` and `decodeFormValueBytes` are framework exports; they are retired when their last
   caller moves, with the `HttpSpec` contract tests moving onto `formI`.
+- A form with two `markdown` fields saves the last one, where the whole-body parser's `captureBytes` took the
+  first: each routed part opens the temp afresh. The browser form has one such field, so no client sees the
+  difference (recorded by the review, 2026-09-13).
 
 ## Testing and Quality Gates
 
@@ -298,7 +305,7 @@ Routing and caps:
 1. Given a route that sinks `markdown`, when consumed, then the collected fields exclude it and the sink
    receives its raw bytes in arrival order.
 2. Given a collected field over `maxFieldBytes`, when consumed, then the consumer fails with the supplied
-   error and the residue is preserved.
+   error (the residue of a failed form is not meaningful; see the Proposal).
 3. Given fields whose decoded total exceeds `maxCollectedBytes`, when consumed, then it fails.
 4. Given more than `maxFields` fields, when consumed, then it fails.
 5. Given a routed sink that fails on its second chunk, when consumed, then the form fails with that error.
@@ -360,8 +367,10 @@ Gates: `make check` green under both compilers; the `HttpSpec` contract tests fo
 
 - [x] `formFields` reimplemented over `formI` all-collect for the identifier handlers. **Done (2026-09-13.)**
       As `formFieldsI cap`, which consumes the body directly (no strict read first): the per-field and total
-      caps are the handler's old body cap, and the count cap is the cap plus one, which the bytes already
-      imply. Six handlers moved (create, move, undo, client error, image titles, rollback).
+      caps are the handler's old body cap, and the count cap is the cap plus one, which catches the one
+      shape the byte total cannot: a run of empty fields, which add no bytes (the review corrected the
+      first wording, which claimed the bytes alone implied the count). Six handlers moved (create, move,
+      undo, client error, image titles, rollback).
 - [x] `Http.parseFormBody`, `decodeFormValueBytes` and `App.normaliseNewlineBytes` removed with their tests
       moved; the KNOWN CEILING note retired. **Done (2026-09-13.)** `App.captureBytes` went with them. The
       `String` `decodeFormValue` stays for query strings. RFC-0040's inventory row is **not** edited: the RFC
@@ -405,3 +414,7 @@ own commit.
   by every caller. Proposed: passed, with Verso holding one `saveLimits` beside `formBodyLimit`.
 - Whether to take the multipart parser in the same RFC once the part interface exists. Proposed: no; record
   it as the reopen condition and take it when a multipart form appears.
+- Whether a save form with no `markdown` field should save an empty page (parity with the whole-body
+  parser) or be refused with a `400`. Decided (review, 2026-09-13): keep the parity. The only producer is
+  the server's own form, which always carries the field, so the stricter contract would guard nothing, and
+  the empty temp is what makes the rename tail uniform with the raw `PUT`.

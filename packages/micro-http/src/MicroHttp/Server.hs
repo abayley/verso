@@ -226,19 +226,24 @@ response, and a save can replace the file between then and now -- the raw
 RFC-0042), so a concurrent @?raw@ read that resolved the old size would
 otherwise promise one length and send another, and the client sees a short
 body and a closed socket. One @lseek@ on the opened descriptor keeps the head
-and the bytes consistent whatever happened to the path in between; the carried
-size still serves the access log's byte count, which is allowed to be stale.
-An open failure -- the path gone between the handler's check and this open --
-aborts the connection, like a streamed body that fails mid-flight.
+and the bytes consistent whatever happened to the path in between; the size the
+'Http.FileBody' carries serves only the access log's byte count, which is allowed
+to be stale. An open failure -- the path gone between the handler's check and
+this open -- aborts the connection, like a streamed body that fails mid-flight,
+and so does a descriptor that will not seek (a negative @lseek@ result), rather
+than a head promising a negative length.
 -}
-socketSinkFile :: Settings.Settings -> Socket.ClientSocket -> Http.Response -> FilePath -> Int -> IO (Either Stream.StreamError ())
-socketSinkFile settings client response path _resolvedSize = do
+socketSinkFile :: Settings.Settings -> Socket.ClientSocket -> Http.Response -> FilePath -> IO (Either Stream.StreamError ())
+socketSinkFile settings client response path = do
     opened <- Socket.openFileRead path
     case opened of
         Nothing -> return (Left (Stream.StreamSourceError ("cannot open file: " ++ path)))
         Just fd -> do
             size <- Socket.fileSize fd
-            result <- sendHeadThenFile settings client response fd size
+            result <-
+                if size < 0
+                    then return (Left (Stream.StreamSourceError ("cannot size file: " ++ path)))
+                    else sendHeadThenFile settings client response fd size
             Socket.closeFileFd fd
             return result
 

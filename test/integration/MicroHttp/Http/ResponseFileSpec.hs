@@ -46,10 +46,10 @@ keeps 'writeResponse' exercisable off a socket).
 memorySink :: Http.ResponseWriter -> Http.ResponseSink
 memorySink writer = Http.ResponseSink writer (memorySinkFile writer)
 
-memorySinkFile :: Http.ResponseWriter -> Http.Response -> FilePath -> Int -> IO (Either Stream.StreamError ())
-memorySinkFile writer response path size = do
+memorySinkFile :: Http.ResponseWriter -> Http.Response -> FilePath -> IO (Either Stream.StreamError ())
+memorySinkFile writer response path = do
     bytes <- BS.readFile path
-    sentHead <- writer (Http.serialiseSizedHead response size)
+    sentHead <- writer (Http.serialiseSizedHead response (BS.length bytes))
     case sentHead of
         Left err -> return (Left err)
         Right () -> writer bytes

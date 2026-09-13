@@ -20,12 +20,14 @@ them first (browsers preserve document order).
 -}
 module MicroHttp.Form (
     FormLimits (..),
+    FormResult (..),
     PartSink (..),
     formI,
     decodeFormValueI,
     normaliseNewlinesI,
 ) where
 
+import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
 import qualified Data.Maybe as Maybe
@@ -35,9 +37,9 @@ import qualified MicroHttp.Iteratee as Iteratee
 -- | The caps a form observes on the fields it collects in memory.
 data FormLimits = FormLimits
     { maxFieldBytes :: Int
-    -- ^ Decoded bytes per collected field (and per name).
+    -- ^ Decoded bytes per collected field's value (and per name, collected or routed).
     , maxCollectedBytes :: Int
-    -- ^ Decoded bytes across every collected field.
+    -- ^ Decoded bytes across every collected field, names and values together.
     , maxFields :: Int
     -- ^ Parts in the form, collected or routed.
     }
@@ -50,15 +52,28 @@ data PartSink e a
     | -- | Stream the raw, still-encoded value bytes to this sink; it decodes.
       SinkPart (Iteratee.Iter e a)
 
-{- | Consumes a urlencoded body: the collected fields, decoded, in arrival order,
-and the result of every routed sink paired with its field name, also in order. A
-cap exceeded, or a routed sink that fails, fails the form with that error (the
-cap failures carry the supplied error) and the unread bytes as residue.
+-- | What a consumed form yields: both lists are in arrival order.
+data FormResult a = FormResult
+    { collectedFields :: [(BS.ByteString, BS.ByteString)]
+    -- ^ The decoded name and value of every field that was not routed.
+    , routedResults :: [(BS.ByteString, a)]
+    -- ^ The decoded name and the sink's result of every routed part.
+    }
+    deriving (Eq, Show)
+
+{- | Consumes a urlencoded body into a 'FormResult'. A cap exceeded fails the
+form with the supplied error; a routed sink that fails, or a stream that fails
+mid-body, fails it with that error, and a part whose value was being streamed
+when the stream failed is handed the failed end first, so its sink releases what
+it holds. The residue of a failed form is not meaningful: the server answers an
+error and closes the connection without resuming the stream, so nothing reads it.
 -}
-formI :: FormLimits -> e -> (BS.ByteString -> PartSink e a) -> Iteratee.Iter e ([(BS.ByteString, BS.ByteString)], [(BS.ByteString, a)])
+formI :: FormLimits -> e -> (BS.ByteString -> PartSink e a) -> Iteratee.Iter e (FormResult a)
 formI limits tooLarge route = inName initial [] False
   where
     initial = Totals 0 0 [] []
+    record = recordField limits tooLarge
+    count = countPart limits tooLarge
 
     -- Reading a name: the bytes seen so far (reversed chunks), whether a part is
     -- pending (any name byte, or an '&' just consumed, makes an empty field real).
@@ -71,9 +86,12 @@ formI limits tooLarge route = inName initial [] False
             | otherwise -> finished totals
         Iteratee.EndOfStream (Just err) -> Iteratee.IterFailed err s
 
+    -- The name is held as its chunks until it ends, so a name spread over many
+    -- small chunks costs one concatenation, not one per chunk; only its length
+    -- is checked as it grows.
     nameBytes totals acc pending bytes =
         case (Bytes.indexOf '=' bytes, Bytes.indexOf '&' bytes) of
-            (Nothing, Nothing) -> withNameBytes totals (BS.concat (reverse (bytes : acc))) (\_ -> inName totals (bytes : acc) True)
+            (Nothing, Nothing) -> withinNameCap (bytes : acc) (inName totals (bytes : acc) True)
             (Just eq, Just amp)
                 | amp < eq -> emptyValueAt totals acc bytes amp
                 | otherwise -> valueAt totals acc bytes eq
@@ -82,28 +100,31 @@ formI limits tooLarge route = inName initial [] False
       where
         -- A field ends with no '=': its value is empty, and the rest is the next name.
         emptyValueAt t a b amp =
-            let name = BS.concat (reverse (BS.take amp b : a))
-             in withNameBytes t name (\_ -> completeEmpty t name (\t' -> resume t' (BS.drop (amp + 1) b)))
+            let raw = BS.take amp b : a
+             in withinNameCap raw (completeEmpty t (BS.concat (reverse raw)) (\t' -> resume t' (BS.drop (amp + 1) b)))
         -- The '=' ends the name: decode it, choose the sink, and start the value.
         valueAt t a b eq =
-            let raw = BS.concat (reverse (BS.take eq b : a))
-             in withNameBytes t raw $ \_ -> Iteratee.IterM $ do
-                    decoded <- decodeName raw
-                    case decoded of
-                        Left err -> pure (Iteratee.IterFailed err (Iteratee.Chunk (BS.drop (eq + 1) b)))
-                        Right name -> pure (startValue t name (BS.drop (eq + 1) b))
+            let raw = BS.take eq b : a
+             in withinNameCap raw $ Iteratee.IterM $ do
+                    decoded <- decodeName (BS.concat (reverse raw))
+                    pure $ case decoded of
+                        Left err -> failWith err
+                        Right name -> startValue t name (BS.drop (eq + 1) b)
 
     -- The name cap: a name longer than a field is refused before it is decoded.
-    withNameBytes totals bytes k
-        | BS.length bytes > maxFieldBytes limits = Iteratee.IterFailed tooLarge (Iteratee.Chunk BS.empty)
-        | otherwise = k totals
+    withinNameCap raw k
+        | sum (map BS.length raw) > maxFieldBytes limits = failWith tooLarge
+        | otherwise = k
 
-    decodeName raw = Iteratee.strictEnumerator raw (decodeFormValueI (Iteratee.readBodyStrict tooLarge (maxFieldBytes limits))) >>= Iteratee.run
+    decodeName raw = Iteratee.strictEnumerator raw cappedCollector >>= Iteratee.run
+
+    -- A collected value's sink: decoded into memory under the per-field cap.
+    cappedCollector = decodeFormValueI (Iteratee.readBodyStrict tooLarge (maxFieldBytes limits))
 
     -- Begin a part's value: pick its sink from the name, then consume the rest of the chunk as value bytes.
     startValue totals name rest =
         case route name of
-            CollectField -> valueBytes totals (Collecting name (decodeFormValueI (Iteratee.readBodyStrict tooLarge (maxFieldBytes limits)))) rest
+            CollectField -> valueBytes totals (Collecting name cappedCollector) rest
             SinkPart sink -> valueBytes totals (Sinking name sink) rest
 
     -- Reading a value: bytes up to the next '&' go to the part's sink.
@@ -112,7 +133,7 @@ formI limits tooLarge route = inName initial [] False
             | BS.null bytes -> inValue totals part
             | otherwise -> valueBytes totals part bytes
         Iteratee.EndOfStream Nothing -> completePart totals part finished
-        Iteratee.EndOfStream (Just err) -> Iteratee.IterFailed err s
+        Iteratee.EndOfStream (Just err) -> Iteratee.IterM (abandonPart part s >> pure (Iteratee.IterFailed err s))
 
     valueBytes totals part bytes =
         case Bytes.indexOf '&' bytes of
@@ -130,45 +151,19 @@ formI limits tooLarge route = inName initial [] False
         | BS.null rest = inName totals [] True
         | otherwise = nameBytes totals [] True rest
 
-    -- Feeds value bytes to the part's sink; a sink that has already failed ends the form.
-    feedPart part bytes = case part of
-        Collecting name it -> classify (Collecting name) <$> Iteratee.feedChunk bytes it
-        Sinking name it -> classify (Sinking name) <$> Iteratee.feedChunk bytes it
-    classify rebuild it = case it of
-        Iteratee.IterFailed err residue -> Left (err, residue)
-        other -> Right (rebuild other)
-
     -- A part's value has ended: run its sink to completion and record the result.
     completePart totals part k = Iteratee.IterM $ case part of
         Collecting name it -> do
             outcome <- Iteratee.run it
-            pure $ case outcome of
-                Left err -> Iteratee.IterFailed err (Iteratee.Chunk BS.empty)
-                Right value -> recordField totals name value k
+            pure (either failWith (\value -> record totals name value k) outcome)
         Sinking name it -> do
             outcome <- Iteratee.run it
-            pure $ case outcome of
-                Left err -> Iteratee.IterFailed err (Iteratee.Chunk BS.empty)
-                Right a -> countPart totals (\t -> k t{sunk = (name, a) : sunk t})
+            pure (either failWith (\a -> count totals (\t -> k t{sunk = (name, a) : sunk t})) outcome)
 
     -- A field with no '=' has an empty value; its name is still decoded and capped.
     completeEmpty totals raw k = Iteratee.IterM $ do
         decoded <- decodeName raw
-        pure $ case decoded of
-            Left err -> Iteratee.IterFailed err (Iteratee.Chunk BS.empty)
-            Right name -> recordField totals name BS.empty k
-
-    recordField totals name value k =
-        let total' = collectedBytes totals + BS.length value
-         in if total' > maxCollectedBytes limits
-                then Iteratee.IterFailed tooLarge (Iteratee.Chunk BS.empty)
-                else countPart totals (\t -> k t{collectedBytes = total', fields = (name, value) : fields t})
-
-    countPart totals k
-        | partCount totals + 1 > maxFields limits = Iteratee.IterFailed tooLarge (Iteratee.Chunk BS.empty)
-        | otherwise = k totals{partCount = partCount totals + 1}
-
-    finished totals = Iteratee.Done (reverse (fields totals), reverse (sunk totals)) (Iteratee.Chunk BS.empty)
+        pure (either failWith (\name -> record totals name BS.empty k) decoded)
 
 -- | The running tallies and results of a form being consumed.
 data Totals a = Totals
@@ -182,6 +177,48 @@ data Totals a = Totals
 data Part e a
     = Collecting BS.ByteString (Iteratee.Iter e BS.ByteString)
     | Sinking BS.ByteString (Iteratee.Iter e a)
+
+-- | Fails the form. The residue is not meaningful (see 'formI').
+failWith :: e -> Iteratee.Iter e a
+failWith err = Iteratee.IterFailed err (Iteratee.Chunk BS.empty)
+
+-- | Feeds value bytes to the part's sink; a sink that has already failed ends the form.
+feedPart :: Part e a -> BS.ByteString -> IO (Either (e, Iteratee.Stream e) (Part e a))
+feedPart part bytes = case part of
+    Collecting name it -> classify (Collecting name) <$> Iteratee.feedChunk bytes it
+    Sinking name it -> classify (Sinking name) <$> Iteratee.feedChunk bytes it
+  where
+    classify rebuild it = case it of
+        Iteratee.IterFailed err residue -> Left (err, residue)
+        other -> Right (rebuild other)
+
+{- | Hands a failed end of stream to the part whose value was being read and
+resolves it, so a sink holding a resource (an open file) releases it; the
+part's own outcome is then discarded, since the form fails with the stream's
+error.
+-}
+abandonPart :: Part e a -> Iteratee.Stream e -> IO ()
+abandonPart part s = case part of
+    Collecting _ it -> Monad.void (Iteratee.run (Iteratee.feedStream s it))
+    Sinking _ it -> Monad.void (Iteratee.run (Iteratee.feedStream s it))
+
+-- | Records a collected field under the total cap (its name and value both count) and the count cap.
+recordField :: FormLimits -> e -> Totals a -> BS.ByteString -> BS.ByteString -> (Totals a -> Iteratee.Iter e b) -> Iteratee.Iter e b
+recordField limits tooLarge totals name value k =
+    let total' = collectedBytes totals + BS.length name + BS.length value
+     in if total' > maxCollectedBytes limits
+            then failWith tooLarge
+            else countPart limits tooLarge totals (\t -> k t{collectedBytes = total', fields = (name, value) : fields t})
+
+-- | Counts one more part, collected or routed, under the count cap.
+countPart :: FormLimits -> e -> Totals a -> (Totals a -> Iteratee.Iter e b) -> Iteratee.Iter e b
+countPart limits tooLarge totals k
+    | partCount totals + 1 > maxFields limits = failWith tooLarge
+    | otherwise = k totals{partCount = partCount totals + 1}
+
+-- | The form's result once the stream has ended.
+finished :: Totals a -> Iteratee.Iter e (FormResult a)
+finished totals = Iteratee.Done (FormResult (reverse (fields totals)) (reverse (sunk totals))) (Iteratee.Chunk BS.empty)
 
 {- | Percent-decodes a stream of urlencoded value bytes into the given sink, a
 block at a time: @+@ becomes a space, @%XX@ becomes the byte, and a malformed

@@ -41,16 +41,17 @@ Server-level keys, mapped onto the socket server's `Settings`. Overlaid by `MICR
 
 `max_body_bytes` is the framework's outer bound. Inside it, each Verso handler applies its own fixed cap,
 sized to the payload it accepts. These are constants in `Verso.App`, not configuration keys: they are
-product policy (how large a page may be), not memory bounds: the raw `PUT` bodies stream to disk (RFC-0040)
-and the no-JS form's remaining whole-body read is RFC-0042's. A `VERSO_` key for the page ceiling is the
-recorded step should larger pages ever be needed.
+product policy (how large a page may be), not memory bounds: the raw `PUT` bodies and the no-JS form's
+document field stream to disk (RFC-0040, RFC-0042), and the form's other fields are collected under their
+own small caps. A `VERSO_` key for the page ceiling is the recorded step should larger pages ever be needed.
 
-| Payload                                                       | Cap    | Constant                                    |
-| ------------------------------------------------------------- | ------ | ------------------------------------------- |
-| A page: raw `PUT` publish, draft autosave, or the no-JS form  | 1 MiB  | `formBodyLimit`                             |
-| An asset upload                                               | 10 MiB | `treeAssetMaxBytes`                         |
-| An image-titles sync post                                     | 64 KiB | `imageTitlesBodyLimit`                      |
-| Identifier posts (create, move, delete, rollback) and reports | 8 KiB  | `treeCreateMaxBytes`, `clientErrorMaxBytes` |
+| Payload                                                       | Cap               | Constant                                    |
+| ------------------------------------------------------------- | ----------------- | ------------------------------------------- |
+| A page: raw `PUT` publish, draft autosave, or the no-JS form  | 1 MiB             | `formBodyLimit`                             |
+| An asset upload                                               | 10 MiB            | `treeAssetMaxBytes`                         |
+| An image-titles sync post                                     | 64 KiB            | `imageTitlesBodyLimit`                      |
+| The no-JS form's fields beside the document: each, all, count | 8 KiB, 64 KiB, 64 | `saveFormLimits`                            |
+| Identifier posts (create, move, delete, rollback) and reports | 8 KiB             | `treeCreateMaxBytes`, `clientErrorMaxBytes` |
 
 ## Application Keys
 

@@ -1,5 +1,6 @@
 module MicroHttp.IterateeSpec (spec) where
 
+import qualified Control.Exception as Exception
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.IORef as IORef
 import qualified MicroHttp.Iteratee as Iteratee
@@ -98,6 +99,12 @@ spec =
             fed <- Iteratee.feedChunk (BS.pack "partial") waiting
             result <- Iteratee.run (case fed of Iteratee.NeedInput k -> k (Iteratee.EndOfStream (Just Boom)); other -> other)
             result `shouldBe` Left Boom
+            IORef.readIORef ran `shouldReturn` 1
+        it "given a failure cleanup, when an effect step throws, then the cleanup runs once and the exception propagates" $ do
+            ran <- IORef.newIORef (0 :: Int)
+            let throwing = Iteratee.IterM (Exception.throwIO (userError "disk full")) :: Iteratee.Iter TestError ()
+            outcome <- Exception.try (Iteratee.run (Iteratee.onFailure (IORef.modifyIORef ran (+ 1)) throwing))
+            either (\e -> "threw: " ++ show (e :: Exception.SomeException)) (const "completed") outcome `shouldBe` "threw: user error (disk full)"
             IORef.readIORef ran `shouldReturn` 1
         it "given a waiting consumer, when fed chunks without an end of stream, then it holds them and completes on the later end" $ do
             fed <- Iteratee.feedChunk (BS.pack "ab") (Iteratee.readBodyStrict TooLarge 1000 :: Iteratee.Iter TestError BS.ByteString)

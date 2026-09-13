@@ -1095,7 +1095,7 @@ treeUpload root captures request = do
     -- home and is renamed into place (RFC-0040 phase 3). The refusals still consume the
     -- body, as the strict read did, so nothing is left on the connection.
     case assetsDirectoryFor root path of
-        Nothing -> drainBody >> pure treeNotFound
+        Nothing -> notFoundAfterDrain
         Just assetsDir
             | not (Attachment.allowedExtension (Attachment.extensionOf name)) ->
                 drainBody >> pure (statusResponse 415 "Unsupported Media Type" "attachment type is not allowed\n")
@@ -1109,6 +1109,10 @@ treeUpload root captures request = do
                     Right stored -> do
                         Iteratee.liftIO (recordAssetMetadata root path stored (Attachment.originalUploadFilename request))
                         pure (jsonResponse (View.jsonObject [("url", View.jsonString ("assets/" ++ stored))]))
+
+-- | The @404@ for a write whose path is outside the tree, after draining the body so the connection is left clean.
+notFoundAfterDrain :: Iteratee.Iter Stream.StreamError Http.Response
+notFoundAfterDrain = drainBody >> pure treeNotFound
 
 -- | Consumes and discards the rest of the request body in constant space.
 drainBody :: Iteratee.Iter Stream.StreamError ()
@@ -1604,9 +1608,9 @@ draftPut versioning root captures _ = do
     -- The body streams straight into the staging file (RFC-0040); the refusals
     -- still consume it, so nothing is left on the connection.
     if not (versioningOn versioning)
-        then drainBody >> pure treeNotFound
+        then notFoundAfterDrain
         else case Static.resolveStaticPath root (pathSegments path) of
-            Nothing -> drainBody >> pure treeNotFound
+            Nothing -> notFoundAfterDrain
             Just _ -> do
                 staged <- sinkBodyToFile formBodyLimit (Draft.draftFsPath (draftStagingRoot versioning) path)
                 pure (either (const saveFailed) (const noContentResponse) staged)
@@ -1642,7 +1646,7 @@ treeSave :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
 treeSave versioning maint root captures _request = do
     let path = capture "path" captures
     case Static.resolveStaticPath root (pathSegments path) of
-        Nothing -> drainBody >> pure treeNotFound
+        Nothing -> notFoundAfterDrain
         Just fsPath -> do
             -- Versioning on: autosave stages a draft; the live page, its sidecar
             -- metadata, and the link index are untouched until Publish (RFC-0032).
@@ -1663,10 +1667,12 @@ treeSave versioning maint root captures _request = do
 percent-decoded and newline-normalised block by block into a capped file sink;
 every other field is collected as a small value. The temp is created empty first,
 so a form with no @markdown@ field saves an empty page, as the whole-body parser
-did. The routing is decided from the field name alone, so the form puts any
-control field before the @\<textarea\>@ ('View.editorShell').
+did. A form with two @markdown@ fields saves the last (each opens the temp
+afresh), where the whole-body parser took the first; the browser form has one.
+The routing is decided from the field name alone, so the form puts any control
+field before the @\<textarea\>@ ('View.editorShell').
 -}
-formSaveSink :: Int -> FilePath -> Iteratee.Iter Stream.StreamError ([(BS.ByteString, BS.ByteString)], [(BS.ByteString, Int)])
+formSaveSink :: Int -> FilePath -> Iteratee.Iter Stream.StreamError (Form.FormResult Int)
 formSaveSink cap tmp = do
     Iteratee.liftIO (BS.writeFile tmp BS.empty)
     Form.formI saveFormLimits tooLarge route
@@ -1701,7 +1707,7 @@ treePutDocument :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
 treePutDocument versioning maint root captures request = do
     let path = capture "path" captures
     case Static.resolveStaticPath root (pathSegments path) of
-        Nothing -> drainBody >> pure treeNotFound
+        Nothing -> notFoundAfterDrain
         Just fsPath -> do
             -- The body streams into a temp beside the page and is renamed into place
             -- (RFC-0040): the document never exists as a value, and a crash mid-write
@@ -2238,14 +2244,15 @@ editorMode request =
 
 {- | Consumes an @application/x-www-form-urlencoded@ request body whose fields are
 all small identifiers, as decoded 'String' pairs (RFC-0042). Every field is
-collected; @cap@ bounds each decoded field and their total, so the body is
-bounded as the strict read it replaces was, and the count is bounded by the
-bytes (an empty field is at least one byte). Only the decoded fields are widened.
+collected; @cap@ bounds each decoded field and the total of every name and
+value, so the body is bounded as the strict read it replaces was. The count cap
+of one more than @cap@ catches the one shape the byte total cannot, a run of
+empty fields (@&&&@), which add no bytes. Only the decoded fields are widened.
 -}
 formFieldsI :: Int -> Iteratee.Iter Stream.StreamError [(String, String)]
 formFieldsI cap = do
-    (fields, _) <- Form.formI limits (Stream.StreamParseError Parse.BodyTooLarge) (const Form.CollectField)
-    pure [(BS.unpack key, BS.unpack value) | (key, value) <- fields]
+    result <- Form.formI limits (Stream.StreamParseError Parse.BodyTooLarge) (const Form.CollectField)
+    pure [(BS.unpack key, BS.unpack value) | (key, value) <- Form.collectedFields result]
   where
     limits = Form.FormLimits{Form.maxFieldBytes = cap, Form.maxCollectedBytes = cap, Form.maxFields = cap + 1}
 

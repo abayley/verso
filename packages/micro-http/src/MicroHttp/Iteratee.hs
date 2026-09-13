@@ -16,9 +16,11 @@ module MicroHttp.Iteratee (
     resourceEnumerator,
     byteSinkI,
     feedChunk,
+    feedStream,
     onFailure,
 ) where
 
+import qualified Control.Exception as Exception
 import qualified Control.Monad as Monad
 import qualified Data.ByteString as BS
 
@@ -256,7 +258,9 @@ feedChunk bytes it
 unchanged; a consumer that completes runs nothing. This is how a handler that
 has reserved a resource for a consumer (a temp file a sink writes into) releases
 it when the consumer, or the stream feeding it, fails part-way (RFC-0042). The
-cleanup runs once, at the first terminal failure.
+cleanup runs once, at the first terminal failure, whether that is a failed
+iteratee value or an exception thrown by one of its effect steps (a write that
+fails with the disk full); the exception is rethrown after the cleanup.
 -}
 onFailure :: IO () -> Iter e a -> Iter e a
 onFailure cleanup = go
@@ -264,5 +268,5 @@ onFailure cleanup = go
     go it = case it of
         Done a residue -> Done a residue
         IterFailed err residue -> IterM (cleanup >> return (IterFailed err residue))
-        IterM m -> IterM (fmap go m)
+        IterM m -> IterM (Exception.onException (fmap go m) cleanup)
         NeedInput k -> NeedInput (go . k)

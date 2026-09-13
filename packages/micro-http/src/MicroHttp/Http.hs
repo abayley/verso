@@ -396,18 +396,21 @@ type ResponseWriter = BS.ByteString -> IO (Either Stream.StreamError ())
 
 {- | The response writer's sink (RFC-0014). A 'StrictBody' or 'StreamBody' is
 written chunk-by-chunk through 'sinkChunk' (head and bytes alike); a 'FileBody'
-is delegated whole to 'sinkFile' with its path and pre-resolved size. The socket
-sink sends a file via @sendfile(2)@; the in-memory test sink reads the file and
-replays it through 'sinkChunk'.
+is delegated whole to 'sinkFile' with its path. The sink sizes the file itself
+from what it opens, so the head's @Content-Length@ and the bytes sent agree
+whatever happened to the path since the handler resolved it; the size a
+'FileBody' carries serves only the access log, which may therefore be stale
+(RFC-0042 review). The socket sink sends a file via @sendfile(2)@; the in-memory
+test sink reads the file and replays it through 'sinkChunk'.
 -}
 data ResponseSink = ResponseSink
     { sinkChunk :: ResponseWriter
-    , sinkFile :: Response -> FilePath -> Int -> IO (Either Stream.StreamError ())
+    , sinkFile :: Response -> FilePath -> IO (Either Stream.StreamError ())
     }
 
 {- | Serialises a response to bytes for the strict-body case, with a computed
 @Content-Length@. A streaming or file body has no pure serialisation; it is
-written incrementally by 'writeResponse' (a file body needs the file size).
+written incrementally by 'writeResponse' (a file body is sized by the sink).
 -}
 serialiseResponse :: Response -> Either ResponseSerialiseError BS.ByteString
 serialiseResponse response =
@@ -439,7 +442,7 @@ writeResponse sink response =
             case sent of
                 Left err -> return (Left err)
                 Right () -> enumerator (Iteratee.byteSinkI (sinkChunk sink)) >>= Iteratee.run
-        FileBody path size -> sinkFile sink response path size
+        FileBody path _ -> sinkFile sink response path
 
 {- | Serialises a response with a strict body: status line, headers, an exact
 @Content-Length@, @Connection: close@, then the body bytes.

@@ -7,14 +7,14 @@ import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
 import Test.Hspec
-import TestSupport.Scratch (resetScratchDir)
+import qualified TestSupport.Scratch as Scratch
 
 -- | A scratch directory under build/, reset at the start of each IO test.
 scratch :: FilePath
 scratch = "build/stream-spec"
 
 resetScratch :: IO ()
-resetScratch = resetScratchDir scratch
+resetScratch = Scratch.resetScratchDir scratch
 
 tooLarge :: Stream.StreamError
 tooLarge = Stream.StreamParseError Parse.BodyTooLarge
@@ -165,7 +165,7 @@ escapedBodySpec =
             resetScratch
             final <- Stream.transformedTempFileBody 4 before Html.escapeBlockBytes (scratch ++ "/absent") after (Iteratee.readBodyStrict tooLarge 1000000)
             result <- Iteratee.run final
-            either (const True) (const False) result `shouldBe` True
+            result `shouldBe` Left (Stream.StreamSourceError ("cannot open file: " ++ scratch ++ "/absent"))
 
 -- | Content with the escaped bytes at, adjacent to, and across 1-8 byte boundaries.
 boundaryContent :: BS.ByteString

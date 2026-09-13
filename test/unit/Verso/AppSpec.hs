@@ -11,7 +11,7 @@ import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
 import Test.Hspec
-import TestSupport.ResponseBody (materialiseBody)
+import qualified TestSupport.ResponseBody as ResponseBody
 import qualified Verso.App as App
 import qualified Verso.OperationLog as OperationLog
 
@@ -462,7 +462,7 @@ runTreeAppBody :: FilePath -> Http.RequestHead -> String -> IO Http.Response
 runTreeAppBody root head body = do
     outcome <- Iteratee.strictEnumerator (BS.pack body) (Router.route (App.treeRoutes Nothing Nothing Nothing App.noVersioning root "build/tree-spec-oplog" "build/tree-spec-trash" 90 "build/tree-spec-index") head) >>= Iteratee.run
     case outcome of
-        Right response -> materialiseBody response
+        Right response -> ResponseBody.materialiseBody response
         Left err -> expectFailure err
 
 -- | Replaces every @"ts":"..."@ value in an operation-log text (ages entries for retention tests).

@@ -5,14 +5,14 @@ import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified System.Directory as Directory
 import Test.Hspec
-import TestSupport.Scratch (resetScratchDir)
+import qualified TestSupport.Scratch as Scratch
 
 -- | A scratch directory under build/ for the streamed-fingerprint file tests.
 scratch :: FilePath
 scratch = "build/fingerprint-spec"
 
 resetScratch :: IO ()
-resetScratch = resetScratchDir scratch
+resetScratch = Scratch.resetScratchDir scratch
 
 spec :: Spec
 spec =

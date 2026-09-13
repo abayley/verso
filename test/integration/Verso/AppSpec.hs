@@ -14,7 +14,7 @@ import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
 import Test.Hspec
-import TestSupport.ResponseBody (materialiseBody)
+import qualified TestSupport.ResponseBody as ResponseBody
 import qualified Verso.App as App
 import qualified Verso.Config as VConfig
 import qualified Verso.Git as Git
@@ -133,8 +133,8 @@ spec = do
             root <- setupTreeFixture
             let plain = BS.concat (replicate 4000 (BS.pack "# T\xc3\xa9xt & more = 100% sure? a+b\r\nline\rend\n"))
                 body = BS.append (BS.pack "path=sec%2Fpage.md&markdown=") (formEncode plain)
-                head = "POST /documents/sec/page.md HTTP/1.1\r\nContent-Length: " ++ show (BS.length body) ++ "\r\n\r\n"
-            outcome <- Server.respondToRequestBytes (App.appWithDocumentTree root) (BS.append (BS.pack head) body)
+                requestHead = "POST /documents/sec/page.md HTTP/1.1\r\nContent-Length: " ++ show (BS.length body) ++ "\r\n\r\n"
+            outcome <- Server.respondToRequestBytes (App.appWithDocumentTree root) (BS.append (BS.pack requestHead) body)
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 303
             saved <- BS.readFile (root ++ "/sec/page.md")
             saved `shouldBe` BS.concat (replicate 4000 (BS.pack "# T\xc3\xa9xt & more = 100% sure? a+b\nline\nend\n"))
@@ -144,8 +144,8 @@ spec = do
             root <- setupTreeFixture
             before <- BS.readFile (root ++ "/sec/page.md")
             let body = BS.append (BS.pack "markdown=") (BS.replicate 1048577 'x')
-                head = "POST /documents/sec/page.md HTTP/1.1\r\nContent-Length: " ++ show (BS.length body) ++ "\r\n\r\n"
-            outcome <- Server.respondToRequestBytes (App.appWithDocumentTree root) (BS.append (BS.pack head) body)
+                requestHead = "POST /documents/sec/page.md HTTP/1.1\r\nContent-Length: " ++ show (BS.length body) ++ "\r\n\r\n"
+            outcome <- Server.respondToRequestBytes (App.appWithDocumentTree root) (BS.append (BS.pack requestHead) body)
             either Just (const Nothing) outcome `shouldBe` Just (Stream.StreamParseError Parse.BodyTooLarge)
             after <- BS.readFile (root ++ "/sec/page.md")
             after `shouldBe` before
@@ -154,8 +154,8 @@ spec = do
         it "given a form save whose other field is over the field cap, when routing, then it is refused and no temp is left (RFC-0042)" $ do
             root <- setupTreeFixture
             let body = BS.concat [BS.pack "markdown=%23+H&note=", BS.replicate 9000 'n']
-                head = "POST /documents/sec/page.md HTTP/1.1\r\nContent-Length: " ++ show (BS.length body) ++ "\r\n\r\n"
-            outcome <- Server.respondToRequestBytes (App.appWithDocumentTree root) (BS.append (BS.pack head) body)
+                requestHead = "POST /documents/sec/page.md HTTP/1.1\r\nContent-Length: " ++ show (BS.length body) ++ "\r\n\r\n"
+            outcome <- Server.respondToRequestBytes (App.appWithDocumentTree root) (BS.append (BS.pack requestHead) body)
             either Just (const Nothing) outcome `shouldBe` Just (Stream.StreamParseError Parse.BodyTooLarge)
             leftovers <- Directory.listDirectory (root ++ "/sec")
             filter (List.isPrefixOf ".save") leftovers `shouldBe` []
@@ -230,14 +230,14 @@ spec = do
         it "given an image-titles post over its cap, when routing, then it is refused as too large (RFC-0040)" $ do
             root <- setupTreeFixture
             let declared = 65537 :: Int
-                head = "POST /documents/sec/page.md?image-titles HTTP/1.1\r\nContent-Length: " ++ show declared ++ "\r\n\r\n"
-            outcome <- Server.respondToRequestBytes (App.appWithDocumentTree root) (BS.append (BS.pack head) (BS.replicate declared 'x'))
+                requestHead = "POST /documents/sec/page.md?image-titles HTTP/1.1\r\nContent-Length: " ++ show declared ++ "\r\n\r\n"
+            outcome <- Server.respondToRequestBytes (App.appWithDocumentTree root) (BS.append (BS.pack requestHead) (BS.replicate declared 'x'))
             either Just (const Nothing) outcome `shouldBe` Just (Stream.StreamParseError Parse.BodyTooLarge)
         it "given an asset upload over the cap, when routing, then it is refused and no partial or temporary file is left in the assets folder" $ do
             root <- setupTreeFixture
             let declared = 10485761 :: Int
-                head = "POST /documents/sec/page.md?asset HTTP/1.1\r\nX-Attachment-Filename: huge.png\r\nContent-Length: " ++ show declared ++ "\r\n\r\n"
-            outcome <- Server.respondToRequestBytes (App.appWithDocumentTree root) (BS.append (BS.pack head) (BS.replicate 4096 'x'))
+                requestHead = "POST /documents/sec/page.md?asset HTTP/1.1\r\nX-Attachment-Filename: huge.png\r\nContent-Length: " ++ show declared ++ "\r\n\r\n"
+            outcome <- Server.respondToRequestBytes (App.appWithDocumentTree root) (BS.append (BS.pack requestHead) (BS.replicate 4096 'x'))
             -- the bare application fails the stream; the failure-handling middleware renders that as 413
             either Just (const Nothing) outcome `shouldBe` Just (Stream.StreamParseError Parse.BodyTooLarge)
             exists <- Directory.doesDirectoryExist (root ++ "/sec/assets")
@@ -368,6 +368,20 @@ spec = do
             drafted <- FileSystem.readFileStrict (treeDraftRoot ++ "/sec/page.md")
             live `shouldBe` "# Hello tree\n\nA tree document."
             drafted `shouldBe` "# Draft edit"
+        it "given versioning on and a form save larger than any stream chunk, when routing, then the draft is staged from the stream and the live page is unchanged (RFC-0042)" $ do
+            root <- setupTreeFixture
+            removeIfExists (treeDraftRoot ++ "/sec/page.md")
+            let plain = BS.concat (replicate 4000 (BS.pack "# Draft t\xc3\xa9xt & 100% a+b\r\nline\n"))
+                body = BS.append (BS.pack "markdown=") (formEncode plain)
+                requestHead = "POST /documents/sec/page.md HTTP/1.1\r\nContent-Length: " ++ show (BS.length body) ++ "\r\n\r\n"
+            outcome <- Server.respondToRequestBytes (App.appWithDocumentTreeVersioned root treeDraftRoot) (BS.append (BS.pack requestHead) body)
+            fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 303
+            live <- FileSystem.readFileStrict (root ++ "/sec/page.md")
+            live `shouldBe` "# Hello tree\n\nA tree document."
+            drafted <- BS.readFile (treeDraftRoot ++ "/sec/page.md")
+            drafted `shouldBe` BS.concat (replicate 4000 (BS.pack "# Draft t\xc3\xa9xt & 100% a+b\nline\n"))
+            leftovers <- Directory.listDirectory (treeDraftRoot ++ "/sec")
+            filter (List.isPrefixOf ".save") leftovers `shouldBe` []
         it "given a staged draft, when editing, then the editor resumes the draft over the published page" $ do
             root <- setupTreeFixture
             removeIfExists (treeDraftRoot ++ "/sec/page.md")
@@ -456,8 +470,8 @@ spec = do
             root <- setupVersionedFixture
             before <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             let declared = 1048577 :: Int
-                head = "PUT /documents/sec/page.md HTTP/1.1\r\nContent-Type: text/markdown\r\nContent-Length: " ++ show declared ++ "\r\n\r\n"
-            outcome <- Server.respondToRequestBytes (App.appWithDocumentTreeVersioned root treeDraftRoot) (BS.append (BS.pack head) (BS.replicate declared 'x'))
+                requestHead = "PUT /documents/sec/page.md HTTP/1.1\r\nContent-Type: text/markdown\r\nContent-Length: " ++ show declared ++ "\r\n\r\n"
+            outcome <- Server.respondToRequestBytes (App.appWithDocumentTreeVersioned root treeDraftRoot) (BS.append (BS.pack requestHead) (BS.replicate declared 'x'))
             either Just (const Nothing) outcome `shouldBe` Just (Stream.StreamParseError Parse.BodyTooLarge)
             after <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             after `shouldBe` before
@@ -467,8 +481,8 @@ spec = do
             root <- setupVersionedFixture
             removeIfExists (treeDraftRoot ++ "/sec/page.md")
             let declared = 1048577 :: Int
-                head = "PUT /drafts/sec/page.md HTTP/1.1\r\nContent-Type: text/markdown\r\nContent-Length: " ++ show declared ++ "\r\n\r\n"
-            outcome <- Server.respondToRequestBytes (App.appWithDocumentTreeVersioned root treeDraftRoot) (BS.append (BS.pack head) (BS.replicate declared 'x'))
+                requestHead = "PUT /drafts/sec/page.md HTTP/1.1\r\nContent-Type: text/markdown\r\nContent-Length: " ++ show declared ++ "\r\n\r\n"
+            outcome <- Server.respondToRequestBytes (App.appWithDocumentTreeVersioned root treeDraftRoot) (BS.append (BS.pack requestHead) (BS.replicate declared 'x'))
             either Just (const Nothing) outcome `shouldBe` Just (Stream.StreamParseError Parse.BodyTooLarge)
             Directory.doesFileExist (treeDraftRoot ++ "/sec/page.md") `shouldReturn` False
             exists <- Directory.doesDirectoryExist (treeDraftRoot ++ "/sec")
@@ -994,7 +1008,7 @@ respondDocument app req = do
     outcome <- Server.respondToRequestBytes app req
     case outcome of
         Left err -> pure (Left err)
-        Right response -> Right <$> materialiseBody response
+        Right response -> Right <$> ResponseBody.materialiseBody response
 
 bodyContains :: BS.ByteString -> Http.Response -> Bool
 bodyContains needle response =

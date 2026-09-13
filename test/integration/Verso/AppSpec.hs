@@ -2,7 +2,6 @@ module Verso.AppSpec (spec) where
 
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
-import qualified Data.IORef as IORef
 import qualified Data.List as List
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Http as Http
@@ -14,6 +13,7 @@ import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
 import Test.Hspec
+import TestSupport.ResponseBody (materialiseBody)
 import qualified Verso.App as App
 import qualified Verso.Config as VConfig
 import qualified Verso.Git as Git
@@ -196,6 +196,12 @@ spec = do
             saved <- FileSystem.readFileStrict (root ++ "/sec/page.md")
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 303
             saved `shouldBe` "<!-- note -->\n\n# H"
+        it "given an image-titles post over its cap, when routing, then it is refused as too large (RFC-0040)" $ do
+            root <- setupTreeFixture
+            let declared = 65537 :: Int
+                head = "POST /documents/sec/page.md?image-titles HTTP/1.1\r\nContent-Length: " ++ show declared ++ "\r\n\r\n"
+            outcome <- Server.respondToRequestBytes (App.appWithDocumentTree root) (BS.append (BS.pack head) (BS.replicate declared 'x'))
+            either Just (const Nothing) outcome `shouldBe` Just (Stream.StreamParseError Parse.BodyTooLarge)
         it "given an asset upload over the cap, when routing, then it is refused and no partial or temporary file is left in the assets folder" $ do
             root <- setupTreeFixture
             let declared = 10485761 :: Int
@@ -415,6 +421,14 @@ spec = do
             stillDrafted `shouldBe` False
             any ((== "anonymous") . Git.revAuthor) revs `shouldBe` True
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 204
+        it "given a page with a frontmatter name, when published, then the commit subject carries that title" $ do
+            root <- setupVersionedFixture
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "---\nname: Caf\xc3\xa9 Notes\n---\n\n# Body\n"))
+            subject <- lastCommitSubject root
+            subject `shouldBe` "Publish Caf\xc3\xa9 Notes\n"
         it "given an already-published body, when the identical PUT repeats, then no new revision is recorded (idempotent)" $ do
             root <- setupVersionedFixture
             _ <-
@@ -928,27 +942,6 @@ respondDocument app req = do
     case outcome of
         Left err -> pure (Left err)
         Right response -> Right <$> materialiseBody response
-
--- | Collapses any response body to a strict one: a file is read, a stream is run.
-materialiseBody :: Http.Response -> IO Http.Response
-materialiseBody response =
-    case Http.responseBody response of
-        Http.StrictBody _ -> pure response
-        Http.FileBody path _ -> do
-            bytes <- BS.readFile path
-            pure response{Http.responseBody = Http.StrictBody bytes}
-        Http.StreamBody enumerator -> collect enumerator
-        Http.SizedStreamBody _ enumerator -> collect enumerator
-  where
-    collect enumerator = do
-        acc <- IORef.newIORef []
-        final <- enumerator (Iteratee.byteSinkI (\bytes -> IORef.modifyIORef acc (bytes :) >> pure (Right ())))
-        result <- Iteratee.run final
-        case result of
-            Right () -> do
-                chunks <- IORef.readIORef acc
-                pure response{Http.responseBody = Http.StrictBody (BS.concat (reverse chunks))}
-            Left err -> error ("materialiseBody: " ++ show err)
 
 bodyContains :: BS.ByteString -> Http.Response -> Bool
 bodyContains needle response =

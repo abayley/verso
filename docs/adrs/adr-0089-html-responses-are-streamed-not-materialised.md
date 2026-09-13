@@ -79,3 +79,12 @@ and would reopen the counting pass.
   no such caller). The strict `ChunksBody` deferred by RFC-0013 is superseded by the sized stream.
 - `treeReadAt` still holds the git capture in memory until RFC-0040 phase 5 leaves that capture on disk; it
   emits it through the same `SizedStreamBody` in the meantime.
+
+## Addendum 2026-09-13
+
+`SizedStreamBody` is a separate constructor from `StreamBody` rather than a `Maybe Int` on one constructor.
+The review of RFC-0040 (`docs/reviews/rfc-0040-code-review-2026-09-13.md`) noted the cost: every switch
+over the body type (`serialiseResponse`, `writeResponse`, the logging and egress middleware, the test
+materialisers) grew an arm. The shape is kept because the two framings are different response contracts, not
+one contract with an optional field: a sized body promises an exact `Content-Length` and is eligible for
+keep-alive, a close-delimited one is not, and a pattern match makes a handler choose one on purpose.

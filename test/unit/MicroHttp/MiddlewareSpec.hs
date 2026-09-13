@@ -4,6 +4,7 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.IORef as IORef
 import qualified MicroHttp.Http as Http
 import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Log as Log
 import qualified MicroHttp.Middleware as Middleware
 import qualified MicroHttp.Network.Socket as Socket
 import qualified MicroHttp.Stream as Stream
@@ -28,6 +29,24 @@ spec =
         it "given failure-handling middleware, when the application fails, then the replacement response is returned" $ do
             response <- runApp "x" (Middleware.catchIter (const errorResponse) alwaysFails)
             fmap (Http.statusCode . Http.responseStatus) response `shouldBe` Right 500
+        it "given a sized streaming response, when logged, then the completed event counts the sized head plus the body bytes" $ do
+            events <- IORef.newIORef []
+            let logger event = IORef.modifyIORef events (event :)
+            response <- runApp "GET / HTTP/1.1\r\n\r\n" (Middleware.logRequests logger sizedHello)
+            case response of
+                Left err -> expect ("unexpected failure: " ++ show err) False
+                Right ok -> do
+                    chunks <- recordBody ok
+                    chunks `shouldBe` Right [bs "hello"]
+                    logged <- IORef.readIORef events
+                    let expectedBytes = BS.length (Http.serialiseSizedHead (sizedResponse (bs "hello")) 5) + 5
+                    map completedBytes logged `shouldBe` [Just expectedBytes, Nothing]
+
+-- | The response bytes a completed event logged, or Nothing for any other event.
+completedBytes :: Log.AccessEvent -> Maybe Int
+completedBytes event = case event of
+    Log.RequestCompleted _ _ _ _ respBytes _ -> Just respBytes
+    _ -> Nothing
 
 -- Applications under test. Each ignores the connection and reads the stream.
 
@@ -41,6 +60,13 @@ echoBody _ = do
 
 streamHello :: Http.Application
 streamHello _ = pure (Http.Response Http.okStatus [] (Http.StreamBody (Iteratee.strictEnumerator (bs "hello"))))
+
+-- | Streams @hello@ as a sized body (RFC-0040), after consuming the request head.
+sizedHello :: Http.Application
+sizedHello _ = Iteratee.byteSinkI (\_ -> pure (Right ())) >> pure (sizedResponse (bs "hello"))
+
+sizedResponse :: BS.ByteString -> Http.Response
+sizedResponse body = Http.Response Http.okStatus [] (Http.SizedStreamBody (BS.length body) (Iteratee.strictEnumerator body))
 
 alwaysFails :: Http.Application
 alwaysFails _ = Iteratee.readBodyStrict (Stream.StreamParseError (Http.BadRequest "boom")) 0 >> pure (Http.Response Http.okStatus [] (Http.StrictBody (bs "unreached")))
@@ -65,15 +91,19 @@ recordBody :: Http.Response -> IO (Either Stream.StreamError [BS.ByteString])
 recordBody response =
     case Http.responseBody response of
         Http.StrictBody _ -> return (Right [])
-        Http.StreamBody enumerator -> do
-            chunks <- IORef.newIORef []
-            final <- enumerator (Iteratee.byteSinkI (recordChunk chunks))
-            outcome <- Iteratee.run final
-            case outcome of
-                Left err -> return (Left err)
-                Right () -> do
-                    values <- IORef.readIORef chunks
-                    return (Right (reverse values))
+        Http.FileBody _ _ -> return (Right [])
+        Http.StreamBody enumerator -> collect enumerator
+        Http.SizedStreamBody _ enumerator -> collect enumerator
+  where
+    collect enumerator = do
+        chunks <- IORef.newIORef []
+        final <- enumerator (Iteratee.byteSinkI (recordChunk chunks))
+        outcome <- Iteratee.run final
+        case outcome of
+            Left err -> return (Left err)
+            Right () -> do
+                values <- IORef.readIORef chunks
+                return (Right (reverse values))
 
 recordChunk :: IORef.IORef [BS.ByteString] -> BS.ByteString -> IO (Either Stream.StreamError ())
 recordChunk chunks chunk = do

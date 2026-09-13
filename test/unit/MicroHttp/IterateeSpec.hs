@@ -80,6 +80,34 @@ spec =
             result <- Iteratee.run final
             result `shouldBe` Left Boom
             closeCount `shouldReturn` 0
+        it "given a waiting consumer, when fed chunks without an end of stream, then it holds them and completes on the later end" $ do
+            fed <- Iteratee.feedChunk (BS.pack "ab") (Iteratee.readBodyStrict TooLarge 1000 :: Iteratee.Iter TestError BS.ByteString)
+            fed' <- Iteratee.feedChunk (BS.pack "cd") fed
+            final <- Iteratee.strictEnumerator BS.empty fed'
+            result <- Iteratee.run final
+            result `shouldBe` Right (BS.pack "abcd")
+        it "given a completed consumer, when fed a chunk, then it passes through unchanged with its residue" $ do
+            let done = Iteratee.Done (BS.pack "value") (Iteratee.Chunk (BS.pack "rest")) :: Iteratee.Iter TestError BS.ByteString
+            fed <- Iteratee.feedChunk (BS.pack "more") done
+            result <- Iteratee.run fed
+            result `shouldBe` Right (BS.pack "value")
+        it "given a failed consumer, when fed a chunk, then the failure passes through" $ do
+            fed <- Iteratee.feedChunk (BS.pack "x") (Iteratee.IterFailed Boom (Iteratee.Chunk BS.empty) :: Iteratee.Iter TestError ())
+            result <- Iteratee.run fed
+            result `shouldBe` Left Boom
+        it "given an effect step, when fed a chunk, then the effect is resolved before the chunk is delivered" $ do
+            ran <- IORef.newIORef False
+            let stepped = Iteratee.IterM (IORef.writeIORef ran True >> return (Iteratee.readBodyStrict TooLarge 1000)) :: Iteratee.Iter TestError BS.ByteString
+            fed <- Iteratee.feedChunk (BS.pack "hi") stepped
+            IORef.readIORef ran `shouldReturn` True
+            final <- Iteratee.strictEnumerator BS.empty fed
+            result <- Iteratee.run final
+            result `shouldBe` Right (BS.pack "hi")
+        it "given an empty chunk, when fed, then the consumer is left waiting rather than read as end of stream" $ do
+            fed <- Iteratee.feedChunk BS.empty (Iteratee.readBodyStrict TooLarge 1000 :: Iteratee.Iter TestError BS.ByteString)
+            final <- Iteratee.strictEnumerator (BS.pack "late") fed
+            result <- Iteratee.run final
+            result `shouldBe` Right (BS.pack "late")
 
 -- Test-local consumers, built from the exported Iter constructors.
 

@@ -13,8 +13,8 @@ adding anything to `docs/`. The structure follows the standard used in the `aria
 | `docs/reference/`    | Reference. Catalogues of modules, config keys and benchmarks, read by lookup       |
 | `docs/adrs/`         | Decision records. One decision per file, append-only, the decision register        |
 | `docs/rfcs/`         | Proposals. How each piece gets built, with its own lifecycle and index             |
-| `docs/rfcs/refs/`    | Supporting material for a specific RFC: reviews, evidence, split-out design notes  |
-| `docs/reviews/`      | Point-in-time reviews of the codebase or the documentation as a whole              |
+| `docs/rfcs/refs/`    | Supporting material for a specific RFC: spikes, evidence, split-out design notes   |
+| `docs/reviews/`      | Point-in-time reviews: of an RFC's change set, the codebase, or the documentation  |
 | `docs/mockups/`      | HTML design prototypes; the Moebius watercolour prototype is a tuning reference    |
 
 The first three rows are Diataxis document types, which classify a document by how it is used rather than
@@ -46,15 +46,15 @@ such as a build or platform choice, goes straight to an ADR.
 `docs/adrs/README.md` and `docs/rfcs/README.md` hold the full contract for each, including frontmatter,
 required sections and lifecycle.
 
-### RFC Reference Or Standalone Review
+### RFC Reference Or Review
 
-If the document exists to support a specific RFC, it belongs in `docs/rfcs/refs/`. If it reviews the
-codebase, the test suite or the documentation as a whole rather than one RFC, it belongs in
-`docs/reviews/`.
+Every review goes in `docs/reviews/`, whether it reviews one RFC's change set, the codebase, the test suite
+or the documentation. Evidence gathered while building an RFC (a spike, a measurement, a split-out design
+note) belongs in `docs/rfcs/refs/`.
 
-The test is whether the document would still make sense if its RFC did not exist. A spike gathered as
-evidence for RFC-0034 would not, so it is a ref. A review of how the link index performs across the
-codebase would, so it is a review.
+The test is whether the document judges work or feeds it. A spike gathered as evidence for RFC-0034 feeds
+the RFC, so it is a ref. A code review of RFC-0040's change set judges it, so it is a review, even though it
+is about one RFC.
 
 ### Living Or Point-In-Time
 

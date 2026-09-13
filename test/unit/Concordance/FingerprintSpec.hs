@@ -5,18 +5,14 @@ import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified System.Directory as Directory
 import Test.Hspec
+import TestSupport.Scratch (resetScratchDir)
 
 -- | A scratch directory under build/ for the streamed-fingerprint file tests.
 scratch :: FilePath
 scratch = "build/fingerprint-spec"
 
 resetScratch :: IO ()
-resetScratch = do
-    exists <- Directory.doesDirectoryExist scratch
-    Monad.when exists $ do
-        names <- Directory.listDirectory scratch
-        mapM_ (\n -> Directory.removeFile (scratch ++ "/" ++ n)) names
-    Directory.createDirectoryIfMissing True scratch
+resetScratch = resetScratchDir scratch
 
 spec :: Spec
 spec =

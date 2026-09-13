@@ -476,7 +476,8 @@ phase-1 baseline for the largest document: 141ms and ~6MB above baseline for the
       side-by-side parser onto a streamed `ByteString` line reader, which under MicroHs risks the list-scan
       crash class (`BS.lines`/`split`, see the memory notes) unless written as a careful `Bytes`-style loop.
       The payoff is page-bounded and the path is a rare admin view, so this is recorded rather than done;
-      revisit if diffs ever become corpus-scale. See ADR-0090's "Reopens when".
+      revisit if diffs ever become corpus-scale. See ADR-0090's "Reopens when". **Superseded by phase 9**,
+      which streams the diff a line at a time (ADR-0090's 2026-09-13 addendum records the change).
 - [x] Recorded the subprocess-capture ADR (ADR-0090).
 
 ### Phase 6: the remaining whole-file reads in the tree operations

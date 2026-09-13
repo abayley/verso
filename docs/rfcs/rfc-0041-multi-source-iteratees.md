@@ -9,8 +9,7 @@ updated: 2026-09-13
 supersedes: []
 superseded_by: null
 related_rfcs: [RFC-0012, RFC-0040]
-related_refs:
-    - spike/iteratee-multisource/Spike.hs
+related_refs: []
 ---
 
 # RFC-0041: Multi-source iteratees
@@ -31,7 +30,8 @@ needs it, `Stream.filesEqual`, is hand-rolled over two raw handles instead of ov
 proposes generalising the iteratee from its fixed `IO` base to a base-monad-parametric transformer
 (`IterT e m a`), so a consumer can nest a second iteratee as its base monad and read both streams under its
 own control -- Oleg Kiselyov's "several sources to one sink" (the 2enum1iter construction). A spike
-(`spike/iteratee-multisource/Spike.hs`) proves the shape and measures the cost. The change is **not proposed
+(`spike/iteratee-multisource/Spike.hs`, on the `spike/iteratee-multisource` branch) proves the shape and
+measures the cost. The change is **not proposed
 for adoption now**: it is recorded, with a working spike, so that when a second lock-step or merge consumer
 appears (merging sorted index shards is the plausible one) the design and its cost are already understood.
 
@@ -277,7 +277,8 @@ against a naive oracle and passes all six cases above. What it shows about the c
   consumer of type `Iteratee el1 (Iteratee el2 m) a` reading two streams under its own control by using the
   iteratee as its own base monad; and, for contrast, the dual "Parallel composition of iteratees: one source
   to several sinks".
-- `spike/iteratee-multisource/Spike.hs` -- the working spike and its trailing findings comment.
+- `spike/iteratee-multisource/Spike.hs` on the `spike/iteratee-multisource` branch (not on `main`) -- the
+  working spike and its trailing findings comment.
 - ADR-0091 (network and file I/O is block-streaming by default) -- its "Reopens when" records this as the
   path for multi-source combination.
 - RFC-0012 (the stream contract and the iteratee core) and RFC-0040 (the constant-space work that surfaced

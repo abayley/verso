@@ -50,6 +50,7 @@ HS_FILES = $(shell find $(SRC) $(MICROHTTP_SRC) $(TEST) -name '*.hs' -not -path 
 SRC_HS = $(shell find $(SRC) -name '*.hs' | sort)
 UNIT_HS = $(shell find $(UNIT_TEST) -name '*.hs' | sort)
 INTEGRATION_HS = $(shell find $(INTEGRATION_TEST) -name '*.hs' | sort)
+SUPPORT_HS = $(shell find $(TEST)/support -name '*.hs' | sort)
 
 # --- Concordance search shim (RFC-0034) ---------------------------------
 # The Haskell code has foreign imports of cn_* symbols, so every mhs link
@@ -96,7 +97,7 @@ GHC_COMPAT_HS = $(shell find $(GHC_COMPAT_TEST) -name '*.hs' | sort)
 # The GHC invocation shared by every GHC build: the package sources compiled directly
 # (no MicroCabal package), the framework cbits and search libraries linked in, and the
 # ghc-compat shims standing in for the mhs-only modules.
-GHC_COMMON = $(GHC) -threaded $(GHC_LINK_FLAGS) $(SEARCH_GHC_LINK) $(CBITS_OBJS) -I$(MICROHTTP_INCLUDE) -I$(CBITS) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(SRC) -i$(MICROHTTP_SRC)
+GHC_COMMON = $(GHC) -threaded $(GHC_LINK_FLAGS) $(SEARCH_GHC_LINK) $(CBITS_OBJS) -I$(MICROHTTP_INCLUDE) -I$(CBITS) -XCApiFFI -XScopedTypeVariables -i$(GHC_COMPAT_TEST) -i$(TEST)/support -i$(SRC) -i$(MICROHTTP_SRC)
 
 # The filesystem syscall wrappers (MicroHttp.FileSystem), the HTML escaper
 # (MicroHttp.Html) and the posix_spawn wrapper (MicroHttp.Process) live in the micro-http package: the mhs builds
@@ -170,7 +171,7 @@ format-check:
 lint:
 	# -j0 uses every core: 11.8s single-threaded against 2.7s here, measured on 12 cores.
 	# $(BENCH) is excluded to match the format gate: benchmarks are measurement code.
-	hlint -j0 $(SRC) $(MICROHTTP_SRC) $(UNIT_TEST) $(INTEGRATION_TEST) $(GHC_COMPAT_TEST)
+	hlint -j0 $(SRC) $(MICROHTTP_SRC) $(UNIT_TEST) $(INTEGRATION_TEST) $(GHC_COMPAT_TEST) $(TEST)/support
 	# unsafePerformIO gate (ADR-0087): production code does not import System.IO.Unsafe;
 	# a foreign call is IO. Benchmarks under $(BENCH) are measurement code and exempt.
 	@offenders=$$(grep -rl "System.IO.Unsafe" $(SRC) $(MICROHTTP_SRC)); \
@@ -201,16 +202,16 @@ test-editor-browser: editor-build $(BUILD)/verso
 test-ghc-smoke: editor-build $(BUILD)/ghc/verso
 	SMOKE_SERVER_BIN=$(BUILD)/ghc/verso bun $(EDITOR)/editor-smoke.cjs
 
-$(BUILD)/unit-test: $(SRC_HS) $(UNIT_HS) $(MICROHTTP_PKG) $(LINK_OBJS)
+$(BUILD)/unit-test: $(SRC_HS) $(UNIT_HS) $(SUPPORT_HS) $(MICROHTTP_PKG) $(LINK_OBJS)
 	mkdir -p $(BUILD)
-	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -o $@
+	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) -i$(UNIT_TEST) -i$(TEST)/support $(UNIT_TEST)/Main.hs -o $@
 
 test-unit: $(BUILD)/unit-test
 	$(BUILD)/unit-test
 
-$(BUILD)/integration-test: $(SRC_HS) $(INTEGRATION_HS) $(MICROHTTP_PKG) $(LINK_OBJS)
+$(BUILD)/integration-test: $(SRC_HS) $(INTEGRATION_HS) $(SUPPORT_HS) $(MICROHTTP_PKG) $(LINK_OBJS)
 	mkdir -p $(BUILD)
-	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -o $@
+	$(MHS) $(MHSFLAGS) $(MHS_SEARCH) -i$(SRC) -i$(INTEGRATION_TEST) -i$(TEST)/support $(INTEGRATION_TEST)/Main.hs -o $@
 
 test-integration: $(BUILD)/integration-test
 	$(BUILD)/integration-test
@@ -261,11 +262,11 @@ build-verso-ghc-prof: $(BUILD)/ghc-prof/verso
 # The Haskell suites under GHC (developer gate, in make check): the same test sources
 # as the mhs suites, built with GHC and run, so a behaviour that differs between the
 # compilers fails a test rather than waiting for the browser smoke to notice.
-$(BUILD)/ghc/unit-test: $(SRC_HS) $(MICROHTTP_HS) $(UNIT_HS) $(GHC_COMPAT_HS) $(CBITS_OBJS) $(SEARCH_DEP)
+$(BUILD)/ghc/unit-test: $(SRC_HS) $(MICROHTTP_HS) $(UNIT_HS) $(SUPPORT_HS) $(GHC_COMPAT_HS) $(CBITS_OBJS) $(SEARCH_DEP)
 	mkdir -p $(BUILD)/ghc/unit-objects
 	$(GHC_COMMON) -O1 -i$(UNIT_TEST) $(UNIT_TEST)/Main.hs -outputdir $(BUILD)/ghc/unit-objects -o $@
 
-$(BUILD)/ghc/integration-test: $(SRC_HS) $(MICROHTTP_HS) $(INTEGRATION_HS) $(GHC_COMPAT_HS) $(CBITS_OBJS) $(SEARCH_DEP)
+$(BUILD)/ghc/integration-test: $(SRC_HS) $(MICROHTTP_HS) $(INTEGRATION_HS) $(SUPPORT_HS) $(GHC_COMPAT_HS) $(CBITS_OBJS) $(SEARCH_DEP)
 	mkdir -p $(BUILD)/ghc/integration-objects
 	$(GHC_COMMON) -O1 -i$(INTEGRATION_TEST) $(INTEGRATION_TEST)/Main.hs -outputdir $(BUILD)/ghc/integration-objects -o $@
 

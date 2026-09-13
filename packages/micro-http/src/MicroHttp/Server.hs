@@ -236,7 +236,7 @@ socketSinkFile settings client response path size = do
 -- | Write the file's response head, then @sendfile@ its body within the idle write timeout.
 sendHeadThenFile :: Settings.Settings -> Socket.ClientSocket -> Http.Response -> Socket.FileFd -> Int -> IO (Either Stream.StreamError ())
 sendHeadThenFile settings client response fd size = do
-    sentHead <- socketChunkWriter settings client (Http.serialiseFileHead response size)
+    sentHead <- socketChunkWriter settings client (Http.serialiseSizedHead response size)
     case sentHead of
         Left err -> return (Left err)
         Right () -> do

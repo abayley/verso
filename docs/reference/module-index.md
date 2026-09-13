@@ -34,7 +34,10 @@ stable concepts:
 | `MicroHttp.Http.Framing` | Incremental header framing iteratee (RFC-0004) | [RFC-0004](../rfcs/implemented/rfc-0004-iteratee-streaming-io.md) |
 | `MicroHttp.Http.Response` | HTTP response serialisation and writing | [HTTP Response Module Design](../architecture/initial-module-design/http-response.md) |
 | `MicroHttp.Iteratee` | General iteratee/enumerator streaming core (RFC-0004) | [RFC-0004](../rfcs/implemented/rfc-0004-iteratee-streaming-io.md) |
-| `MicroHttp.Stream` | Stream error vocabulary and socket/file producers (RFC-0004) | [RFC-0004](../rfcs/implemented/rfc-0004-iteratee-streaming-io.md) |
+| `MicroHttp.Stream` | Stream error vocabulary, socket/file producers, and the block-streaming file folds, scans, writers and comparisons (RFC-0004, RFC-0040) | [RFC-0004](../rfcs/implemented/rfc-0004-iteratee-streaming-io.md), [ADR-0091](../adrs/adr-0091-io-is-block-streaming-by-default.md) |
+| `MicroHttp.Bytes` | Index-loop `ByteString` scans that never unpack (RFC-0040) | [ADR-0088](../adrs/adr-0088-request-bodies-bound-for-files-never-enter-the-heap.md) |
+| `MicroHttp.FileSystem` | Direct filesystem calls: stat, unlink, rename, temp paths | [RFC-0027](../rfcs/implemented/rfc-0027-in-server-move-and-delete.md) |
+| `MicroHttp.Process` | Subprocess spawn with captures read or left on disk | [ADR-0090](../adrs/adr-0090-subprocess-capture-stays-on-disk.md) |
 | `MicroHttp.Router` | Value-level routing | [Router Module Design](../architecture/initial-module-design/router.md) |
 | `MicroHttp.Router.Typed` | Optional typed route builder | [Typed Router Module Design](../architecture/initial-module-design/typed-router.md) |
 | `MicroHttp.Html` | Pure monadic HTML rendering | [HTML Module Design](../architecture/initial-module-design/html.md) |

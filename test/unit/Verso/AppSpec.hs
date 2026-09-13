@@ -3,7 +3,6 @@ module Verso.AppSpec (spec) where
 import qualified Concordance.Store as Store
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
-import qualified Data.IORef as IORef
 import qualified Data.List as List
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Http as Http
@@ -12,6 +11,7 @@ import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
 import Test.Hspec
+import TestSupport.ResponseBody (materialiseBody)
 import qualified Verso.App as App
 import qualified Verso.OperationLog as OperationLog
 
@@ -464,27 +464,6 @@ runTreeAppBody root head body = do
     case outcome of
         Right response -> materialiseBody response
         Left err -> expectFailure err
-
--- | Collapses a streamed document body (RFC-0040) to a strict one for byte inspection.
-materialiseBody :: Http.Response -> IO Http.Response
-materialiseBody response =
-    case Http.responseBody response of
-        Http.StrictBody _ -> pure response
-        Http.FileBody path _ -> do
-            bytes <- BS.readFile path
-            pure response{Http.responseBody = Http.StrictBody bytes}
-        Http.StreamBody enumerator -> collect enumerator
-        Http.SizedStreamBody _ enumerator -> collect enumerator
-  where
-    collect enumerator = do
-        acc <- IORef.newIORef []
-        final <- enumerator (Iteratee.byteSinkI (\bytes -> IORef.modifyIORef acc (bytes :) >> pure (Right ())))
-        result <- Iteratee.run final
-        case result of
-            Right () -> do
-                chunks <- IORef.readIORef acc
-                pure response{Http.responseBody = Http.StrictBody (BS.concat (reverse chunks))}
-            Left err -> expectFailure err
 
 -- | Replaces every @"ts":"..."@ value in an operation-log text (ages entries for retention tests).
 replaceTsWith :: String -> String -> String

@@ -41,7 +41,6 @@ module MicroHttp.Http (
     serialiseResponse,
     serialiseHead,
     serialiseSizedHead,
-    serialiseFileHead,
     writeResponse,
 ) where
 
@@ -548,10 +547,6 @@ serialiseSizedHead response size =
         , BSC.pack (show size)
         , BSC.pack "\r\nConnection: close\r\n\r\n"
         ]
-
--- | The response head for a file body: 'serialiseSizedHead' with the file size.
-serialiseFileHead :: Response -> Int -> BS.ByteString
-serialiseFileHead = serialiseSizedHead
 
 -- | Renders the @HTTP/1.1 <code> <reason>@ status line, CRLF-terminated.
 statusLine :: Status -> BS.ByteString

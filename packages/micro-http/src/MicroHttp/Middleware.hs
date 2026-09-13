@@ -154,7 +154,7 @@ logRequests logger inner conn = Iteratee.IterM start
                     )
             Http.FileBody _ size ->
                 Iteratee.IterM
-                    ( logCompleted startMillis lineState reqBytes (Http.responseStatus response) (BS.length (Http.serialiseFileHead response size) + size)
+                    ( logCompleted startMillis lineState reqBytes (Http.responseStatus response) (BS.length (Http.serialiseSizedHead response size) + size)
                         >> return (Iteratee.Done response residue)
                     )
             Http.StreamBody enumerator ->

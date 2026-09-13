@@ -207,7 +207,11 @@ persistState indexPath st = do
     -- String (a ~24x spike) nor a whole-file BS.concat. Byte-identical to the previous unlines form.
     written <- tryIO (Stream.writeFileLines tmp (stateLines st))
     case written of
-        Left e -> Except.throwError (show e)
+        Left e -> do
+            -- A failed persist leaves nothing behind: the temp is removed, and the
+            -- rebuild on the next start serves as the recovery (RFC-0040).
+            _ <- tryIO (FileSystem.removeFilePath tmp)
+            Except.throwError (show e)
         Right () -> pure ()
     _ <- tryIO (FileSystem.renamePath tmp indexPath) -- best-effort; a failed persist just means a rebuild next start
     pure ()

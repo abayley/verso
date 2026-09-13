@@ -1,6 +1,5 @@
 module MicroHttp.StreamSpec (spec) where
 
-import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Http.Parse as Parse
@@ -8,18 +7,14 @@ import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
 import Test.Hspec
+import TestSupport.Scratch (resetScratchDir)
 
 -- | A scratch directory under build/, reset at the start of each IO test.
 scratch :: FilePath
 scratch = "build/stream-spec"
 
 resetScratch :: IO ()
-resetScratch = do
-    exists <- Directory.doesDirectoryExist scratch
-    Monad.when exists $ do
-        names <- Directory.listDirectory scratch
-        mapM_ (\name -> Directory.removeFile (scratch ++ "/" ++ name)) names
-    Directory.createDirectoryIfMissing True scratch
+resetScratch = resetScratchDir scratch
 
 tooLarge :: Stream.StreamError
 tooLarge = Stream.StreamParseError Parse.BodyTooLarge
@@ -50,17 +45,17 @@ foldFileLinesSpec =
                 BS.writeFile docPath content
                 got <- collect docPath
                 got `shouldBe` Right (expected content)
-        it "given plain lines with a trailing newline, then it matches lines" $
+        it "given plain lines with a trailing newline, when folded, then it matches lines" $
             check (bs "alpha\nbeta\ngamma\n")
-        it "given no trailing newline, then the final line is still folded" $
+        it "given no trailing newline, when folded, then the final line is still folded" $
             check (bs "alpha\nbeta\ngamma")
-        it "given blank lines, then they are preserved as empty lines" $
+        it "given blank lines, when folded, then they are preserved as empty lines" $
             check (bs "a\n\n\nb\n")
-        it "given an empty file, then no lines are folded" $
+        it "given an empty file, when folded, then no lines are folded" $
             check (bs "")
-        it "given a line spanning a 64KB block boundary, then it is read whole" $
+        it "given a line spanning a 64KB block boundary, when folded, then it is read whole" $
             check (BS.concat [BS.replicate (65536 - 3) 'x', bs "LINE-ACROSS-BOUNDARY\ntail\n"])
-        it "given a missing file, then the failure is reported" $ do
+        it "given a missing file, when folded, then the failure is reported" $ do
             resetScratch
             outcome <- Stream.foldFileLines (\acc l -> pure (l : acc)) [] (scratch ++ "/absent")
             either (const True) (const False) outcome `shouldBe` True
@@ -151,6 +146,26 @@ escapedBodySpec =
             whole <- Html.escapeBlockBytes boundaryContent
             result <- collectTransformedBody (bs "") (bs "") 3
             result `shouldBe` Right whole
+        it "given a temp capture, when streamed as a transformed body to completion, then the bytes match and the file is removed" $ do
+            resetScratch
+            BS.writeFile docPath boundaryContent
+            whole <- Html.escapeBlockBytes boundaryContent
+            final <- Stream.transformedTempFileBody 4 before Html.escapeBlockBytes docPath after (Iteratee.readBodyStrict tooLarge 1000000)
+            result <- Iteratee.run final
+            result `shouldBe` Right (BS.concat [before, whole, after])
+            Directory.doesFileExist docPath `shouldReturn` False
+        it "given a temp capture, when the consumer stops early, then the file is still removed" $ do
+            resetScratch
+            BS.writeFile docPath boundaryContent
+            final <- Stream.transformedTempFileBody 4 before Html.escapeBlockBytes docPath after (Iteratee.takeN 3 (Iteratee.readBodyStrict tooLarge 1000000))
+            result <- Iteratee.run final
+            result `shouldBe` Right (BS.take 3 before)
+            Directory.doesFileExist docPath `shouldReturn` False
+        it "given a temp path that does not exist, when streamed, then the consumer sees the source error" $ do
+            resetScratch
+            final <- Stream.transformedTempFileBody 4 before Html.escapeBlockBytes (scratch ++ "/absent") after (Iteratee.readBodyStrict tooLarge 1000000)
+            result <- Iteratee.run final
+            either (const True) (const False) result `shouldBe` True
 
 -- | Content with the escaped bytes at, adjacent to, and across 1-8 byte boundaries.
 boundaryContent :: BS.ByteString

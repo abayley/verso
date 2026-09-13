@@ -69,3 +69,15 @@ RFC-0040 phase-5 note); if diffs ever become corpus-scale this decision extends 
   every temp-then-serve path has.
 - Rollback restores across a device boundary safely: the capture lives in the system temp directory and the
   tree elsewhere, so it is copied (streamed), not renamed, avoiding a cross-device rename failure.
+
+## Addendum 2026-09-13
+
+Two statements above were overtaken by RFC-0040 phase 9 and the review that followed it
+(`docs/reviews/rfc-0040-code-review-2026-09-13.md`); the decision itself stands.
+
+- "Reopens when" named `treeDiff` as the case that stays on the byte-returning path. Phase 9 moved it: the
+  diff is captured to disk (`Git.diffBetweenCaptured`) and folded a line at a time through the side-by-side
+  transform into a close-delimited streamed response, so no capture now takes the byte-returning path. The
+  remaining `runProcess` callers are the small git commands whose output is parsed into values.
+- "Both read only the leading frontmatter block" is true of `treeReadAt` only; `treeRollback` copies the
+  capture into place and reads none of it.

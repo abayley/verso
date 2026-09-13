@@ -28,7 +28,7 @@ spec =
             Http.serialiseResponse (Http.Response Http.okStatus [] (Http.FileBody "x.txt" 3))
                 `shouldBe` Left Http.CannotSerialiseStreamBody
         it "given a file head with a size, when serialising, then headers and an exact Content-Length are emitted" $
-            Http.serialiseFileHead
+            Http.serialiseSizedHead
                 (Http.Response Http.okStatus [(Http.normaliseHeaderName (bs "Content-Type"), bs "text/plain")] (Http.FileBody "x.txt" 12))
                 12
                 `shouldBe` bs "HTTP/1.1 200 OK\r\ncontent-type: text/plain\r\nContent-Length: 12\r\nConnection: close\r\n\r\n"
@@ -67,7 +67,7 @@ memorySink writer = Http.ResponseSink writer (memorySinkFile writer)
 memorySinkFile :: Http.ResponseWriter -> Http.Response -> FilePath -> Int -> IO (Either Stream.StreamError ())
 memorySinkFile writer response path size = do
     bytes <- BS.readFile path
-    sentHead <- writer (Http.serialiseFileHead response size)
+    sentHead <- writer (Http.serialiseSizedHead response size)
     case sentHead of
         Left err -> return (Left err)
         Right () -> writer bytes

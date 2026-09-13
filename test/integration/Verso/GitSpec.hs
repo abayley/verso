@@ -101,6 +101,20 @@ spec =
             Process.removeCapture cap
             Directory.doesFileExist (Process.captureOut cap) `shouldReturn` False
 
+        it "given two revisions of a page, when their diff is captured to disk, then the stdout capture holds the unified diff and is the caller's to remove (RFC-0040)" $ do
+            root <- freshRepo
+            writeText (root ++ "/p.md") "alpha beta\n"
+            c1 <- Git.commitPaths root author "v1" ["p.md"]
+            writeText (root ++ "/p.md") "alpha gamma\n"
+            c2 <- Git.commitPaths root author "v2" ["p.md"]
+            cap <- Git.diffBetweenCaptured root (hashOf c1) (hashOf c2) "p.md"
+            Process.captureExit cap `shouldBe` Exit.ExitSuccess
+            captured <- BS.readFile (Process.captureOut cap)
+            (BS.isInfixOf (BS.pack "-alpha beta") captured && BS.isInfixOf (BS.pack "+alpha gamma") captured) `shouldBe` True
+            Process.removeCapture cap
+            Directory.doesFileExist (Process.captureOut cap) `shouldReturn` False
+            Directory.doesFileExist (Process.captureErr cap) `shouldReturn` False
+
         it "given a path absent at a revision, when captured, then git exits non-zero" $ do
             root <- freshRepo
             writeText (root ++ "/p.md") "only page\n"

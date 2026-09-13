@@ -24,6 +24,7 @@ import qualified Concordance.Embedding as Embedding
 import qualified Concordance.Store as Store
 import qualified Concordance.Utf8 as Utf8
 import qualified Control.Concurrent.MVar as MVar
+import qualified Control.Exception as Exception
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
@@ -452,7 +453,7 @@ or a @400@ for a bad request.
 treeCreateHandler :: WriteLock -> IndexMaintenance -> FilePath -> Router.Handler
 treeCreateHandler writeLock maint root captures _ = do
     bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) treeCreateMaxBytes
-    let fields = formFields (BS.unpack bytes)
+    let fields = formFields bytes
     result <- Iteratee.liftIO $
         withWriteLock writeLock $ do
             created <- createTreeNode root (capture "path" captures) (capture "kind" fields) (capture "title" fields)
@@ -494,7 +495,7 @@ treeDelete versioning writeLock findRelevant maint operationStore trashStore roo
 treeMoveHandler :: Versioning -> Git.Identity -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> OperationStore.OperationStore -> FilePath -> Router.Captures -> Iteratee.Iter Stream.StreamError Http.Response
 treeMoveHandler versioning author writeLock findRelevant maint operationStore root captures = do
     bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) treeCreateMaxBytes
-    let fields = formFields (BS.unpack bytes)
+    let fields = formFields bytes
         srcRel = capture "path" captures
         confirm = capture "confirm" fields == "true"
         isPage = isMarkdownPath srcRel
@@ -679,7 +680,7 @@ moved refuses cleanly rather than corrupting the tree).
 treeUndoHandler :: Versioning -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> OperationStore.OperationStore -> TrashStore.TrashStore -> FilePath -> FilePath -> Router.Handler
 treeUndoHandler versioning writeLock findRelevant maint operationStore trashStore root trashRoot _ request = do
     bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) treeCreateMaxBytes
-    let fields = formFields (BS.unpack bytes)
+    let fields = formFields bytes
         wantedSeq = parseSeq (capture "seq" fields)
         author = Identity.currentIdentity (versioningIdentity versioning) request
     Iteratee.liftIO $ withWriteLock writeLock $ do
@@ -999,36 +1000,30 @@ treeEdit versioning root path request =
         Nothing -> pure treeNotFound
         Just fsPath -> do
             -- Resume a staged draft if one exists (RFC-0032); otherwise the published page, or a seed.
-            mDraft <-
+            hasDraft <-
                 if versioningOn versioning
-                    then Iteratee.liftIO (Draft.readDraft (draftStagingRoot versioning) path)
-                    else pure Nothing
-            case mDraft of
-                -- A staged draft (in memory): mark it as a draft; emit it as a sized stream.
-                Just drafted -> editFromBytes drafted False True
-                Nothing -> do
+                    then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
+                    else pure False
+            if hasDraft
+                then -- The draft is a file in the staging root: stream it like a page (RFC-0040).
+                    editFromFile (Draft.draftFsPath (draftStagingRoot versioning) path) True
+                else do
                     exists <- Iteratee.liftIO (Directory.doesFileExist fsPath)
                     if exists
-                        then editFromFile fsPath -- RFC-0040: stream the published page from disk.
-                        else editFromBytes (BS.pack seededMarkdown) True False -- a new page seeds in memory.
+                        then editFromFile fsPath False -- RFC-0040: stream the published page from disk.
+                        else editSeed -- a new page seeds in memory.
   where
     -- The editable shell around the document hole, with the draft flag the read view sets.
-    editShell hasDraft title =
-        View.editorShell path (editorMode request) title (versioningOn versioning) True hasDraft
-    editFromFile fsPath = do
-        block <- Iteratee.liftIO (Frontmatter.readBlock fsPath)
-        attachments <- Iteratee.liftIO (loadPageAttachments root path)
-        breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path block)
-        spine <- Iteratee.liftIO (treeSpineFor root path)
-        title <- Iteratee.liftIO (documentPageTitle False path block)
-        let (before, after) = editShell False title attachments breadcrumbs spine
-        Iteratee.liftIO (documentFileResponse before after fsPath)
-    editFromBytes content isNew hasDraft = do
-        attachments <- Iteratee.liftIO (loadPageAttachments root path)
-        breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path content)
-        spine <- Iteratee.liftIO (treeSpineFor root path)
-        title <- Iteratee.liftIO (documentPageTitle isNew path content)
-        let (before, after) = editShell hasDraft title attachments breadcrumbs spine
+    editShell = shellFor path request (versioningOn versioning) True
+    editFromFile file hasDraft = do
+        block <- Iteratee.liftIO (Frontmatter.readBlock file)
+        chrome <- Iteratee.liftIO (pageChrome root path False block)
+        let (before, after) = editShell hasDraft chrome
+        Iteratee.liftIO (documentFileResponse before after file)
+    editSeed = do
+        let content = BS.pack seededMarkdown
+        chrome <- Iteratee.liftIO (pageChrome root path True content)
+        let (before, after) = editShell False chrome
         Iteratee.liftIO (documentBytesResponse before after content)
 
 {- | Renders the read-only view for a tree document (the default @GET@, RFC-0020):
@@ -1045,17 +1040,14 @@ treeRead versioning root path request =
                 then pure treeNotFound
                 else do
                     block <- Iteratee.liftIO (Frontmatter.readBlock fsPath)
-                    attachments <- Iteratee.liftIO (loadPageAttachments root path)
-                    breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path block)
-                    spine <- Iteratee.liftIO (treeSpineFor root path)
+                    chrome <- Iteratee.liftIO (pageChrome root path False block)
                     -- RFC-0032: flag an unpublished draft so the read view can mark it next to "Edit".
                     hasDraft <-
                         if versioningOn versioning
                             then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
                             else pure False
-                    title <- Iteratee.liftIO (documentPageTitle False path block)
                     -- RFC-0040: stream the document from disk between the shell halves; never held whole.
-                    let (before, after) = View.editorShell path (editorMode request) title (versioningOn versioning) False hasDraft attachments breadcrumbs spine
+                    let (before, after) = shellFor path request (versioningOn versioning) False hasDraft chrome
                     Iteratee.liftIO (documentFileResponse before after fsPath)
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
@@ -1115,9 +1107,12 @@ treeUpload root captures request = do
                 Iteratee.liftIO (Directory.createDirectoryIfMissing True assetsDir)
                 tmp <- Iteratee.liftIO (FileSystem.uniqueTempPath assetsDir ".upload")
                 _ <- Stream.fileSinkI treeAssetMaxBytes (Stream.StreamParseError Parse.BodyTooLarge) tmp
-                stored <- Iteratee.liftIO (storeAsset assetsDir name tmp)
-                Iteratee.liftIO (recordAssetMetadata root path stored (Attachment.originalUploadFilename request))
-                pure (jsonResponse (View.jsonObject [("url", View.jsonString ("assets/" ++ stored))]))
+                placed <- Iteratee.liftIO (storeAsset assetsDir name tmp)
+                case placed of
+                    Left _ -> pure (statusResponse 500 "Internal Server Error" "could not store the attachment\n")
+                    Right stored -> do
+                        Iteratee.liftIO (recordAssetMetadata root path stored (Attachment.originalUploadFilename request))
+                        pure (jsonResponse (View.jsonObject [("url", View.jsonString ("assets/" ++ stored))]))
 
 -- | Consumes and discards the rest of the request body in constant space.
 drainBody :: Iteratee.Iter Stream.StreamError ()
@@ -1159,7 +1154,7 @@ returning the name actually used. An identical file already present is reused
 (@diagram.png@ -> @diagram-2.png@ -> ...). The comparison is streamed, size first,
 so neither file is read whole (RFC-0040 phase 3).
 -}
-storeAsset :: FilePath -> String -> FilePath -> IO String
+storeAsset :: FilePath -> String -> FilePath -> IO (Either String String)
 storeAsset assetsDir name tmp =
     tryCandidate (candidateNames name)
   where
@@ -1174,13 +1169,17 @@ storeAsset assetsDir name tmp =
                 case same of
                     Right True -> do
                         _ <- FileSystem.removeFilePath tmp
-                        pure candidate
+                        pure (Right candidate)
                     _ -> tryCandidate rest
+    -- A rename that fails is an expected outcome (the folder vanished, a permission
+    -- changed): reported, with the temp removed so nothing is left beside the assets.
     place candidate = do
         moved <- FileSystem.renamePath tmp (assetsDir ++ "/" ++ candidate)
         case moved of
-            Left e -> ioError (userError ("cannot place uploaded asset: " ++ show e))
-            Right () -> pure candidate
+            Left e -> do
+                _ <- FileSystem.removeFilePath tmp
+                pure (Left ("cannot place uploaded asset: " ++ show e))
+            Right () -> pure (Right candidate)
 
 {- | A filename and its collision-suffixed alternatives: @x.png@, @x-2.png@,
 @x-3.png@, ... (the suffix goes before the extension).
@@ -1538,7 +1537,7 @@ clientErrorRoute sink = Router.post "/client-errors" (clientErrorHandler sink)
 clientErrorHandler :: (String -> IO ()) -> Router.Handler
 clientErrorHandler sink _ request = do
     bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) clientErrorMaxBytes
-    let fields = formFields (BS.unpack bytes)
+    let fields = formFields bytes
     Iteratee.liftIO $ do
         ts <- Log.localTimestamp
         sink (clientErrorLine ts request fields)
@@ -1694,9 +1693,8 @@ treePutDocument versioning maint root captures request = do
             Iteratee.liftIO (onSave maint path)
             Monad.when (versioningOn versioning) $ do
                 let author = Identity.currentIdentity (versioningIdentity versioning) request
-                -- BS.unpack is lazy and publishMessage reads only the frontmatter head,
-                -- so the whole page body is never widened to a String here.
-                _ <- Iteratee.liftIO (Git.commitPaths root author (publishMessage path (BS.unpack bytes)) [path])
+                message <- Iteratee.liftIO (publishMessage path bytes)
+                _ <- Iteratee.liftIO (Git.commitPaths root author message [path])
                 Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) path)
             pure noContentResponse
 
@@ -1708,8 +1706,11 @@ page-relative images. Update-only and idempotent.
 -}
 treeImageTitles :: FilePath -> Router.Handler
 treeImageTitles root captures _request = do
-    bodyBytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) formBodyLimit
-    let fields = formFields (BS.unpack bodyBytes)
+    -- The body carries indexed paths and short titles, never a document, so it is
+    -- capped well below 'formBodyLimit': the fields are widened to Strings and a
+    -- document-sized String is the cost RFC-0040 removed from every request path.
+    bodyBytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) imageTitlesBodyLimit
+    let fields = formFields bodyBytes
         path = capture "path" captures
     case Static.resolveStaticPath root (pathSegments path) of
         Nothing -> pure treeNotFound
@@ -1717,10 +1718,21 @@ treeImageTitles root captures _request = do
             Iteratee.liftIO (syncImageTitles root path fields)
             pure noContentResponse
 
--- | The auto-generated commit message for a publish: the page's frontmatter title, falling back to its path.
-publishMessage :: String -> String -> String
-publishMessage path markdown =
-    case Frontmatter.title markdown of
+{- | The most bytes an image-titles post may carry: a handful of indexed path and
+title fields per image, so 64KB covers hundreds of images.
+-}
+imageTitlesBodyLimit :: Int
+imageTitlesBodyLimit = 65536
+
+{- | The auto-generated commit message for a publish: the page's frontmatter
+title, falling back to its path. Only the leading frontmatter block is decoded
+(never the page body): MicroHs's 'BS.unpack' builds the whole list eagerly, so
+unpacking the document would widen it to a String (RFC-0040).
+-}
+publishMessage :: String -> BS.ByteString -> IO String
+publishMessage path markdown = do
+    block <- Frontmatter.slice markdown
+    pure $ case Frontmatter.title (Utf8.decodeUtf8 (BS.unpack block)) of
         Just title -> "Publish " ++ title
         Nothing -> "Publish " ++ path
 
@@ -1757,9 +1769,9 @@ treeDiff root path request = do
     -- RFC-0040 phase 5/9: the diff is captured to a file and streamed through the side-by-side transform
     -- a line at a time, so neither the whole diff nor the rendered table is held in the heap.
     cap <- Iteratee.liftIO (Git.diffBetweenCaptured root fromRev toRev path)
-    outSize <- Iteratee.liftIO (Socket.fileSizeBytes (Process.captureOut cap))
+    empty <- Iteratee.liftIO (captureEmpty cap)
     Iteratee.liftIO (Monad.void (FileSystem.removeFilePath (Process.captureErr cap)))
-    if Process.captureExit cap /= Exit.ExitSuccess || Maybe.isNothing outSize || outSize == Just 0
+    if empty
         then do
             -- No differences (or the command failed): a small whole response, no streaming.
             Iteratee.liftIO (Monad.void (FileSystem.removeFilePath (Process.captureOut cap)))
@@ -1812,20 +1824,25 @@ treeReadAt root path request = do
     -- RFC-0040 phase 5: the revision is captured to a file, streamed as the document, and removed
     -- when the body finishes; it never enters the heap.
     cap <- Iteratee.liftIO (Git.showFileAtRevisionCaptured root rev path)
-    outSize <- Iteratee.liftIO (Socket.fileSizeBytes (Process.captureOut cap))
     -- git show exits non-zero, or yields nothing, when the path did not exist at that revision.
-    if Process.captureExit cap /= Exit.ExitSuccess || Maybe.isNothing outSize || outSize == Just 0
+    empty <- Iteratee.liftIO (captureEmpty cap)
+    if empty
         then Iteratee.liftIO (Process.removeCapture cap) >> pure treeNotFound
         else do
             -- The stderr capture is not needed here; the stdout capture streams as the document.
             Iteratee.liftIO (Monad.void (FileSystem.removeFilePath (Process.captureErr cap)))
-            block <- Iteratee.liftIO (Frontmatter.readBlock (Process.captureOut cap))
-            attachments <- Iteratee.liftIO (loadPageAttachments root path)
-            breadcrumbs <- Iteratee.liftIO (breadcrumbsFor root path block)
-            spine <- Iteratee.liftIO (treeSpineFor root path)
-            title <- Iteratee.liftIO (documentPageTitle False path block)
-            let (before, after) = View.editorShell path (editorMode request) title False False False attachments breadcrumbs spine
-            Iteratee.liftIO (documentTempFileResponse before after (Process.captureOut cap))
+            let out = Process.captureOut cap
+            -- Until the response owns the capture, a crash between here and the body's
+            -- bracket would leak it: remove it on the way out and let the crash propagate.
+            Iteratee.liftIO $
+                Exception.onException
+                    ( do
+                        block <- Frontmatter.readBlock out
+                        chrome <- pageChrome root path False block
+                        let (before, after) = shellFor path request False False False chrome
+                        documentTempFileResponse before after out
+                    )
+                    (FileSystem.removeFilePath out)
 
 {- | The rollback action (RFC-0032): @POST /documents/\<path\>?rollback@ with a
 @rev@ field restores the page's content at that revision, writes it through the
@@ -1835,7 +1852,7 @@ rewritten), and returns to the read view.
 treeRollback :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
 treeRollback versioning maint root captures request = do
     bodyBytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) treeCreateMaxBytes
-    let fields = formFields (BS.unpack bodyBytes)
+    let fields = formFields bodyBytes
         rev = capture "rev" fields
         path = capture "path" captures
     case Static.resolveStaticPath root (pathSegments path) of
@@ -1844,8 +1861,8 @@ treeRollback versioning maint root captures request = do
             -- RFC-0040 phase 5: the revision is captured to a file and streamed into place, never
             -- routed through the heap.
             cap <- Iteratee.liftIO (Git.showFileAtRevisionCaptured root rev path)
-            outSize <- Iteratee.liftIO (Socket.fileSizeBytes (Process.captureOut cap))
-            if Process.captureExit cap /= Exit.ExitSuccess || Maybe.isNothing outSize || outSize == Just 0
+            empty <- Iteratee.liftIO (captureEmpty cap)
+            if empty
                 then Iteratee.liftIO (Process.removeCapture cap) >> pure (statusResponse 409 "Conflict" "cannot read that revision\n")
                 else do
                     copied <- Iteratee.liftIO (Stream.copyFile (Process.captureOut cap) fsPath)
@@ -2071,16 +2088,54 @@ documentStreamedResponse producer onMissing beforeHtml afterHtml fsPath = do
     after = BS.concat (Html.renderChunksRaw afterHtml)
     addEscapedLength n block = (n +) <$> Html.escapedLength block
 
-{- | A document page whose content is already in memory -- a staged draft, a seed,
-or a revision captured from git -- escaped once and emitted as a sized stream, so
-its response takes the same shape as a page streamed from disk (RFC-0040). Phase 5
-leaves the git capture on disk, at which point 'treeReadAt' streams like the rest.
+{- | A document page whose content is already in memory -- the new-page seed, the
+one document that is not a file -- escaped once and emitted as a sized stream, so
+its response takes the same shape as a page streamed from disk (RFC-0040). Every
+other page (published, drafted, or captured from git) streams from its file.
 -}
 documentBytesResponse :: Html.Html () -> Html.Html () -> BS.ByteString -> IO Http.Response
 documentBytesResponse beforeHtml afterHtml content = do
     escaped <- Html.escapeBlockBytes content
     let body = BS.concat [documentShellBytes beforeHtml, escaped, BS.concat (Html.renderChunksRaw afterHtml)]
     pure (Http.Response Http.okStatus documentHtmlHeaders (Http.SizedStreamBody (BS.length body) (Iteratee.strictEnumerator body)))
+
+{- | The chrome the editor shell carries around a page besides the document itself:
+its attachments, breadcrumbs, tree spine and browser-tab title.
+-}
+data PageChrome = PageChrome
+    { chromeAttachments :: [(String, String)]
+    , chromeBreadcrumbs :: [View.Crumb]
+    , chromeSpine :: String
+    , chromeTitle :: String
+    }
+
+{- | Loads a page's chrome from its leading frontmatter block (the whole content
+serves too, when it is already in hand). A new page takes the seed title.
+-}
+pageChrome :: FilePath -> String -> Bool -> BS.ByteString -> IO PageChrome
+pageChrome root path isNew block = do
+    attachments <- loadPageAttachments root path
+    breadcrumbs <- breadcrumbsFor root path block
+    spine <- treeSpineFor root path
+    title <- documentPageTitle isNew path block
+    pure (PageChrome attachments breadcrumbs spine title)
+
+{- | The editor shell halves around the document hole for a page: the request's
+editor mode, the versioning, editable and draft flags, and the page's chrome.
+-}
+shellFor :: String -> Http.RequestHead -> Bool -> Bool -> Bool -> PageChrome -> (Html.Html (), Html.Html ())
+shellFor path request versioned editable hasDraft chrome =
+    View.editorShell path (editorMode request) (chromeTitle chrome) versioned editable hasDraft (chromeAttachments chrome) (chromeBreadcrumbs chrome) (chromeSpine chrome)
+
+{- | Whether a subprocess capture yielded nothing to serve: the command failed, or
+its stdout capture is missing or empty. @git show@ exits non-zero when the path did
+not exist at the revision, and the byte-returning path this replaced mapped both
+that and an empty file to empty bytes, so this is the same predicate (RFC-0040).
+-}
+captureEmpty :: Process.ProcCapture -> IO Bool
+captureEmpty cap = do
+    stat <- FileSystem.fileStat (Process.captureOut cap)
+    pure (Process.captureExit cap /= Exit.ExitSuccess || either (const True) ((== 0) . FileSystem.fsSize) stat)
 
 -- | The @before@ shell bytes, with the HTML5 doctype 'documentResponse' prepends.
 documentShellBytes :: Html.Html () -> BS.ByteString
@@ -2158,16 +2213,13 @@ captureBytes name ((key, value) : rest)
     | BS.pack name == key = value
     | otherwise = captureBytes name rest
 
-normaliseNewlines :: String -> String
-normaliseNewlines [] = []
-normaliseNewlines ('\r' : '\n' : rest) = '\n' : normaliseNewlines rest
-normaliseNewlines ('\r' : rest) = '\n' : normaliseNewlines rest
-normaliseNewlines (c : rest) = c : normaliseNewlines rest
-
--- | Parses an @application/x-www-form-urlencoded@ body into decoded key/value pairs.
-formFields :: String -> [(String, String)]
+{- | Parses an @application/x-www-form-urlencoded@ body into decoded key/value
+pairs as 'String's, for the handlers whose fields are small identifiers. The body
+is split and decoded as bytes; only the decoded fields are widened (RFC-0040).
+-}
+formFields :: BS.ByteString -> [(String, String)]
 formFields body =
-    [(BS.unpack key, BS.unpack value) | (key, value) <- Http.parseFormBody (BS.pack body)]
+    [(BS.unpack key, BS.unpack value) | (key, value) <- Http.parseFormBody body]
 
 -- | Splits a string on a separator character, keeping empty segments.
 splitOn :: Char -> String -> [String]

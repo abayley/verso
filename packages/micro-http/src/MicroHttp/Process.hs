@@ -185,11 +185,6 @@ waitFor pid = Alloc.alloca $ \statusPtr -> do
 closeFd :: CTypes.CInt -> IO ()
 closeFd fd = Monad.when (fd >= 0) (Monad.void (c_close fd))
 
-{- | Creates a fresh, uniquely named temporary file and returns its path (the
-handle is closed immediately; only the path is used). Wraps @openTempFile@ so
-concurrent runs never collide on a capture file.
--}
-
 -- | Removes the given temporary files, ignoring any that are already gone.
 cleanup :: [FilePath] -> IO ()
 cleanup = mapM_ removeQuietly

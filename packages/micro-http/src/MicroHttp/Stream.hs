@@ -22,6 +22,7 @@ module MicroHttp.Stream (
     filesEqual,
 ) where
 
+import qualified Control.Exception as Exception
 import qualified Control.Monad as Monad
 import qualified Data.ByteString as BS
 import qualified Data.IORef as IORef
@@ -228,6 +229,11 @@ transformedTempFileBody ::
     Iteratee.Enumerator StreamError a
 transformedTempFileBody = transformedFileBodyImpl True
 
+{- | The shared producer behind 'transformedFileBody' and 'transformedTempFileBody':
+@before@, the file's blocks each passed through @transform@, then @after@, over
+one bracketed handle. The flag says whether the file is removed when the handle
+is released -- on completion, an early stop, or a failure alike.
+-}
 transformedFileBodyImpl ::
     Bool ->
     Int ->
@@ -271,7 +277,8 @@ a time so neither the whole text nor a whole-file `BS.concat` is built (RFC-0040
 byte-identical to @BS.writeFile path (BS.pack (unlines ...))@ but constant-space in
 the number of lines. The lines are consumed lazily, so a caller can generate them
 on demand. A file that will not open is a 'StreamSourceError'; a write failure
-part-way leaves a partial file (the caller renames only on success).
+part-way propagates as the exception it is, with the handle closed, and leaves a
+partial file (the caller renames only on success).
 -}
 writeFileLines :: FilePath -> [BS.ByteString] -> IO (Either StreamError ())
 writeFileLines path linesToWrite = do
@@ -279,8 +286,9 @@ writeFileLines path linesToWrite = do
     case opened of
         Nothing -> pure (Left (StreamSourceError ("cannot open file: " ++ path)))
         Just handle -> do
-            mapM_ (\line -> BS.hPut handle line >> BS.hPut handle newlineByte) linesToWrite
-            Base.hClose handle
+            Exception.finally
+                (mapM_ (\line -> BS.hPut handle line >> BS.hPut handle newlineByte) linesToWrite)
+                (Base.hClose handle)
             pure (Right ())
 
 -- | A single newline byte, appended after each line by 'writeFileLines'.

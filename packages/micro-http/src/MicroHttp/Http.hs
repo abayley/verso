@@ -32,8 +32,6 @@ module MicroHttp.Http (
     parseRequestHead,
     decodePathSegment,
     decodeFormValue,
-    decodeFormValueBytes,
-    parseFormBody,
     frameHeadersI,
     ResponseSerialiseError (..),
     ResponseWriter,
@@ -47,7 +45,6 @@ module MicroHttp.Http (
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.Char as Char
-import qualified MicroHttp.Bytes as Bytes
 import MicroHttp.Http.Parse (ParseError (..), ParseLimits (..), defaultParseLimits)
 import qualified MicroHttp.Http.Parse as Parse
 import qualified MicroHttp.Iteratee as Iteratee
@@ -203,68 +200,6 @@ decodePathSegment = decode False
 -- | Percent-decodes a form value; a literal @+@ becomes a space.
 decodeFormValue :: String -> String
 decodeFormValue = decode True
-
-{- | Percent-decodes a form value's bytes: @+@ becomes a space, @%XX@ becomes the
-byte those two hex digits name, and a malformed escape is kept exactly as it was
-written. Byte-for-byte identical to 'decodeFormValue' on the same input, but it
-never widens the value to a 'String': a document-sized form body would cost a
-cons cell per byte across every pass, and the arena cannot hold that (RFC-0040).
-
-The scan is a single index loop, not a search for the next escape. Under MicroHs
-@elemIndex@ unpacks the string it scans, so it costs O(n) per call; a browser
-form body carries a @+@ for every space, so scanning per escape would be
-quadratic. 'BS.index' is an O(1) view, so this is one linear pass.
-
-KNOWN CEILING (RFC-0040 phase 2): producing the decoded bytes as a list runs out
-of MicroHs evaluator stack somewhere above 350KB. That stack is a fixed 250,000
-slots (@STACK_SIZE@ in the runtime's @eval.c@) and does not scale with the heap,
-so this is a hard limit on any list-producing byte pass, not a tuning knob.
-Decoding in bounded blocks and rejoining them was tried and did not move the
-threshold, so where the depth accumulates is not yet understood. Values this
-large only reach here from the no-JavaScript form fallback; the editor's own
-saves are raw-body @PUT@s that never decode.
--}
-decodeFormValueBytes :: BS.ByteString -> BS.ByteString
-decodeFormValueBytes bytes = BSC.pack (go 0)
-  where
-    len = BS.length bytes
-    go i
-        | i >= len = []
-        | c == '+' = ' ' : go (i + 1)
-        | c == '%' && i + 2 < len =
-            case hexPair (BSC.index bytes (i + 1)) (BSC.index bytes (i + 2)) of
-                Just decoded -> decoded : go (i + 3)
-                Nothing -> c : BSC.index bytes (i + 1) : BSC.index bytes (i + 2) : go (i + 3)
-        | otherwise = c : go (i + 1)
-      where
-        c = BSC.index bytes i
-
-{- | Splits an @application\/x-www-form-urlencoded@ request body into its
-percent-decoded @(key, value)@ pairs, as bytes throughout. A field with no @=@
-has an empty value, and only the first @=@ separates, so an encoded @=@ inside a
-value survives. An empty body has no fields at all; an empty field between two
-separators is a field with an empty name, which is what the string parser this
-replaces also produced.
-
-Fields are cut out with 'Bytes.indexOf' and O(1) 'BS.take'\/'BS.drop' views, not
-with 'BSC.split' or 'BSC.elemIndex'. Under MicroHs @split@ is
-@map pack . splitWith . unpack@ and @elemIndex@ is @Data.List.elemIndex . unpack@;
-both widen the body to a list, and the scan's per-element state overflows the
-collector's stack on a body past ~250KB (see 'MicroHttp.Bytes'). A search costs one
-pass per field, and a form carries a handful of fields (RFC-0040; the trap is
-documented on 'MicroHttp.Bytes').
--}
-parseFormBody :: BS.ByteString -> [(BS.ByteString, BS.ByteString)]
-parseFormBody body
-    | BS.null body = []
-    | otherwise = fields body
-  where
-    fields rest = case Bytes.indexOf '&' rest of
-        Nothing -> [splitField rest]
-        Just i -> splitField (BS.take i rest) : fields (BS.drop (i + 1) rest)
-    splitField field = case Bytes.indexOf '=' field of
-        Nothing -> (decodeFormValueBytes field, BS.empty)
-        Just i -> (decodeFormValueBytes (BS.take i field), decodeFormValueBytes (BS.drop (i + 1) field))
 
 {- | Percent-decodes a string; when the flag is set, a literal @+@ becomes a
 space.

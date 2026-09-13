@@ -12,7 +12,6 @@ module Verso.App (
     clientErrorRoute,
     searchResultsJson,
     linkedFolderPaths,
-    normaliseNewlineBytes,
     orderTreeNodes,
     slugify,
     treeChildrenJson,
@@ -30,7 +29,6 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
-import qualified MicroHttp.Bytes as Bytes
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Form as Form
 import qualified MicroHttp.Html as Html
@@ -453,8 +451,7 @@ or a @400@ for a bad request.
 -}
 treeCreateHandler :: WriteLock -> IndexMaintenance -> FilePath -> Router.Handler
 treeCreateHandler writeLock maint root captures _ = do
-    bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) treeCreateMaxBytes
-    let fields = formFields bytes
+    fields <- formFieldsI treeCreateMaxBytes
     result <- Iteratee.liftIO $
         withWriteLock writeLock $ do
             created <- createTreeNode root (capture "path" captures) (capture "kind" fields) (capture "title" fields)
@@ -495,9 +492,8 @@ treeDelete versioning writeLock findRelevant maint operationStore trashStore roo
 -}
 treeMoveHandler :: Versioning -> Git.Identity -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> OperationStore.OperationStore -> FilePath -> Router.Captures -> Iteratee.Iter Stream.StreamError Http.Response
 treeMoveHandler versioning author writeLock findRelevant maint operationStore root captures = do
-    bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) treeCreateMaxBytes
-    let fields = formFields bytes
-        srcRel = capture "path" captures
+    fields <- formFieldsI treeCreateMaxBytes
+    let srcRel = capture "path" captures
         confirm = capture "confirm" fields == "true"
         isPage = isMarkdownPath srcRel
         move = if isPage then TreeMove.movePage else TreeMove.moveSection
@@ -680,9 +676,8 @@ moved refuses cleanly rather than corrupting the tree).
 -}
 treeUndoHandler :: Versioning -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> OperationStore.OperationStore -> TrashStore.TrashStore -> FilePath -> FilePath -> Router.Handler
 treeUndoHandler versioning writeLock findRelevant maint operationStore trashStore root trashRoot _ request = do
-    bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) treeCreateMaxBytes
-    let fields = formFields bytes
-        wantedSeq = parseSeq (capture "seq" fields)
+    fields <- formFieldsI treeCreateMaxBytes
+    let wantedSeq = parseSeq (capture "seq" fields)
         author = Identity.currentIdentity (versioningIdentity versioning) request
     Iteratee.liftIO $ withWriteLock writeLock $ do
         ops <- OperationStore.readOperations operationStore
@@ -1537,8 +1532,7 @@ clientErrorRoute sink = Router.post "/client-errors" (clientErrorHandler sink)
 -- | Records one bounded client-error report via the sink and answers @204@.
 clientErrorHandler :: (String -> IO ()) -> Router.Handler
 clientErrorHandler sink _ request = do
-    bytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) clientErrorMaxBytes
-    let fields = formFields bytes
+    fields <- formFieldsI clientErrorMaxBytes
     Iteratee.liftIO $ do
         ts <- Log.localTimestamp
         sink (clientErrorLine ts request fields)
@@ -1768,9 +1762,8 @@ treeImageTitles root captures _request = do
     -- The body carries indexed paths and short titles, never a document, so it is
     -- capped well below 'formBodyLimit': the fields are widened to Strings and a
     -- document-sized String is the cost RFC-0040 removed from every request path.
-    bodyBytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) imageTitlesBodyLimit
-    let fields = formFields bodyBytes
-        path = capture "path" captures
+    fields <- formFieldsI imageTitlesBodyLimit
+    let path = capture "path" captures
     case Static.resolveStaticPath root (pathSegments path) of
         Nothing -> pure treeNotFound
         Just _ -> do
@@ -1910,9 +1903,8 @@ rewritten), and returns to the read view.
 -}
 treeRollback :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
 treeRollback versioning maint root captures request = do
-    bodyBytes <- Iteratee.readBodyStrict (Stream.StreamParseError Parse.BodyTooLarge) treeCreateMaxBytes
-    let fields = formFields bodyBytes
-        rev = capture "rev" fields
+    fields <- formFieldsI treeCreateMaxBytes
+    let rev = capture "rev" fields
         path = capture "path" captures
     case Static.resolveStaticPath root (pathSegments path) of
         Nothing -> pure treeNotFound
@@ -2244,41 +2236,18 @@ editorMode request =
         "visual" -> Just "visual"
         _ -> Nothing
 
-{- | Canonicalises line endings to @\\n@. A no-JavaScript form post encodes
-textarea newlines as @CRLF@ (HTML form submission, RFC-0001), so the document
-contract stays line-feed only regardless of submission mode.
+{- | Consumes an @application/x-www-form-urlencoded@ request body whose fields are
+all small identifiers, as decoded 'String' pairs (RFC-0042). Every field is
+collected; @cap@ bounds each decoded field and their total, so the body is
+bounded as the strict read it replaces was, and the count is bounded by the
+bytes (an empty field is at least one byte). Only the decoded fields are widened.
 -}
-normaliseNewlineBytes :: BS.ByteString -> BS.ByteString
-normaliseNewlineBytes bytes
-    -- Bytes.indexOf, not BS.notElem: the library scan unpacks and can overflow the
-    -- collector's stack on a body past ~250KB (MicroHttp.Bytes). This is the hot case:
-    -- browsers submit a textarea with CRLF line ends, so every no-JS save rewrites.
-    | Maybe.isNothing (Bytes.indexOf '\r' bytes) = bytes
-    | otherwise = BS.pack (go 0)
+formFieldsI :: Int -> Iteratee.Iter Stream.StreamError [(String, String)]
+formFieldsI cap = do
+    (fields, _) <- Form.formI limits (Stream.StreamParseError Parse.BodyTooLarge) (const Form.CollectField)
+    pure [(BS.unpack key, BS.unpack value) | (key, value) <- fields]
   where
-    len = BS.length bytes
-    go i
-        | i >= len = []
-        | c /= '\r' = c : go (i + 1)
-        | i + 1 < len && BS.index bytes (i + 1) == '\n' = '\n' : go (i + 2)
-        | otherwise = '\n' : go (i + 1)
-      where
-        c = BS.index bytes i
-
--- | The first value bound to a byte-valued field key, or empty bytes when absent.
-captureBytes :: String -> [(BS.ByteString, BS.ByteString)] -> BS.ByteString
-captureBytes _ [] = BS.empty
-captureBytes name ((key, value) : rest)
-    | BS.pack name == key = value
-    | otherwise = captureBytes name rest
-
-{- | Parses an @application/x-www-form-urlencoded@ body into decoded key/value
-pairs as 'String's, for the handlers whose fields are small identifiers. The body
-is split and decoded as bytes; only the decoded fields are widened (RFC-0040).
--}
-formFields :: BS.ByteString -> [(String, String)]
-formFields body =
-    [(BS.unpack key, BS.unpack value) | (key, value) <- Http.parseFormBody body]
+    limits = Form.FormLimits{Form.maxFieldBytes = cap, Form.maxCollectedBytes = cap, Form.maxFields = cap + 1}
 
 -- | Splits a string on a separator character, keeping empty segments.
 splitOn :: Char -> String -> [String]

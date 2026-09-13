@@ -1,7 +1,7 @@
 ---
 id: RFC-0042
 name: Streaming form consumer
-status: Draft
+status: Implemented
 owners:
     - Alistair Bayley
 created: 2026-09-13
@@ -17,8 +17,8 @@ related_refs: []
 | Stage     | Timestamp             |
 | --------- | --------------------- |
 | Authored  | 2026-09-13 20:40 NZST |
-| Started   |                       |
-| Completed |                       |
+| Started   | 2026-09-13 21:00 NZST |
+| Completed | 2026-09-13 22:10 NZST |
 
 ## Summary
 
@@ -358,11 +358,34 @@ Gates: `make check` green under both compilers; the `HttpSpec` contract tests fo
 
 ### Phase 3: retire the whole-body parser
 
-- [ ] `formFields` reimplemented over `formI` all-collect for the identifier handlers.
-- [ ] `Http.parseFormBody`, `decodeFormValueBytes` and `App.normaliseNewlineBytes` removed with their tests
-      moved; the KNOWN CEILING note retired and the fix recorded in RFC-0040's inventory row for `treeSave`.
-- [ ] ADR: form bodies are consumed as routed part streams (a load-bearing framework contract in the ADR-0091
-      family), recording the sequencing constraint.
+- [x] `formFields` reimplemented over `formI` all-collect for the identifier handlers. **Done (2026-09-13.)**
+      As `formFieldsI cap`, which consumes the body directly (no strict read first): the per-field and total
+      caps are the handler's old body cap, and the count cap is the cap plus one, which the bytes already
+      imply. Six handlers moved (create, move, undo, client error, image titles, rollback).
+- [x] `Http.parseFormBody`, `decodeFormValueBytes` and `App.normaliseNewlineBytes` removed with their tests
+      moved; the KNOWN CEILING note retired. **Done (2026-09-13.)** `App.captureBytes` went with them. The
+      `String` `decodeFormValue` stays for query strings. RFC-0040's inventory row is **not** edited: the RFC
+      is implemented and `docs/README.md` makes implemented RFCs point-in-time; its `treeSave` row already
+      hands the whole-body read to this RFC, and this checklist is the record of the fix.
+- [x] ADR: form bodies are consumed as routed part streams (a load-bearing framework contract in the ADR-0091
+      family), recording the sequencing constraint. **Done (2026-09-13.)** ADR-0092, which also records the
+      producer-chunk slicing rule phase 2 found.
+
+### Findings from the phase 3 gate (2026-09-13)
+
+The first full `make check` after phase 3 failed the GHC editor smoke five runs in six, with the client
+reporting a closed socket on the `?raw` poll right after a save. Bisection with GHC builds at earlier
+commits placed the regression at the raw `PUT` streaming change (cbc4208, an RFC-0040 follow-on), not at
+this RFC; the mhs smoke never failed, and neither `curl` nor a bun client could reproduce it in isolation.
+The access log gave the mechanism: the concurrent `?raw` GET resolved the page's size for its `FileBody`
+(`Socket.fileSizeBytes`), the PUT then renamed the new page into place, and the sink `sendfile`d the new
+inode under the old `Content-Length`, so the client received a short body and a close. In-place
+`BS.writeFile` had the same race with a window too small to hit; atomic replacement widened it to the
+handler's whole duration. Fixed in `Server.socketSinkFile`: the head's length is now the size of the file
+the sink actually opened (one `lseek`), so head and body agree whatever happened to the path in between;
+two socket-level tests cover a file replaced by a shorter and a longer one. The carried size still feeds the
+access log, which may be stale by design. Recorded here because this RFC's gate found it; the fix is its
+own commit.
 
 ### Rollout Plan Escape Hatch
 

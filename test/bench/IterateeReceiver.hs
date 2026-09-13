@@ -34,7 +34,7 @@ recvBufferSize = 8192
 
 consumers :: [(String, Socket.ClientSocket -> IO Int)]
 consumers =
-    [ ("plain Socket.recv     ", plainRecv)
+    [ ("plain recv     ", plainRecv)
     , ("iteratee stream", streamingConsumer)
     ]
 

@@ -20,8 +20,7 @@ mkdir -p "$BUILD"
 mhs -a"$DB" -i"$ROOT/test/bench" "$ROOT/test/bench/SocketReceiver.hs" -o "$BUILD/socket-receiver"
 
 # Sender: GHC + network, blocking sends.
-(cd "$ROOT/test/bench/sender" && cabal build >/dev/null 2>&1)
-SENDER="$(cd "$ROOT/test/bench/sender" && cabal list-bin socket-sender)"
+SENDER="$("$ROOT/test/bench/build-sender.sh" socket-sender)"
 
 # Start the receiver, then the sender (which retries the connect past the
 # startup race). Clean up the receiver if anything fails.

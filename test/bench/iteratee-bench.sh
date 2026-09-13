@@ -21,8 +21,7 @@ mkdir -p "$BUILD"
 mhs -a"$DB" -i"$ROOT/test/bench" "$ROOT/test/bench/IterateeReceiver.hs" -o "$BUILD/iteratee-receiver"
 
 # Sender: GHC + network, blocking sends.
-(cd "$ROOT/test/bench/sender" && cabal build >/dev/null 2>&1)
-SENDER="$(cd "$ROOT/test/bench/sender" && cabal list-bin socket-sender)"
+SENDER="$("$ROOT/test/bench/build-sender.sh" socket-sender)"
 
 "$BUILD/iteratee-receiver" &
 RECV_PID=$!

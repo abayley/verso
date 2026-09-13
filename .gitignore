@@ -29,3 +29,4 @@ spike/search/reference/corpus-ab-report.md
 
 # MicroCabal build output
 dist-mcabal/
+test/bench/sender/cabal.project.local

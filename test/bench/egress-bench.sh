@@ -21,8 +21,7 @@ mkdir -p "$BUILD"
 mhs -a"$DB" -i"$ROOT/test/bench" "$ROOT/test/bench/EgressSender.hs" -o "$BUILD/egress-sender"
 
 # Drainer: GHC + network, blocking reads.
-(cd "$ROOT/test/bench/sender" && cabal build >/dev/null 2>&1)
-DRAIN="$(cd "$ROOT/test/bench/sender" && cabal list-bin socket-drain)"
+DRAIN="$("$ROOT/test/bench/build-sender.sh" socket-drain)"
 
 "$BUILD/egress-sender" &
 SEND_PID=$!

@@ -36,7 +36,7 @@ payload = BS.replicate chunkBytes 0x78
 
 methods :: [(String, Socket.ClientSocket -> IO Int)]
 methods =
-    [ ("plain Socket.sendAll  ", plainSend)
+    [ ("plain sendAll  ", plainSend)
     , ("iteratee egress", iterateeSend)
     ]
 

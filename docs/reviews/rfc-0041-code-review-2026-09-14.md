@@ -263,8 +263,13 @@ predicted) before any source change.
   the resource too, which the RFC-0042 review had recorded as a gap.
 - **Correctness 3, fixed.** `EgressSender.hs` and `SocketReceiver.hs` match the pair
   `accept` returns. All three bench programs compile with the scripts' own `mhs` line against
-  the installed package (MEASURED). No bench script was run: the GHC sender still does not
-  build here, and the RFC now says so.
+  the installed package (MEASURED). The GHC sender then turned out not to build either: the
+  Hackage index had never been fetched, and once it was, the `network` package's hsc2hs link
+  hit the same Command Line Tools linker mismatch the Makefile already works around for GHC.
+  A new `test/bench/build-sender.sh` writes that override into a gitignored
+  `cabal.project.local`, keeps the build log instead of silencing it, and is what the three
+  scripts now call. All three bench scripts ran end to end (MEASURED); the iteratee numbers
+  from the real sender are in the RFC.
 - **Correctness 4, test added.** Counted outer resource, inner consumer failing after reading
   both streams, one release.
 - **Correctness 5 and 6.** No change needed.

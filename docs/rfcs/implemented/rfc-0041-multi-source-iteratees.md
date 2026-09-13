@@ -390,6 +390,11 @@ Implementation:
   change, one run: plain recv 2068 MB/s, iteratee stream 1505 MB/s. After, three runs: 2054/2009, 2283/2132,
   2120/1797. The iteratee path is not slower for carrying `Monad m`; run-to-run variance is larger than any
   difference, and the single before-run looks like a cold outlier rather than a baseline the change beat.
+  On 2026-09-14 the GHC sender was made to build (the Hackage index had never been fetched, and the
+  Command Line Tools linker override the Makefile uses for GHC links had to reach the `network` package's
+  hsc2hs step too; `test/bench/build-sender.sh` now does both), and `make bench-iteratee` proper ran three
+  times over 256 MiB on the remediated tree: plain recv 1930/1933/1880 MB/s, iteratee stream 1545/1874/2014
+  MB/s. Same conclusion: the iteratee path is within run-to-run variance of the raw loop.
 
 ### Review remediation (2026-09-14)
 

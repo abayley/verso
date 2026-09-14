@@ -21,7 +21,11 @@ module MicroHttp.Bytes (
     split,
     isInfixOf,
     foldl',
+    concatBalanced,
+    intercalate,
 ) where
+
+import qualified Data.List as List
 
 import qualified Data.ByteString.Char8 as BS
 
@@ -84,3 +88,22 @@ foldl' f z bytes = go 0 z
     go i acc
         | i >= len = acc
         | otherwise = let acc' = f acc (BS.index bytes i) in acc' `seq` go (i + 1) acc'
+
+{- | Joins pieces with pairwise appends, O(total x log pieces) bytes copied. The
+library's @concat@ is @foldr append@, which re-copies the growing result once per
+piece (O(total x pieces)); its @intercalate@ unpacks every piece to a list. Use
+this to join the lines of a paragraph, the paragraphs of a chunk, or any list
+whose length grows with the input (RFC-0043).
+-}
+concatBalanced :: [BS.ByteString] -> BS.ByteString
+concatBalanced pieces = case pieces of
+    [] -> BS.empty
+    [one] -> one
+    _ -> concatBalanced (pairUp pieces)
+  where
+    pairUp (a : b : rest) = BS.append a b : pairUp rest
+    pairUp rest = rest
+
+-- | 'concatBalanced' with a separator between the pieces; never unpacks.
+intercalate :: BS.ByteString -> [BS.ByteString] -> BS.ByteString
+intercalate separator = concatBalanced . List.intersperse separator

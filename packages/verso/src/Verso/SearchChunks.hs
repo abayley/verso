@@ -5,18 +5,21 @@ ancestor heading path. Sections beyond the size cap split at paragraph
 boundaries. Pure: the caller supplies the page title and the raw content
 bytes.
 
-The scan works over the UTF-8 bytes directly (libc @memchr@ finds the line
-ends; classification reads a handful of bytes per line; sections and
-paragraphs are O(1) views), so the page is never decoded to 'String' -- only
-the short heading texts are. The size cap therefore counts bytes rather than
-decoded characters: equivalent for the ASCII-dominant corpus, and the cap is
-a soft budget in any case. On mhs the previous 'String' pipeline (decode,
-per-line list churn) was a large share of the indexing cost
-(@make bench-search-chunk@).
+The chunker is a line-fed state machine ('feedLine', 'finish'), so the same
+code chunks a page held whole ('chunkPage': libc @memchr@ finds the line ends
+and each line is an O(1) view) and a page streamed from disk ('chunkFile',
+RFC-0043: one read block plus the open paragraph and the open piece are all
+that is ever live, whatever the page's size). Classification reads a handful
+of bytes per line and the page is never decoded to 'String' -- only the short
+heading texts are. The size cap therefore counts bytes rather than decoded
+characters: equivalent for the ASCII-dominant corpus, and the cap is a soft
+budget in any case. On mhs the previous 'String' pipeline (decode, per-line
+list churn) was a large share of the indexing cost (@make bench-search-chunk@).
 -}
 module Verso.SearchChunks (
     Chunk (..),
     chunkPage,
+    chunkFile,
     lineRanges,
     isDashesLine,
 ) where
@@ -28,6 +31,8 @@ import qualified Data.List as List
 import qualified Foreign.C.String as CStr
 import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Ptr as Ptr
+import qualified MicroHttp.Bytes as Bytes
+import qualified MicroHttp.Stream as Stream
 
 foreign import ccall "string.h memchr" c_memchr :: CStr.CString -> CTypes.CInt -> CTypes.CSize -> IO (Ptr.Ptr ())
 
@@ -45,97 +50,158 @@ data Chunk = Chunk
 -- | A half-open byte range @[start, end)@ into the page content.
 type Range = (Int, Int)
 
-{- | Chunks a page: context line (title plus ancestor headings), heading
-sections, size-capped (in bytes) at paragraph boundaries.
+{- | Chunks a page held whole: context line (title plus ancestor headings),
+heading sections, size-capped (in bytes) at paragraph boundaries. The lines
+are O(1) views fed to the same machine 'chunkFile' drives from disk.
 -}
 chunkPage :: Int -> String -> BS.ByteString -> IO [Chunk]
 chunkPage cap title content = do
     ranges <- lineRanges content
-    let usable = [s | s@(_, _, paras) <- sectionsOf title content (dropFrontmatter content ranges), not (null paras)]
-    pure
-        [ Chunk anchor seqNo text
-        | (seqNo, (anchor, text)) <- zip [0 ..] (concatMap capPieces usable)
-        ]
-  where
-    capPieces (anchor, context, paras) =
-        case splitAtParagraphs cap content paras of
-            [] -> []
-            (first : rest) ->
-                (anchor, withContext context first)
-                    : [(anchor, withContext (continuationContext anchor context) piece) | piece <- rest]
-    continuationContext anchor context =
-        if null anchor then context else context ++ " > " ++ anchor
-    withContext context = BS.append (BS.pack (Utf8.encodeUtf8 (context ++ "\n")))
+    pure (finish (List.foldl' feedLine (newChunker cap title) (map (viewOf content) ranges)))
 
-{- | Splits the paragraph ranges into pieces of at most the cap (in bytes) at
-paragraph boundaries, joined with blank lines; a single paragraph beyond the
-cap stays whole.
+{- | Chunks a page streamed from disk (RFC-0043): the file is read in blocks
+and fed to the machine one line at a time, so the page is never held whole.
+A file that will not open is the fold's 'Stream.StreamError'.
 -}
-splitAtParagraphs :: Int -> BS.ByteString -> [Range] -> [BS.ByteString]
-splitAtParagraphs cap content = go
+chunkFile :: Int -> String -> FilePath -> IO (Either Stream.StreamError [Chunk])
+chunkFile cap title path =
+    fmap finish <$> Stream.foldFileLines (\ck line -> pure (feedLine ck line)) (newChunker cap title) path
+
+{- | The chunking state between lines. Paragraph lines and the open piece's
+paragraphs accumulate in reverse; emitted pieces likewise, as (anchor, text).
+-}
+data Chunker = Chunker
+    { ckCap :: Int
+    , ckTitle :: String
+    , ckFront :: Front
+    , ckInFence :: Bool
+    , ckAncestors :: [(Int, String)]
+    -- ^ The open heading path, outermost first, including the current section's heading.
+    , ckAnchor :: String
+    , ckContext :: String
+    -- ^ The current section's context line: title plus ancestor headings, without its own.
+    , ckLines :: [BS.ByteString]
+    -- ^ The open paragraph's lines, reversed.
+    , ckPieceParas :: [BS.ByteString]
+    -- ^ The open piece's paragraphs, reversed.
+    , ckPieceLen :: Int
+    -- ^ The open piece's byte length once joined (0 when empty).
+    , ckPieceFirst :: Bool
+    -- ^ Whether the open piece is its section's first (a later one carries a continuation context).
+    , ckOut :: [(String, BS.ByteString)]
+    }
+
+{- | Where the machine is with respect to a leading frontmatter block: at the
+first line; inside an opened block, holding its lines in case it never closes
+(a whole-page chunker keeps an unclosed block as content, so this does too, up
+to 'frontmatterCapBytes'); or past it.
+-}
+data Front = AtStart | Buffering [BS.ByteString] Int | Body
+
+newChunker :: Int -> String -> Chunker
+newChunker cap title = Chunker cap title AtStart False [] "" title [] [] 0 True []
+
+{- | The most bytes held back for an unclosed frontmatter block before the
+held lines are replayed as content. The whole-page form has no such bound,
+so the two differ only for a page that opens with @---@, never closes it,
+and runs past this size.
+-}
+frontmatterCapBytes :: Int
+frontmatterCapBytes = 65536
+
+-- | Feeds one line (without its newline) to the machine.
+feedLine :: Chunker -> BS.ByteString -> Chunker
+feedLine ck line = case ckFront ck of
+    AtStart
+        | isDashesLine line (whole line) -> ck{ckFront = Buffering [line] (BS.length line)}
+        | otherwise -> bodyLine ck{ckFront = Body} line
+    Buffering held heldBytes
+        | isDashesLine line (whole line) -> ck{ckFront = Body}
+        | heldBytes > frontmatterCapBytes -> bodyLine (replay ck held) line
+        | otherwise -> ck{ckFront = Buffering (line : held) (heldBytes + BS.length line)}
+    Body -> bodyLine ck line
   where
-    go [] = []
-    go (p : ps) = accumulate (rangeLength p) [p] ps
-    accumulate len accRev (p : ps)
-        | len + 2 + rangeLength p <= cap = accumulate (len + 2 + rangeLength p) (p : accRev) ps
-    accumulate _ accRev ps = joinParagraphs (reverse accRev) : go ps
-    joinParagraphs ranges = BS.concat (List.intersperse blankSep (map (viewOf content) ranges))
-    rangeLength (s, e) = e - s
+    replay ck0 held = List.foldl' bodyLine ck0{ckFront = Body} (reverse held)
+
+-- | A line of the page body: a fence toggle, a heading (outside a fence), a blank (outside a fence), or text.
+bodyLine :: Chunker -> BS.ByteString -> Chunker
+bodyLine ck line
+    | isFenceAt line (whole line) = (addLine ck line){ckInFence = not (ckInFence ck)}
+    | ckInFence ck = addLine ck line
+    | otherwise = case headingAt line (whole line) of
+        Just (level, text) -> addLine (startSection (endSection ck) level text) line
+        Nothing
+            | isBlankAt line (whole line) -> endParagraph ck
+            | otherwise -> addLine ck line
+
+addLine :: Chunker -> BS.ByteString -> Chunker
+addLine ck line = ck{ckLines = line : ckLines ck}
+
+-- | Opens the section under a heading: the ancestor path is cut back to levels above it and the heading appended.
+startSection :: Chunker -> Int -> String -> Chunker
+startSection ck level text =
+    let above = takeWhile (\(lv, _) -> lv < level) (ckAncestors ck)
+     in ck
+            { ckAncestors = above ++ [(level, text)]
+            , ckAnchor = text
+            , ckContext = List.intercalate " > " (ckTitle ck : map snd above)
+            , ckPieceFirst = True
+            }
+
+-- | Closes the open paragraph and emits the open piece, if any.
+endSection :: Chunker -> Chunker
+endSection ck = emitPiece (endParagraph ck)
+
+{- | Closes the open paragraph: its lines joined with newlines and trimmed of
+blank space at both ends join the open piece if they fit under the cap, else
+the piece is emitted and a new one starts with them. A blank paragraph is
+dropped. The whole-page form's greedy paragraph packing, one step at a time.
+-}
+endParagraph :: Chunker -> Chunker
+endParagraph ck
+    | null (ckLines ck) = ck
+    | BS.null paragraph = ck{ckLines = []}
+    | ckPieceLen ck == 0 = ck{ckLines = [], ckPieceParas = [paragraph], ckPieceLen = plen}
+    | ckPieceLen ck + 2 + plen <= ckCap ck = ck{ckLines = [], ckPieceParas = paragraph : ckPieceParas ck, ckPieceLen = ckPieceLen ck + 2 + plen}
+    | otherwise = (emitPiece ck){ckLines = [], ckPieceParas = [paragraph], ckPieceLen = plen}
+  where
+    joined = Bytes.intercalate newline (reverse (ckLines ck)) -- never the library intercalate: it unpacks every line
+    paragraph = trimBlank joined
+    plen = BS.length paragraph
+
+-- | Emits the open piece under the section's context (a continuation context after the first), if it has any paragraph.
+emitPiece :: Chunker -> Chunker
+emitPiece ck
+    | null (ckPieceParas ck) = ck
+    | otherwise =
+        let context
+                | ckPieceFirst ck || null (ckAnchor ck) = ckContext ck
+                | otherwise = ckContext ck ++ " > " ++ ckAnchor ck
+            text = BS.append (BS.pack (Utf8.encodeUtf8 (context ++ "\n"))) (Bytes.intercalate blankSep (reverse (ckPieceParas ck)))
+         in ck{ckOut = (ckAnchor ck, text) : ckOut ck, ckPieceParas = [], ckPieceLen = 0, ckPieceFirst = False}
+
+-- | Ends the page: an unclosed frontmatter block is content, the last paragraph and piece are emitted, and the chunks are numbered.
+finish :: Chunker -> [Chunk]
+finish ck0 =
+    let ck = case ckFront ck0 of
+            Buffering held _ -> List.foldl' bodyLine ck0{ckFront = Body} (reverse held)
+            _ -> ck0
+        done = endSection ck
+     in [Chunk anchor seqNo text | (seqNo, (anchor, text)) <- zip [0 ..] (reverse (ckOut done))]
+
+-- | The range covering a whole line.
+whole :: BS.ByteString -> Range
+whole line = (0, BS.length line)
+
+newline :: BS.ByteString
+newline = BS.pack "\n"
 
 blankSep :: BS.ByteString
 blankSep = BS.pack "\n\n"
 
-{- | The heading sections in line order, each carrying its heading text
-(empty for the preamble), its context line (title plus @ > @-joined ancestor
-heading path), and its paragraph ranges.
--}
-sectionsOf :: String -> BS.ByteString -> [Range] -> [(String, String, [Range])]
-sectionsOf title content = go False [] "" []
-  where
-    go _ ancestors anchor accRev [] = [emit ancestors anchor accRev]
-    go inFence ancestors anchor accRev (l : ls)
-        | isFenceAt content l = go (not inFence) ancestors anchor (l : accRev) ls
-        | inFence = go inFence ancestors anchor (l : accRev) ls
-        | otherwise =
-            case headingAt content l of
-                Just (level, text) ->
-                    emit ancestors anchor accRev
-                        : go False (takeWhile (\(lv, _) -> lv < level) ancestors ++ [(level, text)]) text [l] ls
-                Nothing -> go False ancestors anchor (l : accRev) ls
-    emit ancestors anchor accRev =
-        ( anchor
-        , contextOf (if null anchor then ancestors else init ancestors)
-        , paragraphRanges content (reverse accRev)
-        )
-    contextOf ancestors = List.intercalate " > " (title : map snd ancestors)
-
-{- | Groups a section's lines into paragraph ranges: blank lines outside code
-fences separate paragraphs; each paragraph is a contiguous source range,
-trimmed of leading and trailing blank space.
--}
-paragraphRanges :: BS.ByteString -> [Range] -> [Range]
-paragraphRanges content = go False []
-  where
-    go _ accRev [] = emit accRev
-    go inFence accRev (l : ls)
-        | isFenceAt content l = go (not inFence) (l : accRev) ls
-        | not inFence && isBlankAt content l = emit accRev ++ go False [] ls
-        | otherwise = go inFence (l : accRev) ls
-    emit [] = []
-    emit accRev =
-        let end = snd (head accRev)
-            start = fst (List.last accRev)
-            trimmed@(s, e) = trimRange content (start, end)
-         in [trimmed | s < e]
-
--- | Drops a leading @---@ frontmatter block from the line list, if present.
-dropFrontmatter :: BS.ByteString -> [Range] -> [Range]
-dropFrontmatter content allLines@(first : rest)
-    | isDashesLine content first =
-        case break (isDashesLine content) rest of
-            (_, _ : body) -> body
-            _ -> allLines
-dropFrontmatter _ allLines = allLines
+-- | The bytes past leading and trailing blank space (@ \t\r\n@), as a view.
+trimBlank :: BS.ByteString -> BS.ByteString
+trimBlank bytes = viewOf bytes (trimRange bytes (0, BS.length bytes))
 
 {- | The page's lines as byte ranges (excluding the newline), with 'lines'
 semantics (no empty final line after a trailing newline). The line ends come
@@ -152,8 +218,8 @@ lineRanges content =
             go start
                 | start >= len = pure []
                 | otherwise = do
-                    newline <- findNewline start
-                    case newline of
+                    newline' <- findNewline start
+                    case newline' of
                         Nothing -> pure [(start, len)]
                         Just j -> ((start, j) :) <$> go (j + 1)
         go 0

@@ -84,9 +84,9 @@ dated Done note stating what was done instead and why.
 ## Non-Goals
 
 - Changing the MicroHs runtime, its collector, or when it collects.
-- Streaming the search indexer's page read: the page is read whole, then chunked at heading boundaries,
-  then embedded chunk by chunk; the Haskell retention is a few MB and the C-side embedder's transient is
-  two orders larger (RFC-0040 phase 7). Its read is annotated, not rewritten.
+- Streaming the search indexer's page read was a non-goal as authored (the page was read whole, then
+  chunked at heading boundaries, then embedded chunk by chunk; the C-side embedder's transient is two
+  orders larger). It was then asked for and done the same day; see "Addendum: the streamed chunker".
 - A memory cap or watchdog in the server.
 - Rewriting the bounded reads (config file, model vocabulary, sidecars, manifests, `index.md`).
 
@@ -265,6 +265,29 @@ without losing the two conversions.
 - The memory bench took four attempts to measure the right thing; the Done note on phase 1 lists what
   each attempt taught. The lesson worth keeping is in the script header: check the port before starting,
   and cross-check sampled RSS against the kernel's maximum.
+
+### Addendum: the streamed chunker (2026-09-14)
+
+`Verso.SearchChunks` is now a line-fed state machine (`feedLine`, `finish`) driven two ways: `chunkPage`
+feeds the lines of a page held whole (kept for the bench and the pure specs) and `chunkFile` folds a file
+through it with `Stream.foldFileLines`, so what is live is one read block, the open paragraph and the open
+piece, whatever the page's size. `SearchIndex.indexPage` reads the title through `Frontmatter.readBlock`,
+chunks through `chunkFile` and fingerprints through `Fingerprint.contentFingerprintFile`; its `BS.readFile`
+and annotation are gone. Four new `SearchChunksSpec` cases pin the streamed form to the whole-page form on
+a page with frontmatter, nested headings and a fence; on a 170KB page whose headings and paragraphs
+straddle the 64KiB read blocks; on an unclosed frontmatter block (content, as before); and on a missing
+file (a failure, not an empty page). The one behavioural difference from the whole-page form is
+deliberate and recorded in the code: an unclosed frontmatter block is held back as content only up to
+64KiB before being replayed, where the whole-page form had no bound.
+
+The first streamed version was 2.4x slower on MicroHs (`make bench-search-chunk`, cells per run for the
+74KB bench page: 961K before, 2.35M after). The cause was `Data.ByteString.intercalate`, which under
+MicroHs is `pack . List.intercalate . map unpack`: joining a paragraph's lines unpacked every byte of
+the page to a list. `MicroHttp.Bytes` gained `concatBalanced` (pairwise appends, the shape RFC-0040
+named) and `intercalate` over it; with those the chunker is at 1.26M cells and 9.3ms against 9.6ms
+before, at time parity with a third more cells, which is the cost of assembling paragraphs from lines
+rather than pointing at ranges of a whole page. Strict fields on the machine's record were tried and
+made it slower under MicroHs (3.3M cells), so the record is lazy and the fold is `foldl'`.
 
 ## Open Questions
 

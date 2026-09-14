@@ -23,6 +23,14 @@ spec =
             Bytes.isInfixOf (bs "abd") (bs "abc abc abx") `shouldBe` False
         it "given a needle ending exactly at the end, when testing infix, then it is found" $
             Bytes.isInfixOf (bs ".md") (bs "guides/failover.md") `shouldBe` True
+        it "given many pieces, when joined with the balanced concat, then the bytes equal the library's concat (RFC-0043)" $
+            Bytes.concatBalanced (map (bs . show) [1 .. 1001 :: Int]) `shouldBe` BS.concat (map (bs . show) [1 .. 1001 :: Int])
+        it "given no pieces or one piece, when joined with the balanced concat, then the result is empty or that piece" $ do
+            Bytes.concatBalanced [] `shouldBe` bs ""
+            Bytes.concatBalanced [bs "only"] `shouldBe` bs "only"
+        it "given pieces and a separator, when joined with intercalate, then the bytes equal the library's intercalate (RFC-0043)" $ do
+            Bytes.intercalate (bs "\n\n") (map bs ["a", "", "ccc"]) `shouldBe` BS.intercalate (bs "\n\n") (map bs ["a", "", "ccc"])
+            Bytes.intercalate (bs ", ") [] `shouldBe` bs ""
         it "given a needle longer than the value, when testing infix, then it is not found" $
             Bytes.isInfixOf (bs "longer than this") (bs "short") `shouldBe` False
         it "given bytes, when folding strictly, then it agrees with the library fold" $

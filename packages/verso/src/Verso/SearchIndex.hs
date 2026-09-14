@@ -264,31 +264,37 @@ indexPage runtime path = do
                 report cfg path (fmap (const "deleted") result)
             | otherwise -> report cfg path (Left ("stat failed (" ++ show e ++ ")"))
         Right fileStat -> do
-            bytes <- BS.readFile fsPath -- whole-file: one page, chunked at headings and embedded chunk by chunk; the C-side embedder dominates (RFC-0040 phase 7)
-            -- Only the frontmatter block is decoded (for the title); the chunker
-            -- and tokeniser work over the raw bytes (see Verso.SearchChunks).
-            titleBlock <- Frontmatter.slice bytes
+            -- The page is never held whole (RFC-0043): the frontmatter block is streamed
+            -- just far enough for the title, the chunker folds the file a line at a time,
+            -- and the content fingerprint is a streamed hash. The chunks (context line
+            -- plus section text, capped) are what is live for the tokeniser and embedder.
+            titleBlock <- Frontmatter.readBlock fsPath
             let title = searchTitleOf cfg path (Utf8.decodeUtf8 (BS.unpack titleBlock))
-            chunks <- SearchChunks.chunkPage chunkCapChars title bytes
-            -- One page-wide tokenisation pass: the chunks share a word cache (encodeMany).
-            let encoded =
-                    WordPiece.encodeMany
-                        (srVocab runtime)
-                        (Embedding.profileMaxTokens (searchProfile cfg))
-                        (map SearchChunks.chunkText chunks)
-            embedded <- mapM (embedChunk runtime) (zip chunks encoded)
-            case sequence embedded of
-                Left e -> report cfg path (Left e)
-                Right storeChunks -> do
-                    result <-
-                        Store.upsertPage
-                            (srStore runtime)
-                            path
-                            (statFingerprint fileStat)
-                            (Fingerprint.contentFingerprint bytes)
-                            storeChunks
-                    countWrite runtime
-                    report cfg path (fmap (const (show (length chunks) ++ " chunks")) result)
+            chunked <- SearchChunks.chunkFile chunkCapChars title fsPath
+            fingerprinted <- Fingerprint.contentFingerprintFile fsPath
+            case (chunked, fingerprinted) of
+                (Left e, _) -> report cfg path (Left ("read failed (" ++ show e ++ ")"))
+                (_, Left e) -> report cfg path (Left ("read failed (" ++ show e ++ ")"))
+                (Right chunks, Right contentFp) -> do
+                    -- One page-wide tokenisation pass: the chunks share a word cache (encodeMany).
+                    let encoded =
+                            WordPiece.encodeMany
+                                (srVocab runtime)
+                                (Embedding.profileMaxTokens (searchProfile cfg))
+                                (map SearchChunks.chunkText chunks)
+                    embedded <- mapM (embedChunk runtime) (zip chunks encoded)
+                    case sequence embedded of
+                        Left e -> report cfg path (Left e)
+                        Right storeChunks -> do
+                            result <-
+                                Store.upsertPage
+                                    (srStore runtime)
+                                    path
+                                    (statFingerprint fileStat)
+                                    contentFp
+                                    storeChunks
+                            countWrite runtime
+                            report cfg path (fmap (const (show (length chunks) ++ " chunks")) result)
   where
     report cfg page (Left e) = searchLog cfg ("search: index " ++ page ++ " failed: " ++ e)
     report cfg page (Right what) = searchLog cfg ("search: indexed " ++ page ++ " (" ++ what ++ ")")

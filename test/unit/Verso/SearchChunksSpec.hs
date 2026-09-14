@@ -2,7 +2,22 @@ module Verso.SearchChunksSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import Test.Hspec
+import qualified TestSupport.Scratch as Scratch
 import qualified Verso.SearchChunks as SearchChunks
+
+-- | A scratch directory under build/ for the streamed-chunking cases.
+scratch :: FilePath
+scratch = "build/search-chunks-spec"
+
+-- | Writes the content to a scratch file and chunks it both ways: streamed from the file, and whole.
+bothWays :: Int -> String -> BS.ByteString -> IO (Either String [SearchChunks.Chunk], [SearchChunks.Chunk])
+bothWays cap title content = do
+    Scratch.resetScratchDir scratch
+    let path = scratch ++ "/page.md"
+    BS.writeFile path content
+    streamed <- SearchChunks.chunkFile cap title path
+    whole <- SearchChunks.chunkPage cap title content
+    pure (either (Left . show) Right streamed, whole)
 
 -- | Chunks with a generous cap so size never splits in these tests.
 chunk :: String -> String -> IO [SearchChunks.Chunk]
@@ -65,3 +80,28 @@ spec =
                 `shouldBe` [ "T\n# A\n" ++ fence
                            , "T > A\nafter paragraph text"
                            ]
+
+        it "given a page with frontmatter, nested headings and a fence, when it is chunked from the file, then the chunks equal the whole-page chunking (RFC-0043)" $ do
+            let content = BS.pack "---\nname: P\n---\nIntro.\n\n# Alpha\nA text.\n```\n# not heading\n\nstill fenced\n```\n\n## Beta\nB text.\n\n# Gamma\n\n# Delta\nD text.\n"
+            (streamed, whole) <- bothWays 60 "P" content
+            streamed `shouldBe` Right whole
+            (length whole > 3) `shouldBe` True
+
+        it "given a page longer than the read block with a heading and a paragraph straddling the block boundary, when it is chunked from the file, then the chunks equal the whole-page chunking (RFC-0043)" $ do
+            let paragraph n = BS.pack ("paragraph " ++ show n ++ " " ++ replicate 40 'x')
+                body = BS.intercalate (BS.pack "\n\n") (map paragraph [1 .. 3000 :: Int]) -- ~170KB, several 64KiB blocks
+                content = BS.concat [BS.pack "# Top\n", body, BS.pack "\n\n## Deep heading near the end\ntail text\n"]
+            (streamed, whole) <- bothWays 1500 "P" content
+            streamed `shouldBe` Right whole
+            (length whole > 50) `shouldBe` True
+
+        it "given an opening frontmatter delimiter that is never closed, when chunked from the file, then it is content, as in the whole-page chunking (RFC-0043)" $ do
+            let content = BS.pack "---\nname: never closed\n\n# Alpha\nA text.\n"
+            (streamed, whole) <- bothWays 1500 "P" content
+            streamed `shouldBe` Right whole
+            map SearchChunks.chunkAnchor whole `shouldBe` ["", "Alpha"]
+
+        it "given a missing file, when it is chunked from the file, then the failure is reported rather than an empty page (RFC-0043)" $ do
+            Scratch.resetScratchDir scratch
+            outcome <- SearchChunks.chunkFile 1500 "P" (scratch ++ "/absent.md")
+            either (const True) (const False) outcome `shouldBe` True

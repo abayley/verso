@@ -85,3 +85,19 @@ A capture that is served rather than parsed is renamed or streamed into place in
 Inside a step, split with `MicroHttp.Bytes` (`Bytes.split`, `Bytes.isInfixOf`), not `Data.ByteString`'s
 `split`, `lines` or `elemIndex`: on MicroHs those unpack the whole value to a list, which is quadratic in a
 loop and can overflow the collector's fixed stack on a large value.
+
+## Joining Lines or Blocks
+
+Assemble a value from many pieces with `Bytes.concatBalanced` or `Bytes.intercalate`, not
+`Data.ByteString`'s `concat` or `intercalate`: on MicroHs `concat` re-copies the growing result once per
+piece and `intercalate` unpacks every piece to a list. The search chunker's first streamed version paid
+2.4x for exactly that (RFC-0043 addendum). A fold that only counts, hashes or compares needs no join at all.
+
+## Worked Conversion: a Whole-Page Parser to a Line-Fed Machine
+
+When the parser needs context across lines (sections, fences, paragraphs), turn it into a state record
+with a `feedLine :: State -> ByteString -> State` and a `finish :: State -> Result`, then drive it both
+ways: from the whole value for the existing pure tests and the bench, and from `Stream.foldFileLines` for
+production. `Verso.SearchChunks` is the example (`chunkPage` and `chunkFile` share one machine); its
+spec pins the two forms to each other on inputs that straddle read blocks, which is the test that
+matters for a streamed parser.

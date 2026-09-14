@@ -35,7 +35,7 @@ stable concepts:
 | `MicroHttp.Http.Response` | HTTP response serialisation and writing | [HTTP Response Module Design](../architecture/initial-module-design/http-response.md) |
 | `MicroHttp.Iteratee` | General iteratee/enumerator streaming core (RFC-0004); base-monad-parametric, with the two-source driver (RFC-0041) | [RFC-0004](../rfcs/implemented/rfc-0004-iteratee-streaming-io.md), [RFC-0041](../rfcs/implemented/rfc-0041-multi-source-iteratees.md) |
 | `MicroHttp.Stream` | Stream error vocabulary, socket/file producers, and the block-streaming file folds, scans, writers and comparisons (RFC-0004, RFC-0040) | [RFC-0004](../rfcs/implemented/rfc-0004-iteratee-streaming-io.md), [ADR-0091](../adrs/adr-0091-io-is-block-streaming-by-default.md) |
-| `MicroHttp.Bytes` | Index-loop `ByteString` scans that never unpack (RFC-0040) | [ADR-0088](../adrs/adr-0088-request-bodies-bound-for-files-never-enter-the-heap.md) |
+| `MicroHttp.Bytes` | Index-loop `ByteString` scans that never unpack (RFC-0040) and balanced joins (RFC-0043) | [ADR-0088](../adrs/adr-0088-request-bodies-bound-for-files-never-enter-the-heap.md) |
 | `MicroHttp.Form` | Streaming form consumer: parts routed by name to sinks, block-wise decoding (RFC-0042) | [ADR-0092](../adrs/adr-0092-form-bodies-are-routed-part-streams.md) |
 | `MicroHttp.FileSystem` | Direct filesystem calls: stat, unlink, rename, temp paths | [RFC-0027](../rfcs/implemented/rfc-0027-in-server-move-and-delete.md) |
 | `MicroHttp.Process` | Subprocess spawn with captures read or left on disk | [ADR-0090](../adrs/adr-0090-subprocess-capture-stays-on-disk.md) |

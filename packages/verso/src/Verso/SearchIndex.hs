@@ -105,7 +105,7 @@ startSearch cfg = do
                     searchLog cfg ("search: embedder unavailable (" ++ e ++ "); search disabled")
                     pure Nothing
                 Right embedder -> do
-                    vocabBytes <- BS.readFile (searchVocabPath cfg)
+                    vocabBytes <- BS.readFile (searchVocabPath cfg) -- whole-file: the model vocabulary, a fixed ~230KB
                     openedStore <- Store.openStore (searchIndexDir cfg) (Embedding.profileDims (searchProfile cfg))
                     case openedStore of
                         Left e -> do
@@ -160,7 +160,7 @@ checkModelId cfg = do
     let marker = searchIndexDir cfg ++ "/model-id"
     Directory.createDirectoryIfMissing True (searchIndexDir cfg)
     exists <- Directory.doesFileExist marker
-    stored <- if exists then FileSystem.readFileStrict marker else pure ""
+    stored <- if exists then FileSystem.readFileStrict marker else pure "" -- whole-file: a one-line marker
     writeFile marker (searchModelId cfg)
     pure (not exists || stored == searchModelId cfg)
 
@@ -264,7 +264,7 @@ indexPage runtime path = do
                 report cfg path (fmap (const "deleted") result)
             | otherwise -> report cfg path (Left ("stat failed (" ++ show e ++ ")"))
         Right fileStat -> do
-            bytes <- BS.readFile fsPath
+            bytes <- BS.readFile fsPath -- whole-file: one page, chunked at headings and embedded chunk by chunk; the C-side embedder dominates (RFC-0040 phase 7)
             -- Only the frontmatter block is decoded (for the title); the chunker
             -- and tokeniser work over the raw bytes (see Verso.SearchChunks).
             titleBlock <- Frontmatter.slice bytes

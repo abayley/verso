@@ -23,14 +23,13 @@ module Verso.Git (
     commitPaths,
     commitAll,
     logForPath,
-    diffBetween,
     diffBetweenCaptured,
-    showFileAtRevision,
     showFileAtRevisionCaptured,
 ) where
 
 import qualified Data.ByteString.Char8 as BS
 import qualified MicroHttp.Process as Process
+import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
 import qualified System.Exit as Exit
 
@@ -146,45 +145,35 @@ commitStaged root author message = do
 
 {- | The revision history of a tree-relative page, newest first, following the
 page across renames\/moves (@git log --follow@). Returns @[]@ when the path has
-no history or the command fails (for example outside a repository).
+no history or the command fails (for example outside a repository). The log is
+folded from its capture one line at a time (RFC-0043): a long history is never
+held whole.
 -}
 logForPath :: FilePath -> FilePath -> IO [Revision]
-logForPath root path = do
-    res <- git root ["log", "--follow", "--format=" ++ logFormat, "--", path]
-    case Process.procExit res of
-        Exit.ExitSuccess -> pure (parseLog (Process.procOut res))
-        _ -> pure []
-
-{- | The unified diff of a page between two revisions, as git's standard
-line-based diff text, for the caller to render with per-line add\/remove
-highlighting. Empty when the command fails.
--}
-diffBetween :: FilePath -> String -> String -> FilePath -> IO String
-diffBetween root fromRev toRev path = do
-    res <- git root ["diff", fromRev, toRev, "--", path]
-    pure (BS.unpack (Process.procOut res))
+logForPath root path =
+    Process.withCapture "git" ["-C", root, "log", "--follow", "--format=" ++ logFormat, "--", path] Nothing Nothing $ \cap ->
+        case Process.captureExit cap of
+            Exit.ExitSuccess -> do
+                folded <- Stream.foldFileLines collect [] (Process.captureOut cap)
+                pure (either (const []) reverse folded)
+            _ -> pure []
+  where
+    collect revs line
+        | BS.null line = pure revs
+        | otherwise = pure (parseRevision line : revs)
 
 {- | The unified diff of a page between two revisions, left in a capture file on
-disk rather than read into the heap (RFC-0040): 'diffBetween' without the whole-diff
-@String@. The caller owns the capture -- it streams the stdout capture and then
+disk rather than read into the heap (RFC-0040), for the caller to stream with
+per-line add\/remove highlighting. The caller owns the capture -- it streams the stdout capture and then
 'Process.removeCapture' -- and reads the exit code from 'Process.captureExit'.
 -}
 diffBetweenCaptured :: FilePath -> String -> String -> FilePath -> IO Process.ProcCapture
 diffBetweenCaptured root fromRev toRev path =
     Process.runProcessCaptured "git" ["-C", root, "diff", fromRev, toRev, "--", path] Nothing Nothing
 
-{- | A page's exact content at a revision (@git show \<rev\>:\<path\>@), as bytes
-so it round-trips losslessly; empty bytes when the path did not exist there or the
-command fails. Used by rollback.
--}
-showFileAtRevision :: FilePath -> String -> FilePath -> IO BS.ByteString
-showFileAtRevision root rev path = do
-    res <- git root ["show", rev ++ ":" ++ path]
-    pure (case Process.procExit res of Exit.ExitSuccess -> Process.procOut res; _ -> BS.empty)
-
-{- | A page's content at a revision, left in a capture file on disk rather than
-read into the heap (RFC-0040): 'showFileAtRevision' without materialising the
-bytes. The caller owns the capture -- it streams or renames the stdout capture
+{- | A page's exact content at a revision (@git show \<rev\>:\<path\>@), left in
+a capture file on disk rather than read into the heap (RFC-0040), so it
+round-trips losslessly without materialising the bytes. Used by rollback. The caller owns the capture -- it streams or renames the stdout capture
 into place and then 'Process.removeCapture' -- so a large document at a revision
 never enters the heap. @git show@ exits non-zero when the path did not exist at
 that revision, which the caller reads from 'Process.captureExit'.
@@ -196,10 +185,6 @@ showFileAtRevisionCaptured root rev path =
 -- | The @--format@ string: fields separated by a unit-separator byte that cannot appear in the values.
 logFormat :: String
 logFormat = "%h%x1f%H%x1f%aI%x1f%an%x1f%s"
-
--- | Parses @git log@ output: one revision per line, fields split on the unit-separator byte (@0x1f@).
-parseLog :: BS.ByteString -> [Revision]
-parseLog = map parseRevision . filter (not . BS.null) . BS.lines
 
 -- | Parses one log line of unit-separated fields into a 'Revision'; missing fields default to empty.
 parseRevision :: BS.ByteString -> Revision

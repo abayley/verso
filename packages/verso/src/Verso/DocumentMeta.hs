@@ -185,7 +185,7 @@ attachment names survive verbatim (see 'Verso.App' for the same rationale on doc
 @BS.readFile@ is strict, so reading then overwriting the same file is safe.
 -}
 readMetaFile :: FilePath -> IO String
-readMetaFile file = fmap BS.unpack (BS.readFile file)
+readMetaFile file = fmap BS.unpack (BS.readFile file) -- whole-file: the YAML sidecar, a few hundred bytes
 
 -- | Write a @.meta@ file as opaque (UTF-8) bytes (see 'readMetaFile').
 writeMetaFile :: FilePath -> String -> IO ()

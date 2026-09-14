@@ -138,7 +138,7 @@ binary content uses strict @Data.ByteString.Char8.readFile@ directly.
 -}
 readFileStrict :: FilePath -> IO String
 readFileStrict path = do
-    text <- readFile path
+    text <- readFile path -- whole-file: the strict-read primitive; each caller states its own bound
     length text `seq` pure text
 
 {- | A path in @dir@ that no file currently occupies, for a temp-then-rename

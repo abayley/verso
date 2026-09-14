@@ -133,7 +133,7 @@ $(PROC_OBJ): $(MICROHTTP_CBITS)/microhttp_process.c $(MICROHTTP_INCLUDE)/microht
 	mkdir -p $(BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(MICROHTTP_INCLUDE)
 
-.PHONY: build-verso-ghc build-verso-ghc-prof run-verso-ghc run-verso-ghc-prof test-ghc test-ghc-unit test-ghc-integration test-ghc-smoke chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-html-builder bench-link-parse bench-search-chunk search-lancedb search-nanoarrow search-model search-shim check clean
+.PHONY: build-verso-ghc build-verso-ghc-prof run-verso-ghc run-verso-ghc-prof test-ghc test-ghc-unit test-ghc-integration test-ghc-smoke chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-memory bench-html-builder bench-link-parse bench-search-chunk search-lancedb search-nanoarrow search-model search-shim check clean
 
 
 docs:
@@ -177,6 +177,14 @@ lint:
 	@offenders=$$(grep -rl "System.IO.Unsafe" $(SRC) $(MICROHTTP_SRC)); \
 	if [ -n "$$offenders" ]; then \
 	    echo "System.IO.Unsafe imported in production code (ADR-0087):"; echo "$$offenders"; exit 1; \
+	fi
+	# whole-file read gate (RFC-0043, ADR-0091): a read that holds a whole file (readFile,
+	# readFileStrict, hGetContents) in production code states its bound in a same-line
+	# "-- whole-file:" comment; an unannotated one is a build failure. Haddock mentions
+	# (quoted or @-wrapped names) and a definition at column 0 do not match the call shape.
+	@offenders=$$(grep -rnE "(readFile|readFileStrict|hGetContents) [^-]" $(SRC) $(MICROHTTP_SRC) | grep -v "whole-file:" | grep -vE "'(readFile|readFileStrict|hGetContents)'|@(readFile|readFileStrict|hGetContents)|:[0-9]+:(readFile|readFileStrict|hGetContents) "); \
+	if [ -n "$$offenders" ]; then \
+	    echo "whole-file read without a '-- whole-file: <bound>' annotation (RFC-0043):"; echo "$$offenders"; exit 1; \
 	fi
 
 $(BUILD)/verso: $(SRC_HS) $(MICROHTTP_PKG) $(LINK_OBJS)
@@ -324,6 +332,11 @@ bench-egress:
 
 bench-http:
 	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash $(BENCH)/http-bench.sh
+
+# Resident-memory high-water mark under a fixed scenario set (RFC-0043); the heap
+# is VERSO_HEAP_CELLS as for run-verso. See the script header for the knobs.
+bench-memory:
+	VERSO_HEAP_CELLS=$(VERSO_HEAP_CELLS) bash $(BENCH)/memory-bench.sh
 
 # --- Concordance search build targets (RFC-0034; all optional) ----------
 # search-lancedb: build the patched lancedb-c dylib (needs Rust + the

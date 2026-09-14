@@ -21,15 +21,12 @@ spec =
             Draft.writeDraft root "sec/page.md" (BS.pack "draft body")
             has <- Draft.hasDraft root "sec/page.md"
             has `shouldBe` True
-            got <- Draft.readDraft root "sec/page.md"
-            got `shouldBe` Just (BS.pack "draft body")
+            BS.readFile (root ++ "/sec/page.md") `shouldReturn` BS.pack "draft body"
 
         it "given no staged draft, when one is read, then none is reported" $ do
             fresh
             has <- Draft.hasDraft root "missing.md"
             has `shouldBe` False
-            got <- Draft.readDraft root "missing.md"
-            got `shouldBe` Nothing
 
         it "given a staged draft, when it is deleted, then it is gone" $ do
             fresh

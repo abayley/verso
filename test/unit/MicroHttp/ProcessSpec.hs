@@ -1,7 +1,9 @@
 module MicroHttp.ProcessSpec (spec) where
 
+import qualified Control.Exception as Exception
 import qualified Data.ByteString.Char8 as BS
 import qualified MicroHttp.Process as Process
+import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
 import qualified System.Exit as Exit
 import Test.Hspec
@@ -22,6 +24,25 @@ freshDir = do
 spec :: Spec
 spec =
     describe "MicroHttp.Process" $ do
+        describe "withCapture" $ do
+            it "given a program that writes lines, when its capture is folded line by line, then the lines are the result and both capture files are removed afterwards (RFC-0043)" $ do
+                (folded, cap) <- Process.withCapture "printf" ["one\\ntwo\\nthree\\n"] Nothing Nothing $ \cap -> do
+                    folded <- Stream.foldFileLines (\acc line -> pure (line : acc)) [] (Process.captureOut cap)
+                    pure (folded, cap)
+                fmap reverse folded `shouldBe` Right (map BS.pack ["one", "two", "three"])
+                Process.captureExit cap `shouldBe` Exit.ExitSuccess
+                Directory.doesFileExist (Process.captureOut cap) `shouldReturn` False
+                Directory.doesFileExist (Process.captureErr cap) `shouldReturn` False
+
+            it "given a consumer that throws, when run under withCapture, then the capture files are removed and the exception propagates (RFC-0043)" $ do
+                holder <- Process.runProcessCaptured "echo" ["probe"] Nothing Nothing
+                Process.removeCapture holder
+                outcome <- Exception.try (Process.withCapture "echo" ["hello"] Nothing Nothing (\cap -> Exception.throwIO (userError ("consumer failed: " ++ Process.captureOut cap)) :: IO ()))
+                path <- case outcome of
+                    Left e -> pure (drop (length "user error (consumer failed: ") (takeWhile (/= ')') (show (e :: Exception.SomeException))))
+                    Right () -> fail "the consumer's exception did not propagate"
+                Directory.doesFileExist path `shouldReturn` False
+
         describe "runProcess" $ do
             it "given a program on PATH, when it is run, then its stdout and a success exit are captured" $ do
                 res <- Process.runProcess "echo" ["hello"] Nothing Nothing

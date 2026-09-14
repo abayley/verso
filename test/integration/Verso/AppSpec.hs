@@ -517,9 +517,9 @@ spec = do
                 Server.respondToRequestBytes
                     (App.appWithDocumentTreeVersioned root treeDraftRoot)
                     (BS.pack (rawPutRequest "/documents/sec/page.md" "# Published page"))
-            committedHome <- Git.showFileAtRevision root "HEAD" "index.md"
+            committedHome <- committedBytes root "HEAD" "index.md"
             workingHome <- BS.readFile (root ++ "/index.md")
-            committedPage <- Git.showFileAtRevision root "HEAD" "sec/page.md"
+            committedPage <- committedBytes root "HEAD" "sec/page.md"
             fmap (Http.statusCode . Http.responseStatus) outcome `shouldBe` Right 204
             committedHome `shouldBe` BS.pack "# Home\n"
             workingHome `shouldBe` BS.pack "# Unpublished home change\n"
@@ -1068,3 +1068,11 @@ formEncode bytes = BS.concat (map encodeSlice [0, 1024 .. BS.length bytes - 1])
                         else ['%', hexDigit (fromEnum c `div` 16), hexDigit (fromEnum c `mod` 16)]
     unreserved c = Char.isAsciiLower c || Char.isAsciiUpper c || Char.isDigit c || c `elem` "-_.~"
     hexDigit n = "0123456789ABCDEF" !! n
+
+-- | A page's bytes at a revision, read from the capture (small test files; the app streams these).
+committedBytes :: FilePath -> String -> FilePath -> IO BS.ByteString
+committedBytes root rev path =
+    Git.showFileAtRevisionCaptured root rev path >>= \cap -> do
+        bytes <- BS.readFile (Process.captureOut cap)
+        Process.removeCapture cap
+        pure bytes

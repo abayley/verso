@@ -74,3 +74,20 @@ a private port, then drives it with ApacheBench over new connections,
 comparing the in-memory builder path (`StrictBody`) against the zero-copy
 sendfile path (`FileBody`) at a few payload sizes. Recorded results and
 interpretation are in [HTTP Benchmark](../guides/http-benchmark.md).
+
+## Resident Memory High-Water Mark
+
+```sh
+make bench-memory
+```
+
+This runs `test/bench/memory-bench.sh` (RFC-0043): it starts the Verso server on a
+private port at `VERSO_HEAP_CELLS`, samples its resident set every 100ms, and drives
+one scenario at a time (cold link-index build, sequential and concurrent reads of
+the largest page, a raw `PUT`, a no-JS form save, a page move and back), printing
+the peak RSS and the peak above the pre-scenario baseline for each. The MicroHs heap
+bounds cells, not bytes: `ByteString` payloads and the C side live outside the
+arena, so this is the number the heap setting cannot bound. By default it runs
+against a scratch copy of the search-demo corpus; `MICROHTTP_BENCH_TREE` points it at
+another, and `MICROHTTP_BENCH_READONLY=1` skips the mutating scenarios for a real
+corpus. Recorded runs are under `docs/rfcs/refs/`.

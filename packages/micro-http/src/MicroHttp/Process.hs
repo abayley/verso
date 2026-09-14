@@ -38,9 +38,11 @@ module MicroHttp.Process (
     runProcess,
     ProcCapture (..),
     runProcessCaptured,
+    withCapture,
     removeCapture,
 ) where
 
+import qualified Control.Exception as Exception
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified Foreign.C.String as CStr
@@ -86,12 +88,17 @@ metacharacters reach the program literally and are never interpreted. When
 @mCwd@ is 'Just', the child @chdir@s there before exec; when 'Nothing', it runs
 in the server's working directory. When @mStdin@ is 'Just', those bytes are the
 child's standard input; when 'Nothing', the child inherits the server's stdin.
+
+Both outputs are read whole, so this is for commands whose output is a status
+line or a hash (@git rev-parse@, @git diff --quiet@). A command whose output
+grows with the data (@git log@, @git show@, @git diff@) runs under 'withCapture'
+and is consumed from its capture file a line or a block at a time (RFC-0043).
 -}
 runProcess :: FilePath -> [String] -> Maybe FilePath -> Maybe BS.ByteString -> IO ProcResult
 runProcess executable args mCwd mStdin = do
     cap <- runProcessCaptured executable args mCwd mStdin
-    out <- BS.readFile (captureOut cap)
-    err <- BS.readFile (captureErr cap)
+    out <- BS.readFile (captureOut cap) -- whole-file: a status-line command; large outputs go through withCapture
+    err <- BS.readFile (captureErr cap) -- whole-file: as above
     cleanup [captureOut cap, captureErr cap]
     pure (ProcResult (captureExit cap) out err)
 
@@ -128,6 +135,17 @@ runProcessCaptured executable args mCwd mStdin = do
     code <- spawnCapturing executable args mCwd outPath errPath inPath
     cleanup (maybe [] pure inPath)
     pure (ProcCapture code outPath errPath)
+
+{- | Runs the subprocess and hands its capture to @consume@, removing the
+capture files afterwards however the consumer exits, exception included
+(RFC-0043). This is the streaming form of running a command: the consumer folds
+the stdout capture with 'MicroHttp.Stream.foldFileLines' or
+'MicroHttp.Stream.foldFileBlocks', or renames it into place, and never holds
+the output whole. The exit code is 'captureExit' on the capture handed in.
+-}
+withCapture :: FilePath -> [String] -> Maybe FilePath -> Maybe BS.ByteString -> (ProcCapture -> IO a) -> IO a
+withCapture executable args mCwd mStdin =
+    Exception.bracket (runProcessCaptured executable args mCwd mStdin) removeCapture
 
 -- | Removes a capture's stdout and stderr files, ignoring any already gone.
 removeCapture :: ProcCapture -> IO ()

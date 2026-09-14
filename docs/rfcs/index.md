@@ -48,3 +48,4 @@ Implemented RFC files live under `docs/rfcs/implemented/`. All other RFCs remain
 | [RFC-0040](implemented/rfc-0040-constant-space-request-and-response-paths.md) | Implemented | Constant-space request and response paths                                       |
 | [RFC-0041](implemented/rfc-0041-multi-source-iteratees.md)                    | Implemented | Multi-source iteratees                                                          |
 | [RFC-0042](implemented/rfc-0042-streaming-form-consumer.md)                   | Implemented | Streaming form consumer                                                         |
+| [RFC-0043](implemented/rfc-0043-streaming-io-by-default.md)                   | Implemented | Streaming I/O by default                                                        |

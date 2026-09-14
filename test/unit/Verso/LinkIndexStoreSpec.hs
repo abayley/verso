@@ -95,6 +95,21 @@ spec =
             LinkIndex.inboundOf "b.md" ix3 `shouldBe` []
             List.sort (LinkIndex.inboundOf "c.md" ix3) `shouldBe` ["a.md"]
 
+        it "given a persisted index with a malformed line, when it is loaded, then it is treated as corrupt and rebuilt from the tree (RFC-0043)" $ do
+            freshTree
+            writeAt "a.md" "[B](./b.md)\n"
+            writeAt "b.md" "leaf b\n"
+            store1 <- LinkIndexStore.newLinkIndexStore
+            LinkIndexStore.openLinkIndex root indexPath store1 -- builds and persists
+            -- keep the fingerprint rows (so the file is otherwise reusable), drop the edge rows,
+            -- and add a line with an unknown tag: a reuse would answer no inbound links for b.md
+            persisted <- BS.readFile indexPath
+            let kept = filter (BS.isPrefixOf (BS.pack "F\t")) (BS.lines persisted)
+            BS.writeFile indexPath (BS.unlines (kept ++ [BS.pack "Z\tnot a row"]))
+            store2 <- LinkIndexStore.newLinkIndexStore
+            LinkIndexStore.openLinkIndex root indexPath store2
+            ix2 <- LinkIndexStore.currentIndex store2
+            List.sort (LinkIndex.inboundOf "b.md" ix2) `shouldBe` ["a.md"]
         it "given a modified, an added and a removed page, when the changes are applied, then the index is patched without a walk" $ do
             freshTree
             writeAt "a.md" "[B](./b.md)\n"

@@ -15,7 +15,6 @@ no path-safety checks of its own -- the same contract as 'MicroHttp.FileSystem'.
 module Verso.Draft (
     draftFsPath,
     writeDraft,
-    readDraft,
     hasDraft,
     deleteDraft,
 ) where
@@ -34,15 +33,6 @@ writeDraft draftRoot treePath content = do
     let path = draftFsPath draftRoot treePath
     Directory.createDirectoryIfMissing True (parentDir path)
     BS.writeFile path content
-
--- | Reads a page's draft, or 'Nothing' when no draft is staged for it.
-readDraft :: FilePath -> String -> IO (Maybe BS.ByteString)
-readDraft draftRoot treePath = do
-    let path = draftFsPath draftRoot treePath
-    exists <- Directory.doesFileExist path
-    if exists
-        then fmap Just (BS.readFile path)
-        else pure Nothing
 
 -- | Whether a draft is currently staged for the page.
 hasDraft :: FilePath -> String -> IO Bool

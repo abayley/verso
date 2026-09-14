@@ -83,7 +83,9 @@ arity-specific driver for it (`runNested3`) is written when such a consumer appe
 ## Consequences
 
 - New handlers reach for the streaming vocabulary above; a whole-value read of an unbounded input is a
-  defect, caught in review against this ADR.
+  defect, caught in review against this ADR. Since RFC-0043 (2026-09-14) the recipes are collected in
+  `docs/guides/streaming-io.md`, and `make lint` fails a `readFile` in production code that does not carry a
+  same-line `-- whole-file:` comment stating its bound.
 - Streaming shifts some costs: a sized response reads its source twice (count, then stream); a streamed
   response that fails mid-body has already sent its status line (true of every streamed body, RFC-0040
   reliability impact); a close-delimited body carries no `Content-Length`.

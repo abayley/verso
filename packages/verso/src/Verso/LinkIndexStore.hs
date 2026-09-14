@@ -186,10 +186,10 @@ loadValidState root indexPath = do
     if not exists
         then pure Nothing
         else do
-            bytes <- tryIO (BS.readFile indexPath)
-            case parseRows bytes of
-                Nothing -> pure Nothing
-                Just rows -> do
+            -- folded a line at a time (RFC-0043): the index grows with the corpus and is never held whole
+            folded <- tryIO (Stream.foldFileLines collectRow (Just []) indexPath)
+            case folded of
+                Right (Just rows) -> do
                     -- Force the loaded graph here so the Map/inbound construction is paid at load,
                     -- not deferred to the first move/delete (forceIndex walks both adjacency maps).
                     let graph = LinkIndex.forceIndex (edgesToIndex rows)
@@ -198,6 +198,8 @@ loadValidState root indexPath = do
                     if storedFp == current
                         then pure (graph `seq` Just (IndexState graph storedFp))
                         else pure Nothing
+                -- unreadable or corrupt: rebuilt from the tree
+                _ -> pure Nothing
 
 -- | Writes the index to a temp file then atomically renames it into place, so a partial write never corrupts it.
 persistState :: FilePath -> IndexState -> Except.ExceptT String IO ()
@@ -230,21 +232,16 @@ stateLines st = map BS.pack (edgeLines ++ fpLines)
         | (path, s) <- Map.toList (stFingerprint st)
         ]
 
-{- | Parses a serialised index into rows; 'Nothing' if any line is malformed (treated as
-corrupt -> rebuild). Lines and fields are split with 'Bytes.split', a strict index
-scan over O(1) views: the library's @BS.lines@ is a recursive @elemIndex@ loop that
-re-unpacks the shrinking tail (O(n^2); ~22 s on the corpus index), and @BS.split@,
-though linear, is @map pack . splitWith . unpack@ -- it widens the whole 1.2MB file to
-a list, and a collection landing during that scan can overflow the collector's fixed
-stack (RFC-0040 phase 2; 'MicroHttp.Bytes'). The trailing empty element the split
-leaves after the final newline is dropped by the @null@ filter, so the row set is
-identical. (mhs ByteString cost model: docs/design/link-index-performance.md.)
+{- | The line step of the index load: parses one row onto the accumulator, or
+marks the file corrupt ('Nothing', which the loader treats as a rebuild) on the
+first malformed line. Fields are split with 'Bytes.split', a strict index scan
+over O(1) views (the library's @BS.split@ unpacks the line; 'MicroHttp.Bytes').
+Rows accumulate in reverse; the graph and fingerprint map are order-insensitive.
 -}
-parseRows :: BS.ByteString -> Maybe [Row]
-parseRows bytes =
-    let rows = map (map BS.unpack . Bytes.split '\t') (filter (not . BS.null) (Bytes.split '\n' bytes))
-        parsed = map parseRow rows
-     in if any Maybe.isNothing parsed then Nothing else Just (Maybe.catMaybes parsed)
+collectRow :: Maybe [Row] -> BS.ByteString -> IO (Maybe [Row])
+collectRow acc line
+    | BS.null line = pure acc
+    | otherwise = pure (acc >>= \rows -> fmap (: rows) (parseRow (map BS.unpack (Bytes.split '\t' line))))
 
 -- | Reconstructs the graph from the edge rows (re-deriving the inverse), no body re-parse.
 edgesToIndex :: [Row] -> LinkIndex.LinkIndex

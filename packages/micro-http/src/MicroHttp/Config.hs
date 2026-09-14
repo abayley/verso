@@ -64,7 +64,7 @@ application supplies the overlays so it creates both the framework config (the
 loadConfigWith :: [(String, [String])] -> FilePath -> IO (Either ConfigError Config)
 loadConfigWith overlays path = do
     present <- Directory.doesFileExist path
-    fileText <- if present then FileSystem.readFileStrict path else return ""
+    fileText <- if present then FileSystem.readFileStrict path else return "" -- whole-file: the configuration file, a few dozen lines
     environment <- Environment.getEnvironment
     return (fmap (overlay environment) (parseConfig fileText))
   where

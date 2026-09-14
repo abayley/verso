@@ -79,17 +79,6 @@ spec =
             again <- Git.commitPaths root author "No change" ["page.md"]
             again `shouldBe` Git.NothingToCommit
 
-        it "given two revisions of a page, when they are read and diffed, then each revision's content and their difference are returned" $ do
-            root <- freshRepo
-            writeText (root ++ "/p.md") "alpha beta\n"
-            c1 <- Git.commitPaths root author "v1" ["p.md"]
-            writeText (root ++ "/p.md") "alpha gamma\n"
-            c2 <- Git.commitPaths root author "v2" ["p.md"]
-            atV1 <- Git.showFileAtRevision root (hashOf c1) "p.md"
-            atV1 `shouldBe` BS.pack "alpha beta\n"
-            diff <- Git.diffBetween root (hashOf c1) (hashOf c2) "p.md"
-            (("beta" `isIn` diff) && ("gamma" `isIn` diff)) `shouldBe` True
-
         it "given a revision, when captured to disk, then the stdout capture holds the exact bytes and is the caller's to remove (RFC-0040)" $ do
             root <- freshRepo
             writeText (root ++ "/p.md") "alpha beta\n"
@@ -131,9 +120,9 @@ spec =
             _ <- Git.commitPaths root author "Rename a to b" ["a.md", "b.md"]
             revs <- Git.logForPath root "b.md"
             length revs `shouldBe` 2
+            map Git.revSubject revs `shouldBe` ["Rename a to b", "Add a"]
   where
     listToMaybe [] = Nothing
     listToMaybe (x : _) = Just x
     hashOf (Git.Committed h) = h
     hashOf _ = ""
-    isIn needle haystack = BS.isInfixOf (BS.pack needle) (BS.pack haystack)

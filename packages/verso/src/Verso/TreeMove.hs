@@ -331,7 +331,7 @@ sidecarAssetNames root pageRel =
   where
     readLocalPaths f = do
         exists <- Directory.doesFileExist f
-        if exists then fmap (localPathNames . BS.unpack) (BS.readFile f) else pure []
+        if exists then fmap (localPathNames . BS.unpack) (BS.readFile f) else pure [] -- whole-file: an asset sidecar
 
 -- | The asset basenames in a sidecar yaml's @local_path:@ values.
 localPathNames :: String -> [String]
@@ -503,7 +503,7 @@ restoreFromTrash root trashRoot trashId = do
     if not hasManifest
         then pure (Left "trash entry not found")
         else do
-            text <- fmap BS.unpack (BS.readFile manifestFile)
+            text <- fmap BS.unpack (BS.readFile manifestFile) -- whole-file: a trash manifest
             case Trash.parseManifest text of
                 Nothing -> pure (Left "corrupt trash manifest")
                 Just manifest -> do
@@ -606,7 +606,7 @@ listTrash trashRoot = do
         if not hasManifest
             then pure Nothing
             else do
-                text <- fmap BS.unpack (BS.readFile manifestFile)
+                text <- fmap BS.unpack (BS.readFile manifestFile) -- whole-file: a trash manifest
                 pure (fmap (\m -> (entryId, Trash.manPath m, Trash.manKind m)) (Trash.parseManifest text))
 
 {- | Permanently removes a trash entry (its directory and everything stored in
@@ -792,7 +792,7 @@ readRel root rel =
         Nothing -> pure Nothing
         Just fs -> do
             exists <- Directory.doesFileExist fs
-            if exists then fmap Just (BS.readFile fs) else pure Nothing
+            if exists then fmap Just (BS.readFile fs) else pure Nothing -- whole-file: index.md, bounded by formBodyLimit
 
 -- | Writes a tree-relative file's bytes (creating parent directories), ignoring an unsafe path.
 writeRel :: FilePath -> String -> BS.ByteString -> IO ()

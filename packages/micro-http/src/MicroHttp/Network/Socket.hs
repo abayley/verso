@@ -49,6 +49,7 @@ import qualified System.Timeout as Timeout
 -- convert at the call.
 foreign import ccall "socket" c_socket :: CTypes.CInt -> CTypes.CInt -> CTypes.CInt -> IO CTypes.CInt
 foreign import ccall "setsockopt" c_setsockopt :: CTypes.CInt -> CTypes.CInt -> CTypes.CInt -> Ptr.Ptr CTypes.CInt -> CTypes.CUInt -> IO CTypes.CInt
+foreign import ccall "getsockopt" c_getsockopt :: CTypes.CInt -> CTypes.CInt -> CTypes.CInt -> Ptr.Ptr CTypes.CInt -> Ptr.Ptr CTypes.CUInt -> IO CTypes.CInt
 
 -- fcntl(2) is variadic and must not be imported at a fixed arity: on arm64
 -- macOS the variadic argument travels on the stack, so a three-Int ccall put
@@ -81,6 +82,7 @@ foreign import capi "sys/socket.h value AF_INET" afInet :: Int
 foreign import capi "sys/socket.h value SOCK_STREAM" sockStream :: Int
 foreign import capi "sys/socket.h value SOL_SOCKET" solSocket :: Int
 foreign import capi "sys/socket.h value SO_REUSEADDR" soReuseAddr :: Int
+foreign import capi "sys/socket.h value SO_ERROR" soError :: Int
 foreign import capi "unistd.h value SEEK_END" seekEnd :: Int
 
 -- | A descriptor, flag or constant as a C @int@.
@@ -210,8 +212,9 @@ holds the same port on a specific address such as 127.0.0.1 -- and then loopback
 goes to that process, because the more specific bind wins. @bind@ reports success, so the
 only way to see the clash is to ask the port whether anyone answers before binding it.
 
-Probe loopback. A refused connection there is immediate, whereas a filtered address
-elsewhere would leave the non-blocking connect parked on write readiness.
+Probe loopback. A refused connection there is reported at once or, since macOS 27,
+after the non-blocking connect has parked on write readiness and @SO_ERROR@ has been
+read; a filtered address elsewhere would leave the connect parked.
 -}
 probeListener :: Host -> Port -> IO Bool
 probeListener host port = do
@@ -222,8 +225,11 @@ probeListener host port = do
             _ <- closeClientSocket client
             return True
 
-{- | Drives the non-blocking connect, retrying on connect-pending errors by
-parking on write readiness until the socket reports connected.
+{- | Drives the non-blocking connect: a pending connect parks on write readiness
+and then reads the outcome from @SO_ERROR@, which is the only place a
+refusal lands once the connect has gone asynchronous. Retrying @connect@
+instead, as this once did, reported success on macOS 27, where a loopback
+connect to a closed port returns @EINPROGRESS@ rather than @ECONNREFUSED@.
 -}
 connectLoop :: Int -> Ptr.Ptr () -> CTypes.CUInt -> IO (Either SocketError ClientSocket)
 connectLoop fd addr addrLen = do
@@ -238,8 +244,25 @@ connectLoop fd addr addrLen = do
                     if isConnectPending errno
                         then do
                             FD.waitForWriteFD fd
-                            connectLoop fd addr addrLen
+                            pendingOutcome fd
                         else return (Left (SocketError "connect" errno))
+
+-- | The outcome of a connect that went asynchronous: @SO_ERROR@ once the socket is writable.
+pendingOutcome :: Int -> IO (Either SocketError ClientSocket)
+pendingOutcome fd =
+    Alloc.alloca $ \errPtr ->
+        Alloc.alloca $ \lenPtr -> do
+            Storable.poke errPtr (0 :: CTypes.CInt)
+            Storable.poke lenPtr (fromIntegral (Storable.sizeOf (0 :: CTypes.CInt)) :: CTypes.CUInt)
+            asked <- c_getsockopt (cfd fd) (cfd solSocket) (cfd soError) errPtr lenPtr
+            if asked < 0
+                then Left . SocketError "getsockopt" <$> Error.getErrno
+                else do
+                    err <- Storable.peek errPtr
+                    pure $
+                        if err == 0
+                            then Right (ClientSocket fd)
+                            else Left (SocketError "connect" (Error.Errno err))
 
 -- | Whether a connect errno means the connection is still in progress.
 isConnectPending :: Error.Errno -> Bool

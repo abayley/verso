@@ -1,5 +1,6 @@
 module MicroHttp.StreamSpec (spec) where
 
+import qualified Control.Exception as Exception
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as List
 import qualified MicroHttp.Html as Html
@@ -40,6 +41,24 @@ the file whole.
 foldFileLinesSpec :: Spec
 foldFileLinesSpec =
     describe "MicroHttp.Stream foldFileLines" $ do
+        it "given a temp file, when its lines are folded with the temp fold, then the result is the lines and the file is gone (RFC-0043)" $ do
+            resetScratch
+            let path = scratch ++ "/temp.txt"
+            BS.writeFile path (bs "one\ntwo\n")
+            outcome <- Stream.foldTempFileLines (\acc l -> pure (l : acc)) [] path
+            fmap reverse outcome `shouldBe` Right [bs "one", bs "two"]
+            Directory.doesFileExist path `shouldReturn` False
+        it "given a temp file, when a step throws mid-fold, then the exception propagates and the file is still gone (RFC-0043)" $ do
+            resetScratch
+            let path = scratch ++ "/temp.txt"
+            BS.writeFile path (bs "one\ntwo\n")
+            outcome <- Exception.try (Stream.foldTempFileLines (\_ _ -> Exception.throwIO (userError "sink died")) () path)
+            either (\e -> show (e :: Exception.SomeException)) (const "completed") outcome `shouldBe` "user error (sink died)"
+            Directory.doesFileExist path `shouldReturn` False
+        it "given a missing temp file, when folded with the temp fold, then the failure is reported (RFC-0043)" $ do
+            resetScratch
+            outcome <- Stream.foldTempFileTextLines (\acc l -> pure (l : acc)) [] (scratch ++ "/absent")
+            either (const True) (const False) outcome `shouldBe` True
         it "given lines holding multi-byte characters, one straddling the read block boundary, when folded as text, then each line decodes whole (RFC-0043)" $ do
             resetScratch
             let path = scratch ++ "/text.txt"

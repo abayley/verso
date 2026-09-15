@@ -401,6 +401,19 @@ which had the same window and no guard, is covered by the same change. Three int
 the capture files in the temporary directory and assert none is left after a 404 view, a 409 and a
 failed-copy 500 rollback, and the two streamed views once their bodies are produced.
 
+### Addendum: a temp file is released by its producer (2026-09-16)
+
+The last cleanup enforced by sequencing rather than by a bracket was the diff body, which removed its
+capture on the line after the fold. `Stream.tempFileEnumeratorChunked` is the file source for a file the
+producer owns: the file is removed when the producer returns, however it returned, through the same
+`releaseOnFailure` guard the brackets use; `transformedTempFileBody` is now that wrapper around the
+plain body, and `foldTempFileLines` and `foldTempFileTextLines` are the folds built on it. The diff body
+uses the temp fold; the `Content-Length` counting pass, which reads a temp capture before the body owns
+it, runs under `onException` so a throw there cleans up as a missing file would. "Temp" in a name now
+means one thing: this producer deletes the file on release. Three spec cases pin the fold: the lines and
+the removal on success, the removal when a step throws with the exception propagated, and the failure on
+a missing file.
+
 ## Open Questions
 
 - Whether the memory benchmark should also sample the C-side allocations separately (the embedder and

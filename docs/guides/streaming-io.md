@@ -17,21 +17,22 @@ view keeps the whole buffer alive. Streaming keeps the live bytes at one block, 
 
 ## Streaming Recipe Table
 
-| Shape of the read                  | Recipe                                                                                                        |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Parse a line-oriented file         | `Stream.foldFileLines step initial path`                                                                      |
-| Parse text lines as Strings        | `Stream.foldFileTextLines step initial path` (UTF-8 decoded per line)                                         |
-| Scan a file in fixed blocks        | `Stream.foldFileBlocks blockBytes step initial path`                                                          |
-| Does a file contain these bytes    | `Stream.fileContains needle path`                                                                             |
-| Are two files byte-identical       | `Stream.filesEqual a b`                                                                                       |
-| Copy a file                        | `Stream.copyFile from to`                                                                                     |
-| Write a file as lines              | `Stream.writeFileLines path lines`                                                                            |
-| Parse a subprocess's output        | `Process.withCapture exe args cwd stdin (\cap -> Stream.foldFileLines step initial (Process.captureOut cap))` |
-| Serve a file as a response body    | `Http.FileBody path`, or `Stream.transformedFileBody` for a per-block rewrite                                 |
-| Receive a request body into a file | `Stream.fileSinkI limit tooLarge path` driven by the request enumerator                                       |
-| Rewrite bytes on the way to a sink | `Iteratee.mapChunksI blockStep finish sink` (a block step with a carry, slice-bounded)                        |
-| Feed a sink one line at a time     | `Iteratee.linesI sink` (each chunk is one line with its newline)                                              |
-| Several sources into one sink      | `Iteratee.appendEnumerators [sourceA, sourceB] sink`                                                          |
+| Shape of the read                    | Recipe                                                                                                        |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| Parse a line-oriented file           | `Stream.foldFileLines step initial path`                                                                      |
+| Parse text lines as Strings          | `Stream.foldFileTextLines step initial path` (UTF-8 decoded per line)                                         |
+| Parse and then delete a file you own | `Stream.foldTempFileLines` / `foldTempFileTextLines` (removed when the fold returns, however it ends)         |
+| Scan a file in fixed blocks          | `Stream.foldFileBlocks blockBytes step initial path`                                                          |
+| Does a file contain these bytes      | `Stream.fileContains needle path`                                                                             |
+| Are two files byte-identical         | `Stream.filesEqual a b`                                                                                       |
+| Copy a file                          | `Stream.copyFile from to`                                                                                     |
+| Write a file as lines                | `Stream.writeFileLines path lines`                                                                            |
+| Parse a subprocess's output          | `Process.withCapture exe args cwd stdin (\cap -> Stream.foldFileLines step initial (Process.captureOut cap))` |
+| Serve a file as a response body      | `Http.FileBody path`, or `Stream.transformedFileBody` for a per-block rewrite                                 |
+| Receive a request body into a file   | `Stream.fileSinkI limit tooLarge path` driven by the request enumerator                                       |
+| Rewrite bytes on the way to a sink   | `Iteratee.mapChunksI blockStep finish sink` (a block step with a carry, slice-bounded)                        |
+| Feed a sink one line at a time       | `Iteratee.linesI sink` (each chunk is one line with its newline)                                              |
+| Several sources into one sink        | `Iteratee.appendEnumerators [sourceA, sourceB] sink`                                                          |
 
 `step :: a -> BS.ByteString -> IO a` receives each line (no trailing newline) or block and returns the new
 accumulator. When the values are names, titles or paths, use the text form: it decodes UTF-8 per line, so

@@ -1857,8 +1857,8 @@ truncated body (the head is already sent), as any streamed response can.
 diffStreamBody :: BS.ByteString -> FilePath -> BS.ByteString -> Iteratee.Enumerator Stream.StreamError ()
 diffStreamBody before capturePath after sink0 = do
     sink1 <- Iteratee.feedChunk before sink0
-    folded <- Stream.foldFileLines lineStep (sink1, View.diffScanInit) capturePath
-    _ <- FileSystem.removeFilePath capturePath
+    -- the body owns the capture: the temp fold removes it when the fold returns, however it ends
+    folded <- Stream.foldTempFileLines lineStep (sink1, View.diffScanInit) capturePath
     case folded of
         Left _ -> pure sink1
         Right (sink2, scanState) -> do
@@ -2128,7 +2128,8 @@ documentStreamedResponse ::
     FilePath ->
     IO Http.Response
 documentStreamedResponse producer onMissing beforeHtml afterHtml fsPath = do
-    counted <- Stream.foldFileBlocks docBlockBytes addEscapedLength 0 fsPath
+    -- the count runs before the body owns the file, so a throw here cleans up as a missing file would
+    counted <- Exception.onException (Stream.foldFileBlocks docBlockBytes addEscapedLength 0 fsPath) onMissing
     case counted of
         Left _ -> onMissing >> pure treeNotFound
         Right docLen ->

@@ -11,9 +11,12 @@ module MicroHttp.Stream (
     socketSinkI,
     fileEnumerator,
     fileEnumeratorChunked,
+    tempFileEnumeratorChunked,
     foldFileBlocks,
     foldFileLines,
     foldFileTextLines,
+    foldTempFileLines,
+    foldTempFileTextLines,
     fileContains,
     transformedFileBody,
     transformedTempFileBody,
@@ -26,6 +29,7 @@ module MicroHttp.Stream (
 
 import qualified Control.Exception as Exception
 import qualified Control.Monad as Monad
+import qualified Control.Monad.IO.Class as IOClass
 import qualified Data.ByteString as BS
 import qualified Data.IORef as IORef
 import qualified MicroHttp.Bytes as Bytes
@@ -114,6 +118,24 @@ fileEnumeratorChunked chunkBytes path =
         (`BS.hGet` chunkBytes)
         (StreamSourceError ("cannot open file: " ++ path))
 
+{- | 'fileEnumeratorChunked' for a file this producer owns (RFC-0043): the file is
+removed once the producer returns, however it returned -- the stream ended, the
+consumer stopped early or failed, or an effect step threw. "Temp" in a name here
+means exactly that: the producer deletes the file on release, so the file's owner
+is whoever holds the producer.
+-}
+tempFileEnumeratorChunked :: (Iteratee.MonadRelease m) => Int -> FilePath -> Iteratee.EnumeratorT StreamError m a
+tempFileEnumeratorChunked chunkBytes path = removingOnReturn path (fileEnumeratorChunked chunkBytes path)
+
+-- | Wraps a producer so that @path@ is removed when it returns, exception included; a missing file is not an error.
+removingOnReturn :: (Iteratee.MonadRelease m) => FilePath -> Iteratee.EnumeratorT e m a -> Iteratee.EnumeratorT e m a
+removingOnReturn path producer it = do
+    final <- Iteratee.releaseOnFailure remove (producer it)
+    IOClass.liftIO remove
+    pure final
+  where
+    remove = Monad.void (FileSystem.removeFilePath path)
+
 -- | The default chunk size, in bytes, used when streaming a file.
 fileChunkBytes :: Int
 fileChunkBytes = 4096
@@ -162,6 +184,19 @@ characters, never the byte-per-'Char' view of the bytes.
 -}
 foldFileTextLines :: (a -> String -> IO a) -> a -> FilePath -> IO (Either StreamError a)
 foldFileTextLines step = foldFileLines (\acc line -> step acc (Utf8.decodeBytes line))
+
+{- | 'foldFileLines' over a file the fold owns (RFC-0043): the file is removed when
+the fold returns, whatever ended it. This is how a response body consumes a
+process capture it was handed: the removal is the producer's release, not a line
+after the fold.
+-}
+foldTempFileLines :: (a -> BS.ByteString -> IO a) -> a -> FilePath -> IO (Either StreamError a)
+foldTempFileLines step initial path =
+    tempFileEnumeratorChunked lineBlockBytes path (Iteratee.linesI (foldLinesI step initial)) >>= Iteratee.run
+
+-- | 'foldFileTextLines' over a file the fold owns; see 'foldTempFileLines'.
+foldTempFileTextLines :: (a -> String -> IO a) -> a -> FilePath -> IO (Either StreamError a)
+foldTempFileTextLines step = foldTempFileLines (\acc line -> step acc (Utf8.decodeBytes line))
 
 -- | Folds each delivered line, less its terminating newline, into the accumulator (the sink under 'Iteratee.linesI').
 foldLinesI :: (a -> BS.ByteString -> IO a) -> a -> Iteratee.Iter StreamError a
@@ -259,12 +294,10 @@ transformedFileBodyImpl ::
     FilePath ->
     BS.ByteString ->
     Iteratee.Enumerator StreamError a
-transformedFileBodyImpl removeAfter blockSize before transform path after it0 = do
-    final <- appended it0
+transformedFileBodyImpl removeAfter blockSize before transform path after =
     -- the temp goes once the body has been produced or the consumer has stopped, even
-    -- when it stopped during @before@ and the file was never opened
-    Monad.when removeAfter (Monad.void (FileSystem.removeFilePath path))
-    pure final
+    -- when it stopped during @before@ and the file was never opened, or a step threw
+    (if removeAfter then removingOnReturn path else id) appended
   where
     appended =
         Iteratee.appendEnumerators

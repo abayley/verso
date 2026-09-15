@@ -55,6 +55,7 @@ because that is what the code calls its instances.
 | `strictEnumerator bytes`                              | none; one chunk then end of stream                                                   | `Iteratee` |
 | `resourceEnumerator acquire release read err`         | the generic bracket every other producer is built on                                 | `Iteratee` |
 | `fileEnumerator path`, `fileEnumeratorChunked n path` | a file handle, chunks of `fileChunkBytes` or `n`                                     | `Stream`   |
+| `tempFileEnumeratorChunked n path`                    | as above, and the file is removed when the producer returns, however it returned     | `Stream`   |
 | `socketEnumerator socket bufferBytes idleMicros`      | a client socket read with an idle timeout; the caller closes the socket              | `Stream`   |
 | `transformedFileBody before transform after n path`   | a file handle, each block passed through `transform`, with a prefix and suffix       | `Stream`   |
 | `transformedTempFileBody`                             | as above, and the file is removed once the body is produced or the consumer stops    | `Stream`   |

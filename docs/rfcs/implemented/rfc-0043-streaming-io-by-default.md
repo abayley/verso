@@ -414,6 +414,11 @@ means one thing: this producer deletes the file on release. Three spec cases pin
 the removal on success, the removal when a step throws with the exception propagated, and the failure on
 a missing file.
 
+With the temp source in place, `Process.runProcessCaptured` and `removeCapture` left the export list
+(2026-09-16): a capture is only ever seen inside `withCapture` or `withCaptureHandoff`, so no capture
+exists without an owner that removes it. The spec cases that exercised the raw capture now read it
+inside the bracket.
+
 ## Open Questions
 
 - Whether the memory benchmark should also sample the C-side allocations separately (the embedder and

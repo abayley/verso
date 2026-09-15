@@ -37,11 +37,9 @@ module MicroHttp.Process (
     ProcResult (..),
     runProcess,
     ProcCapture (..),
-    runProcessCaptured,
     withCapture,
     Handoff (..),
     withCaptureHandoff,
-    removeCapture,
 ) where
 
 import qualified Control.Exception as Exception
@@ -105,10 +103,11 @@ runProcess executable args mCwd mStdin = do
     pure (ProcResult (captureExit cap) out err)
 
 {- | The outcome of a subprocess whose stdout and stderr are left in capture
-files on disk rather than read into memory (RFC-0040). The caller owns
-'captureOut' and 'captureErr' and must remove them (see 'removeCapture') once it
-has consumed them -- by renaming or streaming the stdout capture into place, so a
-large captured page (a document at a revision, a diff) never enters the heap.
+files on disk rather than read into memory (RFC-0040). A capture is only ever
+seen inside 'withCapture' or 'withCaptureHandoff', which own the files: the
+consumer reads, folds, renames or streams the stdout capture, so a large
+captured page (a document at a revision, a diff) never enters the heap, and the
+bracket removes what is left (RFC-0043).
 -}
 data ProcCapture = ProcCapture
     { captureExit :: Exit.ExitCode
@@ -117,11 +116,10 @@ data ProcCapture = ProcCapture
     }
     deriving (Eq, Show)
 
-{- | As 'runProcess', but leaves the child's stdout and stderr in the capture
-files and returns their paths rather than reading them. The caller owns the two
-files and removes them (see 'removeCapture'); the internal stdin capture, if any,
-is cleaned here. This is the entry point for a subprocess whose output is a
-file-sized payload the caller will rename or stream rather than hold as a value.
+{- | Spawns the child with its stdout and stderr in fresh capture files and
+returns their paths; the internal stdin capture, if any, is cleaned here. Not
+exported: the two brackets are the only callers, so no capture exists without
+an owner that removes it.
 -}
 runProcessCaptured :: FilePath -> [String] -> Maybe FilePath -> Maybe BS.ByteString -> IO ProcCapture
 runProcessCaptured executable args mCwd mStdin = do

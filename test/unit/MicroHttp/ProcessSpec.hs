@@ -35,8 +35,6 @@ spec =
                 Directory.doesFileExist (Process.captureErr cap) `shouldReturn` False
 
             it "given a consumer that throws, when run under withCapture, then the capture files are removed and the exception propagates (RFC-0043)" $ do
-                holder <- Process.runProcessCaptured "echo" ["probe"] Nothing Nothing
-                Process.removeCapture holder
                 outcome <- Exception.try (Process.withCapture "echo" ["hello"] Nothing Nothing (\cap -> Exception.throwIO (userError ("consumer failed: " ++ Process.captureOut cap)) :: IO ()))
                 path <- case outcome of
                     Left e -> pure (drop (length "user error (consumer failed: ") (takeWhile (/= ')') (show (e :: Exception.SomeException))))
@@ -52,7 +50,7 @@ spec =
                 cap <- Process.withCaptureHandoff "echo" ["kept"] Nothing Nothing (pure . Process.HandedOff)
                 Directory.doesFileExist (Process.captureOut cap) `shouldReturn` True
                 BS.readFile (Process.captureOut cap) `shouldReturn` BS.pack "kept\n"
-                Process.removeCapture cap
+                mapM_ Directory.removeFile [Process.captureOut cap, Process.captureErr cap]
             it "given a consumer that throws before deciding, when run under the handoff bracket, then the files are removed and the exception propagates (RFC-0043)" $ do
                 outcome <- Exception.try (Process.withCaptureHandoff "echo" ["hello"] Nothing Nothing (\cap -> Exception.throwIO (userError ("consumer failed: " ++ Process.captureOut cap)) :: IO (Process.Handoff ())))
                 path <- case outcome of
@@ -101,28 +99,28 @@ spec =
                 Process.procExit res `shouldBe` Exit.ExitSuccess
                 Process.procOut res `shouldBe` BS.pack "in-cwd"
 
-        describe "runProcessCaptured" $ do
-            it "given a program, when captured, then stdout is left in a file the caller reads and removes" $ do
-                cap <- Process.runProcessCaptured "echo" ["captured"] Nothing Nothing
+        describe "captures" $ do
+            it "given a program, when captured, then stdout and stderr are in files the consumer reads, gone once it returns" $ do
+                (cap, out, err) <- Process.withCapture "echo" ["captured"] Nothing Nothing $ \cap -> do
+                    out <- BS.readFile (Process.captureOut cap)
+                    err <- BS.readFile (Process.captureErr cap)
+                    pure (cap, out, err)
                 Process.captureExit cap `shouldBe` Exit.ExitSuccess
-                out <- BS.readFile (Process.captureOut cap)
                 out `shouldBe` BS.pack "captured\n"
-                err <- BS.readFile (Process.captureErr cap)
                 err `shouldBe` BS.empty
-                Process.removeCapture cap
                 Directory.doesFileExist (Process.captureOut cap) `shouldReturn` False
                 Directory.doesFileExist (Process.captureErr cap) `shouldReturn` False
 
             it "given input bytes, when captured, then they are fed to stdin and the output capture holds them" $ do
-                cap <- Process.runProcessCaptured "cat" [] Nothing (Just (BS.pack "piped capture"))
-                Process.captureExit cap `shouldBe` Exit.ExitSuccess
-                out <- BS.readFile (Process.captureOut cap)
+                (exit, out) <- Process.withCapture "cat" [] Nothing (Just (BS.pack "piped capture")) $ \cap -> do
+                    out <- BS.readFile (Process.captureOut cap)
+                    pure (Process.captureExit cap, out)
+                exit `shouldBe` Exit.ExitSuccess
                 out `shouldBe` BS.pack "piped capture"
-                Process.removeCapture cap
 
             it "given an executable that does not exist, when captured, then exit 127 and the stderr capture names the failure" $ do
-                cap <- Process.runProcessCaptured "micro-http-no-such-program" [] Nothing Nothing
-                Process.captureExit cap `shouldBe` Exit.ExitFailure 127
-                err <- BS.readFile (Process.captureErr cap)
+                (exit, err) <- Process.withCapture "micro-http-no-such-program" [] Nothing Nothing $ \cap -> do
+                    err <- BS.readFile (Process.captureErr cap)
+                    pure (Process.captureExit cap, err)
+                exit `shouldBe` Exit.ExitFailure 127
                 BS.null err `shouldBe` False
-                Process.removeCapture cap

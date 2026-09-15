@@ -9,7 +9,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD="$ROOT/build"
 # The package database is normally passed by the Makefile bench target so
 # the version is defined in one place.
-DB="${MHS_PACKAGE_DB:-$HOME/.mcabal/mhs-0.16.3.0}"
+DB="${MHS_PACKAGE_DB:-$HOME/.mcabal/mhs-0.16.5.0}"
+# Linker options for mhs (the Makefile passes the CLT-ld override where the toolchains disagree).
+LINK="${MHS_LINK_FLAGS:-}"
 PORT=8090
 BYTES="${1:-$((512 * 1024 * 1024))}"
 CONSUMERS=2
@@ -18,7 +20,7 @@ mkdir -p "$BUILD"
 
 # Receiver: MicroHs, the subject under test.
 # The framework and its C shims come from the installed micro-http package (RFC-0038).
-mhs -a"$DB" -i"$ROOT/test/bench" "$ROOT/test/bench/IterateeReceiver.hs" -o "$BUILD/iteratee-receiver"
+mhs -a"$DB" $LINK -i"$ROOT/test/bench" "$ROOT/test/bench/IterateeReceiver.hs" -o "$BUILD/iteratee-receiver"
 
 # Sender: GHC + network, blocking sends.
 SENDER="$("$ROOT/test/bench/build-sender.sh" socket-sender)"

@@ -1,6 +1,11 @@
 MHS = mhs
 MHS_PACKAGE_DB = $(HOME)/.mcabal/mhs-0.16.5.0
-MHSFLAGS = -a$(MHS_PACKAGE_DB)
+# mhs links through cc; on a host where Xcode's clang cannot read the Command
+# Line Tools SDK stubs ("tapi error: malformed file", macOS 27 with clang 21)
+# every mhs link fails unless it uses the CLT's own ld, exactly as the GHC
+# targets do with GHC_LINK_FLAGS below. Empty where the toolchains agree.
+MHS_LINK_FLAGS ?= $(if $(wildcard $(CLT_LD)),-optl -fuse-ld=$(CLT_LD),)
+MHSFLAGS = -a$(MHS_PACKAGE_DB) $(MHS_LINK_FLAGS)
 # The MicroHs heap is a fixed, non-growable arena of this many 16-byte cells,
 # allocated once at process start (its default, 50,000,000 cells, is ~763MB and
 # becomes resident under allocation churn). run-verso passes it as
@@ -307,7 +312,7 @@ bench-socket: $(FS_OBJ)
 	$(BUILD)/socket-bench
 
 bench-socket-saturated:
-	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash $(BENCH)/socket-saturated-bench.sh
+	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) MHS_LINK_FLAGS="$(MHS_LINK_FLAGS)" bash $(BENCH)/socket-saturated-bench.sh
 
 bench-html-builder:
 	mkdir -p $(BUILD)
@@ -325,13 +330,13 @@ bench-search-chunk:
 	$(BUILD)/search-chunk-bench
 
 bench-iteratee:
-	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash $(BENCH)/iteratee-bench.sh
+	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) MHS_LINK_FLAGS="$(MHS_LINK_FLAGS)" bash $(BENCH)/iteratee-bench.sh
 
 bench-egress:
-	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash $(BENCH)/egress-bench.sh
+	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) MHS_LINK_FLAGS="$(MHS_LINK_FLAGS)" bash $(BENCH)/egress-bench.sh
 
 bench-http:
-	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) bash $(BENCH)/http-bench.sh
+	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) MHS_LINK_FLAGS="$(MHS_LINK_FLAGS)" bash $(BENCH)/http-bench.sh
 
 # Resident-memory high-water mark under a fixed scenario set (RFC-0043); the heap
 # is VERSO_HEAP_CELLS as for run-verso. See the script header for the knobs.

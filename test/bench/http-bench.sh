@@ -12,7 +12,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD="$ROOT/build"
 # The package database is normally passed by the bench-http Makefile target so
 # the version is defined in one place.
-DB="${MHS_PACKAGE_DB:-$HOME/.mcabal/mhs-0.16.3.0}"
+DB="${MHS_PACKAGE_DB:-$HOME/.mcabal/mhs-0.16.5.0}"
+# Linker options for mhs (the Makefile passes the CLT-ld override where the toolchains disagree).
+LINK="${MHS_LINK_FLAGS:-}"
 
 PORT="${MICROHTTP_BENCH_PORT:-8099}"
 CONC="${MICROHTTP_BENCH_CONC:-16}"
@@ -30,7 +32,7 @@ mkdir -p "$BUILD"
 # Built to verso-bench so the user's real build/verso is not clobbered.
 cc -O2 -Wall -c "$ROOT/cbits/microhttp_fs.c" -o "$BUILD/microhttp_fs.o" -I"$ROOT/cbits"
 cc -O2 -Wall -c "$ROOT/cbits/concordance_stub.c" -o "$BUILD/concordance_stub_bench.o" -I"$ROOT/cbits"
-mhs -a"$DB" -optc -I"$ROOT/cbits" -optl "$BUILD/microhttp_fs.o" -optl "$BUILD/concordance_stub_bench.o" \
+mhs -a"$DB" $LINK -optc -I"$ROOT/cbits" -optl "$BUILD/microhttp_fs.o" -optl "$BUILD/concordance_stub_bench.o" \
     -i"$ROOT/src" "$ROOT/src/Verso/Main.hs" -o "$BUILD/verso-bench"
 
 # A private config so the user's micro-http.conf and port 8080 are untouched.

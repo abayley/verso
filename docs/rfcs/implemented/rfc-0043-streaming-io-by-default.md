@@ -316,6 +316,38 @@ The same OS update changed loopback connect semantics: a non-blocking connect to
 `SO_ERROR`, which is the portable form and what `probeListener`'s port-clash check depends on. Two
 integration cases caught it.
 
+### Addendum: manifests, sidecars and the vocabulary; no more bytes as Chars (2026-09-15)
+
+Three of the annotated reads were converted, and with them the convention they relied on. The trash
+manifest, the meta sidecars and the search vocabulary were read with `BS.readFile` and `BS.unpack`,
+which yields one `Char` per byte, and written back with `BS.pack`. UTF-8 survived that only as long
+as no code interpreted a character, and it was already broken where a real `String` met it: the
+manifest writer packed origin paths that came decoded from directory listings, so any character above
+Latin-1 in a trashed page's path was truncated on write. The fix is the same everywhere: bytes are
+decoded at the boundary and `String`s are real characters.
+
+- `MicroHttp.Utf8` is the codec, moved from `Concordance.Utf8` into the framework with `decodeBytes`
+  and `encodeText` over `ByteString`; `Stream.foldFileTextLines` folds a file's lines as decoded
+  `String`s, decoding each line after it has been reassembled across block boundaries (a spec case
+  splits an em dash across the 64KiB block).
+- `Trash.parseManifest` is a line-fed draft (`manifestLine`, `finishManifest`); `Trash.readManifest` and
+  `Trash.writeManifest` stream the file as UTF-8 and are what `TreeMove` uses for restore and the trash
+  listing. A spec case round-trips a manifest whose path holds an em dash and a Cyrillic letter through
+  the file.
+- `DocumentMeta` decodes on read and encodes on write; the read stays whole and annotated because every
+  writer rewrites the file whole and it is a few hundred bytes. `TreeMove`'s sidecar scan for asset
+  names folds lines. A spec case round-trips an attachment name with characters above Latin-1.
+- `WordPiece.loadVocab` folds the vocabulary file through the same `addPiece` step as `mkVocab`, counting
+  blank lines as ids as the file's line positions require; `SearchIndex` uses it and disables search on
+  a vocabulary that will not read, as it does for a missing store.
+- The two places that fed those files with bytes-as-`Chars` now decode: the upload's original filename
+  header and the collected form fields in `App.formFieldsI` (titles, tree paths and slugs). A
+  non-ASCII destination in a move form was double-encoded on the way to the filesystem before this.
+
+Not yet converted, and worth a look next: the frontmatter `title` (`Frontmatter.title . BS.unpack` in
+`App`), header captures in `Router` and the raw request path, which still hand bytes-as-`Chars` to
+application code.
+
 ## Open Questions
 
 - Whether the memory benchmark should also sample the C-side allocations separately (the embedder and

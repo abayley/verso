@@ -31,3 +31,4 @@ library
     MicroHttp.Settings
     MicroHttp.Static
     MicroHttp.Stream
+    MicroHttp.Utf8

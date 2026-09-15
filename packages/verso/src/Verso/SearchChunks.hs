@@ -24,7 +24,6 @@ module Verso.SearchChunks (
     isDashesLine,
 ) where
 
-import qualified Concordance.Utf8 as Utf8
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.ByteString.Unsafe as BSU
 import qualified Data.List as List
@@ -33,6 +32,7 @@ import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Ptr as Ptr
 import qualified MicroHttp.Bytes as Bytes
 import qualified MicroHttp.Stream as Stream
+import qualified MicroHttp.Utf8 as Utf8
 
 foreign import ccall "string.h memchr" c_memchr :: CStr.CString -> CTypes.CInt -> CTypes.CSize -> IO (Ptr.Ptr ())
 

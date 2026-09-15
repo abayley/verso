@@ -165,6 +165,11 @@ spec =
                 cleanMeta
                 entries <- DocumentMeta.readAttachmentEntries ioDir
                 entries `shouldBe` []
+            it "given an attachment whose original name holds characters outside Latin-1, when it is appended and read back, then the name round-trips (RFC-0043)" $ do
+                cleanMeta
+                let entry = DocumentMeta.AttachmentEntry "Übersicht \8212 \1046.pdf" "assets/Ubersicht.pdf" "pdf"
+                DocumentMeta.appendAttachment ioDir entry
+                DocumentMeta.readAttachmentEntries ioDir `shouldReturn` [("Übersicht \8212 \1046.pdf", "assets/Ubersicht.pdf")]
 
 -- | The first line of a rendered attachment entry, for asserting name quoting in isolation.
 attachmentNameLine :: DocumentMeta.AttachmentEntry -> String

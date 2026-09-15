@@ -20,6 +20,7 @@ view keeps the whole buffer alive. Streaming keeps the live bytes at one block, 
 | Shape of the read                  | Recipe                                                                                                        |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | Parse a line-oriented file         | `Stream.foldFileLines step initial path`                                                                      |
+| Parse text lines as Strings        | `Stream.foldFileTextLines step initial path` (UTF-8 decoded per line)                                         |
 | Scan a file in fixed blocks        | `Stream.foldFileBlocks blockBytes step initial path`                                                          |
 | Does a file contain these bytes    | `Stream.fileContains needle path`                                                                             |
 | Are two files byte-identical       | `Stream.filesEqual a b`                                                                                       |
@@ -33,8 +34,11 @@ view keeps the whole buffer alive. Streaming keeps the live bytes at one block, 
 | Several sources into one sink      | `Iteratee.appendEnumerators [sourceA, sourceB] sink`                                                          |
 
 `step :: a -> BS.ByteString -> IO a` receives each line (no trailing newline) or block and returns the new
-accumulator. Prepend to a list and `reverse` at the end when order matters; a `Map` or a count needs no
-reversal.
+accumulator. When the values are names, titles or paths, use the text form: it decodes UTF-8 per line, so
+the step sees real characters. Never build a `String` from bytes with `BS.unpack` and pass it on: one
+`Char` per byte is not text, and a real `String` meeting it compares unequal or is truncated by `BS.pack`
+(`MicroHttp.Utf8` is the codec; RFC-0043 addendum). Prepend to a list and `reverse` at the end when order
+matters; a `Map` or a count needs no reversal.
 
 ## Worked Conversion: the Link Index Load
 

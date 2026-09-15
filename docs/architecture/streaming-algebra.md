@@ -151,8 +151,9 @@ which hands the whole transfer to `sendfile` because the kernel does it better t
 - **A slice bounds every intermediate.** A transformer works a chunk in slices of a fixed size and never
   builds a list proportional to a chunk (`Form.sliceBytes`), because on MicroHs a list proportional to a
   whole-body chunk overflows the evaluator stack. The same rule is why `MicroHttp.Bytes` exists.
-- **Bytes stay bytes.** Nothing decodes a document to `String`; only short pieces (a heading, a title, a
-  field name) are decoded, at the point of use.
+- **Bytes stay bytes, and text is decoded.** Nothing decodes a document to `String`; only short pieces (a
+  heading, a title, a field name) are decoded, at the point of use, through `MicroHttp.Utf8`. A `String`
+  built by `BS.unpack`, one `Char` per byte, never travels past the call that decodes it.
 
 ## Comparison with the streaming library
 

@@ -6,7 +6,7 @@ Run with @make bench-search-chunk@ (needs the vocab from @make search-model@).
 -}
 module Main (main) where
 
-import qualified Concordance.Utf8 as Utf8
+import qualified MicroHttp.Utf8 as Utf8
 import qualified Concordance.WordPiece as WordPiece
 import Data.ByteString.Char8 (ByteString)
 import qualified Data.ByteString.Char8 as BS

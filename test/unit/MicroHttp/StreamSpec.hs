@@ -7,6 +7,7 @@ import qualified MicroHttp.Http.Parse as Parse
 import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Process as Process
 import qualified MicroHttp.Stream as Stream
+import qualified MicroHttp.Utf8 as Utf8
 import qualified System.Directory as Directory
 import Test.Hspec
 import qualified TestSupport.Iteratee as Support
@@ -39,6 +40,15 @@ the file whole.
 foldFileLinesSpec :: Spec
 foldFileLinesSpec =
     describe "MicroHttp.Stream foldFileLines" $ do
+        it "given lines holding multi-byte characters, one straddling the read block boundary, when folded as text, then each line decodes whole (RFC-0043)" $ do
+            resetScratch
+            let path = scratch ++ "/text.txt"
+                -- the first line ends one byte short of the 64KiB block, so the em dash on the second line straddles it
+                first = BS.replicate (65536 - 1 - 1) 'x'
+                content = BS.concat [first, bs "\n", Utf8.encodeText "\8212 caf\233\n", Utf8.encodeText "\1046\n"]
+            BS.writeFile path content
+            outcome <- Stream.foldFileTextLines (\acc line -> pure (line : acc)) [] path
+            fmap reverse outcome `shouldBe` Right [replicate (65536 - 2) 'x', "\8212 caf\233", "\1046"]
         let collect path = do
                 outcome <- Stream.foldFileLines (\acc l -> pure (l : acc)) [] path
                 pure (fmap reverse outcome)

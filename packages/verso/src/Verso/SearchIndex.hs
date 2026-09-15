@@ -26,7 +26,6 @@ import qualified Concordance.Embedding as Embedding
 import qualified Concordance.Fingerprint as Fingerprint
 import qualified Concordance.Fuse as Fuse
 import qualified Concordance.Store as Store
-import qualified Concordance.Utf8 as Utf8
 import qualified Concordance.WordPiece as WordPiece
 import qualified Control.Concurrent as Concurrent
 import qualified Control.Concurrent.MVar as MVar
@@ -36,6 +35,7 @@ import qualified Data.IORef as IORef
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified MicroHttp.FileSystem as FileSystem
+import qualified MicroHttp.Utf8 as Utf8
 import qualified System.Directory as Directory
 import qualified Verso.Frontmatter as Frontmatter
 import qualified Verso.LinkFingerprint as LinkFingerprint
@@ -105,13 +105,17 @@ startSearch cfg = do
                     searchLog cfg ("search: embedder unavailable (" ++ e ++ "); search disabled")
                     pure Nothing
                 Right embedder -> do
-                    vocabBytes <- BS.readFile (searchVocabPath cfg) -- whole-file: the model vocabulary, a fixed ~230KB
+                    -- streamed a line at a time (RFC-0043); a vocabulary that will not read disables search like a missing store
+                    loadedVocab <- WordPiece.loadVocab (searchVocabPath cfg)
                     openedStore <- Store.openStore (searchIndexDir cfg) (Embedding.profileDims (searchProfile cfg))
-                    case openedStore of
-                        Left e -> do
+                    case (loadedVocab, openedStore) of
+                        (Left e, _) -> do
+                            searchLog cfg ("search: vocabulary unavailable (" ++ show e ++ "); search disabled")
+                            pure Nothing
+                        (_, Left e) -> do
                             searchLog cfg ("search: store unavailable (" ++ e ++ "); search disabled")
                             pure Nothing
-                        Right store -> do
+                        (Right vocab, Right store) -> do
                             queue <- MVar.newMVar SearchQueue.emptyQueue
                             wake <- MVar.newMVar ()
                             cache <- IORef.newIORef []
@@ -121,7 +125,7 @@ startSearch cfg = do
                                         { srConfig = cfg
                                         , srStore = store
                                         , srEmbedder = embedder
-                                        , srVocab = WordPiece.mkVocab vocabBytes
+                                        , srVocab = vocab
                                         , srQueue = queue
                                         , srWake = wake
                                         , srQueryCache = cache

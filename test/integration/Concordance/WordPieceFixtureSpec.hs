@@ -1,10 +1,10 @@
 module Concordance.WordPieceFixtureSpec (spec) where
 
-import qualified Concordance.Utf8 as Utf8
 import qualified Concordance.WordPiece as WordPiece
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified MicroHttp.FileSystem as FileSystem
+import qualified MicroHttp.Utf8 as Utf8
 import Test.Hspec
 
 fixtureDir :: FilePath

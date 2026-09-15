@@ -13,6 +13,7 @@ module MicroHttp.Stream (
     fileEnumeratorChunked,
     foldFileBlocks,
     foldFileLines,
+    foldFileTextLines,
     fileContains,
     transformedFileBody,
     transformedTempFileBody,
@@ -32,6 +33,7 @@ import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Http.Parse as Parse
 import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Network.Socket as Socket
+import qualified MicroHttp.Utf8 as Utf8
 import qualified System.IO.Base as Base
 import qualified System.IO.Open as Open
 
@@ -151,6 +153,15 @@ shares the one read bracket (ADR-0091).
 foldFileLines :: (a -> BS.ByteString -> IO a) -> a -> FilePath -> IO (Either StreamError a)
 foldFileLines step initial path =
     fileEnumeratorChunked lineBlockBytes path (Iteratee.linesI (foldLinesI step initial)) >>= Iteratee.run
+
+{- | 'foldFileLines' with each line decoded from UTF-8 to a 'String' (RFC-0043).
+The decode happens after the line has been reassembled across block boundaries,
+so a multi-byte character split by a block is decoded whole. This is the read for
+a line-oriented text file whose values are names or paths: the step receives real
+characters, never the byte-per-'Char' view of the bytes.
+-}
+foldFileTextLines :: (a -> String -> IO a) -> a -> FilePath -> IO (Either StreamError a)
+foldFileTextLines step = foldFileLines (\acc line -> step acc (Utf8.decodeBytes line))
 
 -- | Folds each delivered line, less its terminating newline, into the accumulator (the sink under 'Iteratee.linesI').
 foldLinesI :: (a -> BS.ByteString -> IO a) -> a -> Iteratee.Iter StreamError a

@@ -18,6 +18,7 @@ module Verso.Attachment (
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
 import qualified MicroHttp.Http as Http
+import qualified MicroHttp.Utf8 as Utf8
 
 -- | The image types served inline; all other allowed types are downloads.
 inlineImageExtension :: String -> Bool
@@ -47,7 +48,7 @@ as a stored filename and URL segment), this is never used as a path -- it is the
 originalUploadFilename :: Http.RequestHead -> String
 originalUploadFilename request =
     case lookup (Http.normaliseHeaderName (BS.pack "x-attachment-filename")) (Http.requestHeaders request) of
-        Just raw -> case lastSegment (percentDecode (BS.unpack raw)) of
+        Just raw -> case lastSegment (Utf8.decodeUtf8 (percentDecode (BS.unpack raw))) of
             "" -> "file"
             name -> name
         Nothing -> "file"

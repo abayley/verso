@@ -21,7 +21,6 @@ module Verso.App (
 
 import qualified Concordance.Embedding as Embedding
 import qualified Concordance.Store as Store
-import qualified Concordance.Utf8 as Utf8
 import qualified Control.Concurrent.MVar as MVar
 import qualified Control.Exception as Exception
 import qualified Control.Monad as Monad
@@ -43,6 +42,7 @@ import qualified MicroHttp.Router as Router
 import qualified MicroHttp.Server as Server
 import qualified MicroHttp.Static as Static
 import qualified MicroHttp.Stream as Stream
+import qualified MicroHttp.Utf8 as Utf8
 import qualified System.Directory as Directory
 import qualified System.Exit as Exit
 import qualified System.IO as IO
@@ -2252,7 +2252,8 @@ empty fields (@&&&@), which add no bytes. Only the decoded fields are widened.
 formFieldsI :: Int -> Iteratee.Iter Stream.StreamError [(String, String)]
 formFieldsI cap = do
     result <- Form.formI limits (Stream.StreamParseError Parse.BodyTooLarge) (const Form.CollectField)
-    pure [(BS.unpack key, BS.unpack value) | (key, value) <- Form.collectedFields result]
+    -- decoded (RFC-0043): a field value is a title or a tree path in real characters, never bytes as Chars
+    pure [(Utf8.decodeBytes key, Utf8.decodeBytes value) | (key, value) <- Form.collectedFields result]
   where
     limits = Form.FormLimits{Form.maxFieldBytes = cap, Form.maxCollectedBytes = cap, Form.maxFields = cap + 1}
 

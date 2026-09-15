@@ -1,15 +1,31 @@
-{- | UTF-8 conversion between byte-per-'Char' strings (the @Char8@ view of
-'Data.ByteString.Char8.ByteString' and C buffers) and real decoded
-'String's. MicroHs has no utf8-string package in its default database, so
-Concordance carries this small permissive codec: malformed input passes
-through byte-wise rather than failing.
+{- | UTF-8 conversion between bytes and real decoded 'String's. MicroHs has no
+utf8-string package in its default database, so the framework carries this
+small permissive codec: malformed input passes through byte-wise rather than
+failing.
+
+The byte side is a 'BS.ByteString' ('decodeBytes', 'encodeText'). The
+byte-per-'Char' 'String' forms ('decodeUtf8', 'encodeUtf8') exist for C
+buffers and the tokeniser; a byte-per-'Char' 'String' must never travel
+further than the call that decodes it. A file name, a form field or a header
+value that reaches application code as a 'String' has been decoded (RFC-0043).
 -}
-module Concordance.Utf8 (
+module MicroHttp.Utf8 (
+    decodeBytes,
+    encodeText,
     decodeUtf8,
     encodeUtf8,
 ) where
 
+import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
+
+-- | Decodes UTF-8 bytes into a 'String'.
+decodeBytes :: BS.ByteString -> String
+decodeBytes = decodeUtf8 . BS.unpack
+
+-- | Encodes a 'String' as UTF-8 bytes.
+encodeText :: String -> BS.ByteString
+encodeText = BS.pack . encodeUtf8
 
 -- | Decodes UTF-8 held as one 'Char' per byte into real characters.
 decodeUtf8 :: String -> String

@@ -28,7 +28,6 @@ module Concordance.Store (
     listPages,
 ) where
 
-import qualified Concordance.Utf8 as Utf8
 import qualified Control.Concurrent.MVar as MVar
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Map.Strict as Map
@@ -36,6 +35,7 @@ import qualified Foreign.C.String as CStr
 import qualified Foreign.Marshal.Alloc as Alloc
 import qualified Foreign.Ptr as Ptr
 import qualified Foreign.Storable as Storable
+import qualified MicroHttp.Utf8 as Utf8
 import qualified System.IO.FD as FD
 
 foreign import ccall "concordance_shim.h cn_available" c_available :: IO Int

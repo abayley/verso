@@ -32,6 +32,7 @@ import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified MicroHttp.Static as Static
+import qualified MicroHttp.Utf8 as Utf8
 import qualified System.Directory as Directory
 
 -- | An attachment record as written for a new upload: the legacy @id@/@path@ are omitted (ADR-0049).
@@ -180,16 +181,17 @@ appendEntryFile file localPath block = do
             Directory.createDirectoryIfMissing True (dirName file)
             writeMetaFile file revised
 
-{- | Read and write a @.meta@ file as opaque (UTF-8) bytes -- never decoding, so multibyte characters in
-attachment names survive verbatim (see 'Verso.App' for the same rationale on document bodies). The
-@BS.readFile@ is strict, so reading then overwriting the same file is safe.
+{- | Read a @.meta@ file, decoding UTF-8 into real characters (RFC-0043), so an
+attachment name round-trips through the 'String' the callers hold and compare. The
+read is strict and whole: the file is rewritten whole by every writer here and is
+a few hundred bytes, so a streamed read would buy nothing.
 -}
 readMetaFile :: FilePath -> IO String
-readMetaFile file = fmap BS.unpack (BS.readFile file) -- whole-file: the YAML sidecar, a few hundred bytes
+readMetaFile file = fmap Utf8.decodeBytes (BS.readFile file) -- whole-file: the YAML sidecar, a few hundred bytes, rewritten whole
 
--- | Write a @.meta@ file as opaque (UTF-8) bytes (see 'readMetaFile').
+-- | Write a @.meta@ file as UTF-8 (see 'readMetaFile').
 writeMetaFile :: FilePath -> String -> IO ()
-writeMetaFile file contents = BS.writeFile file (BS.pack contents)
+writeMetaFile file contents = BS.writeFile file (Utf8.encodeText contents)
 
 -- | Whether the contents are the empty list (@[]@) or only whitespace.
 isEmptyList :: String -> Bool

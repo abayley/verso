@@ -10,18 +10,21 @@ position); no IO happens here.
 module Concordance.WordPiece (
     Vocab,
     mkVocab,
+    loadVocab,
+    pieceId,
     Encoded (..),
     encode,
     encodeMany,
 ) where
 
-import qualified Concordance.Utf8 as Utf8
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified Data.Map.Strict as Map
 import qualified Data.Maybe as Maybe
 import qualified MicroHttp.Bytes as Bytes
+import qualified MicroHttp.Stream as Stream
+import qualified MicroHttp.Utf8 as Utf8
 
 {- | A WordPiece vocabulary as two character tries: word-start pieces and
 @##@ continuation pieces (stored with the @##@ stripped). A trie makes the
@@ -64,15 +67,25 @@ line, the token id being the zero-based line position. Empty lines are
 skipped (an empty piece could otherwise match without consuming input).
 -}
 mkVocab :: BS.ByteString -> Vocab
-mkVocab bytes = List.foldl' add (Vocab emptyTrie emptyTrie) pieces
+mkVocab bytes = snd (List.foldl' addPiece (0, Vocab emptyTrie emptyTrie) (map Utf8.decodeBytes (Bytes.split '\n' bytes)))
+
+{- | 'mkVocab' streamed from the @vocab.txt@ file, one line at a time (RFC-0043):
+the same fold, so ids and pieces are identical, without the file held whole.
+A file that will not open is the fold's error.
+-}
+loadVocab :: FilePath -> IO (Either Stream.StreamError Vocab)
+loadVocab path = fmap snd <$> Stream.foldFileTextLines (\acc piece -> pure (addPiece acc piece)) (0, Vocab emptyTrie emptyTrie) path
+
+{- | Adds one piece at the next token id: a @##@ piece to the continuation trie, an
+empty line to neither (it still takes an id, as the file's line position is the id).
+-}
+addPiece :: (Int, Vocab) -> String -> (Int, Vocab)
+addPiece (tokenId, vocab) piece = (tokenId + 1, added)
   where
-    pieces = zip (map (Utf8.decodeUtf8 . BS.unpack) (Bytes.split '\n' bytes)) [0 ..]
-    add vocab ('#' : '#' : rest, tokenId)
-        | not (null rest) =
-            vocab{vocabContinuation = insertTrie rest tokenId (vocabContinuation vocab)}
-    add vocab (piece, tokenId)
-        | null piece = vocab
-        | otherwise = vocab{vocabStart = insertTrie piece tokenId (vocabStart vocab)}
+    added = case piece of
+        '#' : '#' : rest | not (null rest) -> vocab{vocabContinuation = insertTrie rest tokenId (vocabContinuation vocab)}
+        [] -> vocab
+        _ -> vocab{vocabStart = insertTrie piece tokenId (vocabStart vocab)}
 
 -- | Looks up a piece's token id (word-start spelling, as the specials use).
 pieceId :: Vocab -> String -> Maybe Int

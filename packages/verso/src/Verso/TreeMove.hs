@@ -331,16 +331,13 @@ sidecarAssetNames root pageRel =
   where
     readLocalPaths f = do
         exists <- Directory.doesFileExist f
-        if exists then fmap (localPathNames . BS.unpack) (BS.readFile f) else pure [] -- whole-file: an asset sidecar
+        if exists then either (const []) reverse <$> Stream.foldFileTextLines (\acc line -> pure (reverse (localPathName line) ++ acc)) [] f else pure []
 
--- | The asset basenames in a sidecar yaml's @local_path:@ values.
-localPathNames :: String -> [String]
-localPathNames = concatMap nameOf . lines
-  where
-    nameOf line = case List.stripPrefix "local_path:" (dropWhile Char.isSpace line) of
-        Just rest -> Maybe.maybeToList (assetBasenameOf (trimValue rest))
-        Nothing -> []
-    trimValue = dropWhile Char.isSpace
+-- | The asset basename in a sidecar yaml line's @local_path:@ value, if it is one.
+localPathName :: String -> [String]
+localPathName line = case List.stripPrefix "local_path:" (dropWhile Char.isSpace line) of
+    Just rest -> Maybe.maybeToList (assetBasenameOf (dropWhile Char.isSpace rest))
+    Nothing -> []
 
 -- | The basename of a same-page @assets/<name>@ reference (handling a @./@ prefix), or 'Nothing'.
 assetBasenameOf :: String -> Maybe String
@@ -500,11 +497,12 @@ restoreFromTrash root trashRoot trashId = do
     let entryDir = trashRoot ++ "/" ++ trashId
         manifestFile = entryDir ++ "/manifest"
     hasManifest <- Directory.doesFileExist manifestFile
+    -- (the manifest read below streams the file; the existence check keeps the "not found" reply distinct)
     if not hasManifest
         then pure (Left "trash entry not found")
         else do
-            text <- fmap BS.unpack (BS.readFile manifestFile) -- whole-file: a trash manifest
-            case Trash.parseManifest text of
+            parsed <- Trash.readManifest entryDir
+            case parsed of
                 Nothing -> pure (Left "corrupt trash manifest")
                 Just manifest -> do
                     occupied <- targetOccupied root (Trash.manPath manifest) (Trash.manKind manifest)
@@ -585,7 +583,7 @@ targetOccupied root path kind =
 
 -- | Writes a trash entry's provenance manifest.
 writeManifest :: FilePath -> Trash.Manifest -> IO ()
-writeManifest entryDir manifest = BS.writeFile (entryDir ++ "/manifest") (BS.pack (Trash.renderManifest manifest))
+writeManifest = Trash.writeManifest
 
 {- | Lists the trash entries (RFC-0028) as @(id, originalPath, kind)@, newest-id last,
 reading each entry's manifest. Entries without a readable manifest are skipped.
@@ -606,8 +604,8 @@ listTrash trashRoot = do
         if not hasManifest
             then pure Nothing
             else do
-                text <- fmap BS.unpack (BS.readFile manifestFile) -- whole-file: a trash manifest
-                pure (fmap (\m -> (entryId, Trash.manPath m, Trash.manKind m)) (Trash.parseManifest text))
+                parsed <- Trash.readManifest (trashRoot ++ "/" ++ entryId)
+                pure (fmap (\m -> (entryId, Trash.manPath m, Trash.manKind m)) parsed)
 
 {- | Permanently removes a trash entry (its directory and everything stored in
 it). The id must be a plain all-digit entry name -- anything path-like is

@@ -1,9 +1,10 @@
 module Concordance.WordPieceSpec (spec) where
 
-import qualified Concordance.Utf8 as Utf8
 import qualified Concordance.WordPiece as WordPiece
 import qualified Data.ByteString.Char8 as BS
+import qualified MicroHttp.Utf8 as Utf8
 import Test.Hspec
+import qualified TestSupport.Scratch as Scratch
 
 -- | A tiny synthetic vocab: ids are line positions, mirroring vocab.txt.
 tinyVocab :: WordPiece.Vocab
@@ -18,6 +19,19 @@ utf8 = BS.pack . Utf8.encodeUtf8
 spec :: Spec
 spec =
     describe "Concordance.WordPiece" $ do
+        it "given a vocab file with a blank line, when loaded from the file, then the pieces and their ids equal the whole-bytes vocab, blank line counted (RFC-0043)" $ do
+            Scratch.resetScratchDir "build/wordpiece-spec"
+            let bytes = BS.pack "[PAD]\n[UNK]\n[CLS]\n[SEP]\n\nhello\n##lo\n\226\128\148\n"
+                path = "build/wordpiece-spec/vocab.txt"
+            BS.writeFile path bytes
+            loaded <- WordPiece.loadVocab path
+            case loaded of
+                Left e -> fail ("loadVocab failed: " ++ show e)
+                Right vocab -> do
+                    WordPiece.pieceId vocab "hello" `shouldBe` Just 5
+                    WordPiece.pieceId vocab "hello" `shouldBe` WordPiece.pieceId (WordPiece.mkVocab bytes) "hello"
+                    WordPiece.pieceId vocab "\8212" `shouldBe` Just 7
+                    WordPiece.encodedIds (WordPiece.encode vocab 16 (utf8 "hello")) `shouldBe` WordPiece.encodedIds (WordPiece.encode (WordPiece.mkVocab bytes) 16 (utf8 "hello"))
         it "given the empty string, when encoded, then it is [CLS] [SEP] with an all-ones mask" $ do
             let enc = WordPiece.encode tinyVocab 512 (utf8 "")
             WordPiece.encodedIds enc `shouldBe` [2, 3]

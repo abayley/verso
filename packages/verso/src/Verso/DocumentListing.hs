@@ -19,6 +19,7 @@ module Verso.DocumentListing (
 
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as List
+import qualified MicroHttp.Utf8 as Utf8
 import qualified Verso.DocumentLinks as DocumentLinks
 
 {- | Removes the listing entry (a single list-item line) whose inline link resolves,
@@ -55,14 +56,14 @@ addListingEntry destDir target entryLine text = do
 repointEntry :: String -> String -> String -> IO String
 repointEntry destDir target line = do
     -- The line is the byte-per-char form (from BS.unpack of the index.md bytes), so
-    -- BS.pack/BS.unpack round-trips it losslessly while pageLinks/rewriteLinks work on bytes.
-    let packed = BS.pack line
+    -- encoded to UTF-8 for the byte-level link scan, decoded again after the rewrite (RFC-0043)
+    let packed = Utf8.encodeText line
     links <- DocumentLinks.pageLinks packed
     pure $ case links of
         [] -> line
         (l : _) ->
             let (_, suffix) = DocumentLinks.splitTargetSuffix (DocumentLinks.linkTarget l)
-             in BS.unpack (DocumentLinks.rewriteLinks packed [(DocumentLinks.linkStart l, DocumentLinks.linkEnd l, DocumentLinks.relativeBetween destDir target ++ suffix)])
+             in Utf8.decodeBytes (DocumentLinks.rewriteLinks packed [(DocumentLinks.linkStart l, DocumentLinks.linkEnd l, DocumentLinks.relativeBetween destDir target ++ suffix)])
 
 {- | Inserts a card line into the first grid block, after the last existing card
 (so cards stay contiguous and a trailing blank line before @</div>@ is preserved),
@@ -122,7 +123,7 @@ matchesTarget :: String -> String -> String -> IO Bool
 matchesTarget indexDir target line
     | not (isListItem line) = pure False
     | otherwise = do
-        links <- DocumentLinks.pageLinks (BS.pack line)
+        links <- DocumentLinks.pageLinks (Utf8.encodeText line)
         pure (any (\l -> DocumentLinks.resolveTarget indexDir (DocumentLinks.linkTarget l) == Just target) links)
 
 -- | Drops leading spaces from a line (the optional indent before a list item or closing tag).

@@ -56,6 +56,7 @@ import qualified Foreign.C.String as CStr
 import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Ptr as Ptr
 import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Utf8 as Utf8
 
 foreign import ccall "string.h memchr" c_memchr :: CStr.CString -> CTypes.CInt -> CTypes.CSize -> IO (Ptr.Ptr ())
 
@@ -249,7 +250,7 @@ scanLines inFence0 base final text =
                                     Just close ->
                                         let inner = BS.take (close - j - 2) (BS.drop (j + 2) text)
                                             raw = BS.takeWhile (\c -> c /= ' ' && c /= '\t') inner
-                                            token = BS.unpack (stripAngles raw)
+                                            token = Utf8.decodeBytes (stripAngles raw)
                                             link = Link (base + j + 2) (base + j + 2 + BS.length raw) token
                                          in (link :) <$> lineLinksAt (j + 2 + BS.length raw) lineEnd
 
@@ -336,7 +337,7 @@ rewriteLinks text edits = BS.concat (go 0 (List.sortBy byStart edits))
     go cursor [] = [BS.drop cursor text]
     go cursor ((start, end, replacement) : rest)
         | start < cursor = go cursor rest -- overlapping/out-of-order: skip
-        | otherwise = sliceBetween cursor start : BS.pack replacement : go end rest
+        | otherwise = sliceBetween cursor start : Utf8.encodeText replacement : go end rest
     sliceBetween from to = BS.take (to - from) (BS.drop from text)
 
 {- | Relocates a tree path that lies within a moved subtree: the subtree root

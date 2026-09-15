@@ -21,6 +21,7 @@ module Verso.Identity (
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
 import qualified MicroHttp.Http as Http
+import qualified MicroHttp.Utf8 as Utf8
 import qualified Verso.Git as Git
 
 -- | The configuration 'currentIdentity' needs: which header to read, the fallback name, and the email domain.
@@ -51,7 +52,7 @@ deriveIdentity cfg raw =
 -- | Looks up a header by case-insensitive name, returning its value as a 'String' when present.
 headerValue :: String -> Http.RequestHead -> Maybe String
 headerValue name req =
-    fmap BS.unpack (lookup (Http.normaliseHeaderName (BS.pack name)) (Http.requestHeaders req))
+    fmap Utf8.decodeBytes (lookup (Http.normaliseHeaderName (BS.pack name)) (Http.requestHeaders req))
 
 -- | Lowercases the name and turns every non-alphanumeric character into a dash, for an email local-part.
 slug :: String -> String

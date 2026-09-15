@@ -6,6 +6,7 @@ import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as List
 import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Utf8 as Utf8
 import Test.Hspec
 import qualified Verso.DocumentLinks as DocumentLinks
 
@@ -28,6 +29,9 @@ spanText text link = BS.unpack (BS.take (DocumentLinks.linkEnd link - DocumentLi
 spec :: Spec
 spec =
     describe "Verso.DocumentLinks" $ do
+        it "given a link target holding characters above Latin-1, when extracted, then the target is decoded text (RFC-0043)" $ do
+            links <- DocumentLinks.pageLinks (Utf8.encodeText "See [X](./caf\233\8212\1046.md).\n")
+            map DocumentLinks.linkTarget links `shouldBe` ["./caf\233\8212\1046.md"]
         describe "pageLinks" $ do
             it "given inline links and images, when extracted, then their targets and spans are returned" $ do
                 let text = bs "See [Runbook](./runbook.md) and ![diagram](assets/d.png).\n"

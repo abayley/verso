@@ -35,6 +35,7 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified MicroHttp.Html as Html
+import qualified MicroHttp.Utf8 as Utf8
 import qualified Verso.Chrome as Chrome
 import qualified Verso.Git as Git
 
@@ -409,7 +410,7 @@ built (RFC-0040).
 -}
 diffScanStep :: DiffScan -> BS.ByteString -> (DiffScan, BS.ByteString)
 diffScanStep (DiffScan haveHunk dels adds) lineBytes =
-    let line = BS.unpack lineBytes
+    let line = Utf8.decodeBytes lineBytes -- decoded once here; Html.text encodes it again on the way out
      in if not haveHunk
             then
                 if isHunk line

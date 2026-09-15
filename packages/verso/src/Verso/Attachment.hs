@@ -36,7 +36,7 @@ allowedExtension ext =
 uploadFilename :: Http.RequestHead -> String
 uploadFilename request =
     case lookup (Http.normaliseHeaderName (BS.pack "x-attachment-filename")) (Http.requestHeaders request) of
-        Just raw -> sanitiseFilename (percentDecode (BS.unpack raw))
+        Just raw -> sanitiseFilename (Utf8.decodeUtf8 (percentDecode (BS.unpack raw)))
         Nothing -> "file"
 
 {- | The percent-decoded upload filename (its last path segment), unsanitised, for

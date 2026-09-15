@@ -4,11 +4,14 @@ module MicroHttp.HtmlSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import qualified MicroHttp.Html as Html
+import qualified MicroHttp.Utf8 as Utf8
 import Test.Hspec
 
 spec :: Spec
 spec =
     describe "MicroHttp.Html" $ do
+        it "given text holding characters above Latin-1, when rendered, then the bytes are their UTF-8 encoding (RFC-0043)" $
+            BS.concat (Html.renderChunks (Html.text "caf\233 \8212 \1046 <b>")) `shouldBe` Utf8.encodeText "caf\233 \8212 \1046 &lt;b&gt;"
         it "given a custom element with data attributes, when rendering, then escaped HTML is returned" $
             Html.renderHtml todoItem `shouldBe` expected
         it "given common document elements, when rendering, then matching HTML is returned" $

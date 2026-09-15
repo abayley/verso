@@ -3,12 +3,18 @@ module Verso.ViewSpec (spec) where
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.List as List
 import qualified MicroHttp.Html as Html
+import qualified MicroHttp.Utf8 as Utf8
 import Test.Hspec
 import qualified Verso.View as View
 
 spec :: Spec
 spec =
     describe "Verso.View" $ do
+        it "given a diff line holding characters above Latin-1, when scanned into rows, then the rows carry their UTF-8 bytes (RFC-0043)" $ do
+            let (st, hunkRows) = View.diffScanStep View.diffScanInit (BS.pack "@@ -1 +1 @@")
+                (st', rows) = View.diffScanStep st (Utf8.encodeText " caf\233 \8212 \1046")
+                out = BS.concat [hunkRows, rows, View.diffScanFlush st']
+            BS.isInfixOf (Utf8.encodeText "caf\233 \8212 \1046") out `shouldBe` True
         describe "standalone page shell" $ do
             it "given a standalone page, when rendered, then browser appearance loads before CSS without theme data" $ do
                 let out = Html.renderHtml (View.versionPageShell "History: page" (pure ()))

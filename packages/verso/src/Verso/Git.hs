@@ -30,6 +30,7 @@ module Verso.Git (
 import qualified Data.ByteString.Char8 as BS
 import qualified MicroHttp.Process as Process
 import qualified MicroHttp.Stream as Stream
+import qualified MicroHttp.Utf8 as Utf8
 import qualified System.Directory as Directory
 import qualified System.Exit as Exit
 
@@ -141,7 +142,7 @@ commitStaged root author message = do
                 Exit.ExitSuccess -> do
                     headRes <- git root ["rev-parse", "--short", "HEAD"]
                     pure (Committed (chomp (BS.unpack (Process.procOut headRes))))
-                _ -> pure (CommitFailed (BS.unpack (Process.procErr res)))
+                _ -> pure (CommitFailed (Utf8.decodeBytes (Process.procErr res)))
 
 {- | The revision history of a tree-relative page, newest first, following the
 page across renames\/moves (@git log --follow@). Returns @[]@ when the path has
@@ -189,9 +190,9 @@ logFormat = "%h%x1f%H%x1f%aI%x1f%an%x1f%s"
 -- | Parses one log line of unit-separated fields into a 'Revision'; missing fields default to empty.
 parseRevision :: BS.ByteString -> Revision
 parseRevision line =
-    case map BS.unpack (BS.split '\031' line) of
+    case map Utf8.decodeBytes (BS.split '\031' line) of
         (h : full : ts : author : rest) -> Revision h full ts author (joinSubject rest)
-        _ -> Revision "" "" "" "" (BS.unpack line)
+        _ -> Revision "" "" "" "" (Utf8.decodeBytes line)
   where
     -- the subject is the final field; rejoin defensively in case a value ever held the separator
     joinSubject = foldr (\a b -> if null b then a else a ++ "\031" ++ b) ""

@@ -26,6 +26,7 @@ import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Stream as Stream
+import qualified MicroHttp.Utf8 as Utf8
 
 -- | The kind of a logical operation.
 data OpType = OpMove | OpDelete | OpRestore
@@ -136,15 +137,15 @@ operationsI = go BS.empty []
             | otherwise ->
                 let pieces = BS.split '\n' (BS.append carry bytes)
                     complete = init pieces
-                    parsed = Maybe.mapMaybe (parseOperation . BS.unpack) complete
+                    parsed = Maybe.mapMaybe (parseOperation . Utf8.decodeBytes) complete
                  in length parsed `seq` go (BS.copy (last pieces)) (reverse parsed ++ acc)
         Iteratee.EndOfStream Nothing ->
-            Iteratee.Done (reverse acc ++ Maybe.maybeToList (parseOperation (BS.unpack carry))) stream
+            Iteratee.Done (reverse acc ++ Maybe.maybeToList (parseOperation (Utf8.decodeBytes carry))) stream
         Iteratee.EndOfStream (Just err) -> Iteratee.IterFailed err stream
 
 -- | Appends one operation as a JSON line (apply-then-append; the file is created on first write).
 appendOperation :: FilePath -> Operation -> IO ()
-appendOperation path op = BS.appendFile path (BS.pack (renderOperation op ++ "\n"))
+appendOperation path op = BS.appendFile path (Utf8.encodeText (renderOperation op ++ "\n"))
 
 -- | The next monotonic sequence number for the log (one past the current maximum, 0 when empty).
 nextSeq :: FilePath -> IO Int

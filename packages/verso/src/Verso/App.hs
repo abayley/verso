@@ -1017,7 +1017,7 @@ treeEdit versioning root path request =
         let (before, after) = editShell hasDraft chrome
         Iteratee.liftIO (documentFileResponse before after file)
     editSeed = do
-        let content = BS.pack seededMarkdown
+        let content = Utf8.encodeText seededMarkdown
         chrome <- Iteratee.liftIO (pageChrome root path True content)
         let (before, after) = editShell False chrome
         Iteratee.liftIO (documentBytesResponse before after content)
@@ -1512,12 +1512,12 @@ createdJson name path kind editPath =
 -- | A @200@ JSON response with the given body.
 jsonResponse :: String -> Http.Response
 jsonResponse body =
-    Http.Response Http.okStatus [contentTypeHeader "application/json"] (Http.StrictBody (BS.pack body))
+    Http.Response Http.okStatus [contentTypeHeader "application/json"] (Http.StrictBody (Utf8.encodeText body))
 
 -- | A plain-text response with the given status code, reason, and body.
 statusResponse :: Int -> String -> String -> Http.Response
 statusResponse code reason body =
-    Http.Response (Http.Status code reason) [contentTypeHeader "text/plain"] (Http.StrictBody (BS.pack body))
+    Http.Response (Http.Status code reason) [contentTypeHeader "text/plain"] (Http.StrictBody (Utf8.encodeText body))
 
 -- | The maximum accepted client-error report size in bytes (RFC-0023).
 clientErrorMaxBytes :: Int
@@ -2219,7 +2219,7 @@ keeps the file byte-exact end to end -- the same property the static @?raw@/asse
 already has.
 -}
 writeDocumentText :: FilePath -> String -> IO ()
-writeDocumentText path content = writeDocumentBytes path (BS.pack content)
+writeDocumentText path content = writeDocumentBytes path (Utf8.encodeText content)
 
 -- | Writes a document's bytes verbatim, with no widening through a 'String'.
 writeDocumentBytes :: FilePath -> BS.ByteString -> IO ()

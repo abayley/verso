@@ -355,6 +355,28 @@ breadcrumbs, the navigation labels and the search index. A parser case pins a pa
 em dash and a Cyrillic letter, and a frontmatter case pins the title. No production code now builds a
 `String` from request or file bytes with a bare `BS.unpack`.
 
+### Addendum: the output side, and a MicroHs file-name limit (2026-09-15)
+
+Decoding the inputs exposed that the outputs relied on the same convention. `Html.text` packed its
+`String` with `BS.pack`, which keeps the low byte of each character: a bytes-as-`Char`s title rendered
+correctly by accident and a decoded one would have been truncated. `Html.escapeChars` and `rawTrusted`
+now encode UTF-8; so do the JSON and plain-text response bodies, the seeded page written on create, the
+operation log, the persisted link index rows and the listing rewrites, and the readers of those files
+decode (`OperationLog`, `LinkIndexStore`, `DocumentLinks` targets, `DocumentListing`, the diff renderer,
+the git revision fields, the identity header). Spec cases pin the HTML bytes, a diff line, a link target
+and the manifests and sidecars from the previous addendum. The sweep left no `BS.unpack` in production
+code whose result is treated as text, and no `BS.pack` of text; the remaining ones are ASCII protocol
+tokens (methods, header names, hashes) and the request line in the access log.
+
+One case could not be pinned under MicroHs: a page whose file name holds characters above Latin-1. The
+GHC suite passes it; under MicroHs the file cannot even be created, because MicroHs marshals every
+`FilePath` in `System.IO` and `System.Directory` with `withCAString` and `peekCAString`, one byte per
+`Char`, so a decoded name is truncated on the way to the kernel and a listed name comes back as bytes.
+Our own `MicroHttp.FileSystem` calls use `withCString` (UTF-8), which is why the two disagree. This is
+recorded as `docs/reviews/microhs-filepath-encoding-bug-report.md`; until MicroHs marshals paths as
+UTF-8, or every path operation in the tree goes through our FFI, non-ASCII file names are unsupported
+under MicroHs and the case is not in the suite.
+
 ## Open Questions
 
 - Whether the memory benchmark should also sample the C-side allocations separately (the embedder and

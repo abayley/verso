@@ -40,6 +40,7 @@ import qualified MicroHttp.Bytes as Bytes
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Stream as Stream
+import qualified MicroHttp.Utf8 as Utf8
 import qualified System.Directory as Directory
 import qualified Verso.DocumentLinks as DocumentLinks
 import qualified Verso.LinkFingerprint as LinkFingerprint
@@ -224,7 +225,7 @@ for each fingerprint entry. Tree paths contain no tabs. 'Stream.writeFileLines' 
 each, so this is byte-identical to the old @unlines@-then-@BS.pack@ whole-index form.
 -}
 stateLines :: IndexState -> [BS.ByteString]
-stateLines st = map BS.pack (edgeLines ++ fpLines)
+stateLines st = map Utf8.encodeText (edgeLines ++ fpLines)
   where
     edgeLines = [List.intercalate "\t" ("E" : page : targets) | (page, targets) <- LinkIndex.outboundEdges (stIndex st)]
     fpLines =
@@ -241,7 +242,7 @@ Rows accumulate in reverse; the graph and fingerprint map are order-insensitive.
 collectRow :: Maybe [Row] -> BS.ByteString -> IO (Maybe [Row])
 collectRow acc line
     | BS.null line = pure acc
-    | otherwise = pure (acc >>= \rows -> fmap (: rows) (parseRow (map BS.unpack (Bytes.split '\t' line))))
+    | otherwise = pure (acc >>= \rows -> fmap (: rows) (parseRow (map Utf8.decodeBytes (Bytes.split '\t' line))))
 
 -- | Reconstructs the graph from the edge rows (re-deriving the inverse), no body re-parse.
 edgesToIndex :: [Row] -> LinkIndex.LinkIndex

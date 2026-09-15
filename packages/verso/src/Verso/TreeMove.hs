@@ -39,6 +39,7 @@ import qualified Data.Maybe as Maybe
 import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Static as Static
 import qualified MicroHttp.Stream as Stream
+import qualified MicroHttp.Utf8 as Utf8
 import qualified System.Directory as Directory
 import qualified Verso.DocumentLinks as DocumentLinks
 import qualified Verso.DocumentListing as DocumentListing
@@ -184,14 +185,14 @@ relocateEntry root srcParentRel destParentRel oldTarget newTarget synth = do
     srcText <- readRel root srcIndexRel
     removed <- case srcText of
         Just t -> do
-            (t', r) <- DocumentListing.removeListingEntry srcParentRel oldTarget (BS.unpack t)
-            writeRel root srcIndexRel (BS.pack t')
+            (t', r) <- DocumentListing.removeListingEntry srcParentRel oldTarget (Utf8.decodeBytes t)
+            writeRel root srcIndexRel (Utf8.encodeText t')
             pure r
         Nothing -> pure Nothing
     let entry = Maybe.fromMaybe synth removed
-    destBase <- fmap (maybe "" BS.unpack) (readRel root destIndexRel)
+    destBase <- fmap (maybe "" Utf8.decodeBytes) (readRel root destIndexRel)
     added <- DocumentListing.addListingEntry destParentRel newTarget entry destBase
-    writeRel root destIndexRel (BS.pack added)
+    writeRel root destIndexRel (Utf8.encodeText added)
   where
     srcIndexRel = indexRel srcParentRel
     destIndexRel = indexRel destParentRel
@@ -555,8 +556,8 @@ removeParentListing root parentIndexRel parent target = do
     txt <- readRel root parentIndexRel
     case txt of
         Just t -> do
-            (t', removed) <- DocumentListing.removeListingEntry parent target (BS.unpack t)
-            writeRel root parentIndexRel (BS.pack t')
+            (t', removed) <- DocumentListing.removeListingEntry parent target (Utf8.decodeBytes t)
+            writeRel root parentIndexRel (Utf8.encodeText t')
             pure removed
         Nothing -> pure Nothing
 
@@ -566,9 +567,9 @@ reAddListing root manifest =
     case Trash.manListing manifest of
         Nothing -> pure ()
         Just entry -> do
-            base <- fmap (maybe "" BS.unpack) (readRel root parentIndexRel)
+            base <- fmap (maybe "" Utf8.decodeBytes) (readRel root parentIndexRel)
             added <- DocumentListing.addListingEntry parent target entry base
-            writeRel root parentIndexRel (BS.pack added)
+            writeRel root parentIndexRel (Utf8.encodeText added)
   where
     parent = parentRel (Trash.manPath manifest)
     parentIndexRel = indexRel parent
@@ -805,7 +806,7 @@ writeRel root rel content =
 
 -- | The frontmatter @name@ of an index.md (for a synthesised listing entry), or a fallback.
 frontmatterNameOf :: FilePath -> IO String
-frontmatterNameOf fs = fmap (Maybe.fromMaybe "Untitled" . Frontmatter.title . BS.unpack) (Frontmatter.readBlock fs)
+frontmatterNameOf fs = fmap (Maybe.fromMaybe "Untitled" . Frontmatter.titleOf) (Frontmatter.readBlock fs)
 
 -- | The parent tree path of a tree path (its segments minus the last; @""@ at the root).
 parentRel :: String -> String

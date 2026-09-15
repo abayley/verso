@@ -73,6 +73,7 @@ import qualified Data.String as String
 import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Marshal.Alloc as Alloc
 import qualified Foreign.Ptr as Ptr
+import qualified MicroHttp.Utf8 as Utf8
 import Prelude hiding (div, head, span)
 
 foreign import ccall "microhttp_html.h mhhtml_escaped_length" c_escapedLength :: Ptr.Ptr CTypes.CUChar -> CTypes.CLong -> IO CTypes.CLong
@@ -234,7 +235,7 @@ escapedText (Escaped bytes)
 
 -- | Emit a 'String' verbatim with no escaping; the caller vouches for its safety.
 rawTrusted :: String -> Html ()
-rawTrusted = emit . chunk . BS.pack
+rawTrusted = emit . chunk . Utf8.encodeText
 
 -- | A container element: opening tag, children, then closing tag.
 el :: String -> [(String, String)] -> Html () -> Html ()
@@ -501,7 +502,7 @@ linear (docs/design/link-index-performance.md).
 -}
 escapeChars :: String -> Builder
 escapeChars [] = mempty
-escapeChars input = chunk (BS.pack (concatMap escapeChar input))
+escapeChars input = chunk (Utf8.encodeText (concatMap escapeChar input)) -- UTF-8, never BS.pack: a String here is real characters (RFC-0043)
 
 -- | The escaped form of one character; the identity fragment for safe characters.
 escapeChar :: Char -> String

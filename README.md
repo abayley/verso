@@ -234,6 +234,7 @@ goes. Useful entry points:
 - [Project Organisation](docs/architecture/project-organisation.md)
 - [Build Automation Design](docs/architecture/build-automation.md)
 - [Network Design](docs/architecture/network-design.md)
+- [Streaming Algebra](docs/architecture/streaming-algebra.md)
 
 RFCs live under `docs/rfcs/`: open proposals at the top level, completed work
 in `docs/rfcs/implemented/`, and abandoned proposals in `docs/rfcs/rejected/`.

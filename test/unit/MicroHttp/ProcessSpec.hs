@@ -43,6 +43,23 @@ spec =
                     Right () -> fail "the consumer's exception did not propagate"
                 Directory.doesFileExist path `shouldReturn` False
 
+        describe "withCaptureHandoff" $ do
+            it "given a consumer that finishes with the capture, when run under the handoff bracket, then both capture files are removed (RFC-0043)" $ do
+                cap <- Process.withCaptureHandoff "echo" ["done"] Nothing Nothing (pure . Process.Finished)
+                Directory.doesFileExist (Process.captureOut cap) `shouldReturn` False
+                Directory.doesFileExist (Process.captureErr cap) `shouldReturn` False
+            it "given a consumer that hands the capture off, when run under the handoff bracket, then the files are left for the new owner (RFC-0043)" $ do
+                cap <- Process.withCaptureHandoff "echo" ["kept"] Nothing Nothing (pure . Process.HandedOff)
+                Directory.doesFileExist (Process.captureOut cap) `shouldReturn` True
+                BS.readFile (Process.captureOut cap) `shouldReturn` BS.pack "kept\n"
+                Process.removeCapture cap
+            it "given a consumer that throws before deciding, when run under the handoff bracket, then the files are removed and the exception propagates (RFC-0043)" $ do
+                outcome <- Exception.try (Process.withCaptureHandoff "echo" ["hello"] Nothing Nothing (\cap -> Exception.throwIO (userError ("consumer failed: " ++ Process.captureOut cap)) :: IO (Process.Handoff ())))
+                path <- case outcome of
+                    Left e -> pure (drop (length "user error (consumer failed: ") (takeWhile (/= ')') (show (e :: Exception.SomeException))))
+                    Right _ -> fail "the consumer's exception did not propagate"
+                Directory.doesFileExist path `shouldReturn` False
+
         describe "runProcess" $ do
             it "given a program on PATH, when it is run, then its stdout and a success exit are captured" $ do
                 res <- Process.runProcess "echo" ["hello"] Nothing Nothing

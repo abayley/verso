@@ -846,6 +846,71 @@ spec = do
             fmap (bodyContains (BS.pack "data-readonly")) atFirst `shouldBe` Right True
             fmap (bodyContains (BS.pack "First version")) atFirst `shouldBe` Right True
 
+        it "given a revision at which the page did not exist, when it is viewed or rolled back, then the replies are 404 and 409 and no capture file is left behind (RFC-0043)" $ do
+            root <- setupVersionedFixture
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# Only version"))
+            before <- captureFiles
+            atNowhere <-
+                respondDocument
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
+                    (BS.pack (getRequest "/documents/sec/page.md?at=0000000000000000000000000000000000000000"))
+            rolled <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md?rollback" "rev=0000000000000000000000000000000000000000"))
+            fmap (Http.statusCode . Http.responseStatus) atNowhere `shouldBe` Right 404
+            fmap (Http.statusCode . Http.responseStatus) rolled `shouldBe` Right 409
+            newCaptureFiles before `shouldReturn` []
+
+        it "given a rollback whose copy into place fails, when it is requested, then the reply is 500 and no capture file is left behind (RFC-0043)" $ do
+            root <- setupVersionedFixture
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# Version one"))
+            v1Hash <- gitRevParse root "HEAD"
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# Version two"))
+            before <- captureFiles
+            _ <- Process.runProcess "chmod" ["444", root ++ "/sec/page.md"] Nothing Nothing
+            rolled <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
+                    (BS.pack (postRequest "/documents/sec/page.md?rollback" ("rev=" ++ v1Hash)))
+            _ <- Process.runProcess "chmod" ["644", root ++ "/sec/page.md"] Nothing Nothing
+            fmap (Http.statusCode . Http.responseStatus) rolled `shouldBe` Right 500
+            newCaptureFiles before `shouldReturn` []
+
+        it "given streamed revision and diff views, when their bodies have been produced, then no capture file is left behind (RFC-0043)" $ do
+            root <- setupVersionedFixture
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# First version"))
+            firstRev <- gitRevParse root "HEAD"
+            _ <-
+                Server.respondToRequestBytes
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
+                    (BS.pack (rawPutRequest "/documents/sec/page.md" "# Second version"))
+            secondRev <- gitRevParse root "HEAD"
+            before <- captureFiles
+            atFirst <-
+                respondDocument
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
+                    (BS.pack (getRequest ("/documents/sec/page.md?at=" ++ firstRev)))
+            diff <-
+                respondDocument
+                    (App.appWithDocumentTreeVersioned root treeDraftRoot)
+                    (BS.pack (getRequest ("/documents/sec/page.md?diff&from=" ++ firstRev ++ "&to=" ++ secondRev)))
+            fmap (Http.statusCode . Http.responseStatus) atFirst `shouldBe` Right 200
+            fmap (Http.statusCode . Http.responseStatus) diff `shouldBe` Right 200
+            newCaptureFiles before `shouldReturn` []
+
         it "given an earlier revision, when the page is rolled back to it, then the rollback lands as a new commit" $ do
             root <- setupVersionedFixture
             _ <-
@@ -867,6 +932,21 @@ spec = do
             liveAfterV2 `shouldBe` "# Version two"
             liveAfterRollback `shouldBe` "# Version one"
             BS.isInfixOf (BS.pack "Roll back") (BS.pack rollbackSubject) `shouldBe` True
+
+{- | The process-capture files currently in the temporary directory. A leak check
+snapshots this before a request and asks 'newCaptureFiles' afterwards; another
+process capturing at the same moment would show up too, which the suite's
+sequential order makes unlikely.
+-}
+captureFiles :: IO [FilePath]
+captureFiles = do
+    tmp <- Directory.getTemporaryDirectory
+    names <- Directory.listDirectory tmp
+    pure (List.sort (filter (List.isPrefixOf "micro-http-") names))
+
+-- | The capture files present now that were not in the snapshot.
+newCaptureFiles :: [FilePath] -> IO [FilePath]
+newCaptureFiles before = filter (`notElem` before) <$> captureFiles
 
 -- | The commit hash a ref resolves to in the repository at @root@ (newline stripped).
 gitRevParse :: FilePath -> String -> IO String
@@ -1072,7 +1152,4 @@ formEncode bytes = BS.concat (map encodeSlice [0, 1024 .. BS.length bytes - 1])
 -- | A page's bytes at a revision, read from the capture (small test files; the app streams these).
 committedBytes :: FilePath -> String -> FilePath -> IO BS.ByteString
 committedBytes root rev path =
-    Git.showFileAtRevisionCaptured root rev path >>= \cap -> do
-        bytes <- BS.readFile (Process.captureOut cap)
-        Process.removeCapture cap
-        pure bytes
+    Git.withFileAtRevisionCapture root rev path (\cap -> Process.Finished <$> BS.readFile (Process.captureOut cap))

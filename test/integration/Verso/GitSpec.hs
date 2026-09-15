@@ -83,11 +83,11 @@ spec =
             root <- freshRepo
             writeText (root ++ "/p.md") "alpha beta\n"
             c1 <- Git.commitPaths root author "v1" ["p.md"]
-            cap <- Git.showFileAtRevisionCaptured root (hashOf c1) "p.md"
+            (cap, captured) <- Git.withFileAtRevisionCapture root (hashOf c1) "p.md" $ \cap -> do
+                bytes <- BS.readFile (Process.captureOut cap)
+                pure (Process.Finished (cap, bytes))
             Process.captureExit cap `shouldBe` Exit.ExitSuccess
-            captured <- BS.readFile (Process.captureOut cap)
             captured `shouldBe` BS.pack "alpha beta\n"
-            Process.removeCapture cap
             Directory.doesFileExist (Process.captureOut cap) `shouldReturn` False
 
         it "given two revisions of a page, when their diff is captured to disk, then the stdout capture holds the unified diff and is the caller's to remove (RFC-0040)" $ do
@@ -96,11 +96,11 @@ spec =
             c1 <- Git.commitPaths root author "v1" ["p.md"]
             writeText (root ++ "/p.md") "alpha gamma\n"
             c2 <- Git.commitPaths root author "v2" ["p.md"]
-            cap <- Git.diffBetweenCaptured root (hashOf c1) (hashOf c2) "p.md"
+            (cap, captured) <- Git.withDiffCapture root (hashOf c1) (hashOf c2) "p.md" $ \cap -> do
+                bytes <- BS.readFile (Process.captureOut cap)
+                pure (Process.Finished (cap, bytes))
             Process.captureExit cap `shouldBe` Exit.ExitSuccess
-            captured <- BS.readFile (Process.captureOut cap)
             (BS.isInfixOf (BS.pack "-alpha beta") captured && BS.isInfixOf (BS.pack "+alpha gamma") captured) `shouldBe` True
-            Process.removeCapture cap
             Directory.doesFileExist (Process.captureOut cap) `shouldReturn` False
             Directory.doesFileExist (Process.captureErr cap) `shouldReturn` False
 
@@ -108,9 +108,8 @@ spec =
             root <- freshRepo
             writeText (root ++ "/p.md") "only page\n"
             c1 <- Git.commitPaths root author "v1" ["p.md"]
-            cap <- Git.showFileAtRevisionCaptured root (hashOf c1) "absent.md"
-            (Process.captureExit cap == Exit.ExitSuccess) `shouldBe` False
-            Process.removeCapture cap
+            exit <- Git.withFileAtRevisionCapture root (hashOf c1) "absent.md" (pure . Process.Finished . Process.captureExit)
+            (exit == Exit.ExitSuccess) `shouldBe` False
 
         it "given a page that has been renamed, when its history is read, then it is followed across the rename" $ do
             root <- freshRepo

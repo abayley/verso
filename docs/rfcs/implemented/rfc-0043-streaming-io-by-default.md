@@ -387,6 +387,20 @@ whole-file reads are now six: the two status-line process captures, the strict-r
 one-line search marker, `index.md` in a move (bounded by the form limit) and the meta sidecar
 (rewritten whole).
 
+### Addendum: every capture under a bracket (2026-09-16)
+
+A review of the `runProcessCaptured` callers found two of the three handlers with a reason not to use
+`withCapture`: a streamed revision view and a streamed diff hand their stdout capture to a response body
+that is produced after the handler returns, so the files must outlive the handler. The third, rollback,
+had no such reason and removed its capture by hand, leaking both files if the copy into place threw.
+`Process.withCaptureHandoff` covers the first shape: the consumer runs under the exception guard and
+returns `Finished` (files removed here) or `HandedOff` (left for the owner it named, the body). The two
+git helpers take a consumer (`withDiffCapture`, `withFileAtRevisionCapture`), rollback runs under the
+plain bracket, and the hand-written `onException` guard in the revision view is gone; the diff handler,
+which had the same window and no guard, is covered by the same change. Three integration cases snapshot
+the capture files in the temporary directory and assert none is left after a 404 view, a 409 and a
+failed-copy 500 rollback, and the two streamed views once their bodies are produced.
+
 ## Open Questions
 
 - Whether the memory benchmark should also sample the C-side allocations separately (the embedder and

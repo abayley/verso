@@ -1825,27 +1825,28 @@ treeDiff root path request = do
         pane = hasQueryFlag "pane" request
     -- RFC-0040 phase 5/9: the diff is captured to a file and streamed through the side-by-side transform
     -- a line at a time, so neither the whole diff nor the rendered table is held in the heap.
-    cap <- Iteratee.liftIO (Git.diffBetweenCaptured root fromRev toRev path)
-    empty <- Iteratee.liftIO (captureEmpty cap)
-    Iteratee.liftIO (Monad.void (FileSystem.removeFilePath (Process.captureErr cap)))
-    if empty
-        then do
-            -- No differences (or the command failed): a small whole response, no streaming.
-            Iteratee.liftIO (Monad.void (FileSystem.removeFilePath (Process.captureOut cap)))
-            if pane
-                then pure (htmlResponseChunks (View.diffBody fromRev toRev ""))
-                else do
-                    title <- Iteratee.liftIO (treePageTitle root path)
-                    pure (documentResponse (View.diffPage title path fromRev toRev ""))
-        else do
-            (before, after) <-
-                if pane
-                    then pure (View.diffPaneHalves fromRev toRev)
-                    else do
-                        title <- Iteratee.liftIO (treePageTitle root path)
-                        let (b, a) = View.diffPageHalves title path fromRev toRev
-                        pure (BS.pack "<!doctype html>" `BS.append` b, a)
-            pure (Http.Response Http.okStatus documentHtmlHeaders (Http.StreamBody (diffStreamBody before (Process.captureOut cap) after)))
+    Iteratee.liftIO $ Git.withDiffCapture root fromRev toRev path $ \cap -> do
+        empty <- captureEmpty cap
+        if empty
+            then do
+                -- No differences (or the command failed): a small whole response, no streaming.
+                Process.Finished
+                    <$> if pane
+                        then pure (htmlResponseChunks (View.diffBody fromRev toRev ""))
+                        else do
+                            title <- treePageTitle root path
+                            pure (documentResponse (View.diffPage title path fromRev toRev ""))
+            else do
+                -- The stderr capture is not needed; the stdout capture becomes the body's, removed when the body finishes.
+                Monad.void (FileSystem.removeFilePath (Process.captureErr cap))
+                (before, after) <-
+                    if pane
+                        then pure (View.diffPaneHalves fromRev toRev)
+                        else do
+                            title <- treePageTitle root path
+                            let (b, a) = View.diffPageHalves title path fromRev toRev
+                            pure (BS.pack "<!doctype html>" `BS.append` b, a)
+                pure (Process.HandedOff (Http.Response Http.okStatus documentHtmlHeaders (Http.StreamBody (diffStreamBody before (Process.captureOut cap) after))))
 
 {- | Streams a diff response body (RFC-0040): the chrome before the rows, then the
 capture file's lines folded through the side-by-side transform into HTML row bytes,
@@ -1880,26 +1881,21 @@ treeReadAt root path request = do
     let rev = queryValue "at" request
     -- RFC-0040 phase 5: the revision is captured to a file, streamed as the document, and removed
     -- when the body finishes; it never enters the heap.
-    cap <- Iteratee.liftIO (Git.showFileAtRevisionCaptured root rev path)
-    -- git show exits non-zero, or yields nothing, when the path did not exist at that revision.
-    empty <- Iteratee.liftIO (captureEmpty cap)
-    if empty
-        then Iteratee.liftIO (Process.removeCapture cap) >> pure treeNotFound
-        else do
-            -- The stderr capture is not needed here; the stdout capture streams as the document.
-            Iteratee.liftIO (Monad.void (FileSystem.removeFilePath (Process.captureErr cap)))
-            let out = Process.captureOut cap
-            -- Until the response owns the capture, a crash between here and the body's
-            -- bracket would leak it: remove it on the way out and let the crash propagate.
-            Iteratee.liftIO $
-                Exception.onException
-                    ( do
-                        block <- Frontmatter.readBlock out
-                        chrome <- pageChrome root path False block
-                        let (before, after) = shellFor path request False False False chrome
-                        documentTempFileResponse before after out
-                    )
-                    (FileSystem.removeFilePath out)
+    Iteratee.liftIO $ Git.withFileAtRevisionCapture root rev path $ \cap -> do
+        -- git show exits non-zero, or yields nothing, when the path did not exist at that revision.
+        empty <- captureEmpty cap
+        if empty
+            then pure (Process.Finished treeNotFound)
+            else do
+                -- The stderr capture is not needed; the stdout capture becomes the temp-file body's,
+                -- removed when the body finishes or the consumer stops. A crash before that point
+                -- is covered by the handoff bracket, which removes both files and rethrows.
+                Monad.void (FileSystem.removeFilePath (Process.captureErr cap))
+                let out = Process.captureOut cap
+                block <- Frontmatter.readBlock out
+                chrome <- pageChrome root path False block
+                let (before, after) = shellFor path request False False False chrome
+                Process.HandedOff <$> documentTempFileResponse before after out
 
 {- | The rollback action (RFC-0032): @POST /documents/\<path\>?rollback@ with a
 @rev@ field restores the page's content at that revision, writes it through the
@@ -1916,21 +1912,21 @@ treeRollback versioning maint root captures request = do
         Just fsPath -> do
             -- RFC-0040 phase 5: the revision is captured to a file and streamed into place, never
             -- routed through the heap.
-            cap <- Iteratee.liftIO (Git.showFileAtRevisionCaptured root rev path)
-            empty <- Iteratee.liftIO (captureEmpty cap)
-            if empty
-                then Iteratee.liftIO (Process.removeCapture cap) >> pure (statusResponse 409 "Conflict" "cannot read that revision\n")
-                else do
-                    copied <- Iteratee.liftIO (Stream.copyFile (Process.captureOut cap) fsPath)
-                    Iteratee.liftIO (Process.removeCapture cap)
-                    case copied of
-                        Left _ -> pure (statusResponse 500 "Internal Server Error" "could not restore that revision\n")
-                        Right () -> do
-                            Iteratee.liftIO (onSave maint path)
-                            let author = Identity.currentIdentity (versioningIdentity versioning) request
-                            _ <- Iteratee.liftIO (Git.commitAll root author ("Roll back " ++ path ++ " to " ++ rev))
-                            -- Rollback is a plain history-page form post: classic POST -> 303 -> GET.
-                            pure (seeOtherResponse ("/documents/" ++ path))
+            -- the capture lives only as long as the copy: withCapture removes it however this exits
+            copied <- Iteratee.liftIO $ Git.withFileAtRevisionCapture root rev path $ \cap -> do
+                empty <- captureEmpty cap
+                if empty
+                    then pure (Process.Finished Nothing)
+                    else Process.Finished . Just <$> Stream.copyFile (Process.captureOut cap) fsPath
+            case copied of
+                Nothing -> pure (statusResponse 409 "Conflict" "cannot read that revision\n")
+                Just (Left _) -> pure (statusResponse 500 "Internal Server Error" "could not restore that revision\n")
+                Just (Right ()) -> do
+                    Iteratee.liftIO (onSave maint path)
+                    let author = Identity.currentIdentity (versioningIdentity versioning) request
+                    _ <- Iteratee.liftIO (Git.commitAll root author ("Roll back " ++ path ++ " to " ++ rev))
+                    -- Rollback is a plain history-page form post: classic POST -> 303 -> GET.
+                    pure (seeOtherResponse ("/documents/" ++ path))
 
 {- | Answers @GET /search?q=...@ (RFC-0034): the search page with its form
 and, for a non-empty query, the fused hybrid results -- one per page, best

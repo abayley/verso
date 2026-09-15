@@ -23,8 +23,8 @@ module Verso.Git (
     commitPaths,
     commitAll,
     logForPath,
-    diffBetweenCaptured,
-    showFileAtRevisionCaptured,
+    withDiffCapture,
+    withFileAtRevisionCapture,
 ) where
 
 import qualified Data.ByteString.Char8 as BS
@@ -163,25 +163,25 @@ logForPath root path =
         | BS.null line = pure revs
         | otherwise = pure (parseRevision line : revs)
 
-{- | The unified diff of a page between two revisions, left in a capture file on
-disk rather than read into the heap (RFC-0040), for the caller to stream with
-per-line add\/remove highlighting. The caller owns the capture -- it streams the stdout capture and then
-'Process.removeCapture' -- and reads the exit code from 'Process.captureExit'.
+{- | Runs @git diff@ between two revisions of a page and hands the capture to
+@consume@ under 'Process.withCaptureHandoff' (RFC-0040, RFC-0043): the consumer
+streams the stdout capture (a response body that removes it when done) or
+finishes with it, and reads the exit code from 'Process.captureExit'. The diff
+never enters the heap.
 -}
-diffBetweenCaptured :: FilePath -> String -> String -> FilePath -> IO Process.ProcCapture
-diffBetweenCaptured root fromRev toRev path =
-    Process.runProcessCaptured "git" ["-C", root, "diff", fromRev, toRev, "--", path] Nothing Nothing
+withDiffCapture :: FilePath -> String -> String -> FilePath -> (Process.ProcCapture -> IO (Process.Handoff a)) -> IO a
+withDiffCapture root fromRev toRev path =
+    Process.withCaptureHandoff "git" ["-C", root, "diff", fromRev, toRev, "--", path] Nothing Nothing
 
-{- | A page's exact content at a revision (@git show \<rev\>:\<path\>@), left in
-a capture file on disk rather than read into the heap (RFC-0040), so it
-round-trips losslessly without materialising the bytes. Used by rollback. The caller owns the capture -- it streams or renames the stdout capture
-into place and then 'Process.removeCapture' -- so a large document at a revision
-never enters the heap. @git show@ exits non-zero when the path did not exist at
-that revision, which the caller reads from 'Process.captureExit'.
+{- | Runs @git show \<rev\>:\<path\>@ and hands the capture to @consume@ under
+'Process.withCaptureHandoff': a page's exact bytes at a revision, streamed or
+copied into place without materialising them. @git show@ exits non-zero when the
+path did not exist at that revision, which the consumer reads from
+'Process.captureExit'.
 -}
-showFileAtRevisionCaptured :: FilePath -> String -> FilePath -> IO Process.ProcCapture
-showFileAtRevisionCaptured root rev path =
-    Process.runProcessCaptured "git" ["-C", root, "show", rev ++ ":" ++ path] Nothing Nothing
+withFileAtRevisionCapture :: FilePath -> String -> FilePath -> (Process.ProcCapture -> IO (Process.Handoff a)) -> IO a
+withFileAtRevisionCapture root rev path =
+    Process.withCaptureHandoff "git" ["-C", root, "show", rev ++ ":" ++ path] Nothing Nothing
 
 -- | The @--format@ string: fields separated by a unit-separator byte that cannot appear in the values.
 logFormat :: String

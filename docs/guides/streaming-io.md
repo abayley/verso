@@ -84,8 +84,11 @@ logForPath root path =
             _ -> pure []
 ```
 
-A capture that is served rather than parsed is renamed or streamed into place instead of folded
-(`Git.showFileAtRevisionCaptured` and the rollback handler are the example).
+A capture that outlives its handler, because a streamed response body reads it after the handler has
+returned, runs under `Process.withCaptureHandoff`: the consumer returns `Finished` to have the files
+removed there or `HandedOff` to leave them for the body, and an exception before either removes them
+(`Git.withFileAtRevisionCapture` behind the revision view is the example). A capture consumed inside the
+handler, such as the rollback's copy into place, uses the plain `withCapture`.
 
 ## Splitting Inside a Line or Block
 

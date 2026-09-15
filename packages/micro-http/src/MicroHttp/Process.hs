@@ -39,6 +39,8 @@ module MicroHttp.Process (
     ProcCapture (..),
     runProcessCaptured,
     withCapture,
+    Handoff (..),
+    withCaptureHandoff,
     removeCapture,
 ) where
 
@@ -146,6 +148,27 @@ the output whole. The exit code is 'captureExit' on the capture handed in.
 withCapture :: FilePath -> [String] -> Maybe FilePath -> Maybe BS.ByteString -> (ProcCapture -> IO a) -> IO a
 withCapture executable args mCwd mStdin =
     Exception.bracket (runProcessCaptured executable args mCwd mStdin) removeCapture
+
+{- | What a 'withCaptureHandoff' consumer decided: the capture is finished with,
+or it has been handed to a new owner (a streamed response body) that will
+remove it when it is done.
+-}
+data Handoff a = Finished a | HandedOff a
+
+{- | 'withCapture' for a consumer that may hand the capture on rather than
+finish with it (RFC-0043): a handler that streams a captured document or diff as
+the response body cannot remove the files when it returns, because the body is
+produced after that. The consumer runs under the same exception guard as
+'withCapture'; on 'Finished' the files are removed here, on 'HandedOff' they are
+left for the owner the consumer named.
+-}
+withCaptureHandoff :: FilePath -> [String] -> Maybe FilePath -> Maybe BS.ByteString -> (ProcCapture -> IO (Handoff a)) -> IO a
+withCaptureHandoff executable args mCwd mStdin consume = do
+    cap <- runProcessCaptured executable args mCwd mStdin
+    decided <- Exception.onException (consume cap) (removeCapture cap)
+    case decided of
+        Finished a -> removeCapture cap >> pure a
+        HandedOff a -> pure a
 
 -- | Removes a capture's stdout and stderr files, ignoring any already gone.
 removeCapture :: ProcCapture -> IO ()

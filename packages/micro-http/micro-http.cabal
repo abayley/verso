@@ -32,3 +32,4 @@ library
     MicroHttp.Static
     MicroHttp.Stream
     MicroHttp.Utf8
+    MicroHttp.Utf8.Prim

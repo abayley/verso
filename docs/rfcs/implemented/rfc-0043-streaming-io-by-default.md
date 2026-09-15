@@ -419,6 +419,25 @@ With the temp source in place, `Process.runProcessCaptured` and `removeCapture` 
 exists without an owner that removes it. The spec cases that exercised the raw capture now read it
 inside the bracket.
 
+### Addendum: the codec is the runtime's (2026-09-16)
+
+`MicroHttp.Utf8` decoded by unpacking to a byte-per-`Char` list and walking it in interpreted code,
+and encoded the same way in reverse. MicroHs already decodes and encodes UTF-8 in C: the `fromUTF8`
+and `packUTF8` primitives behind `Data.Text` and `Foreign.C.String`. `MicroHttp.Utf8.Prim` is the seam:
+the MicroHs build takes the two primitives, and the GHC build takes the same two names from a shim in
+`test/ghc-compat` (the `text` package's lenient decoder) that the GHC search path lists first, the
+pattern the other compiler-specific modules already use. The `String`-to-`String` forms remain for the
+percent-decoding sites and are built on the byte forms. `Concordance.Store` passes strings to the shim
+with `withCString` and `peekCString`, which are those primitives, in place of `withCAString` around the
+old codec. Malformed input is undefined on both compilers, by decision. One
+blob stays on `withCAString`: the NUL-separated anchor list handed to the shim is already UTF-8 bytes,
+and the runtime's string encoder writes a NUL as the two-byte "modified UTF-8" form, which loses the
+separators (the seam spec caught it); the same spec now round-trips a heading above Latin-1 through the
+shim, which the old `withCAString`-around-the-codec pairing double-encoded. A `Utf8Spec` pins the four
+byte-length ranges, the round trip and the empty case. Measured on the 263KB corpus page under MicroHs,
+ten decodes went from 0.95s to 0.23s and ten decode-and-encode round trips from 1.07s to 0.30s, about
+four times faster, with the intermediate list gone.
+
 ## Open Questions
 
 - Whether the memory benchmark should also sample the C-side allocations separately (the embedder and

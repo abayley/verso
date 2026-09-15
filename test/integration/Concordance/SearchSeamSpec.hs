@@ -194,6 +194,7 @@ spec =
                             (uncurry chunkFor)
                             [ ("Failover", "Guide\nHow to configure SmartWAN failover timeouts.")
                             , ("Battery", "Guide\nReplacing the shelf label battery safely.")
+                            , ("Batterie \8212 \1046", "Guide\nA heading above Latin-1 round-trips through the shim (RFC-0043).")
                             ]
                     bChunks <-
                         mapM
@@ -210,6 +211,11 @@ spec =
                             Store.hitPage top `shouldBe` "guides/a.md"
                             Store.hitAnchor top `shouldBe` "Failover"
                         [] -> fail "no hits"
+
+                    -- a heading above Latin-1 comes back through the shim as the same characters
+                    qv2 <- embedOrDie "replacing the shelf label battery"
+                    Right hits2 <- Store.searchStore store qv2 "battery" 4
+                    ("Batterie \8212 \1046" `elem` map Store.hitAnchor hits2) `shouldBe` True
 
                     -- listing carries both pages' fingerprints
                     Right pages <- Store.listPages store

@@ -162,7 +162,9 @@ upsertPage store pageId statFp contentFp chunks =
         withUtf8 pageId $ \pageC ->
             withUtf8 statFp $ \statC ->
                 withUtf8 contentFp $ \contentC ->
-                    withUtf8 (packStrings (map storeChunkAnchor chunks)) $ \anchorsC ->
+                    -- already UTF-8 bytes with NUL separators: CAString passes them through, where
+                    -- withCString would encode each NUL as a two-byte sequence and lose the separators
+                    CStr.withCAString (packStrings (map storeChunkAnchor chunks)) $ \anchorsC ->
                         withPackedBytes (map storeChunkText chunks) $ \textsC ->
                             withVectors store chunks $ \vecsC ->
                                 c_asyncUpsert
@@ -231,13 +233,13 @@ listPages _store = go resultBufSize
                             then Left <$> CStr.peekCAString errC
                             else Right . dedupePages . parsePages <$> peekUtf8 outC
 
--- | Runs a UTF-8 encoded string through 'CStr.withCAString'.
+-- | Passes a string to the shim as UTF-8 ('CStr.withCString' encodes in the runtime).
 withUtf8 :: String -> (CStr.CString -> IO a) -> IO a
-withUtf8 = CStr.withCAString . Utf8.encodeUtf8
+withUtf8 = CStr.withCString
 
--- | Reads a NUL-terminated shim buffer back as decoded text.
+-- | Reads a NUL-terminated shim buffer back as decoded text ('CStr.peekCString' decodes in the runtime).
 peekUtf8 :: CStr.CString -> IO String
-peekUtf8 = fmap Utf8.decodeUtf8 . CStr.peekCAString
+peekUtf8 = CStr.peekCString
 
 {- | Packs strings for the shim: each UTF-8 encoded and NUL-terminated,
 back to back ('CStr.withCAString' adds the final NUL).

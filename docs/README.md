@@ -10,7 +10,7 @@ adding anything to `docs/`. The structure follows the standard used in the `aria
 | -------------------- | ---------------------------------------------------------------------------------- |
 | `docs/architecture/` | Explanation. How the system is put together and why, written to be read end to end |
 | `docs/guides/`       | How-to. Task-shaped instructions for someone who already knows what they want      |
-| `docs/reference/`    | Reference. Catalogues of modules, config keys and benchmarks, read by lookup       |
+| `docs/reference/`    | Reference. Catalogues of config keys and benchmarks, read by lookup                |
 | `docs/adrs/`         | Decision records. One decision per file, append-only, the decision register        |
 | `docs/rfcs/`         | Proposals. How each piece gets built, with its own lifecycle and index             |
 | `docs/rfcs/refs/`    | Supporting material for a specific RFC: spikes, evidence, split-out design notes   |
@@ -66,14 +66,16 @@ where practical, as `<subject>-YYYYMMDD.md`.
 
 ## Documentation Sources Of Truth
 
-| Question                                   | Answered by                                                     |
-| ------------------------------------------ | --------------------------------------------------------------- |
-| What was decided, and what would reopen it | `docs/adrs/` and its generated `index.md`                       |
-| How the system fits together               | `docs/architecture/` (network, project organisation, and so on) |
-| How each piece gets built                  | `docs/rfcs/` and its generated `index.md`                       |
-| How to carry out an operational task       | `docs/guides/`                                                  |
-| What a module is                           | `docs/reference/module-index.md`                                |
-| What a config key is, by lookup            | `docs/reference/configuration.md`                               |
+| Question                                   | Answered by                                                                                                          |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| What was decided, and what would reopen it | `docs/adrs/` and its generated `index.md`                                                                            |
+| How the system fits together               | `docs/architecture/` (network, project organisation, and so on)                                                      |
+| How each piece gets built                  | `docs/rfcs/` and its generated `index.md`                                                                            |
+| How to carry out an operational task       | `docs/guides/`                                                                                                       |
+| What a module is                           | The module's own Haddock header under `packages/*/src/`; there is deliberately no hand-kept module index, it drifted |
+| What a domain term means                   | `CONTEXT.md` at the repository root, the glossary maintained by the domain-modeling skill                            |
+| Which refactorings were made or deferred   | `docs/refactoring.log`, appended by the tdd skill; a log, not a document to edit                                     |
+| What a config key is, by lookup            | `docs/reference/configuration.md`                                                                                    |
 
 A decision is written down once, in an ADR. Architecture documents explain mechanism and link to the
 register rather than restating decisions. Changing a decision means writing a new ADR, not editing prose

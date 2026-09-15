@@ -11,6 +11,24 @@ install` whenever `packages/micro-http` sources change, so an ordinary `make che
 picks up framework edits with no manual step. The full tree is in the top-level
 `README.md`.
 
+## Orientation
+
+Read these before changing code, in this order:
+
+- `STANDARDS.md` — the project coding rules, including the MicroHs-only syntax
+  that GHC compiles silently to the wrong value.
+- `CONTEXT.md` — the domain glossary (page, section, move, operation log, trash).
+  Use its terms in code, tests and docs; the domain-modeling skill maintains it.
+- `packages/verso/src/Verso/App.hs` — where the application is assembled; every
+  route starts here.
+- `docs/architecture/streaming-algebra.md` — the request/response streaming
+  model every handler sits on.
+- `docs/adrs/index.md` — the decision register; check it before proposing a
+  change to something that looks deliberate.
+
+`docs/refactoring.log` is appended by the tdd skill when a refactoring is made
+or deferred. Read it for history; do not edit it by hand.
+
 ## Visual Work
 
 Do not use strict TDD for exploratory visual work, including styling changes,
@@ -38,6 +56,8 @@ The launch configurations live in `.claude/launch.json`.
 - `verso-search-demo` — the same app on port 8081 against the search demo
   corpus (`MICROHTTP_CONFIG=build/search-demo.conf`). Prefer this one.
 - `mockups` — a static server for `docs/mockups` on port 8123.
+- `basecoat-lit-spike` — a static server for `spike/basecoat-lit` on port 5176,
+  the composition spike behind ADR-0076; only needed when revisiting it.
 
 Port 8080 is frequently a developer's own running instance. Do not take it, and
 do not kill whatever holds it, without asking first. Use `verso-search-demo` on
@@ -77,6 +97,20 @@ A preview left running does not collide with the smoke. The smoke claims the
 first free port from 8125 upwards and names its scratch tree, operation log and
 config after whichever port it took, so a manual run and a `make check` can
 proceed side by side (`packages/verso-editor/editor-smoke.cjs`).
+
+### Running One Test
+
+The Haskell suites run whole. `Test.Hspec` is provided by nanospec, which has no
+`--match` filter and no `focus`; `make test-unit` takes seconds, so run it as is.
+To iterate on a single spec, comment out the other entries in
+`test/unit/Main.hs` or `test/integration/Main.hs` and restore them before the
+final `make check`.
+
+A single editor test file runs with Vitest from the editor package:
+
+```bash
+cd packages/verso-editor && bun x vitest run --dom test/attachment-panel.test.ts
+```
 
 ## Editor Toolchain
 

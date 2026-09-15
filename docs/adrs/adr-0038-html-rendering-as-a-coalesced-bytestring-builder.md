@@ -23,7 +23,7 @@ list of `ByteString` renders 12-24% faster than the `String` writer, but
 emitting one `sinkChunk` (one `sendAll`) per fragment costs ~70x the syscalls of
 one buffer-sized write. The 0.16.3.0 toolchain also fixes the `ByteString`
 corruption fault that made a ByteString-heavy renderer risky (ADR review item,
-`docs/microhs-bytestring-bug-report.md`). The design is RFC-0013.
+`docs/reviews/microhs-bytestring-bug-report.md`). The design is RFC-0013.
 
 ## Decision
 

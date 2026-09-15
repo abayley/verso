@@ -5,7 +5,7 @@ carried over from 2026-07-13 session (RFC-0036 / ADR-0080):
 - lancedb-c PR (RFC-0034 era) still to be raised upstream; the vendored clone
   now also carries the lance 8.0.0 dep bump (branch `lance-upgrade-7325`) that
   fixed the FTS optimize panic -- fold it into the PR, and consider reporting
-  the 7.0.0 panic upstream (draft text in docs/design/lance-fts-optimize-panic.md)
+  the 7.0.0 panic upstream (draft text in docs/rfcs/refs/lance-fts-optimize-panic.md)
 - raise fault report against haskell time lib
 
 backend:
@@ -43,7 +43,6 @@ frontend:
 - adding a code fence inside a collapsible is awkward - it tends to want to capture everything already in there
 - if i have a callout then a code block, or multiple code blocks, there's no way to insert empty lines between them.
 - default and studio themes have no top-level drop-zone for page moves, once we scroll down
-- change light/dark selector to single toggle
 - review editor design/architecture - use archify
   compare with fumadocs editor design
 - how much bigger would react make it?

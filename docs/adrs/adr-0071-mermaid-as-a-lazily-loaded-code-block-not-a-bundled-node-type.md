@@ -25,7 +25,7 @@ to change later, so they are recorded here.
 ## Decision
 
 - **Mermaid is delivered as a separately built, lazily-loaded bundle**
-  (`static/editor/mermaid.js`, its own build entrypoint), fetched on demand only
+  (`packages/verso/static/editor/mermaid.js`, its own build entrypoint), fetched on demand only
   when an open page actually contains a `mermaid` fence, rather than inlined into
   the main editor bundle. Mermaid is very large; inlining would make every editor
   and read page -- the vast majority with no diagrams -- pay its download and parse

@@ -19,7 +19,7 @@ over a non-empty selection) and a slash command menu (blocks inserted by typing
 `/`). The persistent command bar is removed in this look. The open question was
 whether these surfaces need a Tiptap menu package or the long-deferred Lit
 adoption (ADR-0019), or whether the editor's existing machinery suffices. An
-interaction spike (`docs/design/editor-studio-spike.md`) showed the existing
+interaction spike (`docs/rfcs/refs/editor-studio-spike.md`) showed the existing
 hand-rolled popover positioning and the proven block/inline/structure commands
 are enough.
 

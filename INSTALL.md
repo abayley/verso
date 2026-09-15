@@ -162,6 +162,29 @@ For now, use the small `nanospec` subset:
 - `shouldBe`
 - `shouldReturn`
 
+## Editor Toolchain Installation
+
+The Haskell steps above are enough for `make test`. `make check` also builds
+and tests the TypeScript editor and runs a browser smoke, which need
+[Bun](https://bun.sh/) and Playwright's Chromium:
+
+```sh
+bun install
+cd packages/verso-editor && bun install && bun x playwright install chromium
+```
+
+The root `bun install` serves the documentation tooling (the ADR and RFC index
+generators); the editor package has its own lockfile. Its dependency versions
+are pinned deliberately; install them, do not upgrade them (see `AGENTS.md`).
+
+## Search Toolchain Installation
+
+Search is optional and `make check` never needs it. To build the Concordance
+engine you need Rust (for the patched lancedb-c dylib) and ONNX Runtime from
+Homebrew, then `make search-lancedb`, `make search-model` and
+`make search-shim`. The steps and their failure modes are in
+[docs/guides/search-runbook.md](docs/guides/search-runbook.md).
+
 ## Installation Verification
 
 Check that MicroHs can see the nanospec `Test.Hspec` module:

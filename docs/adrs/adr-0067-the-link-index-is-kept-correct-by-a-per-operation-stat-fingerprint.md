@@ -14,7 +14,7 @@ related_rfcs: [RFC-0028]
 > Status: **Amended (2026-06-26)**. The per-operation stat-fingerprint check was implemented and then reverted: on
 > the reference corpus it was the dominant per-op cost (a whole-tree walk, run twice per operation) and made
 > move/delete *slower* than the scan, while the graph build is ~80-130 s of `String` processing in mhs
-> (`docs/design/link-index-performance.md`). Revised decision: the running server **owns** the document tree --
+> (`docs/rfcs/refs/link-index-performance.md`). Revised decision: the running server **owns** the document tree --
 > the only routine out-of-band writer is the periodic re-export (RFC-0028) -- so freshness is handled **off the
 > request path**: the index is built at startup, **persisted** (graph + fingerprint) and reload-and-validated on
 > restart, maintained **incrementally** for in-server mutations, and rebuilt on an **explicit refresh** invoked

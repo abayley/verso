@@ -31,13 +31,13 @@ re-initialisation (initAll) as a first-class integration.
 Vendor Basecoat's precompiled nova bundle, its runtime, and
 the Geist Variable font (no Tailwind build). Generate all interactive
 chrome markup through an intent-based helper pair -- Verso.Chrome for
-server templates, Editor/chrome.ts for Lit and imperative DOM -- which
+server templates, `packages/verso-editor/src/chrome.ts` for Lit and imperative DOM -- which
 alone owns the Basecoat variant vocabulary and the dropdown/tab ARIA
 wiring. Views render from Verso.View; App.hs keeps routing and handlers
 only. Popover open/close transitions are disabled ([data-popover]
 transition: none): the composition spike found transitions on
 Lit-rendered popovers can freeze at currentTime 0, leaving open menus
-invisible (docs/design/basecoat-lit-spike.md). Three grep gates in
+invisible (docs/rfcs/refs/basecoat-lit-spike.md). Three grep gates in
 make check (chrome-gates) enforce the containment.
 
 ## Consequences

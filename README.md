@@ -108,8 +108,10 @@ The editor is a `<markdown-editor>` web component, written in TypeScript under
 - remark/mdast is the browser-side reference parser and serialiser for
   Markdown round-tripping.
 - Lit implements the UI shell elements: toolbar, bubble toolbar, command bar,
-  slash menu, link popover, and table controls, with Web Awesome supplying
-  base controls.
+  slash menu, link popover, and table controls, styled with Basecoat
+  (ADR-0076); all chrome markup goes through `Verso.Chrome` on the server and
+  `chrome.ts` in the editor, and `make check` greps for anything that bypasses
+  them.
 - Code fences are syntax-highlighted with lowlight; `mermaid` fences render
   diagrams from a lazily loaded separate bundle (RFC-0033).
 
@@ -150,7 +152,8 @@ make check
 
 Individual targets:
 
-- `make docs` — Markdown linting only.
+- `make docs` — Markdown linting, the docs tooling typecheck, and the check
+  that the generated ADR and RFC indexes are current.
 - `make format` / `make format-check` — format Haskell sources / check only.
 - `make lint` — HLint only.
 - `make test` / `make test-unit` / `make test-integration` — all, unit-only,
@@ -207,6 +210,11 @@ Then open:
 http://127.0.0.1:8080/
 ```
 
+The server reads `micro-http.conf` (gitignored; copy
+`micro-http.conf.example` to create it, or point `MICROHTTP_CONFIG` at
+another file). Every key is described in
+[docs/reference/configuration.md](docs/reference/configuration.md).
+
 `make run-verso` depends on `make editor-build`, which writes the served
 editor bundle. The socket adapter keeps listening and client sockets
 non-blocking so browser-style concurrent asset requests do not starve handler
@@ -228,8 +236,9 @@ boundary), `test/unit/MicroHttp/RouterSpec.hs` (route matching), and
 goes. Useful entry points:
 
 - [Starter Design](docs/architecture/starter-design.md)
-- [Module Design Index](docs/reference/module-index.md)
 - [Configuration Reference](docs/reference/configuration.md)
+- [Domain Glossary](CONTEXT.md), the vocabulary of the document tree
+- [Coding Standards](STANDARDS.md)
 - [ADR Registry](docs/adrs/index.md)
 - [Project Organisation](docs/architecture/project-organisation.md)
 - [Build Automation Design](docs/architecture/build-automation.md)

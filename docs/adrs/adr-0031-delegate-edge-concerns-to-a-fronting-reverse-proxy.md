@@ -35,7 +35,7 @@ backstop for proxy-less deployments only: the idle read and write timeouts
 (ADR-0027, ADR-0028) bound a single stalled connection and
 `settingsMaxActiveHandlers` caps concurrency, but the fuller edge protection is
 the proxy's. The boundary is documented in
-`docs/design/starter-design.md` (Reverse Proxy Boundary).
+`docs/architecture/starter-design.md` (Reverse Proxy Boundary).
 
 ## Consequences
 

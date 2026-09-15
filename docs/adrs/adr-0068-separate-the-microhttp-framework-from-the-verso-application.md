@@ -38,9 +38,10 @@ keep the framework under `MicroHttp` and move the application to a new
   overlays own disjoint key sets so neither leaks into the other.
   `MICROHTTP_CONFIG` (the config-file path) is unchanged.
 - The assembly `MicroHttp.TestApp` becomes `Verso.App`; the executables become
-  `src/Verso/Main.hs` and `src/Verso/ReplayTool.hs`; the build target is
-  `make run-verso` producing `build/verso`. The editor TypeScript moves to
-  `src/Verso/Editor/` (served bundle path unchanged).
+  `Verso.Main` and `Verso.ReplayTool` (now under `packages/verso/src/Verso/`);
+  the build target is `make run-verso` producing `build/verso`. The editor
+  TypeScript moves out of the framework tree (now `packages/verso-editor/src/`;
+  served bundle path unchanged).
 
 ## Consequences
 

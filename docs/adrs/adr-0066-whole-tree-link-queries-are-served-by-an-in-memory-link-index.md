@@ -52,4 +52,4 @@ moved subtree needs no rewrite. Still a superset of what `planMoveRewrites` chan
 observable contract is unchanged; it avoids reading/parsing the (often many) internal-only
 subtree pages. With a direct `relocateIndex` (the inverse map is the old one re-keyed and
 re-sorted, not rebuilt edge-by-edge), a large-folder move dropped ~6.6 s -> ~1.5 s on the
-reference corpus (see `docs/design/link-index-performance.md`).
+reference corpus (see `docs/rfcs/refs/link-index-performance.md`).

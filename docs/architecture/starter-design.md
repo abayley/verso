@@ -1,5 +1,11 @@
 # MicroHs HTTP Server Design
 
+> This is the starter design, written before implementation and kept as the
+> statement of original intent. Where it and the code disagree, the code and
+> the [ADR register](../adrs/index.md) win. Known departures: htmx was
+> retired in favour of plain fetch mutations (RFC-0036, ADR-0079), and the
+> application boundary became a streaming iteratee (RFC-0004, RFC-0043).
+
 ## MicroHs HTTP Server Goal
 
 Build a small HTTP/1.1 web server for MicroHs applications that can serve

@@ -377,6 +377,16 @@ recorded as `docs/reviews/microhs-filepath-encoding-bug-report.md`; until MicroH
 UTF-8, or every path operation in the tree goes through our FFI, non-ASCII file names are unsupported
 under MicroHs and the case is not in the suite.
 
+### Addendum: the config file (2026-09-15)
+
+With `foldFileTextLines` available, `Config.loadConfigWith` folds the file a line at a time through the
+same line step `parseConfig` uses, so a value such as a document root with non-ASCII characters is
+real characters and a file that will not read is a `ConfigError` rather than an exception. Two
+integration cases pin a decoded value and a malformed line reported by content. The annotated
+whole-file reads are now six: the two status-line process captures, the strict-read primitive, the
+one-line search marker, `index.md` in a move (bounded by the form limit) and the meta sidecar
+(rewritten whole).
+
 ## Open Questions
 
 - Whether the memory benchmark should also sample the C-side allocations separately (the embedder and

@@ -28,9 +28,9 @@ import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified Data.Word as Word
-import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Network.Socket as Socket
 import qualified MicroHttp.Settings as Settings
+import qualified MicroHttp.Stream as Stream
 import qualified System.Directory as Directory
 import qualified System.Environment as Environment
 
@@ -42,31 +42,49 @@ newtype ConfigError = ConfigError String
     deriving (Eq, Show)
 
 {- | Parses @key = value@ text: blank lines and @#@ comments are ignored,
-whitespace is trimmed, and a non-blank line without an @=@ is an error.
+whitespace is trimmed, and a non-blank line without an @=@ is an error. The
+same line step 'loadConfigWith' folds over the file.
 -}
 parseConfig :: String -> Either ConfigError Config
-parseConfig text =
-    fmap Config (traverse parseLine (filter meaningful (map trim (lines text))))
+parseConfig = finishConfig . List.foldl' configLine (Right []) . lines
+
+-- | Folds one line into the entries so far (reversed); the first malformed line is the error.
+configLine :: Either ConfigError [(String, String)] -> String -> Either ConfigError [(String, String)]
+configLine acc raw = do
+    entries <- acc
+    let line = trim raw
+    if null line || isComment line
+        then pure entries
+        else case break (== '=') line of
+            (key, '=' : value) -> pure ((trim key, trim value) : entries)
+            _ -> Left (ConfigError ("malformed config line: " ++ line))
   where
-    meaningful line = not (null line) && not (isComment line)
     isComment ('#' : _) = True
     isComment _ = False
-    parseLine line =
-        case break (== '=') line of
-            (key, '=' : value) -> Right (trim key, trim value)
-            _ -> Left (ConfigError ("malformed config line: " ++ line))
 
-{- | Reads the file (an absent file is empty), parses it, and applies each
-@(prefix, ownedKeys)@ overlay in turn from the environment, read once. The
-application supplies the overlays so it creates both the framework config (the
-@MICROHTTP_@ / 'serverEnvKeys' overlay) and its own (e.g. a @VERSO_@ overlay).
+-- | The config from the folded entries, in file order.
+finishConfig :: Either ConfigError [(String, String)] -> Either ConfigError Config
+finishConfig = fmap (Config . reverse)
+
+{- | Reads the file a line at a time (an absent file is empty; a file that will
+not read is a 'ConfigError'), parses it, and applies each @(prefix, ownedKeys)@
+overlay in turn from the environment, read once. The application supplies the
+overlays so it creates both the framework config (the @MICROHTTP_@ /
+'serverEnvKeys' overlay) and its own (e.g. a @VERSO_@ overlay). Values are
+decoded from the file's UTF-8 (RFC-0043): a path with non-ASCII characters is
+real characters here.
 -}
 loadConfigWith :: [(String, [String])] -> FilePath -> IO (Either ConfigError Config)
 loadConfigWith overlays path = do
     present <- Directory.doesFileExist path
-    fileText <- if present then FileSystem.readFileStrict path else return "" -- whole-file: the configuration file, a few dozen lines
+    folded <-
+        if present
+            then Stream.foldFileTextLines (\acc line -> pure (configLine acc line)) (Right []) path
+            else pure (Right (Right []))
     environment <- Environment.getEnvironment
-    return (fmap (overlay environment) (parseConfig fileText))
+    return $ case folded of
+        Left err -> Left (ConfigError ("cannot read config file " ++ path ++ ": " ++ show err))
+        Right entries -> fmap (overlay environment) (finishConfig entries)
   where
     overlay environment cfg =
         foldl (\acc (prefix, keys) -> applyEnvironment prefix keys environment acc) cfg overlays

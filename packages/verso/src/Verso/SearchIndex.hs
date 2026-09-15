@@ -273,7 +273,7 @@ indexPage runtime path = do
             -- and the content fingerprint is a streamed hash. The chunks (context line
             -- plus section text, capped) are what is live for the tokeniser and embedder.
             titleBlock <- Frontmatter.readBlock fsPath
-            let title = searchTitleOf cfg path (Utf8.decodeUtf8 (BS.unpack titleBlock))
+            let title = searchTitleOf cfg path (Utf8.decodeBytes titleBlock)
             chunked <- SearchChunks.chunkFile chunkCapChars title fsPath
             fingerprinted <- Fingerprint.contentFingerprintFile fsPath
             case (chunked, fingerprinted) of

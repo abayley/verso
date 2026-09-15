@@ -50,6 +50,7 @@ import qualified MicroHttp.Http.Parse as Parse
 import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Network.Socket as Socket
 import qualified MicroHttp.Stream as Stream
+import qualified MicroHttp.Utf8 as Utf8
 
 {- | An application consumes the raw request stream for a connection and yields
 a response (RFC-0012). The 'ConnectionInfo' carries the connection's non-payload
@@ -291,20 +292,25 @@ splitTarget target =
         (pathText, '?' : queryText) -> (pathText, queryText)
         (pathText, _) -> (pathText, "")
 
--- | Splits a path into its non-empty, percent-decoded segments.
+{- | Splits a path into its non-empty segments, each percent-decoded and then
+decoded from UTF-8 (RFC-0043): the request target is ASCII on the wire, and the
+bytes a percent-escape stands for are UTF-8 (RFC 3986 section 2.5, the WHATWG URL
+standard), so a segment reaching a handler is real characters.
+-}
 pathSegments :: String -> [String]
 pathSegments pathText =
-    map decodePathSegment (filter (/= "") (splitOn '/' pathText))
+    map (Utf8.decodeUtf8 . decodePathSegment) (filter (/= "") (splitOn '/' pathText))
 
--- | Parses a query string into decoded key-value pairs.
+-- | Parses a query string into key-value pairs, percent-decoded and then decoded from UTF-8 (as 'pathSegments').
 parseQuery :: String -> [(String, String)]
 parseQuery "" = []
 parseQuery queryText = map parsePair (splitOn '&' queryText)
   where
     parsePair text =
         case break (== '=') text of
-            (key, '=' : value) -> (decodeFormValue key, decodeFormValue value)
-            (key, _) -> (decodeFormValue key, "")
+            (key, '=' : value) -> (decodeText key, decodeText value)
+            (key, _) -> (decodeText key, "")
+    decodeText = Utf8.decodeUtf8 . decodeFormValue
 
 -- | Splits text on CRLF line boundaries.
 splitLines :: String -> [String]

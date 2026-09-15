@@ -17,6 +17,7 @@ import qualified Data.List as List
 import qualified MicroHttp.Http as Http
 import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Stream as Stream
+import qualified MicroHttp.Utf8 as Utf8
 
 -- | Path captures collected while matching a route, as name/value pairs.
 type Captures = [(String, String)]
@@ -102,11 +103,14 @@ declaredContentLength headers =
             | value /= "" && all Char.isDigit value -> Right (read value)
             | otherwise -> Left (Http.BadRequest "invalid content-length")
 
--- | Looks up a header value by name, comparing on the normalised header name.
+{- | Looks up a header value by name, comparing on the normalised header name. A
+field value is ASCII on the wire (RFC 9110 section 5.5); it is decoded as UTF-8 so
+that a non-ASCII octet, should one arrive, is a character rather than a byte.
+-}
 lookupHeaderValue :: String -> Http.Headers -> Maybe String
 lookupHeaderValue _ [] = Nothing
 lookupHeaderValue name ((key, value) : rest)
-    | Http.normaliseHeaderName (BS.pack name) == key = Just (BS.unpack value)
+    | Http.normaliseHeaderName (BS.pack name) == key = Just (Utf8.decodeBytes value)
     | otherwise = lookupHeaderValue name rest
 
 -- | Builds a route for a method from a path pattern and handler.

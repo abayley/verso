@@ -14,6 +14,7 @@ module Verso.Frontmatter (
     leadingBlock,
     slice,
     title,
+    titleOf,
     blockI,
     blockCapBytes,
     readBlock,
@@ -24,6 +25,7 @@ import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Stream as Stream
+import qualified MicroHttp.Utf8 as Utf8
 import qualified Verso.SearchChunks as SearchChunks
 
 -- | Where a document's leading frontmatter stands in the bytes seen so far.
@@ -102,6 +104,10 @@ readBlock path = do
     case outcome of
         Right block -> pure block
         Left _ -> pure BS.empty
+
+-- | 'title' over the block's UTF-8 bytes (RFC-0043): the name as real characters.
+titleOf :: BS.ByteString -> Maybe String
+titleOf = title . Utf8.decodeBytes
 
 -- | The @name@ field from a document's leading frontmatter block (unquoted), or Nothing.
 title :: String -> Maybe String

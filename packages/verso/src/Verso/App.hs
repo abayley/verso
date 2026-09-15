@@ -870,8 +870,8 @@ link falls back to the wiki root.
 originFromReferer :: Http.RequestHead -> Maybe String
 originFromReferer request = do
     raw <- lookup (Http.normaliseHeaderName (BS.pack "referer")) (Http.requestHeaders request)
-    afterDocs <- stringAfter "/documents/" (BS.unpack raw)
-    safeBackLinkOrigin (Attachment.percentDecode (takeWhile (\c -> c /= '?' && c /= '#') afterDocs))
+    afterDocs <- stringAfter "/documents/" (BS.unpack raw) -- a URL: ASCII on the wire, its escapes UTF-8 bytes
+    safeBackLinkOrigin (Utf8.decodeUtf8 (Attachment.percentDecode (takeWhile (\c -> c /= '?' && c /= '#') afterDocs)))
 
 -- | Everything after the first occurrence of @marker@ in @s@, or 'Nothing' when it is absent.
 stringAfter :: String -> String -> Maybe String
@@ -1231,7 +1231,7 @@ breadcrumbsFor :: FilePath -> String -> BS.ByteString -> IO [View.Crumb]
 breadcrumbsFor root path content = do
     links <- mapM folderCrumb (linkedFolderPaths path)
     block <- Frontmatter.slice content
-    let currentLabel = Maybe.fromMaybe (humaniseSegment (lastSegment path)) (Frontmatter.title (BS.unpack block))
+    let currentLabel = Maybe.fromMaybe (humaniseSegment (lastSegment path)) (Frontmatter.titleOf block)
     pure (links ++ [View.Crumb currentLabel Nothing])
   where
     folderCrumb fp = do
@@ -1265,11 +1265,10 @@ readIndexTitle root fp =
     indexPath = if null fp then "index.md" else fp ++ "/index.md"
 
 {- | A document's frontmatter title read from disk, touching only the leading block; Nothing
-when the file is absent or untitled. The bytes are taken as-is (not UTF-8 decoded), as the
-navigation labels always have been.
+when the file is absent or untitled, decoded from the file's UTF-8 (RFC-0043).
 -}
 readTitle :: FilePath -> IO (Maybe String)
-readTitle fsPath = fmap (Frontmatter.title . BS.unpack) (Frontmatter.readBlock fsPath)
+readTitle fsPath = fmap Frontmatter.titleOf (Frontmatter.readBlock fsPath)
 
 -- | Trims leading and trailing whitespace.
 trimSpace :: String -> String
@@ -1588,7 +1587,7 @@ logfmtValue value = "\"" ++ concatMap escapeLogfmt value ++ "\""
 -- | The request's User-Agent header value, or empty when absent.
 requestUserAgent :: Http.RequestHead -> String
 requestUserAgent request =
-    maybe "" BS.unpack (lookup (Http.normaliseHeaderName (BS.pack "user-agent")) (Http.requestHeaders request))
+    maybe "" Utf8.decodeBytes (lookup (Http.normaliseHeaderName (BS.pack "user-agent")) (Http.requestHeaders request))
 
 -- | Renders a connection's peer host as a dotted IPv4 string (as the access log does).
 clientPeerHost :: Socket.ConnectionInfo -> String
@@ -1790,7 +1789,7 @@ eagerly, so unpacking the document would widen it to a String (RFC-0040).
 publishMessage :: String -> FilePath -> IO String
 publishMessage path fsPath = do
     block <- Frontmatter.readBlock fsPath
-    pure $ case Frontmatter.title (Utf8.decodeUtf8 (BS.unpack block)) of
+    pure $ case Frontmatter.titleOf block of
         Just title -> "Publish " ++ title
         Nothing -> "Publish " ++ path
 
@@ -2275,7 +2274,7 @@ documentPageTitle isNew docId content
         pure
             ( Maybe.fromMaybe
                 (humaniseSegment (lastSegment docId))
-                (Frontmatter.title (Utf8.decodeUtf8 (BS.unpack block)))
+                (Frontmatter.titleOf block)
             )
 
 -- | The seed Markdown for a new or missing document.

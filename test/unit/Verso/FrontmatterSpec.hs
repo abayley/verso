@@ -2,6 +2,7 @@ module Verso.FrontmatterSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
 import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Utf8 as Utf8
 import Test.Hspec
 import qualified Verso.Frontmatter as Frontmatter
 
@@ -16,6 +17,8 @@ spec =
             it "given no frontmatter or no name, when read, then Nothing is returned" $ do
                 Frontmatter.title "# Just a body\n" `shouldBe` Nothing
                 Frontmatter.title "---\nmeta: x\n---" `shouldBe` Nothing
+            it "given a name holding characters above Latin-1 in the file's UTF-8 bytes, when read from bytes, then the title is the decoded characters (RFC-0043)" $
+                Frontmatter.titleOf (Utf8.encodeText "---\nname: Caf\233 \8212 \1046\n---\n") `shouldBe` Just "Caf\233 \8212 \1046"
             it "given a name only after the closing delimiter, when read, then it is not a title" $
                 Frontmatter.title "---\nmeta: x\n---\nname: Body\n" `shouldBe` Nothing
 

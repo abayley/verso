@@ -50,6 +50,10 @@ spec =
         it "given a percent-encoded plus in a path segment, when parsing the head, then it decodes to a plus" $
             fmap Http.requestPath (Http.parseRequestHead (bs "GET /a%2Bb HTTP/1.1"))
                 `shouldBe` Right ["a+b"]
+        it "given percent-encoded UTF-8 in the path and the query, when parsed, then the segments and values are real characters (RFC-0043)" $ do
+            let parsed = Http.parseRequestHead (bs "GET /documents/caf%C3%A9%20%E2%80%94%20%D0%96.md?to=%D0%96&x=%C3%A9 HTTP/1.1")
+            fmap Http.requestPath parsed `shouldBe` Right ["documents", "caf\233 \8212 \1046.md"]
+            fmap Http.requestQuery parsed `shouldBe` Right [("to", "\1046"), ("x", "\233")]
         it "given a plus in a query value, when parsing the head, then the plus decodes to a space" $
             fmap Http.requestQuery (Http.parseRequestHead (bs "GET /search?q=a+b HTTP/1.1"))
                 `shouldBe` Right [("q", "a b")]

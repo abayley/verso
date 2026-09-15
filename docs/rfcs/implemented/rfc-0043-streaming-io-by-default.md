@@ -344,9 +344,16 @@ decoded at the boundary and `String`s are real characters.
   header and the collected form fields in `App.formFieldsI` (titles, tree paths and slugs). A
   non-ASCII destination in a move form was double-encoded on the way to the filesystem before this.
 
-Not yet converted, and worth a look next: the frontmatter `title` (`Frontmatter.title . BS.unpack` in
-`App`), header captures in `Router` and the raw request path, which still hand bytes-as-`Chars` to
-application code.
+The last three sites followed the same day. `Http.pathSegments` and `Http.parseQuery` percent-decode and
+then UTF-8-decode, so a route capture or a query value is real characters (the request target is ASCII on
+the wire and the bytes its escapes stand for are UTF-8, RFC 3986 section 2.5 and the WHATWG URL
+standard); `Router.lookupHeaderValue` and the two header reads in `App` decode field values the same way
+(a field value is ASCII on the wire, RFC 9110 section 5.5, so this changes nothing for a conforming
+client and stops a stray octet becoming a byte-`Char`); the referer-derived back link decodes after its
+percent-decode; and `Frontmatter.titleOf` reads the title from the block's UTF-8 bytes for the
+breadcrumbs, the navigation labels and the search index. A parser case pins a path and a query holding an
+em dash and a Cyrillic letter, and a frontmatter case pins the title. No production code now builds a
+`String` from request or file bytes with a bare `BS.unpack`.
 
 ## Open Questions
 

@@ -24,6 +24,9 @@ module MicroHttp.Iteratee (
     MonadRelease (..),
     headChunk,
     takeN,
+    mapChunksI,
+    linesI,
+    appendEnumerators,
     readBodyStrict,
     strictEnumerator,
     resourceEnumerator,
@@ -38,6 +41,7 @@ import qualified Control.Monad as Monad
 import qualified Control.Monad.IO.Class as IOClass
 import qualified Control.Monad.Trans.Class as Trans
 import qualified Data.ByteString as BS
+import qualified MicroHttp.Bytes as Bytes
 
 {- | A unit of stream input: a chunk of bytes, or the end of the stream
 carrying an orderly close (@Nothing@) or a failure (@Just@). An empty
@@ -226,6 +230,116 @@ takeN = go
     prepend rest residue = case residue of
         Chunk bytes -> Chunk (BS.append rest bytes)
         EndOfStream _ -> Chunk rest
+
+{- | A chunk transformer with a small carry (RFC-0043): each chunk, prefixed by
+the carry, is turned by @blockStep@ into output bytes for the inner sink and a
+new carry; at end of stream the carry is flushed through @finish@ and the inner
+sink is ended. An inner sink that completes or fails early is returned as is,
+and a failed end of stream reaches it unchanged. This is the general form of
+the form decoder and the newline normaliser ('MicroHttp.Form').
+
+A chunk is worked in slices of at most 'sliceBytes', whatever size the producer
+delivers: a block step may build a per-block list, and a list proportional to
+an arbitrary chunk is the MicroHs evaluator-stack hazard (a whole-body chunk
+from a strict producer). The slice, not the chunk, bounds every intermediate.
+-}
+mapChunksI :: (Monad m) => (BS.ByteString -> (BS.ByteString, BS.ByteString)) -> (BS.ByteString -> BS.ByteString) -> IterT e m a -> IterT e m a
+mapChunksI blockStep finish = go BS.empty
+  where
+    go carry inner = case inner of
+        NeedInput _ -> NeedInput (step carry inner)
+        IterM m -> IterM (fmap (go carry) m)
+        other -> other
+    step carry inner s = case s of
+        Chunk bytes
+            | BS.null bytes -> go carry inner
+            | otherwise -> IterM (slices carry inner bytes)
+        EndOfStream Nothing -> IterM $ do
+            inner' <- feedChunk (finish carry) inner
+            pure (endWith Nothing inner')
+        EndOfStream (Just err) -> endWith (Just err) inner
+    -- Feeds one slice at a time; stops early if the inner sink resolves.
+    slices carry inner bytes
+        | BS.null bytes = pure (go carry inner)
+        | otherwise = do
+            let (slice, rest) = BS.splitAt sliceBytes bytes
+                (out, carry') = blockStep (BS.append carry slice)
+            inner' <- feedChunk out inner
+            case inner' of
+                NeedInput _ -> slices carry' inner' rest
+                other -> pure other
+
+-- | The most bytes a 'mapChunksI' block step sees at once, whatever the producer's chunk size.
+sliceBytes :: Int
+sliceBytes = 4096
+
+-- | Delivers an end of stream to a sink once it is waiting for input; a resolved sink is returned as is.
+endWith :: (Functor m) => Maybe e -> IterT e m a -> IterT e m a
+endWith merr inner = case inner of
+    NeedInput k -> k (EndOfStream merr)
+    IterM m -> IterM (fmap (endWith merr) m)
+    other -> other
+
+{- | A line transformer (RFC-0043): the inner sink sees one line per chunk, each
+with its terminating newline (so a blank line is a @"\n"@ chunk, not an empty
+one that consumers skip), and a final unterminated line as the last chunk.
+Carriage returns stay with their line. The carry across chunk boundaries is the
+open line, so what is live is one producer chunk plus one line. An inner sink
+that completes or fails early is returned as is; a failed end reaches it.
+-}
+linesI :: (Monad m) => IterT e m a -> IterT e m a
+linesI = go BS.empty
+  where
+    go carry inner = case inner of
+        NeedInput _ -> NeedInput (step carry inner)
+        IterM m -> IterM (fmap (go carry) m)
+        other -> other
+    step carry inner s = case s of
+        Chunk bytes
+            | BS.null bytes -> go carry inner
+            | otherwise ->
+                let hay = if BS.null carry then bytes else BS.append carry bytes
+                    parts = Bytes.split '\n' hay -- non-empty; the last part is the open line
+                 in IterM (feedLines (init parts) (last parts) inner)
+        EndOfStream Nothing
+            | BS.null carry -> endWith Nothing inner
+            | otherwise -> IterM $ do
+                inner' <- feedChunk carry inner
+                pure (endWith Nothing inner')
+        EndOfStream (Just err) -> endWith (Just err) inner
+    feedLines [] carry inner = pure (go carry inner)
+    feedLines (line : rest) carry inner = do
+        inner' <- feedChunk (BS.snoc line 10) inner
+        case inner' of
+            NeedInput _ -> feedLines rest carry inner'
+            other -> pure other
+
+{- | One source from several, in order (RFC-0043): each enumerator runs in turn
+with its own bracket, and the consumer sees their bytes as one stream with one
+end, delivered by the driver. An enumerator ends the stream it feeds when its
+own bytes run out, so the consumer is shielded while each runs: an orderly end
+from a source is absorbed and the consumer stays waiting for the next; a failed
+end and the consumer's own completion or failure pass through, and the sources
+after them are never started.
+-}
+appendEnumerators :: (Monad m) => [EnumeratorT e m a] -> EnumeratorT e m a
+appendEnumerators sources it0 = case sources of
+    [] -> return it0
+    (source : rest) -> do
+        after <- source (shield it0)
+        case after of
+            NeedInput _ -> appendEnumerators rest after
+            _ -> return after
+  where
+    -- The consumer with one orderly end absorbed: that end yields the consumer as it
+    -- was, unshielded and still waiting, which is what the next source receives.
+    shield it = case it of
+        NeedInput k -> NeedInput (absorb it k)
+        IterM m -> IterM (fmap shield m)
+        other -> other
+    absorb it k s = case s of
+        EndOfStream Nothing -> it
+        other -> shield (k other)
 
 {- | Reads the whole stream into one strict value, failing with the supplied
 error if the accumulated size would exceed the bound. The over-limit error

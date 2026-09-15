@@ -289,6 +289,33 @@ before, at time parity with a third more cells, which is the cost of assembling 
 rather than pointing at ranges of a whole page. Strict fields on the machine's record were tried and
 made it slower under MicroHs (3.3M cells), so the record is lazy and the fold is `foldl'`.
 
+### Addendum: the three combinators (2026-09-15)
+
+The architecture page written after this RFC (`docs/architecture/streaming-algebra.md`) listed the API
+gaps; the three with a concrete pipeline behind them were added the next day, test-first in
+`IterateeSpec`:
+
+- `mapChunksI`: `Form.transformI` moved into the core under its general name; the form decoder and the
+  newline normaliser are its instances, unchanged in behaviour (the `FormSpec` cases pass as before).
+- `linesI`: one terminated line per chunk, the final unterminated line last, carriage returns kept with
+  their line. `foldFileLines` is now the file enumerator under `linesI` into a small folding sink; its
+  spec is unchanged.
+- `appendEnumerators`: sources in turn, each under its own bracket, the consumer shielded from each
+  source's orderly end so it sees one stream and the driver delivers the one end. `transformedFileBody`
+  is now three sources appended (the shell prefix, the file under the escaper, the suffix) in place of a
+  phase machine in its read step; the temp variant removes the file once the producer returns, so a
+  consumer that stops during the prefix still triggers the removal (a spec case caught the first version,
+  which removed on release of a handle that was never opened).
+
+The same session found the workstation's C toolchain had moved (macOS 27, Xcode clang 21), so every
+`mhs` link failed on the Command Line Tools SDK stubs exactly as GHC links had; `MHS_LINK_FLAGS` in the
+Makefile now mirrors `GHC_LINK_FLAGS` and the bench scripts take it from the environment.
+The same OS update changed loopback connect semantics: a non-blocking connect to a closed port now returns
+`EINPROGRESS` and reports the refusal only through `SO_ERROR` once writable, where it used to fail at once.
+`Socket.connectLoop` retried `connect` after write readiness and so reported success; it now reads
+`SO_ERROR`, which is the portable form and what `probeListener`'s port-clash check depends on. Two
+integration cases caught it.
+
 ## Open Questions
 
 - Whether the memory benchmark should also sample the C-side allocations separately (the embedder and

@@ -229,61 +229,14 @@ trailing bare @%@ or truncated escape. The inner sink's end of stream follows
 the flush.
 -}
 decodeFormValueI :: Iteratee.Iter e a -> Iteratee.Iter e a
-decodeFormValueI = transformI decodeBlock id
+decodeFormValueI = Iteratee.mapChunksI decodeBlock id
 
 {- | Normalises line ends in a stream into the given sink: @CRLF@ and a lone @CR@
 both become @LF@. A @CR@ at a block end is carried to see whether an @LF@
 follows; at end of stream a carried @CR@ is emitted as @LF@.
 -}
 normaliseNewlinesI :: Iteratee.Iter e a -> Iteratee.Iter e a
-normaliseNewlinesI = transformI newlineBlock (\carry -> if BS.null carry then carry else BS.singleton '\n')
-
-{- | A block transformer with a small carry: each chunk (prefixed by the carry) is
-turned into output bytes and a new carry; at end of stream the carry is flushed
-through @finish@ and the inner sink is ended. An inner sink that completes or
-fails early is returned as is.
-
-A chunk is worked in slices of at most 'sliceBytes', whatever size the producer
-delivers: the block steps build their output as a per-block list, and a list
-proportional to an arbitrary chunk is the evaluator-stack hazard this module
-exists to avoid (a whole-body chunk from a strict producer would otherwise
-reintroduce it). The slice, not the chunk, bounds every intermediate.
--}
-transformI :: (BS.ByteString -> (BS.ByteString, BS.ByteString)) -> (BS.ByteString -> BS.ByteString) -> Iteratee.Iter e a -> Iteratee.Iter e a
-transformI blockStep finish = go BS.empty
-  where
-    go carry inner = case inner of
-        Iteratee.NeedInput _ -> Iteratee.NeedInput (step carry inner)
-        Iteratee.IterM m -> Iteratee.IterM (fmap (go carry) m)
-        other -> other
-    step carry inner s = case s of
-        Iteratee.Chunk bytes
-            | BS.null bytes -> go carry inner
-            | otherwise -> Iteratee.IterM (slices carry inner bytes)
-        Iteratee.EndOfStream Nothing -> Iteratee.IterM $ do
-            inner' <- Iteratee.feedChunk (finish carry) inner
-            pure (end inner')
-        Iteratee.EndOfStream (Just err) -> endWith (Just err) inner
-    -- Feeds one slice at a time; stops early if the inner sink resolves.
-    slices carry inner bytes
-        | BS.null bytes = pure (go carry inner)
-        | otherwise = do
-            let (slice, rest) = BS.splitAt sliceBytes bytes
-                (out, carry') = blockStep (BS.append carry slice)
-            inner' <- Iteratee.feedChunk out inner
-            case inner' of
-                Iteratee.NeedInput _ -> slices carry' inner' rest
-                other -> pure other
-    end = endWith Nothing
-    -- Delivers the end of stream to the inner sink once it is waiting for input.
-    endWith merr inner = case inner of
-        Iteratee.NeedInput k -> k (Iteratee.EndOfStream merr)
-        Iteratee.IterM m -> Iteratee.IterM (fmap (endWith merr) m)
-        other -> other
-
--- | The most bytes a block step sees at once, whatever the producer's chunk size.
-sliceBytes :: Int
-sliceBytes = 4096
+normaliseNewlinesI = Iteratee.mapChunksI newlineBlock (\carry -> if BS.null carry then carry else BS.singleton '\n')
 
 {- | Decodes one block: the decoded bytes, and the undecodable tail (a @%@ with
 fewer than two bytes after it) to carry into the next block. A per-block list is

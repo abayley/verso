@@ -145,22 +145,25 @@ whole or split with a whole-file @BS.lines@ (the MicroHs list-scan hazard). Line
 carry no trailing newline; a final line without a trailing newline is folded too.
 Reproduces 'Prelude.lines' semantics (a blank line between two newlines is a line;
 a trailing newline yields no extra empty line). A file that will not open is a
-'StreamSourceError'. Built on 'foldFileBlocks', so it shares the one read bracket
-(ADR-0091).
+'StreamSourceError'. The file enumerator under 'Iteratee.linesI' (RFC-0043), so it
+shares the one read bracket (ADR-0091).
 -}
 foldFileLines :: (a -> BS.ByteString -> IO a) -> a -> FilePath -> IO (Either StreamError a)
-foldFileLines step initial path = do
-    folded <- foldFileBlocks lineBlockBytes blockStep (initial, BS.empty) path
-    case folded of
-        Left err -> pure (Left err)
-        Right (acc, carry) ->
-            if BS.null carry then pure (Right acc) else Right <$> step acc carry
+foldFileLines step initial path =
+    fileEnumeratorChunked lineBlockBytes path (Iteratee.linesI (foldLinesI step initial)) >>= Iteratee.run
+
+-- | Folds each delivered line, less its terminating newline, into the accumulator (the sink under 'Iteratee.linesI').
+foldLinesI :: (a -> BS.ByteString -> IO a) -> a -> Iteratee.Iter StreamError a
+foldLinesI step = go
   where
-    blockStep (acc, carry) block = do
-        let hay = if BS.null carry then block else BS.append carry block
-            parts = Bytes.split '\n' hay -- non-empty; last part is the line still open across the boundary
-        acc' <- Monad.foldM step acc (init parts)
-        pure (acc', last parts)
+    go acc = Iteratee.NeedInput (consume acc)
+    consume acc s = case s of
+        Iteratee.Chunk line
+            | BS.null line -> go acc
+            | otherwise -> Iteratee.IterM (go <$> step acc (dropNewline line))
+        Iteratee.EndOfStream Nothing -> Iteratee.Done acc s
+        Iteratee.EndOfStream (Just err) -> Iteratee.IterFailed err s
+    dropNewline line = if BS.last line == 10 then BS.init line else line
 
 -- | The block size for 'foldFileLines'.
 lineBlockBytes :: Int
@@ -194,9 +197,6 @@ fileContains needle path
 -- | The block size for 'fileContains'.
 containsBlockBytes :: Int
 containsBlockBytes = 65536
-
--- | The producer's phase: the prefix, the file's blocks, the suffix, then done.
-data BodyPhase = SendBefore | SendBlocks | SendAfter | SendDone
 
 {- | A body producer that emits @before@, then each @blockSize@ block of @path@
 passed through @transform@, then @after@ (RFC-0040). The file is the one resource:
@@ -233,9 +233,12 @@ transformedTempFileBody ::
 transformedTempFileBody = transformedFileBodyImpl True
 
 {- | The shared producer behind 'transformedFileBody' and 'transformedTempFileBody':
-@before@, the file's blocks each passed through @transform@, then @after@, over
-one bracketed handle. The flag says whether the file is removed when the handle
-is released -- on completion, an early stop, or a failure alike.
+three sources appended (RFC-0043): @before@, the file's blocks each passed through
+@transform@ under one bracketed handle, then @after@. The flag says whether the
+file is removed once the producer returns -- on completion, an early stop, or a
+failure alike, including a stop during @before@ that never opened it. The file is
+opened when its turn comes, so a missing file fails the stream after @before@ has
+been produced.
 -}
 transformedFileBodyImpl ::
     Bool ->
@@ -245,35 +248,24 @@ transformedFileBodyImpl ::
     FilePath ->
     BS.ByteString ->
     Iteratee.Enumerator StreamError a
-transformedFileBodyImpl removeAfter blockSize before transform path after =
-    Iteratee.resourceEnumerator acquire release readChunk acquireError
+transformedFileBodyImpl removeAfter blockSize before transform path after it0 = do
+    final <- appended it0
+    -- the temp goes once the body has been produced or the consumer has stopped, even
+    -- when it stopped during @before@ and the file was never opened
+    Monad.when removeAfter (Monad.void (FileSystem.removeFilePath path))
+    pure final
   where
+    appended =
+        Iteratee.appendEnumerators
+            [ Iteratee.strictEnumerator before
+            , Iteratee.resourceEnumerator acquire Base.hClose readChunk acquireError
+            , Iteratee.strictEnumerator after
+            ]
     acquireError = StreamSourceError ("cannot open file: " ++ path)
-    acquire = do
-        opened <- Open.openBinaryFileM path Base.ReadMode
-        case opened of
-            Nothing -> pure Nothing
-            Just handle -> do
-                phase <- IORef.newIORef SendBefore
-                pure (Just (phase, handle))
-    release (_, handle) = do
-        Base.hClose handle
-        Monad.when removeAfter (Monad.void (FileSystem.removeFilePath path))
-    readChunk resource@(phase, handle) = do
-        current <- IORef.readIORef phase
-        case current of
-            SendBefore -> do
-                IORef.writeIORef phase SendBlocks
-                if BS.null before then readChunk resource else pure before
-            SendBlocks -> do
-                block <- BS.hGet handle blockSize
-                if BS.null block
-                    then IORef.writeIORef phase SendAfter >> readChunk resource
-                    else transform block
-            SendAfter -> do
-                IORef.writeIORef phase SendDone
-                pure after
-            SendDone -> pure BS.empty
+    acquire = Open.openBinaryFileM path Base.ReadMode
+    readChunk handle = do
+        block <- BS.hGet handle blockSize
+        if BS.null block then pure block else transform block
 
 {- | Writes a sequence of byte lines to a file, each followed by a newline, one at
 a time so neither the whole text nor a whole-file `BS.concat` is built (RFC-0040):

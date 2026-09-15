@@ -2,6 +2,7 @@ module MicroHttp.IterateeSpec (spec) where
 
 import qualified Control.Exception as Exception
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.Char as Char
 import qualified Data.IORef as IORef
 import qualified MicroHttp.Iteratee as Iteratee
 import Test.Hspec
@@ -152,6 +153,40 @@ spec =
             outcome `shouldBe` Left Boom
             closes `shouldReturn` 1
             outerCloses `shouldReturn` 0
+        it "given a chunk transformer with a carry, when chunks split the carried byte from its successor, then the inner sink sees the rejoined, transformed bytes (RFC-0043)" $ do
+            (result, _) <- drive ["abx", "cd"] (Iteratee.mapChunksI upperKeepingTrailingX id collectAll)
+            result `shouldBe` Right (BS.pack "ABXCD")
+        it "given a chunk transformer with a carry, when the stream ends with bytes carried, then finish flushes them before the inner sink's end (RFC-0043)" $ do
+            (result, _) <- drive ["abx"] (Iteratee.mapChunksI upperKeepingTrailingX id collectAll)
+            result `shouldBe` Right (BS.pack "ABx")
+        it "given a chunk transformer, when the inner sink completes early, then the transformer stops feeding and returns it (RFC-0043)" $ do
+            final <- Iteratee.strictEnumerator (BS.pack "abcdef") (Iteratee.mapChunksI upperKeepingTrailingX id (takeExactly 2))
+            Iteratee.run final `shouldReturn` Right (BS.pack "AB")
+        it "given a line transformer, when lines straddle chunk boundaries, then the inner sink sees one terminated line per chunk and the last unterminated line at the end (RFC-0043)" $ do
+            (result, _) <- drive ["ab\ncd", "ef\n\ngh"] (Iteratee.linesI chunksI)
+            result `shouldBe` Right (map BS.pack ["ab\n", "cdef\n", "\n", "gh"])
+        it "given a line transformer, when a line ends in CRLF, then the carriage return stays with its line (RFC-0043)" $ do
+            (result, _) <- drive ["a\r", "\nb\n"] (Iteratee.linesI chunksI)
+            result `shouldBe` Right (map BS.pack ["a\r\n", "b\n"])
+        it "given a line transformer, when the stream fails, then the failure reaches the inner sink (RFC-0043)" $ do
+            outcome <- failingEnumerator Boom (Iteratee.linesI chunksI) >>= Iteratee.run
+            outcome `shouldBe` Left Boom
+        it "given several sources appended, when one consumer reads them, then it sees their bytes in order and one end of stream (RFC-0043)" $ do
+            final <- Iteratee.appendEnumerators (map (Iteratee.strictEnumerator . BS.pack) ["ab", "cd", "ef"]) (Iteratee.readBodyStrict TooLarge 1000)
+            Iteratee.run final `shouldReturn` Right (BS.pack "abcdef")
+        it "given several bracketed sources appended, when the consumer completes during the first, then the later sources are never opened and the first is released (RFC-0043)" $ do
+            (acquireA, releaseA, readA, closesA) <- fakeResource ["AAAA", "AAAA"]
+            (acquireB, releaseB, readB, closesB) <- fakeResource ["BBBB"]
+            let sources = [Iteratee.resourceEnumerator acquireA releaseA readA Boom, Iteratee.resourceEnumerator acquireB releaseB readB Boom]
+            final <- Iteratee.appendEnumerators sources (Iteratee.takeN 2 (Iteratee.readBodyStrict TooLarge 1000))
+            Iteratee.run final `shouldReturn` Right (BS.pack "AA")
+            closesA `shouldReturn` 1
+            closesB `shouldReturn` 0
+        it "given several sources appended, when the first fails, then the failure is the outcome and the rest are not read (RFC-0043)" $ do
+            (acquireB, releaseB, readB, closesB) <- fakeResource ["BBBB"]
+            final <- Iteratee.appendEnumerators [failingEnumerator Boom, Iteratee.resourceEnumerator acquireB releaseB readB Boom] (Iteratee.readBodyStrict TooLarge 1000)
+            Iteratee.run final `shouldReturn` Left Boom
+            closesB `shouldReturn` 0
         it "given a waiting consumer, when fed chunks without an end of stream, then it holds them and completes on the later end" $ do
             fed <- Iteratee.feedChunk (BS.pack "ab") (Iteratee.readBodyStrict TooLarge 1000 :: Iteratee.Iter TestError BS.ByteString)
             fed' <- Iteratee.feedChunk (BS.pack "cd") fed
@@ -182,6 +217,24 @@ spec =
             result `shouldBe` Right (BS.pack "late")
 
 -- Test-local consumers, built from the exported Iter constructors.
+
+-- | A block step for the transformer cases: upper-cases the block, carrying a trailing @x@ into the next block.
+upperKeepingTrailingX :: BS.ByteString -> (BS.ByteString, BS.ByteString)
+upperKeepingTrailingX block
+    | not (BS.null block) && BS.last block == 'x' = (BS.map Char.toUpper (BS.init block), BS.pack "x")
+    | otherwise = (BS.map Char.toUpper block, BS.empty)
+
+-- | Collects each chunk as delivered, so a transformer's chunking is observable.
+chunksI :: Iteratee.Iter TestError [BS.ByteString]
+chunksI = go []
+  where
+    go acc = Iteratee.NeedInput (consume acc)
+    consume acc s = case s of
+        Iteratee.Chunk bytes
+            | BS.null bytes -> go acc
+            | otherwise -> go (bytes : acc)
+        Iteratee.EndOfStream Nothing -> Iteratee.Done (reverse acc) s
+        Iteratee.EndOfStream (Just err) -> Iteratee.IterFailed err s
 
 -- | The shared two-source consumer, pinned to the spec's error type.
 headOfEach :: Iteratee.IterT TestError (Iteratee.IterT TestError IO) (Maybe BS.ByteString, Maybe BS.ByteString)

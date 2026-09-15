@@ -46,18 +46,19 @@ allow: a source drives a sink, possibly through transformers, under a driver.
 
 `Iter e a` and `Enumerator e a` are the `IO` instances, which is every producer and consumer at the
 socket and HTTP boundary. In the literature a transformer is an enumeratee; this page uses transformer
-because that is what the code calls its instances (`transformI`).
+because that is what the code calls its instances.
 
 ### Streaming Sources
 
-| Source                                                | Resource and release                                                           | Module     |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------ | ---------- |
-| `strictEnumerator bytes`                              | none; one chunk then end of stream                                             | `Iteratee` |
-| `resourceEnumerator acquire release read err`         | the generic bracket every other producer is built on                           | `Iteratee` |
-| `fileEnumerator path`, `fileEnumeratorChunked n path` | a file handle, chunks of `fileChunkBytes` or `n`                               | `Stream`   |
-| `socketEnumerator socket bufferBytes idleMicros`      | a client socket read with an idle timeout; the caller closes the socket        | `Stream`   |
-| `transformedFileBody before transform after n path`   | a file handle, each block passed through `transform`, with a prefix and suffix | `Stream`   |
-| `transformedTempFileBody`                             | as above, and the file is removed on release                                   | `Stream`   |
+| Source                                                | Resource and release                                                                 | Module     |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------- |
+| `strictEnumerator bytes`                              | none; one chunk then end of stream                                                   | `Iteratee` |
+| `resourceEnumerator acquire release read err`         | the generic bracket every other producer is built on                                 | `Iteratee` |
+| `fileEnumerator path`, `fileEnumeratorChunked n path` | a file handle, chunks of `fileChunkBytes` or `n`                                     | `Stream`   |
+| `socketEnumerator socket bufferBytes idleMicros`      | a client socket read with an idle timeout; the caller closes the socket              | `Stream`   |
+| `transformedFileBody before transform after n path`   | a file handle, each block passed through `transform`, with a prefix and suffix       | `Stream`   |
+| `transformedTempFileBody`                             | as above, and the file is removed once the body is produced or the consumer stops    | `Stream`   |
+| `appendEnumerators sources`                           | each source in turn under its own bracket; the consumer sees one stream with one end | `Iteratee` |
 
 `resourceEnumerator` is the resource-bracketing guarantee written once: acquire, then read until empty
 or until the consumer resolves, then release, on every path. It runs at any layer whose base monad can
@@ -85,13 +86,14 @@ stream nests it as its base monad and reads that stream through `lift` (`equalBl
 
 ### Streaming Transformers
 
-| Transformer                         | Effect on the stream the inner sink sees                                                   | Module     |
-| ----------------------------------- | ------------------------------------------------------------------------------------------ | ---------- |
-| `takeN n inner`                     | at most `n` bytes, then end of stream; the rest stays as residue                           | `Iteratee` |
-| `onFailure cleanup inner`           | unchanged; runs `cleanup` once if the inner fails or its base layer or an effect step does | `Iteratee` |
-| `decodeFormValueI inner`            | urlencoded bytes decoded, slice by slice                                                   | `Form`     |
-| `normaliseNewlinesI inner`          | `\r\n` and `\r` become `\n`, slice by slice                                                | `Form`     |
-| `transformI blockStep finish inner` | the general block-wise rewrite the two above are instances of (not yet exported)           | `Form`     |
+| Transformer                         | Effect on the stream the inner sink sees                                                    | Module     |
+| ----------------------------------- | ------------------------------------------------------------------------------------------- | ---------- |
+| `takeN n inner`                     | at most `n` bytes, then end of stream; the rest stays as residue                            | `Iteratee` |
+| `onFailure cleanup inner`           | unchanged; runs `cleanup` once if the inner fails or its base layer or an effect step does  | `Iteratee` |
+| `decodeFormValueI inner`            | urlencoded bytes decoded, slice by slice                                                    | `Form`     |
+| `normaliseNewlinesI inner`          | `\r\n` and `\r` become `\n`, slice by slice                                                 | `Form`     |
+| `mapChunksI blockStep finish inner` | the general block-wise rewrite with a carry the two above are instances of; slice-bounded   | `Iteratee` |
+| `linesI inner`                      | one terminated line per chunk, the final unterminated line last; the carry is the open line | `Iteratee` |
 
 A transformer is a function from sink to sink: it intercepts `NeedInput`, rewrites or bounds what it
 passes on, and leaves `Done` and `IterFailed` alone. Transformers compose by application, innermost
@@ -116,15 +118,16 @@ Every byte path in the server is one row of this table. The columns are the alge
 | Read a request | `socketEnumerator` | | `frameHeadersI`, then the handler's sink on the residue |
 | Upload an asset to disk | `socketEnumerator` | | `fileSinkI` into a temp beside the target |
 | No-JS form save | `socketEnumerator` | `normaliseNewlinesI`, `decodeFormValueI` per part | `formI` routing the `markdown` part to `fileSinkI` |
-| Serve a document page | `transformedFileBody` (the escaper per block) | | `byteSinkI` over the socket |
+| Serve a document page | `appendEnumerators` of the shell prefix, the file (the escaper per block) and the suffix | | `byteSinkI` over the socket |
 | Serve a static or asset file | `FileBody` (no Haskell in the loop: `sendfile`) | | the kernel |
-| Serve a document at a revision | `transformedTempFileBody` over the git capture | | `byteSinkI` over the socket |
+| `transformedTempFileBody` | as above, and the file is removed once the body is produced or the consumer stops | `Stream` | |
+| `appendEnumerators sources` | each source in turn under its own bracket; the consumer sees one stream with one end | `Iteratee` | |
 | Serve a diff | `foldFileLines` over the git capture into a `StreamBody` | | `byteSinkI` over the socket |
 | Compare two assets | two `fileEnumeratorChunked` (`runNested2`) | | `equalBlocks` |
 | Copy an asset | `fileEnumerator` | | `byteSinkI` over `hPut` |
 | Rewrite a page's links on move | `fileEnumerator` | | `rewriteLinksI` into a temp, then rename |
 | Build or refresh the link index | `fileEnumeratorChunked` per page | | `linksI` |
-| Load the persisted link index | `foldFileLines` | | a row parser as the step |
+| Load the persisted link index | `fileEnumeratorChunked` | `linesI` | a row parser as the step (`foldFileLines`) |
 | Page history | `Process.withCapture` and `foldFileLines` | | a log-line parser as the step |
 | Index a page for search | `foldFileLines` | | the chunker's `feedLine` as the step |
 | Fingerprint a page | `foldFileBlocks` | | a hash step |
@@ -180,19 +183,14 @@ this page does, and a few combinators, listed next.
 Judged against the pipelines above and the ones a wiki is likely to need next, not against the
 `streaming` catalogue.
 
-- **The general transformer is not exported.** `Form.transformI` is the block-wise rewrite that
-  `decodeFormValueI` and `normaliseNewlinesI` instantiate. It belongs in `MicroHttp.Iteratee` (or a
-  `MicroHttp.Transform`) under a name such as `mapChunksI`, with the slice discipline it already has,
-  so the next rewrite (a byte-level filter, a line-oriented map) is one call. This is the one gap that
-  would have changed code already written: the HTML escaper's body producer would be
-  `fileEnumerator` plus a transformer rather than its own producer.
-- **No line transformer.** Several sinks re-split blocks into lines (`foldFileLines`, `blockI`, the
-  diff renderer). A `linesI :: Iter e a -> Iter e a` that delivers one line per chunk, with the
-  carry across blocks handled once, would remove three copies of the same carry logic.
-- **No concatenation of sources.** Serving a prefix, a file and a suffix is done inside
-  `transformedFileBody` with a phase machine. An `appendEnumerators :: [Enumerator e a] -> Enumerator e a`
-  (each producer runs its bracket, the end of stream delivered once by the driver) expresses the same
-  thing from existing parts, and `feedChunk` already exists for the same reason at the diff renderer.
+- **Closed 2026-09-15.** Three gaps this page first listed are now in the core: `mapChunksI` (the
+  block-wise transformer with a carry, moved out of `Form`, where the decoder and newline normaliser
+  instantiate it), `linesI` (one line per chunk, which `foldFileLines` is now built on), and
+  `appendEnumerators` (which replaced the phase machine inside `transformedFileBody`). `blockI` keeps
+  its own carry because its cap and its whole-block classification are about the block, not the lines.
+  The escaper's body producer still transforms inside its read step because the escaper is an `IO`
+  block function and `mapChunksI` is pure; an `IO` variant is the next combinator if a second such
+  transformer appears.
 - **`runNested2` only.** A three-source consumer or a merge with an output sink is the same
   construction one layer deeper; the arity-specific driver is written when a consumer appears
   (ADR-0091, "Reopens when").

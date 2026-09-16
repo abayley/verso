@@ -36,3 +36,6 @@
 2026-09-16 14:16:33  packages/verso/src/Verso/TreeMove.hs:parentRel:812: Duplicated Code. Extract Function.
 2026-09-16 14:16:33  packages/verso/src/Verso/App.hs:createTreeNode:1400: Motivation: A slug that was not a safe segment fell back to the parent path instead of refusing. Replace Nested Conditional with Guard Clauses.
 2026-09-16 14:16:33  packages/verso/src/Verso/App.hs:lastSegment:1240: Lazy Element. Deferred: still needed by the search title callback, which receives a rendered String path.
+2026-09-16 14:33:07  packages/verso/src/Verso/Structure.hs:move:214: Motivation: The move/delete/restore/undo transaction lived in four request handlers and could be tested only through HTTP bytes. Extract Class.
+2026-09-16 14:33:07  packages/verso/src/Verso/Structure.hs:record:372: Duplicated Code. Extract Function.
+2026-09-16 14:33:08  packages/verso/src/Verso/Structure.hs:applyInverse:314: Motivation: undo does not carry a page's draft through the inverse (RFC-0032 known limitation). Deferred: behaviour change; needs its own decision.

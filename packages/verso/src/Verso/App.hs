@@ -1,11 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections #-}
 
 module Verso.App (
     NodeKind (..),
     TreeNode (..),
-    Versioning (..),
-    noVersioning,
+    Structure.Versioning (..),
+    Structure.noVersioning,
     appFromConfig,
     appWithDocumentTree,
     appWithDocumentTreeVersioned,
@@ -14,7 +13,7 @@ module Verso.App (
     searchResultsJson,
     linkedFolderPaths,
     orderTreeNodes,
-    slugify,
+    Structure.slugify,
     treeChildrenJson,
     treeEntryKind,
     treeRoutes,
@@ -59,6 +58,7 @@ import qualified Verso.LinkIndexStore as LinkIndexStore
 import qualified Verso.OperationLog as OperationLog
 import qualified Verso.OperationStore as OperationStore
 import qualified Verso.SearchIndex as SearchIndex
+import qualified Verso.Structure as Structure
 import qualified Verso.TrashStore as TrashStore
 import qualified Verso.TreeMove as TreeMove
 import qualified Verso.TreePath as TreePath
@@ -120,7 +120,7 @@ appFromConfig console settings vc = do
                         "startup: check for git"
                         (Git.ensureRepository (VConfig.documentTreeRoot vc) (importIdentity vc))
                 console (case outcome of Git.Initialised -> "git repository initialised (import commit)"; Git.AlreadyPresent -> "git repository present")
-    -- Serialize structural tree mutations across the server's connection threads (see 'WriteLock').
+    -- Serialize structural tree mutations across the server's connection threads (see 'Structure.WriteLock').
     writeLock <- MVar.newMVar ()
     -- Concordance search (RFC-0034): optional; absent shim/model degrades to disabled.
     search <-
@@ -143,7 +143,7 @@ served and edited in place, with per-page peer @assets/@) plus any static
 mounts. The tree is the only serving mode (RFC-0036 retired the flat store);
 'VConfig.fromConfig' guarantees a non-empty root.
 -}
-configuredRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> OperationStore.OperationStore -> TrashStore.TrashStore -> VConfig.VersoConfig -> (String -> IO ()) -> [Router.Route]
+configuredRoutes :: Structure.WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> OperationStore.OperationStore -> TrashStore.TrashStore -> VConfig.VersoConfig -> (String -> IO ()) -> [Router.Route]
 configuredRoutes writeLock indexStore search operationStore trashStore vc clientErrorSink =
     clientErrorRoute clientErrorSink
         : treeRoutesWithStores operationStore trashStore writeLock indexStore search (versioningFromConfig vc) (VConfig.documentTreeRoot vc) (VConfig.trashRoot vc) (VConfig.trashRetentionDays vc) (VConfig.linkIndex vc)
@@ -181,9 +181,9 @@ searchConfigFrom console vc =
         }
 
 -- | The tree handlers' versioning context, read from configuration (RFC-0032).
-versioningFromConfig :: VConfig.VersoConfig -> Versioning
+versioningFromConfig :: VConfig.VersoConfig -> Structure.Versioning
 versioningFromConfig vc =
-    Versioning
+    Structure.Versioning
         (VConfig.versioningEnabled vc)
         (VConfig.draftRoot vc)
         ( Identity.IdentityConfig
@@ -197,93 +197,6 @@ versioningFromConfig vc =
 importIdentity :: VConfig.VersoConfig -> Git.Identity
 importIdentity vc = Git.Identity "Verso Import" ("verso@" ++ VConfig.identityEmailDomain vc)
 
-{- | Commits the resulting tree state after an applied structural operation
-(RFC-0032), when versioning is on. A failed commit is logged, not fatal -- the
-tree mutation already succeeded and the operation log remains the source of truth
-for replay. A no-op when versioning is off.
--}
-commitStructural :: Versioning -> FilePath -> Git.Identity -> String -> IO ()
-commitStructural versioning root author message =
-    Monad.when (versioningOn versioning) $ do
-        result <- Git.commitAll root author message
-        case result of
-            Git.CommitFailed err -> IO.hPutStrLn IO.stderr ("git commit (structural) failed: " ++ err)
-            _ -> pure ()
-
-{- | Relocates a moved page's (or section's) staged draft alongside the move
-(RFC-0032), so a draft is not orphaned at its old tree path. A no-op when
-versioning is off or there is no draft.
--}
-relocateDraftForMove :: Versioning -> TreePath.TreePath -> TreePath.TreePath -> IO ()
-relocateDraftForMove versioning fromPath toPath =
-    Monad.when (versioningOn versioning) $ do
-        let src = Draft.draftFsPath (draftStagingRoot versioning) fromPath
-            dst = Draft.draftFsPath (draftStagingRoot versioning) toPath
-        present <- draftPathPresent src
-        Monad.when present $ do
-            Directory.createDirectoryIfMissing True (Draft.draftFsPath (draftStagingRoot versioning) (TreePath.parent toPath))
-            Monad.void (FileSystem.renamePath src dst)
-
-{- | Moves a deleted page's (or section's) staged draft into the trash entry
-(RFC-0032), so the draft is recoverable with the page rather than orphaned. A
-no-op when versioning is off or there is no draft.
--}
-stashDraftToTrash :: Versioning -> FilePath -> TreePath.TreePath -> TreePath.TrashId -> IO ()
-stashDraftToTrash versioning trashRoot path tid =
-    Monad.when (versioningOn versioning) $ do
-        let src = Draft.draftFsPath (draftStagingRoot versioning) path
-        present <- draftPathPresent src
-        Monad.when present (Monad.void (FileSystem.renamePath src (trashDraftPath trashRoot tid)))
-
-{- | Restores a trashed page's staged draft back to the draft root when its trash
-entry holds one (RFC-0032), the inverse of 'stashDraftToTrash'. A no-op when
-versioning is off or the entry has no draft.
--}
-restoreDraftFromTrash :: Versioning -> FilePath -> TreePath.TrashId -> TreePath.TreePath -> IO ()
-restoreDraftFromTrash versioning trashRoot trashId path =
-    Monad.when (versioningOn versioning) $ do
-        let src = trashDraftPath trashRoot trashId
-            dst = Draft.draftFsPath (draftStagingRoot versioning) path
-        present <- draftPathPresent src
-        Monad.when present $ do
-            Directory.createDirectoryIfMissing True (Draft.draftFsPath (draftStagingRoot versioning) (TreePath.parent path))
-            Monad.void (FileSystem.renamePath src dst)
-
--- | The reserved location of a draft stashed inside a trash entry (a page draft file or a section draft subtree).
-trashDraftPath :: FilePath -> TreePath.TrashId -> FilePath
-trashDraftPath trashRoot tid = TreePath.trashEntryDir trashRoot tid ++ "/__draft"
-
--- | Whether a draft path exists as either a page draft (file) or a section draft (directory).
-draftPathPresent :: FilePath -> IO Bool
-draftPathPresent path = do
-    isFile <- Directory.doesFileExist path
-    isDir <- Directory.doesDirectoryExist path
-    pure (isFile || isDir)
-
-{- | The per-request versioning context for the tree handlers (RFC-0032): whether
-draft/publish versioning is on, and the draft staging root. When off, the tree
-handlers behave as before (autosave writes the live page directly).
--}
-data Versioning = Versioning
-    { versioningOn :: Bool
-    , draftStagingRoot :: FilePath
-    , versioningIdentity :: Identity.IdentityConfig
-    }
-    deriving (Eq, Show)
-
--- | Versioning disabled (legacy behaviour): used by the non-versioned entry points and tests.
-noVersioning :: Versioning
-noVersioning = Versioning False "" defaultIdentityConfig
-
--- | A default identity configuration (header @X-Remote-User@, default name @anonymous@), for tests and the off case.
-defaultIdentityConfig :: Identity.IdentityConfig
-defaultIdentityConfig =
-    Identity.IdentityConfig
-        { Identity.idcHeader = "X-Remote-User"
-        , Identity.idcDefault = "anonymous"
-        , Identity.idcEmailDomain = "verso.local"
-        }
-
 {- | Routes that serve and edit a documentation tree on the filesystem. The whole
 tree is reachable under @/documents/@; the editor opens at a document's own URL
 with @?edit@ (so the page's base path is the file's directory and relative
@@ -292,31 +205,31 @@ and every other tree file (images, attachments, raw Markdown) is served
 statically and path-safely (every request path is parsed once as a 'TreePath.TreePath'). The document id
 is the tree-relative path including the @.md@ extension.
 -}
-treeRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> Versioning -> FilePath -> FilePath -> FilePath -> Int -> FilePath -> [Router.Route]
+treeRoutes :: Structure.WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> Structure.Versioning -> FilePath -> FilePath -> FilePath -> Int -> FilePath -> [Router.Route]
 treeRoutes writeLock indexStore search versioning root logPath trashRoot =
     treeRoutesWithStores operationStore (TrashStore.uncachedTrashStore trashRoot logPath) writeLock indexStore search versioning root trashRoot
   where
     operationStore = OperationStore.uncachedOperationStore logPath
 
 -- | The tree routes with warm production stores or uncached adapters for direct route tests.
-treeRoutesWithStores :: OperationStore.OperationStore -> TrashStore.TrashStore -> WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> Versioning -> FilePath -> FilePath -> Int -> FilePath -> [Router.Route]
+treeRoutesWithStores :: OperationStore.OperationStore -> TrashStore.TrashStore -> Structure.WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> Structure.Versioning -> FilePath -> FilePath -> Int -> FilePath -> [Router.Route]
 treeRoutesWithStores operationStore trashStore writeLock indexStore search versioning root trashRoot trashRetentionDays indexPath =
     [ Router.get "/" (redirectTo "/documents/")
     , Router.get "/index.html" (redirectTo "/documents/")
     , Router.get "/search" (treeSearchHandler search)
     , Router.get "/tree/*path" (treeChildrenHandler root)
-    , Router.post "/tree/*path" (treePostDispatch versioning writeLock findRelevant maint operationStore root)
-    , Router.get "/trash" (treeTrashListHandler writeLock trashStore trashRetentionDays trashRoot)
-    , Router.get "/trashbin" (treeTrashPageHandler writeLock trashStore trashRetentionDays trashRoot)
-    , Router.post "/trash/*id" (treeRestoreHandler versioning writeLock maint operationStore trashStore root trashRoot)
-    , Router.delete "/trash" (treeTrashEmptyHandler writeLock trashStore trashRoot)
-    , Router.delete "/trash/*id" (treeTrashDeleteHandler writeLock trashStore trashRoot)
+    , Router.post "/tree/*path" (treePostDispatch structure)
+    , Router.get "/trash" (treeTrashListHandler structure trashRetentionDays)
+    , Router.get "/trashbin" (treeTrashPageHandler structure trashRetentionDays)
+    , Router.post "/trash/*id" (treeRestoreHandler structure)
+    , Router.delete "/trash" (treeTrashEmptyHandler structure)
+    , Router.delete "/trash/*id" (treeTrashDeleteHandler structure)
     , Router.get "/operations" (treeOperationsHandler operationStore)
     , Router.get "/undo" (treeUndoPageHandler operationStore)
-    , Router.post "/undo" (treeUndoHandler versioning writeLock findRelevant maint operationStore trashStore root trashRoot)
+    , Router.post "/undo" (treeUndoHandler structure)
     , Router.post "/index/refresh" (treeRefreshHandler writeLock refresh)
     , Router.put "/documents/*path" (treePutDocument versioning maint root)
-    , Router.delete "/tree/*path" (treeDelete versioning writeLock findRelevant maint operationStore trashStore root trashRoot)
+    , Router.delete "/tree/*path" (treeDelete structure)
     , Router.put "/drafts/*path" (draftPut versioning root)
     , Router.delete "/drafts/*path" (draftDelete versioning root)
     , Router.post "/documents/*path" (treePost versioning maint root)
@@ -328,7 +241,20 @@ treeRoutesWithStores operationStore trashStore writeLock indexStore search versi
     -- after a re-export. Without a store (tests, replay) the scan is used and maintenance
     -- is a no-op (RFC-0029).
     findRelevant = maybe TreeMove.scanRelevant TreeMove.indexRelevant indexStore
-    maint = combineMaintenance (maybe noIndexMaintenance (storeMaintenance root) indexStore) (searchMaintenance search)
+    maint = Structure.combineMaintenance (maybe Structure.noIndexMaintenance (storeMaintenance root) indexStore) (searchMaintenance search)
+    -- The structural operations (RFC-0045): one transaction each over these collaborators.
+    structure =
+        Structure.Structure
+            { Structure.structureRoot = root
+            , Structure.structureTrashRoot = trashRoot
+            , Structure.structureLock = writeLock
+            , Structure.structurePages = findRelevant
+            , Structure.structureMaintenance = maint
+            , Structure.structureOperations = operationStore
+            , Structure.structureTrash = trashStore
+            , Structure.structureVersioning = versioning
+            , Structure.structureCommit = Structure.commitRevision versioning root
+            }
     -- Index refresh (one action over all derived indexes, RFC-0034): rebuild the
     -- link index, then queue the search reconcile sweep (embedding stays async).
     refresh = do
@@ -336,78 +262,35 @@ treeRoutesWithStores operationStore trashStore writeLock indexStore search versi
         maybe (pure ()) SearchIndex.enqueueReconcile search
         pure result
 
-{- | Serializes the structural tree mutations (move/delete/create/undo/restore/refresh) so
-concurrent requests cannot interleave their read-modify-write of the operation log and the link
-index. The server is multi-threaded (a thread per connection, 'MicroHttp.Server.acceptLoop'), and
-without this two concurrent moves could, e.g., read the same next op-log @seq@ and both write it
-(corrupting undo), or relocate the index and the filesystem in an interleaving that leaves them
-inconsistent. 'Nothing' (tests, scan mode) runs without serialization. The lock is held only across
-the mutation IO, never across the request-body read.
--}
-type WriteLock = Maybe (MVar.MVar ())
-
--- | Runs an action under the write lock when present ('Just'), or directly when absent ('Nothing', tests/scan mode).
-withWriteLock :: WriteLock -> IO a -> IO a
-withWriteLock Nothing act = act
-withWriteLock (Just lock) act = MVar.withMVar lock (const act)
-
-{- | The link-index maintenance hooks a tree mutation calls (RFC-0029): each keeps the
-warm in-memory graph correct without a whole-tree walk. 'noIndexMaintenance' is the
-no-op used without a store (tests, scan mode).
--}
-data IndexMaintenance = IndexMaintenance
-    { onMove :: String -> String -> IO ()
-    , onDelete :: String -> IO ()
-    , onCreate :: String -> IO ()
-    , onRestore :: String -> IO ()
-    , onSave :: String -> IO ()
-    }
-
 {- | The search re-index hooks (RFC-0034 decision 12): content mutations
 enqueue the page; structural mutations queue a reconcile sweep, which also
 catches the pages the mutation rewrote (referrers, parent listings --
 decision 14's populations). No-ops when search is off.
 -}
-searchMaintenance :: Maybe SearchIndex.SearchRuntime -> IndexMaintenance
-searchMaintenance Nothing = noIndexMaintenance
+searchMaintenance :: Maybe SearchIndex.SearchRuntime -> Structure.IndexMaintenance
+searchMaintenance Nothing = Structure.noIndexMaintenance
 searchMaintenance (Just runtime) =
-    IndexMaintenance
-        { onMove = \_ _ -> SearchIndex.enqueueReconcile runtime
-        , onDelete = \_ -> SearchIndex.enqueueReconcile runtime
-        , onCreate = SearchIndex.enqueuePage runtime
-        , onRestore = \_ -> SearchIndex.enqueueReconcile runtime
-        , onSave = SearchIndex.enqueuePage runtime
+    Structure.IndexMaintenance
+        { Structure.onMove = \_ _ -> SearchIndex.enqueueReconcile runtime
+        , Structure.onDelete = \_ -> SearchIndex.enqueueReconcile runtime
+        , Structure.onCreate = SearchIndex.enqueuePage runtime
+        , Structure.onRestore = \_ -> SearchIndex.enqueueReconcile runtime
+        , Structure.onSave = SearchIndex.enqueuePage runtime
         }
-
--- | Runs two maintenance hook sets (link index, then search) per mutation.
-combineMaintenance :: IndexMaintenance -> IndexMaintenance -> IndexMaintenance
-combineMaintenance a b =
-    IndexMaintenance
-        { onMove = \from to -> onMove a from to >> onMove b from to
-        , onDelete = \path -> onDelete a path >> onDelete b path
-        , onCreate = \path -> onCreate a path >> onCreate b path
-        , onRestore = \path -> onRestore a path >> onRestore b path
-        , onSave = \path -> onSave a path >> onSave b path
-        }
-
--- | The no-op index-maintenance hooks, used without a store (tests, scan mode).
-noIndexMaintenance :: IndexMaintenance
-noIndexMaintenance =
-    IndexMaintenance (\_ _ -> pure ()) (const (pure ())) (const (pure ())) (const (pure ())) (const (pure ()))
 
 {- | The maintenance hooks backed by a live store: a move relocates the subtree's keys
 and targets in place (pure, no re-read); a delete drops the subtree and re-reads the
 parent listing; create/save re-read the written page; restore re-reads the restored
 page/subtree and the parent listing. None walk the whole tree.
 -}
-storeMaintenance :: FilePath -> LinkIndexStore.LinkIndexStore -> IndexMaintenance
+storeMaintenance :: FilePath -> LinkIndexStore.LinkIndexStore -> Structure.IndexMaintenance
 storeMaintenance root store =
-    IndexMaintenance
-        { onMove = \from to -> LinkIndexStore.relocateInIndex from to store
-        , onDelete = \path -> LinkIndexStore.removeSubtreeInIndex path store >> reportIndexError (LinkIndexStore.applyChanges root [parentIndexPath path] store)
-        , onCreate = \path -> reportIndexError (LinkIndexStore.applyChanges root [path] store)
-        , onRestore = \path -> reportIndexError (LinkIndexStore.addSubtreeToIndex root path store) >> reportIndexError (LinkIndexStore.applyChanges root [parentIndexPath path] store)
-        , onSave = \path -> reportIndexError (LinkIndexStore.applyChanges root [path] store)
+    Structure.IndexMaintenance
+        { Structure.onMove = \from to -> LinkIndexStore.relocateInIndex from to store
+        , Structure.onDelete = \path -> LinkIndexStore.removeSubtreeInIndex path store >> reportIndexError (LinkIndexStore.applyChanges root [parentIndexPath path] store)
+        , Structure.onCreate = \path -> reportIndexError (LinkIndexStore.applyChanges root [path] store)
+        , Structure.onRestore = \path -> reportIndexError (LinkIndexStore.addSubtreeToIndex root path store) >> reportIndexError (LinkIndexStore.applyChanges root [parentIndexPath path] store)
+        , Structure.onSave = \path -> reportIndexError (LinkIndexStore.applyChanges root [path] store)
         }
   where
     parentIndexPath p = maybe "index.md" (TreePath.render . TreePath.sectionIndex . TreePath.parent) (TreePath.parse p)
@@ -427,9 +310,9 @@ reportIndexError action = do
 from the tree and re-persists it, to be called after the corpus is re-exported. A failed
 rebuild is a 500 with the reason; without a store it is a 200 no-op.
 -}
-treeRefreshHandler :: WriteLock -> IO (Either String ()) -> Router.Handler
+treeRefreshHandler :: Structure.WriteLock -> IO (Either String ()) -> Router.Handler
 treeRefreshHandler writeLock refresh _ _ = do
-    result <- Iteratee.liftIO (withWriteLock writeLock refresh)
+    result <- Iteratee.liftIO (Structure.withWriteLock writeLock refresh)
     pure (either (statusResponse 500 "Internal Server Error" . (++ "\n")) (const (jsonResponse (View.jsonObject [("refreshed", View.jsonBool True)]))) result)
 
 {- | The navigation-tree children endpoint (RFC-0026): @GET /tree/*path@ returns
@@ -451,180 +334,111 @@ new page or section under the parent section at the path, from form fields @kind
 frontmatter; the response carries the new node and the page to open for editing,
 or a @400@ for a bad request.
 -}
-treeCreateHandler :: WriteLock -> IndexMaintenance -> FilePath -> Router.Handler
-treeCreateHandler writeLock maint root captures _ = do
+treeCreateHandler :: Structure.Structure -> Router.Handler
+treeCreateHandler structure captures _ = do
     fields <- formFieldsI treeCreateMaxBytes
     result <- Iteratee.liftIO $
-        withWriteLock writeLock $ do
-            created <- createTreeNode root (capture "path" captures) (capture "kind" fields) (capture "title" fields)
-            case created of
-                Right (_, newPath) -> onCreate maint newPath
-                Left _ -> pure ()
-            pure created
-    case result of
-        Left err -> pure (statusResponse 400 "Bad Request" err)
-        Right (response, _) -> pure response
+        case (TreePath.parse (capture "path" captures), kindOfWord (capture "kind" fields)) of
+            (Nothing, _) -> pure (Left (Structure.Refused "unsafe path"))
+            (_, Nothing) -> pure (Left (Structure.Refused "unknown kind"))
+            (Just parent, Just kind) -> Structure.create structure parent kind (capture "title" fields)
+    pure (either (statusResponse 400 "Bad Request" . (++ "\n") . refusalText) (jsonResponse . createdJson) result)
+
+-- | The kind a create form names, or 'Nothing' for anything but @page@ and @section@.
+kindOfWord :: String -> Maybe TreePath.Kind
+kindOfWord "page" = Just TreePath.Page
+kindOfWord "section" = Just TreePath.Section
+kindOfWord _ = Nothing
+
+-- | The created-node JSON: the display name, tree path, kind, and the page path to open for editing.
+createdJson :: Structure.Created -> String
+createdJson created =
+    View.jsonObject
+        [ ("name", View.jsonString (Structure.createdTitle created))
+        , ("path", View.jsonString (TreePath.render (Structure.createdPath created)))
+        , ("kind", View.jsonString (kindWord (Structure.createdKind created)))
+        , ("editPath", View.jsonString (TreePath.render (Structure.createdEditPath created)))
+        ]
+
+-- | @"page"@ or @"section"@ on the wire.
+kindWord :: TreePath.Kind -> String
+kindWord TreePath.Page = "page"
+kindWord TreePath.Section = "section"
 
 {- | Dispatches a @POST /tree/*path@: a section/page move when the @?move@ flag is
 present (RFC-0027), otherwise a create (RFC-0026). Delete is a real @DELETE@
 on the same path (RFC-0036, 'treeDelete').
 -}
-treePostDispatch :: Versioning -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> OperationStore.OperationStore -> FilePath -> Router.Handler
-treePostDispatch versioning writeLock findRelevant maint operationStore root captures request
-    | hasQueryFlag "move" request = treeMoveHandler versioning author writeLock findRelevant maint operationStore root captures
-    | otherwise = treeCreateHandler writeLock maint root captures request
-  where
-    author = Identity.currentIdentity (versioningIdentity versioning) request
+treePostDispatch :: Structure.Structure -> Router.Handler
+treePostDispatch structure captures request
+    | hasQueryFlag "move" request = treeMoveHandler structure (actingAuthor structure request) captures
+    | otherwise = treeCreateHandler structure captures request
+
+-- | The author a structural request acts as (RFC-0032), from the configured identity header.
+actingAuthor :: Structure.Structure -> Http.RequestHead -> Git.Identity
+actingAuthor structure = Identity.currentIdentity (Structure.versioningIdentity (Structure.structureVersioning structure))
 
 {- | The tree delete endpoint (RFC-0036): @DELETE /tree/*path@ moves the page or
 section to trash, appends to the operation log, and commits -- the RFC-0027/0028
 behaviour behind a real @DELETE@ (it removes the resource at the URL; restore is
-the @POST /trash/*id@ controller).
+the @POST /trash/*id@ controller). Refuses with @409@ and the referrer list when
+another page links in.
 -}
-treeDelete :: Versioning -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> OperationStore.OperationStore -> TrashStore.TrashStore -> FilePath -> FilePath -> Router.Handler
-treeDelete versioning writeLock findRelevant maint operationStore trashStore root trashRoot captures request =
-    treeDeleteHandler versioning author writeLock findRelevant maint operationStore trashStore root trashRoot captures
-  where
-    author = Identity.currentIdentity (versioningIdentity versioning) request
+treeDelete :: Structure.Structure -> Router.Handler
+treeDelete structure captures request = Iteratee.liftIO $ do
+    result <- case TreePath.parse (capture "path" captures) of
+        Nothing -> pure (Left (Structure.Refused "unsafe path"))
+        Just target -> Structure.delete structure (actingAuthor structure request) target
+    pure (either refusalResponse (jsonResponse . deletedJson) result)
+
+-- | A delete's reply: the deleted path and its trash id.
+deletedJson :: Structure.Deleted -> String
+deletedJson deleted =
+    View.jsonObject
+        [ ("deleted", View.jsonString (TreePath.render (Structure.deletedPath deleted)))
+        , ("trashId", View.jsonString (TreePath.renderTrashId (Structure.deletedTrashId deleted)))
+        ]
 
 {- | The section-move endpoint (RFC-0027): @POST /tree/*path?move@ with form fields
 @to@ (destination parent tree path), @slug@ (optional new slug), and @confirm@
 (@true@ to apply, otherwise a dry-run preview). Returns the impact plan as JSON, or a
-@409@ with the reason on refusal (root, cycle, collision, unsafe path).
+@409@ with the reason on refusal (root, cycle, collision, unsafe path). The body is
+read before the operation takes the write lock.
 -}
-treeMoveHandler :: Versioning -> Git.Identity -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> OperationStore.OperationStore -> FilePath -> Router.Captures -> Iteratee.Iter Stream.StreamError Http.Response
-treeMoveHandler versioning author writeLock findRelevant maint operationStore root captures = do
+treeMoveHandler :: Structure.Structure -> Git.Identity -> Router.Captures -> Iteratee.Iter Stream.StreamError Http.Response
+treeMoveHandler structure author captures = do
     fields <- formFieldsI treeCreateMaxBytes
     let confirm = capture "confirm" fields == "true"
-    -- The whole mutation (move + op-log append + index relocate + draft relocate + commit) runs under the
-    -- write lock so a concurrent move/delete cannot interleave it; the body read above stays outside the lock.
     result <- Iteratee.liftIO $
-        withWriteLock writeLock $
-            case (TreePath.parse (capture "path" captures), TreePath.parse (capture "to" fields)) of
-                (Just src, Just destParent) -> do
-                    let isPage = TreePath.kind src == TreePath.Page
-                        move = if isPage then TreeMove.movePage else TreeMove.moveSection
-                    r <- move findRelevant root src destParent (capture "slug" fields) confirm
-                    recordAppliedMove operationStore isPage r
-                    maintainMove maint r -- an applied move relocates its subtree; maintain the index in place (no walk)
-                    case r of
-                        Right plan
-                            | TreeMove.planApplied plan -> do
-                                relocateDraftForMove versioning (TreeMove.planFrom plan) (TreeMove.planTo plan)
-                                commitStructural versioning root author ("Move " ++ TreePath.render (TreeMove.planFrom plan) ++ " to " ++ TreePath.render (TreeMove.planTo plan))
-                        _ -> pure ()
-                    pure r
-                _ -> pure (Left "unsafe path")
-    pure (either (statusResponse 409 "Conflict" . (++ "\n")) (jsonResponse . TreeMove.movePlanJson) result)
-
-{- | Appends a @move@ record to the operation log after a move was applied
-(apply-then-append, RFC-0028); a preview or a refusal logs nothing. The log's parent
-directory is created on demand.
--}
-recordAppliedMove :: OperationStore.OperationStore -> Bool -> Either String TreeMove.MovePlan -> IO ()
-recordAppliedMove operationStore isPage (Right plan)
-    | TreeMove.planApplied plan = do
-        seq' <- OperationStore.nextSeq operationStore
-        ts <- Log.localTimestamp
-        OperationStore.appendOperation
-            operationStore
-            OperationLog.Operation
-                { OperationLog.opType = OperationLog.OpMove
-                , OperationLog.opKind = if isPage then "page" else "section"
-                , OperationLog.opFrom = Just (TreePath.render (TreeMove.planFrom plan))
-                , OperationLog.opTo = Just (TreePath.render (TreeMove.planTo plan))
-                , OperationLog.opSeq = seq'
-                , OperationLog.opTs = ts
-                , OperationLog.opTrash = Nothing
-                }
-recordAppliedMove _ _ _ = pure ()
-
--- | Relocates the moved subtree in the index, only when a move was actually applied (a preview/refusal changes nothing).
-maintainMove :: IndexMaintenance -> Either String TreeMove.MovePlan -> IO ()
-maintainMove maint (Right plan) | TreeMove.planApplied plan = onMove maint (TreePath.render (TreeMove.planFrom plan)) (TreePath.render (TreeMove.planTo plan))
-maintainMove _ _ = pure ()
-
-{- | The delete endpoint (RFC-0027 phase 4 + RFC-0028 trash): @POST /tree/*path?delete@.
-Refuses with @409@ and the referrer list when another page links in; otherwise moves
-the target to trash, appends a @delete@ record to the operation log, and returns the
-trash id. The trash id is the delete record's @seq@.
--}
-treeDeleteHandler :: Versioning -> Git.Identity -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> OperationStore.OperationStore -> TrashStore.TrashStore -> FilePath -> FilePath -> Router.Captures -> Iteratee.Iter Stream.StreamError Http.Response
-treeDeleteHandler versioning author writeLock findRelevant maint operationStore trashStore root trashRoot captures = Iteratee.liftIO $ withWriteLock writeLock $ do
-    seqNo <- OperationStore.nextSeq operationStore
-    case (TreePath.parse (capture "path" captures), TreePath.trashIdForSeq seqNo) of
-        (Nothing, _) -> pure (statusResponse 409 "Conflict" "unsafe path\n")
-        (_, Nothing) -> pure (statusResponse 500 "Internal Server Error" "operation log sequence is not a trash id\n")
-        (Just target, Just trashId) -> deleteInto target trashId seqNo
-  where
-    deleteInto target trashId seqNo = do
-        let isPage = TreePath.kind target == TreePath.Page
-        result <- TreeMove.deleteTarget findRelevant root trashRoot target trashId seqNo
-        case result of
-            Left err -> pure (statusResponse 409 "Conflict" (err ++ "\n"))
-            Right (TreeMove.Refused referrers) -> pure (statusResponse 409 "Conflict" (referrersJson referrers))
-            Right (TreeMove.Deleted tid p _) -> do
-                ts <- Log.localTimestamp
-                onDelete maint p
-                -- RFC-0032: stash any staged draft into the trash entry (recoverable), then commit the deletion.
-                stashDraftToTrash versioning trashRoot target trashId
-                commitStructural versioning root author ("Delete " ++ p)
-                OperationStore.appendOperation
-                    operationStore
-                    OperationLog.Operation
-                        { OperationLog.opType = OperationLog.OpDelete
-                        , OperationLog.opKind = kindLabel isPage
-                        , OperationLog.opFrom = Just p
-                        , OperationLog.opTo = Nothing
-                        , OperationLog.opSeq = seqNo
-                        , OperationLog.opTs = ts
-                        , OperationLog.opTrash = Just tid
-                        }
-                recordTrashEntry trashStore tid p (kindLabel isPage) ts
-                pure (jsonResponse (View.jsonObject [("deleted", View.jsonString p), ("trashId", View.jsonString tid)]))
-
--- | Adds a successful delete to the warm catalogue when production supplied one.
-recordTrashEntry :: TrashStore.TrashStore -> String -> String -> String -> String -> IO ()
-recordTrashEntry store entryId path kind deletedAt =
-    TrashStore.recordTrashEntry store (TrashStore.TrashEntry entryId path kind deletedAt)
+        case (TreePath.parse (capture "path" captures), TreePath.parse (capture "to" fields)) of
+            (Just src, Just destParent) -> Structure.move structure author src destParent (capture "slug" fields) confirm
+            _ -> pure (Left (Structure.Refused "unsafe path"))
+    pure (either refusalResponse (jsonResponse . TreeMove.movePlanJson) result)
 
 {- | The restore endpoint (RFC-0028): @POST /trash/*id@ moves a trashed entry back to
 its origin (re-adding the listing), appends a @restore@ record, and returns the
 restored path; a @409@ if the origin is now occupied or the entry is missing.
 -}
-treeRestoreHandler :: Versioning -> WriteLock -> IndexMaintenance -> OperationStore.OperationStore -> TrashStore.TrashStore -> FilePath -> FilePath -> Router.Handler
-treeRestoreHandler versioning writeLock maint operationStore trashStore root trashRoot captures request = Iteratee.liftIO $ withWriteLock writeLock $ do
-    let author = Identity.currentIdentity (versioningIdentity versioning) request
+treeRestoreHandler :: Structure.Structure -> Router.Handler
+treeRestoreHandler structure captures request = Iteratee.liftIO $ do
     result <- case TreePath.parseTrashId (capture "id" captures) of
-        Nothing -> pure (Left "trash entry not found")
-        Just trashId -> fmap (fmap (trashId,)) (TreeMove.restoreFromTrash root trashRoot trashId)
-    case result of
-        Left err -> pure (statusResponse 409 "Conflict" (err ++ "\n"))
-        Right (trashId, (restored, kind)) -> do
-            let path = TreePath.render restored
-            seqNo <- OperationStore.nextSeq operationStore
-            ts <- Log.localTimestamp
-            onRestore maint path
-            -- RFC-0032: bring back any draft stashed with the entry, then commit the restore.
-            restoreDraftFromTrash versioning trashRoot trashId restored
-            commitStructural versioning root author ("Restore " ++ path)
-            OperationStore.appendOperation
-                operationStore
-                OperationLog.Operation
-                    { OperationLog.opType = OperationLog.OpRestore
-                    , OperationLog.opKind = kind
-                    , OperationLog.opFrom = Nothing
-                    , OperationLog.opTo = Just path
-                    , OperationLog.opSeq = seqNo
-                    , OperationLog.opTs = ts
-                    , OperationLog.opTrash = Just (TreePath.renderTrashId trashId)
-                    }
-            TrashStore.forgetTrashEntry trashStore (TreePath.renderTrashId trashId)
-            pure (jsonResponse (View.jsonObject [("restored", View.jsonString path)]))
+        Nothing -> pure (Left (Structure.Refused "trash entry not found"))
+        Just trashId -> Structure.restore structure (actingAuthor structure request) trashId
+    pure (either refusalResponse (jsonResponse . restoredJson) result)
 
--- | @"page"@ or @"section"@ for the operation log.
-kindLabel :: Bool -> String
-kindLabel isPage = if isPage then "page" else "section"
+-- | A restore's reply: the restored path.
+restoredJson :: Structure.Restored -> String
+restoredJson restored = View.jsonObject [("restored", View.jsonString (TreePath.render (Structure.restoredPath restored)))]
+
+-- | The @409@ for a refused structural operation: the reason as text, or the referrers as JSON for a delete.
+refusalResponse :: Structure.Refusal -> Http.Response
+refusalResponse (Structure.Refused reason) = statusResponse 409 "Conflict" (reason ++ "\n")
+refusalResponse (Structure.StillReferenced referrers) = statusResponse 409 "Conflict" (referrersJson referrers)
+
+-- | A refusal as one line of text.
+refusalText :: Structure.Refusal -> String
+refusalText (Structure.Refused reason) = reason
+refusalText (Structure.StillReferenced _) = "still referenced"
 
 -- | A refused-delete body: the referrers as @{"refused":true,"referrers":[{"page","link"}]}@.
 referrersJson :: [(String, String)] -> String
@@ -685,31 +499,24 @@ the log is empty, the seq is unknown, or the inverse cannot be applied (its targ
 occupied, missing, or now referenced -- so inverting a non-latest move that has since
 moved refuses cleanly rather than corrupting the tree).
 -}
-treeUndoHandler :: Versioning -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> OperationStore.OperationStore -> TrashStore.TrashStore -> FilePath -> FilePath -> Router.Handler
-treeUndoHandler versioning writeLock findRelevant maint operationStore trashStore root trashRoot _ request = do
+treeUndoHandler :: Structure.Structure -> Router.Handler
+treeUndoHandler structure _ request = do
     fields <- formFieldsI treeCreateMaxBytes
-    let wantedSeq = parseSeq (capture "seq" fields)
-        author = Identity.currentIdentity (versioningIdentity versioning) request
-    Iteratee.liftIO $ withWriteLock writeLock $ do
-        ops <- OperationStore.readOperations operationStore
-        let chosen = case wantedSeq of
-                Just s -> listToMaybeOp [op | op <- ops, OperationLog.opSeq op == s]
-                Nothing -> listToMaybeOp (reverse ops)
-        case chosen of
-            Nothing -> pure (statusResponse 409 "Conflict" "nothing to undo\n")
-            Just op -> do
-                result <- applyInverse findRelevant maint operationStore trashStore root trashRoot op
-                -- RFC-0032: commit the resulting tree state when the inverse applied (draft consistency
-                -- through undo is not maintained -- a known limitation noted in the RFC).
-                case result of
-                    Right _ -> commitStructural versioning root author ("Undo operation " ++ show (OperationLog.opSeq op))
-                    Left _ -> pure ()
-                pure (either (statusResponse 409 "Conflict" . (++ "\n")) jsonResponse result)
+    result <- Iteratee.liftIO (Structure.undo structure (actingAuthor structure request) (parseSeq (capture "seq" fields)))
+    pure (either refusalResponse (jsonResponse . undoneJson) result)
 
--- | The first operation of a list, if any.
-listToMaybeOp :: [OperationLog.Operation] -> Maybe OperationLog.Operation
-listToMaybeOp (op : _) = Just op
-listToMaybeOp [] = Nothing
+-- | An undo's reply: which inverse applied and where.
+undoneJson :: Structure.Undone -> String
+undoneJson (Structure.UndoneMove from to) =
+    View.jsonObject [("undo", View.jsonString "move"), ("from", View.jsonString (TreePath.render from)), ("to", View.jsonString (TreePath.render to))]
+undoneJson (Structure.UndoneDelete restored) =
+    View.jsonObject [("undo", View.jsonString "delete"), ("restored", View.jsonString (TreePath.render (Structure.restoredPath restored)))]
+undoneJson (Structure.UndoneRestore deleted) =
+    View.jsonObject
+        [ ("undo", View.jsonString "restore")
+        , ("deleted", View.jsonString (TreePath.render (Structure.deletedPath deleted)))
+        , ("trashId", View.jsonString (TreePath.renderTrashId (Structure.deletedTrashId deleted)))
+        ]
 
 -- | Parses a non-negative @seq@ form value, or 'Nothing' when absent/malformed.
 parseSeq :: String -> Maybe Int
@@ -717,88 +524,13 @@ parseSeq value = case reads value of
     [(n, "")] -> Just n
     _ -> Nothing
 
-{- | Applies the inverse of an operation through the move/trash machinery and appends
-the inverse record, returning the JSON body on success or an error reason.
--}
-applyInverse :: TreeMove.RelevantPages -> IndexMaintenance -> OperationStore.OperationStore -> TrashStore.TrashStore -> FilePath -> FilePath -> OperationLog.Operation -> IO (Either String String)
-applyInverse findRelevant maint operationStore trashStore root trashRoot op = case OperationLog.opType op of
-    OperationLog.OpMove -> undoMove
-    OperationLog.OpDelete -> undoDelete
-    OperationLog.OpRestore -> undoRestore
-  where
-    from = Maybe.fromMaybe "" (OperationLog.opFrom op)
-    to = Maybe.fromMaybe "" (OperationLog.opTo op)
-
-    undoMove = case (TreePath.parse from, TreePath.parse to) of
-        (Just fromPath, Just toPath) -> undoMoveOf fromPath toPath
-        _ -> pure (Left "operation names an unsafe path")
-
-    undoMoveOf fromPath toPath = do
-        let move = if OperationLog.opKind op == "page" then TreeMove.movePage else TreeMove.moveSection
-        result <- move findRelevant root toPath (TreePath.parent fromPath) (TreePath.slug fromPath) True
-        case result of
-            Left err -> pure (Left err)
-            Right plan
-                | TreeMove.planApplied plan -> do
-                    onMove maint to from
-                    appendInverse (OperationLog.opKind op) OperationLog.OpMove (Just to) (Just from) Nothing
-                    pure (Right (View.jsonObject [("undo", View.jsonString "move"), ("from", View.jsonString to), ("to", View.jsonString from)]))
-                | otherwise -> pure (Left "inverse move was not applied")
-
-    undoDelete = case OperationLog.opTrash op >>= TreePath.parseTrashId of
-        Nothing -> pure (Left "delete record has no valid trash id")
-        Just trashId -> do
-            result <- TreeMove.restoreFromTrash root trashRoot trashId
-            case result of
-                Left err -> pure (Left err)
-                Right (restored, kind) -> do
-                    let path = TreePath.render restored
-                        tid = TreePath.renderTrashId trashId
-                    onRestore maint path
-                    appendInverse kind OperationLog.OpRestore Nothing (Just path) (Just tid)
-                    TrashStore.forgetTrashEntry trashStore tid
-                    pure (Right (View.jsonObject [("undo", View.jsonString "delete"), ("restored", View.jsonString path)]))
-
-    undoRestore = do
-        seqNo <- OperationStore.nextSeq operationStore
-        case (TreePath.parse to, TreePath.trashIdForSeq seqNo) of
-            (Just target, Just trashId) -> do
-                result <- TreeMove.deleteTarget findRelevant root trashRoot target trashId seqNo
-                case result of
-                    Left err -> pure (Left err)
-                    Right (TreeMove.Refused _) -> pure (Left "cannot undo restore: the target is now referenced")
-                    Right (TreeMove.Deleted tid path _) -> do
-                        ts <- Log.localTimestamp
-                        let kind = kindLabel (TreePath.kind target == TreePath.Page)
-                        onDelete maint to
-                        OperationStore.appendOperation operationStore (OperationLog.Operation OperationLog.OpDelete kind (Just path) Nothing seqNo ts (Just tid))
-                        recordTrashEntry trashStore tid path kind ts
-                        pure (Right (View.jsonObject [("undo", View.jsonString "restore"), ("deleted", View.jsonString path), ("trashId", View.jsonString tid)]))
-            _ -> pure (Left "operation names an unsafe path")
-
-    -- Appends an inverse record with a fresh seq and timestamp.
-    appendInverse kind typ opFrom' opTo' trash = do
-        seqNo <- OperationStore.nextSeq operationStore
-        ts <- Log.localTimestamp
-        OperationStore.appendOperation
-            operationStore
-            OperationLog.Operation
-                { OperationLog.opType = typ
-                , OperationLog.opKind = kind
-                , OperationLog.opFrom = opFrom'
-                , OperationLog.opTo = opTo'
-                , OperationLog.opSeq = seqNo
-                , OperationLog.opTs = ts
-                , OperationLog.opTrash = trash
-                }
-
 {- | The trash listing endpoint (RFC-0028): @GET /trash@ returns the trash
 entries as JSON, newest-first, each tagged with its deletion timestamp -- the
 data behind both the recent-deletes dropdown and the trash page.
 -}
-treeTrashListHandler :: WriteLock -> TrashStore.TrashStore -> Int -> FilePath -> Router.Handler
-treeTrashListHandler writeLock trashStore retentionDays trashRoot _ request = do
-    entries <- Iteratee.liftIO (withWriteLock writeLock (purgeExpiredTrash trashStore retentionDays trashRoot))
+treeTrashListHandler :: Structure.Structure -> Int -> Router.Handler
+treeTrashListHandler structure retentionDays _ request = do
+    entries <- Iteratee.liftIO (purgeExpiredTrash structure retentionDays)
     let listed = maybe entries (`take` entries) (nonNegativeQueryInt "limit" request)
     pure (jsonResponse (trashEntriesJson listed))
 
@@ -816,8 +548,8 @@ the operation log's delete timestamps; an entry with no logged timestamp is
 never auto-purged. Timestamps compare on their sortable date-time prefix (the
 zone suffix is ignored), which is exact to well under a day -- ample here.
 -}
-purgeExpiredTrash :: TrashStore.TrashStore -> Int -> FilePath -> IO [(String, String, String, String)]
-purgeExpiredTrash trashStore retentionDays trashRoot
+purgeExpiredTrash :: Structure.Structure -> Int -> IO [(String, String, String, String)]
+purgeExpiredTrash structure retentionDays
     | retentionDays <= 0 = trashEntriesNewestFirst trashStore
     | otherwise = do
         now <- TimeMilli.getTimeMilli
@@ -827,19 +559,21 @@ purgeExpiredTrash trashStore retentionDays trashRoot
             Monad.forM entries $ \entry@(entryId, _, _, ts) ->
                 if not (null ts) && take 19 ts < take 19 cutoff
                     then do
-                        removed <- purgeTrashEntry trashStore trashRoot entryId
+                        removed <- Structure.purge structure entryId
                         pure (if removed then Nothing else Just entry)
                     else pure (Just entry)
+  where
+    trashStore = Structure.structureTrash structure
 
 {- | Permanently deletes one trash entry (@DELETE /trash/\<id\>@, RFC-0028 as
 amended): the entry's files are removed for good. Nothing is logged -- the op
 log keeps the original delete, and undoing it simply refuses once the entry is
 gone. A 404 for an unknown id.
 -}
-treeTrashDeleteHandler :: WriteLock -> TrashStore.TrashStore -> FilePath -> Router.Handler
-treeTrashDeleteHandler writeLock trashStore trashRoot captures _ = do
+treeTrashDeleteHandler :: Structure.Structure -> Router.Handler
+treeTrashDeleteHandler structure captures _ = do
     let trashId = capture "id" captures
-    removed <- Iteratee.liftIO (withWriteLock writeLock (purgeTrashEntry trashStore trashRoot trashId))
+    removed <- Iteratee.liftIO (Structure.purge structure trashId)
     pure
         ( if removed
             then jsonResponse (View.jsonObject [("purged", View.jsonString trashId)])
@@ -849,25 +583,13 @@ treeTrashDeleteHandler writeLock trashStore trashRoot captures _ = do
 {- | Empties the trash (@DELETE /trash@): permanently removes every entry.
 Answers with the removed count.
 -}
-treeTrashEmptyHandler :: WriteLock -> TrashStore.TrashStore -> FilePath -> Router.Handler
-treeTrashEmptyHandler writeLock trashStore trashRoot _ _ = do
-    emptied <- Iteratee.liftIO $ withWriteLock writeLock $ do
-        entryIds <- trashEntryIds trashStore
-        outcomes <- mapM (purgeTrashEntry trashStore trashRoot) entryIds
+treeTrashEmptyHandler :: Structure.Structure -> Router.Handler
+treeTrashEmptyHandler structure _ _ = do
+    emptied <- Iteratee.liftIO $ do
+        entryIds <- trashEntryIds (Structure.structureTrash structure)
+        outcomes <- mapM (Structure.purge structure) entryIds
         pure (length (filter id outcomes))
     pure (jsonResponse (View.jsonObject [("emptied", show emptied)]))
-
-{- | Permanently removes one trash entry by its raw id and forgets it in the
-catalogue, returning whether it existed; an id that is not a trash id names no entry.
--}
-purgeTrashEntry :: TrashStore.TrashStore -> FilePath -> String -> IO Bool
-purgeTrashEntry trashStore trashRoot rawId =
-    case TreePath.parseTrashId rawId of
-        Nothing -> pure False
-        Just trashId -> do
-            removed <- TreeMove.deleteTrashEntry trashRoot trashId
-            Monad.when removed (TrashStore.forgetTrashEntry trashStore rawId)
-            pure removed
 
 -- | The entry ids known to the selected trash-store adapter.
 trashEntryIds :: TrashStore.TrashStore -> IO [String]
@@ -877,9 +599,9 @@ trashEntryIds store = fmap (map TrashStore.entryId) (TrashStore.trashEntries sto
 restorable item with a per-row Restore, for when the recent-deletes dropdown is
 too small. Complements the dropdown; both restore through @POST /trash/\<id\>@.
 -}
-treeTrashPageHandler :: WriteLock -> TrashStore.TrashStore -> Int -> FilePath -> Router.Handler
-treeTrashPageHandler writeLock trashStore retentionDays trashRoot _ request = do
-    entries <- Iteratee.liftIO (withWriteLock writeLock (purgeExpiredTrash trashStore retentionDays trashRoot))
+treeTrashPageHandler :: Structure.Structure -> Int -> Router.Handler
+treeTrashPageHandler structure retentionDays _ request = do
+    entries <- Iteratee.liftIO (purgeExpiredTrash structure retentionDays)
     -- The page that opened the trash view, so "back" returns there rather than the root (RFC-0028).
     pure (documentResponse (View.trashPage (originFromReferer request) retentionDays entries))
 
@@ -953,7 +675,7 @@ appWithDocumentTree root =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
         ( Static.static "/static/editor" VConfig.defaultEditorStaticDir
-            : treeRoutes Nothing Nothing Nothing noVersioning root "data/operation_log" "data/trash" 90 "data/link_index"
+            : treeRoutes Nothing Nothing Nothing Structure.noVersioning root "data/operation_log" "data/trash" 90 "data/link_index"
         )
 
 -- | A tree-mode app with draft/publish versioning on and drafts staged under @draftRoot@ (RFC-0032; tests).
@@ -962,13 +684,13 @@ appWithDocumentTreeVersioned root draftRoot =
     Router.serveRoutes
         (Server.parseLimits Server.defaultSettings)
         ( Static.static "/static/editor" VConfig.defaultEditorStaticDir
-            : treeRoutes Nothing Nothing Nothing (Versioning True draftRoot defaultIdentityConfig) root "data/operation_log" "data/trash" 90 "data/link_index"
+            : treeRoutes Nothing Nothing Nothing (Structure.Versioning True draftRoot Structure.defaultIdentityConfig) root "data/operation_log" "data/trash" 90 "data/link_index"
         )
 
 {- | A GET under the tree: the editor page for @?edit@ on a Markdown file,
 otherwise the file served statically (raw Markdown, images, attachments).
 -}
-treeGet :: Versioning -> FilePath -> Router.Handler
+treeGet :: Structure.Versioning -> FilePath -> Router.Handler
 treeGet versioning root captures request =
     case TreePath.parse (capture "path" captures) of
         Nothing -> pure treeNotFound
@@ -987,16 +709,16 @@ treeGet versioning root captures request =
 {- | Renders the editable editor for a tree document, loading its current content
 (or a seed if the file is absent, so a missing page can be created by editing).
 -}
-treeEdit :: Versioning -> FilePath -> TreePath.TreePath -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
+treeEdit :: Structure.Versioning -> FilePath -> TreePath.TreePath -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
 treeEdit versioning root path request = do
     -- Resume a staged draft if one exists (RFC-0032); otherwise the published page, or a seed.
     hasDraft <-
-        if versioningOn versioning
-            then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
+        if Structure.versioningOn versioning
+            then Iteratee.liftIO (Draft.hasDraft (Structure.draftStagingRoot versioning) path)
             else pure False
     if hasDraft
         then -- The draft is a file in the staging root: stream it like a page (RFC-0040).
-            editFromFile (Draft.draftFsPath (draftStagingRoot versioning) path) True
+            editFromFile (Draft.draftFsPath (Structure.draftStagingRoot versioning) path) True
         else do
             exists <- Iteratee.liftIO (Directory.doesFileExist fsPath)
             if exists
@@ -1005,7 +727,7 @@ treeEdit versioning root path request = do
   where
     fsPath = TreePath.resolve root path
     -- The editable shell around the document hole, with the draft flag the read view sets.
-    editShell = shellFor path request (versioningOn versioning) True
+    editShell = shellFor path request (Structure.versioningOn versioning) True
     editFromFile file hasDraft = do
         block <- Iteratee.liftIO (Frontmatter.readBlock file)
         chrome <- Iteratee.liftIO (pageChrome root path False block)
@@ -1021,7 +743,7 @@ treeEdit versioning root path request = do
 the editor shell with editing disabled. A missing page is a @404@ -- reading never
 seeds (that stays an @?edit@ affordance).
 -}
-treeRead :: Versioning -> FilePath -> TreePath.TreePath -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
+treeRead :: Structure.Versioning -> FilePath -> TreePath.TreePath -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
 treeRead versioning root path request = do
     let fsPath = TreePath.resolve root path
     exists <- Iteratee.liftIO (Directory.doesFileExist fsPath)
@@ -1032,11 +754,11 @@ treeRead versioning root path request = do
             chrome <- Iteratee.liftIO (pageChrome root path False block)
             -- RFC-0032: flag an unpublished draft so the read view can mark it next to "Edit".
             hasDraft <-
-                if versioningOn versioning
-                    then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
+                if Structure.versioningOn versioning
+                    then Iteratee.liftIO (Draft.hasDraft (Structure.draftStagingRoot versioning) path)
                     else pure False
             -- RFC-0040: stream the document from disk between the shell halves; never held whole.
-            let (before, after) = shellFor path request (versioningOn versioning) False hasDraft chrome
+            let (before, after) = shellFor path request (Structure.versioningOn versioning) False hasDraft chrome
             Iteratee.liftIO (documentFileResponse before after fsPath)
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
@@ -1061,7 +783,7 @@ treeServeFile root path = do
 {- | A POST under the tree: an asset upload (@?asset@, a raw-body file) into the
 document's peer @assets/@ folder, or otherwise a document save.
 -}
-treePost :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
+treePost :: Structure.Versioning -> Structure.IndexMaintenance -> FilePath -> Router.Handler
 treePost versioning maint root captures request
     | hasQueryFlag "asset" request = treeUpload root captures request
     | hasQueryFlag "image-titles" request = treeImageTitles root captures request
@@ -1392,98 +1114,6 @@ treeSpineFor root page = do
         nodes <- childrenOf root fp
         pure (View.jsonObject [("path", View.jsonString fp), ("children", treeChildrenJson nodes)])
 
-{- | Creates a new page or section under a parent section (RFC-0026), writing
-seeded frontmatter eagerly, and returns either an error message ('Left', a @400@)
-or the created-node JSON response ('Right'). The filename is a slug derived from
-the title, suffixed numerically on collision; the title is preserved verbatim in
-the frontmatter @name@. A section is a directory plus a seeded @index.md@.
--}
-createTreeNode :: FilePath -> String -> String -> String -> IO (Either String (Http.Response, String))
-createTreeNode root parentRel kind title
-    | null (trimSpace title) = pure (Left "missing title\n")
-    | kind /= "page" && kind /= "section" = pure (Left "unknown kind\n")
-    | otherwise =
-        case TreePath.parse parentRel of
-            Nothing -> pure (Left "unsafe path\n")
-            Just parent -> do
-                let parentFs = TreePath.resolve root parent
-                parentExists <- Directory.doesDirectoryExist parentFs
-                if not parentExists
-                    then pure (Left "parent not found\n")
-                    else do
-                        slug <- uniqueSlug parentFs (slugify title) (kind == "section")
-                        let seedBody = "---\nname: " ++ yamlScalar title ++ "\n---\n\n# " ++ title ++ "\n"
-                            isSection = kind == "section"
-                        case TreePath.child parent (if isSection then slug else slug ++ ".md") of
-                            Nothing -> pure (Left "unsafe path\n")
-                            Just node
-                                | isSection -> do
-                                    let indexRel = TreePath.render (TreePath.sectionIndex node)
-                                    Directory.createDirectoryIfMissing True (TreePath.resolve root node)
-                                    writeDocumentText (TreePath.resolve root (TreePath.sectionIndex node)) seedBody
-                                    pure (Right (jsonResponse (createdJson title (TreePath.render node) "section" indexRel), indexRel))
-                                | otherwise -> do
-                                    let pageRel = TreePath.render node
-                                    writeDocumentText (TreePath.resolve root node) seedBody
-                                    pure (Right (jsonResponse (createdJson title pageRel "page" pageRel), pageRel))
-
-{- | A kebab-case filename slug from a title: lower-cased, non-alphanumeric runs
-collapsed to single hyphens and trimmed, falling back to @untitled@ when nothing
-remains.
--}
-slugify :: String -> String
-slugify title =
-    case trimHyphens (collapse (map toSlugChar title)) of
-        "" -> "untitled"
-        s -> s
-  where
-    toSlugChar c
-        | Char.isAsciiLower c || Char.isDigit c = c
-        | Char.isAsciiUpper c = Char.toLower c
-        | otherwise = '-'
-    collapse ('-' : '-' : rest) = collapse ('-' : rest)
-    collapse (c : rest) = c : collapse rest
-    collapse [] = []
-    trimHyphens = f . f where f = reverse . dropWhile (== '-')
-
--- | The first slug from @base@, @base-2@, @base-3@, ... not already taken in the parent folder.
-uniqueSlug :: FilePath -> String -> Bool -> IO String
-uniqueSlug parentFs base isSection = pick (base : [base ++ "-" ++ show n | n <- [(2 :: Int) ..]])
-  where
-    pick [] = pure base
-    pick (candidate : rest) = do
-        taken <- slugTaken parentFs candidate isSection
-        if taken then pick rest else pure candidate
-
--- | Whether a slug is already taken in a folder (a directory for a section, a @.md@ file for a page).
-slugTaken :: FilePath -> String -> Bool -> IO Bool
-slugTaken parentFs slug isSection =
-    if isSection
-        then Directory.doesDirectoryExist (parentFs ++ "/" ++ slug)
-        else Directory.doesFileExist (parentFs ++ "/" ++ slug ++ ".md")
-
--- | A YAML scalar for a frontmatter value: bare when safe, else double-quoted with escapes.
-yamlScalar :: String -> String
-yamlScalar s
-    | needsQuote = "\"" ++ concatMap esc s ++ "\""
-    | otherwise = s
-  where
-    needsQuote = null s || head s == ' ' || last s == ' ' || any special s
-    special c = c == ':' || c == '#' || c == '"' || c == '\'' || c == '\n' || c == '\t'
-    esc '"' = "\\\""
-    esc '\\' = "\\\\"
-    esc c = [c]
-
--- | The created-node JSON: the display name, tree path, kind, and the page path to open for editing.
-createdJson :: String -> String -> String -> String -> String
-createdJson name path kind editPath =
-    View.jsonObject
-        [ ("name", View.jsonString name)
-        , ("path", View.jsonString path)
-        , ("kind", View.jsonString kind)
-        , ("editPath", View.jsonString editPath)
-        ]
-
 -- | A @200@ JSON response with the given body.
 jsonResponse :: String -> Http.Response
 jsonResponse body =
@@ -1576,31 +1206,31 @@ re-stages the same draft -- so a debounced client can retry safely. The path is
 validated against the tree exactly as a page save is; without versioning there
 is no draft resource, so the route answers 404.
 -}
-draftPut :: Versioning -> FilePath -> Router.Handler
+draftPut :: Structure.Versioning -> FilePath -> Router.Handler
 draftPut versioning root captures _ = do
     let path = capture "path" captures
     -- The body streams straight into the staging file (RFC-0040); the refusals
     -- still consume it, so nothing is left on the connection.
-    if not (versioningOn versioning)
+    if not (Structure.versioningOn versioning)
         then notFoundAfterDrain
         else case TreePath.parse path of
             Nothing -> notFoundAfterDrain
             Just page -> do
-                staged <- sinkBodyToFile formBodyLimit (Draft.draftFsPath (draftStagingRoot versioning) page)
+                staged <- sinkBodyToFile formBodyLimit (Draft.draftFsPath (Structure.draftStagingRoot versioning) page)
                 pure (either (const saveFailed) (const noContentResponse) staged)
 
 {- | The draft resource's @DELETE@ (RFC-0036): discards the page's staged draft
 without publishing. Idempotent -- deleting an absent draft is still a @204@.
 -}
-draftDelete :: Versioning -> FilePath -> Router.Handler
+draftDelete :: Structure.Versioning -> FilePath -> Router.Handler
 draftDelete versioning root captures _ = do
     let path = capture "path" captures
-    if not (versioningOn versioning)
+    if not (Structure.versioningOn versioning)
         then pure treeNotFound
         else case TreePath.parse path of
             Nothing -> pure treeNotFound
             Just page -> do
-                Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) page)
+                Iteratee.liftIO (Draft.deleteDraft (Structure.draftStagingRoot versioning) page)
                 pure noContentResponse
 
 -- | The bodyless @204 No Content@ response for a completed state transfer.
@@ -1616,15 +1246,15 @@ raw HTML would block legitimate saves -- the editor preserves it verbatim, and
 nothing renders it as live HTML (the trust boundary that guard defends does not
 apply to first-party files).
 -}
-treeSave :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
+treeSave :: Structure.Versioning -> Structure.IndexMaintenance -> FilePath -> Router.Handler
 treeSave versioning maint root captures _request = do
     let path = capture "path" captures
     case TreePath.parse path of
         Nothing -> notFoundAfterDrain
         Just page -> do
-            -- Versioning on: autosave stages a draft; the live page, its sidecar
+            -- Structure.Versioning on: autosave stages a draft; the live page, its sidecar
             -- metadata, and the link index are untouched until Publish (RFC-0032).
-            let target = if versioningOn versioning then Draft.draftFsPath (draftStagingRoot versioning) page else TreePath.resolve root page
+            let target = if Structure.versioningOn versioning then Draft.draftFsPath (Structure.draftStagingRoot versioning) page else TreePath.resolve root page
             -- RFC-0042: the form streams through the part consumer. The document field
             -- is decoded and newline-normalised on its way into a temp beside the target
             -- and renamed into place; the other fields are collected under small caps.
@@ -1634,7 +1264,7 @@ treeSave versioning maint root captures _request = do
                 Left _ -> pure saveFailed
                 Right _ -> do
                     -- The page's body (and so its outbound links) changed; maintain its index entry.
-                    Monad.unless (versioningOn versioning) (Iteratee.liftIO (onSave maint path))
+                    Monad.unless (Structure.versioningOn versioning) (Iteratee.liftIO (Structure.onSave maint path))
                     saveResponse path
 
 {- | The save form's part consumer, writing into @tmp@: the @markdown@ field is
@@ -1677,7 +1307,7 @@ to the acting author, and the page's staged draft cleared. Idempotent: an
 unchanged body yields no new commit (git sees no diff) but still clears the
 draft.
 -}
-treePutDocument :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
+treePutDocument :: Structure.Versioning -> Structure.IndexMaintenance -> FilePath -> Router.Handler
 treePutDocument versioning maint root captures request = do
     let path = capture "path" captures
     case TreePath.parse path of
@@ -1691,12 +1321,12 @@ treePutDocument versioning maint root captures request = do
             case written of
                 Left _ -> pure saveFailed
                 Right _ -> do
-                    Iteratee.liftIO (onSave maint path)
-                    Monad.when (versioningOn versioning) $ do
-                        let author = Identity.currentIdentity (versioningIdentity versioning) request
+                    Iteratee.liftIO (Structure.onSave maint path)
+                    Monad.when (Structure.versioningOn versioning) $ do
+                        let author = Identity.currentIdentity (Structure.versioningIdentity versioning) request
                         message <- Iteratee.liftIO (publishMessage path fsPath)
                         _ <- Iteratee.liftIO (Git.commitPaths root author message [path])
-                        Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) page)
+                        Iteratee.liftIO (Draft.deleteDraft (Structure.draftStagingRoot versioning) page)
                     pure noContentResponse
 
 -- | The @500@ for a save whose body arrived but could not be placed as the page.
@@ -1877,7 +1507,7 @@ treeReadAt root page request = do
 publish-time path, commits it as a new revision (forward-only -- history is never
 rewritten), and returns to the read view.
 -}
-treeRollback :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
+treeRollback :: Structure.Versioning -> Structure.IndexMaintenance -> FilePath -> Router.Handler
 treeRollback versioning maint root captures request = do
     fields <- formFieldsI treeCreateMaxBytes
     let rev = capture "rev" fields
@@ -1898,8 +1528,8 @@ treeRollback versioning maint root captures request = do
                 Nothing -> pure (statusResponse 409 "Conflict" "cannot read that revision\n")
                 Just (Left _) -> pure (statusResponse 500 "Internal Server Error" "could not restore that revision\n")
                 Just (Right ()) -> do
-                    Iteratee.liftIO (onSave maint path)
-                    let author = Identity.currentIdentity (versioningIdentity versioning) request
+                    Iteratee.liftIO (Structure.onSave maint path)
+                    let author = Identity.currentIdentity (Structure.versioningIdentity versioning) request
                     _ <- Iteratee.liftIO (Git.commitAll root author ("Roll back " ++ path ++ " to " ++ rev))
                     -- Rollback is a plain history-page form post: classic POST -> 303 -> GET.
                     pure (seeOtherResponse ("/documents/" ++ path))

@@ -16,6 +16,7 @@ import qualified Verso.AppSpec as AppSpec
 import qualified Verso.GitSpec as GitSpec
 import qualified Verso.OperationStoreSpec as OperationStoreSpec
 import qualified Verso.SearchAppSpec as SearchAppSpec
+import qualified Verso.StructureSpec as StructureSpec
 import qualified Verso.TrashStoreSpec as TrashStoreSpec
 
 main :: IO ()
@@ -37,3 +38,4 @@ main = do
         AppSpec.spec
         SearchAppSpec.spec
         TrashStoreSpec.spec
+        StructureSpec.spec

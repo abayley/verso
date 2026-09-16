@@ -142,8 +142,9 @@ the one JSON response not built from a `Json` value.
 
 - `make check` green before and after.
 - New unit spec `test/unit/Verso/JsonSpec.hs`: each variant renders; nesting; the empty object and
-  array; every escape including a control character; a property that `render` never emits a raw byte
-  below U+0020 inside a string.
+  array; every escape including a control character; and a check over the whole C0 range that
+  `render` never emits a raw byte below U+0020 inside a string (an exhaustive example, since nanospec
+  has no property testing).
 
 ## Rollout Plan
 

@@ -1,6 +1,5 @@
 module Verso.TrashSpec (spec) where
 
-import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified MicroHttp.Process as Process
 import qualified System.Directory as Directory
@@ -96,4 +95,3 @@ spec =
             entryDir <- entryDirFor "7"
             item <- Trash.moveDirIntoTrash root entryDir "meta" (tp "absent/meta/x.meta")
             item `shouldBe` Nothing
-            Monad.void (pure ())

@@ -42,3 +42,7 @@ spec =
                 Json.render (Json.string "\US") `shouldBe` "\"\\u001f\""
             it "given a printable character at or above U+0020, when rendered, then it is emitted as itself" $
                 Json.render (Json.string " ~") `shouldBe` "\" ~\""
+            it "given every C0 control character, when rendered, then the output holds no raw byte below U+0020" $
+                all (>= ' ') (Json.render (Json.string ['\NUL' .. '\US'])) `shouldBe` True
+            it "given control characters among printable text, when rendered, then only the printable text survives unescaped" $
+                all (>= ' ') (Json.render (Json.string "a\SOHb\USc\NULd")) `shouldBe` True

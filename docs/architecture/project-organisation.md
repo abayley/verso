@@ -78,6 +78,14 @@ Domain renderers and handlers build a `Json`; `App.jsonResponse` renders it at t
 boundary. The one exception is the `/operations` endpoint, which splices the
 persisted operation-log lines (`Verso.OperationLog.renderOperation`) verbatim.
 
+The trash has one durable-mechanics module: `Verso.Trash` owns a trash entry's
+provenance manifest and the filesystem operations on it (store, restore, list,
+purge) (RFC-0047). `Verso.TreeMove` keeps the document-tree parts of delete and
+restore -- the referrer check, the asset classification, the listing edits -- and
+calls `Verso.Trash` for the entry mechanics. The warm catalogue `Verso.TrashStore`
+and the retention sweep in `Verso.Structure` depend on `Verso.Trash`, not on the
+move engine.
+
 The Markdown editor follows a source-vs-asset distinction:
 
 - `packages/verso-editor/src/` contains TypeScript source for the application's

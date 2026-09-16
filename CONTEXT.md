@@ -83,7 +83,10 @@ The area outside the **document tree** (but on the same filesystem) a deleted
 **page** or **section** is moved to -- rather than destroyed -- with a provenance
 record of its original tree path, so it can be restored (RFC-0028). Browsed and
 recovered through a Trash view in the **navigation tree**; restore is refused if
-the original location is now occupied.
+the original location is now occupied. `Verso.Trash` owns a trash entry end to
+end: its provenance manifest and the filesystem mechanics that store items into
+an entry, restore them, list entries and purge one (RFC-0047). The warm
+catalogue is `Verso.TrashStore`; the retention sweep is `Structure.purgeMatching`.
 _Avoid_: recycle bin, archive, bin.
 
 **Trash entry id**:

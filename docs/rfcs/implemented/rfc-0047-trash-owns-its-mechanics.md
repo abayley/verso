@@ -1,7 +1,7 @@
 ---
 id: RFC-0047
 name: Trash Owns Its Mechanics
-status: In Progress
+status: Implemented
 owners:
     - alistair
 created: 2026-09-16
@@ -19,7 +19,7 @@ related_rfcs:
 | --------- | ---------- |
 | Authored  | 2026-09-16 |
 | Started   | 2026-09-16 |
-| Completed |            |
+| Completed | 2026-09-16 |
 
 ## Summary
 
@@ -148,17 +148,17 @@ Test-first; committed when green.
 
 ### Phase 1: Move The Mechanics
 
-- [ ] `test/integration/Verso/TrashSpec.hs`: a store-list-restore-purge round trip through the target
+- [x] `test/integration/Verso/TrashSpec.hs`: a store-list-restore-purge round trip through the target
   `Verso.Trash` interface (RED until the functions move).
-- [ ] The six functions and `removeTree` move from `TreeMove` to `Verso.Trash`, which gains its
+- [x] The six functions and `removeTree` move from `TreeMove` to `Verso.Trash`, which gains its
   `FileSystem`/`TreePath` imports; `TreeMove` calls `Trash.*` and drops the two exports and the
   `writeManifest` re-export.
-- [ ] `TrashStore` and `Structure` call `Trash.listTrash`/`Trash.deleteTrashEntry`; `TrashStore` drops
+- [x] `TrashStore` and `Structure` call `Trash.listTrash`/`Trash.deleteTrashEntry`; `TrashStore` drops
   its `TreeMove` import.
 
 ### Phase 2: Records
 
-- [ ] `CONTEXT.md` Trash entry note points at `Verso.Trash`; architecture page updated; RFC moved to
+- [x] `CONTEXT.md` Trash entry note points at `Verso.Trash`; architecture page updated; RFC moved to
   `implemented/`; `bun run rfc:index`.
 
 ## Open Questions

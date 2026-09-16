@@ -54,3 +54,5 @@
 2026-09-17 08:54:55  packages/micro-http/src/MicroHttp/Http.hs:transformedFileResponse:480: Motivation: the sized streamed-document count and missing-file cleanup lived only in Verso.App, untested by the framework. Move Function.
 2026-09-17 09:00:40  packages/micro-http/src/MicroHttp/Middleware.hs:fuseBody:63: Duplicated Code. Extract Function.
 2026-09-17 09:14:51  test/integration/MicroHttp/Http/ResponseFileSpec.hs:identityTransform:590: no refactoring needed
+2026-09-17 10:38:43  packages/micro-http/src/MicroHttp/Html.hs:div:347: Motivation: The element vocabulary was exported twice over (23 aliases x = x_); callers mixed both spellings 43/44 in one file.. Remove Dead Code.
+2026-09-17 10:38:49  test/unit/MicroHttp/HtmlSpec.hs:escaperAgreementCase:107: Motivation: Nine fixed inputs left the Char-vs-byte difference in kind unguarded; the escape set is now surveyed exhaustively.. Introduce Assertion.

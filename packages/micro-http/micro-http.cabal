@@ -25,6 +25,7 @@ library
     MicroHttp.Log
     MicroHttp.Middleware
     MicroHttp.Network.Socket
+    MicroHttp.Percent
     MicroHttp.Process
     MicroHttp.Router
     MicroHttp.Server

@@ -11,8 +11,10 @@ Every scan is an index loop over the chunk in hand ('MicroHttp.Bytes'), never an
 sink, so nothing here is proportional to a value's length. The wire semantics are
 those of the whole-body parser this replaces: only the first @=@ separates a
 name from its value, a field with no @=@ has an empty value, an empty field
-between two @&@ is a field with an empty name, an empty body has no fields, a
-@+@ is a space, and a malformed @%@ escape passes through verbatim.
+between two @&@ is a field with an empty name, an empty body has no fields, and
+a @+@ is a space. Percent-decoding itself is 'MicroHttp.Percent', shared with the
+path and query decoders: a @%@ that does not begin a valid escape is emitted as
+itself and the scan moves on by one.
 
 A sink is chosen when the name arrives, so the choice cannot depend on a field
 that comes later; a form that needs control fields before its large field puts
@@ -29,10 +31,10 @@ module MicroHttp.Form (
 
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
-import qualified Data.Char as Char
 import qualified Data.Maybe as Maybe
 import qualified MicroHttp.Bytes as Bytes
 import qualified MicroHttp.Iteratee as Iteratee
+import qualified MicroHttp.Percent as Percent
 
 -- | The caps a form observes on the fields it collects in memory.
 data FormLimits = FormLimits
@@ -229,7 +231,7 @@ trailing bare @%@ or truncated escape. The inner sink's end of stream follows
 the flush.
 -}
 decodeFormValueI :: Iteratee.Iter e a -> Iteratee.Iter e a
-decodeFormValueI = Iteratee.mapChunksI decodeBlock id
+decodeFormValueI = Iteratee.mapChunksI (Percent.decodeBlock True) id
 
 {- | Normalises line ends in a stream into the given sink: @CRLF@ and a lone @CR@
 both become @LF@. A @CR@ at a block end is carried to see whether an @LF@
@@ -237,35 +239,6 @@ follows; at end of stream a carried @CR@ is emitted as @LF@.
 -}
 normaliseNewlinesI :: Iteratee.Iter e a -> Iteratee.Iter e a
 normaliseNewlinesI = Iteratee.mapChunksI newlineBlock (\carry -> if BS.null carry then carry else BS.singleton '\n')
-
-{- | Decodes one block: the decoded bytes, and the undecodable tail (a @%@ with
-fewer than two bytes after it) to carry into the next block. A per-block list is
-packed once; a block is at most a stream chunk plus two bytes.
--}
-decodeBlock :: BS.ByteString -> (BS.ByteString, BS.ByteString)
-decodeBlock bytes = (BS.pack (go 0), carry)
-  where
-    len = BS.length bytes
-    -- Where the carry starts: found by the same left-to-right walk the decoder
-    -- takes, so an escape's three bytes are never split from each other and a
-    -- '%' that is itself the tail of a malformed escape is not mistaken for a carry.
-    cut = scan 0
-    scan i
-        | i >= len = len
-        | BS.index bytes i /= '%' = scan (i + 1)
-        | i + 2 < len = scan (i + 3)
-        | otherwise = i
-    carry = BS.drop cut bytes
-    go i
-        | i >= cut = []
-        | c == '+' = ' ' : go (i + 1)
-        | c == '%' =
-            case hexPair (BS.index bytes (i + 1)) (BS.index bytes (i + 2)) of
-                Just decoded -> decoded : go (i + 3)
-                Nothing -> c : BS.index bytes (i + 1) : BS.index bytes (i + 2) : go (i + 3)
-        | otherwise = c : go (i + 1)
-      where
-        c = BS.index bytes i
 
 -- | Normalises one block's line ends; a trailing CR is the carry.
 newlineBlock :: BS.ByteString -> (BS.ByteString, BS.ByteString)
@@ -284,9 +257,3 @@ newlineBlock bytes
         | otherwise = '\n' : go (i + 1)
       where
         c = BS.index bytes i
-
--- | The byte for two hex digits, or Nothing when either is not a hex digit.
-hexPair :: Char -> Char -> Maybe Char
-hexPair a b
-    | Char.isHexDigit a && Char.isHexDigit b = Just (Char.chr (Char.digitToInt a * 16 + Char.digitToInt b))
-    | otherwise = Nothing

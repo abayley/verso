@@ -138,7 +138,7 @@ $(PROC_OBJ): $(MICROHTTP_CBITS)/microhttp_process.c $(MICROHTTP_INCLUDE)/microht
 	mkdir -p $(BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(MICROHTTP_INCLUDE)
 
-.PHONY: build-verso-ghc build-verso-ghc-prof run-verso-ghc run-verso-ghc-prof test-ghc test-ghc-unit test-ghc-integration test-ghc-smoke chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-memory bench-html-builder bench-link-parse bench-search-chunk search-lancedb search-nanoarrow search-model search-shim check clean
+.PHONY: build-verso-ghc build-verso-ghc-prof run-verso-ghc run-verso-ghc-prof test-ghc test-ghc-unit test-ghc-integration test-ghc-smoke chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-percent-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-memory bench-html-builder bench-link-parse bench-search-chunk search-lancedb search-nanoarrow search-model search-shim check clean
 
 
 docs:
@@ -305,6 +305,13 @@ bench-form-decode: $(CBITS_OBJS)
 	mkdir -p $(BUILD)
 	$(MHS) $(MHSFLAGS) -optc -I$(CBITS) $(foreach o,$(CBITS_OBJS),-optl $(o)) -i$(SRC) -i$(BENCH) $(BENCH)/FormDecodeBench.hs -o $(BUILD)/form-decode-bench
 	$(BUILD)/form-decode-bench
+
+# Links against the package's own cbits; passing the local $(CBITS_OBJS) as well
+# would define every C symbol twice (see bench-form-decode).
+bench-percent-decode:
+	mkdir -p $(BUILD)
+	$(MHS) $(MHSFLAGS) -optc -I$(CBITS) -i$(SRC) -i$(BENCH) $(BENCH)/PercentDecodeBench.hs -o $(BUILD)/percent-decode-bench
+	$(BUILD)/percent-decode-bench
 
 bench-socket: $(FS_OBJ)
 	mkdir -p $(BUILD)

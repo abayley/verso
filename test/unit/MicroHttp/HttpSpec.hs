@@ -62,10 +62,16 @@ percentDecodeSpec = do
         Http.decodeFormValue "a%" `shouldBe` "a%"
     it "given an escape naming a percent, when decoded, then the result is not rescanned" $
         Http.decodeFormValue "%2541" `shouldBe` "%41"
+    it "given a bare percent before a valid escape, when decoded, then the bare percent is kept and the escape still decodes" $ do
+        Http.decodeFormValue "%%41" `shouldBe` "%A"
+        Http.decodeFormValue "%4%41" `shouldBe` "%4A"
+        Http.decodeFormValue "%%%41" `shouldBe` "%%A"
     it "given a NUL escape, when decoded, then the NUL byte is produced" $
         Http.decodeFormValue "a%00b" `shouldBe` "a\0b"
-    it "given a character above U+00FF, when decoded, then it passes through unchanged" $
-        Http.decodePathSegment "caf\8212" `shouldBe` "caf\8212"
+    it "given a character above U+00FF, which is outside the bytes-as-characters contract, when decoded, then only its low byte survives" $
+        -- The input comes from Char8.unpack of the request line, so it can only
+        -- hold bytes; U+2014 here is out of contract and truncates to its low byte.
+        Http.decodePathSegment "caf\8212" `shouldBe` "caf\20"
 
 bs :: String -> BS.ByteString
 bs = BS.pack

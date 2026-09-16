@@ -236,12 +236,14 @@ doubling n x = doubling (n - 1) (BS.append x x)
 -- Oracles: the whole-value semantics the streaming forms must reproduce, written
 -- over String so they do not depend on the code under test.
 
+-- A '%' that does not begin a valid escape is emitted as itself and the scan
+-- moves on by one, the WHATWG URL standard's recovery rule, so the escape in
+-- "%%41" still decodes.
 oracleDecode :: String -> String
 oracleDecode [] = []
 oracleDecode ('+' : rest) = ' ' : oracleDecode rest
 oracleDecode ('%' : a : b : rest)
     | Char.isHexDigit a && Char.isHexDigit b = Char.chr (Char.digitToInt a * 16 + Char.digitToInt b) : oracleDecode rest
-    | otherwise = '%' : a : b : oracleDecode rest
 oracleDecode (c : rest) = c : oracleDecode rest
 
 oracleNewlines :: String -> String

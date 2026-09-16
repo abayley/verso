@@ -57,6 +57,7 @@ import MicroHttp.Http.Parse (ParseError (..), ParseLimits (..), defaultParseLimi
 import qualified MicroHttp.Http.Parse as Parse
 import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Network.Socket as Socket
+import qualified MicroHttp.Percent as Percent
 import qualified MicroHttp.Stream as Stream
 import qualified MicroHttp.Utf8 as Utf8
 
@@ -211,28 +212,15 @@ decodeFormValue :: String -> String
 decodeFormValue = decode True
 
 {- | Percent-decodes a string; when the flag is set, a literal @+@ becomes a
-space.
+space. The decoding itself is 'Percent.decodeWhole' (RFC-0042 and the WHATWG
+recovery rule for a malformed escape).
+
+The @String@ here carries bytes, not characters: it comes from @Char8.unpack@ of
+the request line, so every character is a byte and @Char8.pack@ is its exact
+inverse. A character above @U+00FF@ is outside that contract and does not survive.
 -}
 decode :: Bool -> String -> String
-decode _ [] = []
-decode plusIsSpace ('%' : a : b : rest) =
-    case hexPair a b of
-        Just c -> c : decode plusIsSpace rest
-        Nothing -> '%' : a : b : decode plusIsSpace rest
-decode True ('+' : rest) = ' ' : decode True rest
-decode plusIsSpace (c : rest) = c : decode plusIsSpace rest
-
--- | Decodes two hex digits into the character they encode, if both are valid.
-hexPair :: Char -> Char -> Maybe Char
-hexPair a b = (\high low -> toEnum (high * 16 + low)) <$> hexValue a <*> hexValue b
-
--- | Decodes a single hexadecimal digit into its numeric value.
-hexValue :: Char -> Maybe Int
-hexValue c
-    | Char.isDigit c = Just (fromEnum c - fromEnum '0')
-    | 'a' <= c && c <= 'f' = Just (10 + fromEnum c - fromEnum 'a')
-    | 'A' <= c && c <= 'F' = Just (10 + fromEnum c - fromEnum 'A')
-    | otherwise = Nothing
+decode plusIsSpace = BSC.unpack . Percent.decodeWhole plusIsSpace . BSC.pack
 
 {- | Parses a framed header block (the bytes before the CRLFCRLF terminator,
 which the framing iteratee has already located) into a 'RequestHead'. The

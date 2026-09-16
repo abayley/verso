@@ -85,17 +85,9 @@ extensionOf name =
         (revExtension, '.' : _) -> map Char.toLower (reverse revExtension)
         (_, _) -> ""
 
--- | A minimal percent-decoder for the filename header (decodes @%XX@; leaves @+@).
+{- | Percent-decodes the filename header: @%XX@ becomes its byte and a @+@ is
+left alone, which is the framework's path-segment rule ('Http.decodePathSegment').
+This was a fourth copy of that rule until the decoders were unified.
+-}
 percentDecode :: String -> String
-percentDecode [] = []
-percentDecode ('%' : high : low : rest)
-    | Just h <- hexValue high, Just l <- hexValue low = toEnum (h * 16 + l) : percentDecode rest
-percentDecode (c : rest) = c : percentDecode rest
-
--- | The numeric value of a single hex digit (any case), or 'Nothing' if not one.
-hexValue :: Char -> Maybe Int
-hexValue c
-    | Char.isDigit c = Just (fromEnum c - fromEnum '0')
-    | c >= 'a' && c <= 'f' = Just (fromEnum c - fromEnum 'a' + 10)
-    | c >= 'A' && c <= 'F' = Just (fromEnum c - fromEnum 'A' + 10)
-    | otherwise = Nothing
+percentDecode = Http.decodePathSegment

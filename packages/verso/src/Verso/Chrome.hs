@@ -94,7 +94,7 @@ from click events on @[role=menuitem]@.
 -}
 chromeDropdown :: String -> ButtonIntent -> Html.Html () -> [(String, String)] -> Html.Html ()
 chromeDropdown ident intent triggerContent items =
-    Html.div [Html.class_ "dropdown-menu", Html.attr "id" ident] $ do
+    Html.div_ [Html.class_ "dropdown-menu", Html.attr "id" ident] $ do
         Html.button_
             ( [Html.attr "type" "button", Html.attr "id" (ident ++ "-trigger")]
                 -- The @btn@ class is what Basecoat styles (inline-flex layout, sizing); without it the
@@ -106,8 +106,8 @@ chromeDropdown ident intent triggerContent items =
                    ]
             )
             triggerContent
-        Html.div [Html.attr "id" (ident ++ "-popover"), Html.attr "data-popover" "", Html.attr "aria-hidden" "true"] $
-            Html.div [Html.attr "role" "menu", Html.attr "id" (ident ++ "-menu"), Html.attr "aria-labelledby" (ident ++ "-trigger")] $
+        Html.div_ [Html.attr "id" (ident ++ "-popover"), Html.attr "data-popover" "", Html.attr "aria-hidden" "true"] $
+            Html.div_ [Html.attr "role" "menu", Html.attr "id" (ident ++ "-menu"), Html.attr "aria-labelledby" (ident ++ "-trigger")] $
                 mapM_ menuItem items
   where
     menuItem (value, label) =
@@ -121,8 +121,8 @@ reads @data-value@ from click events on @[role=tab]@.
 -}
 chromeTabs :: String -> [(String, String, Bool)] -> Html.Html ()
 chromeTabs ident entries =
-    Html.div [Html.class_ "tabs", Html.attr "id" ident] $
-        Html.nav [Html.attr "role" "tablist", Html.attr "aria-orientation" "horizontal", Html.attr "data-variant" "line"] $
+    Html.div_ [Html.class_ "tabs", Html.attr "id" ident] $
+        Html.nav_ [Html.attr "role" "tablist", Html.attr "aria-orientation" "horizontal", Html.attr "data-variant" "line"] $
             mapM_ tab entries
   where
     tab (value, label, selected) =

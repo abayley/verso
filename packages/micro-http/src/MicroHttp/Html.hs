@@ -1,11 +1,8 @@
 module MicroHttp.Html (
     Html,
     attr,
-    a,
     a_,
-    button,
     button_,
-    body,
     body_,
     Escaped,
     escapeBytes,
@@ -14,55 +11,36 @@ module MicroHttp.Html (
     escapedText,
     class_,
     custom,
-    div,
     div_,
     el,
     elOpen,
     elClose,
     form_,
-    h1,
     h1_,
-    h2,
     h2_,
-    h3,
     h3_,
-    head,
     head_,
-    header,
     header_,
     href,
-    html,
     html_,
-    input,
     input_,
-    label,
     label_,
     lang,
-    li,
     li_,
-    main,
     main_,
-    meta,
     meta_,
-    nav,
     nav_,
-    ol,
     ol_,
-    p,
     p_,
     rawTrusted,
     coalesce,
     renderChunks,
     renderChunksRaw,
     renderHtml,
-    section,
     section_,
-    span,
     span_,
     text,
-    title,
     title_,
-    ul,
     ul_,
     voidEl,
 ) where
@@ -74,7 +52,6 @@ import qualified Foreign.C.Types as CTypes
 import qualified Foreign.Marshal.Alloc as Alloc
 import qualified Foreign.Ptr as Ptr
 import qualified MicroHttp.Utf8 as Utf8
-import Prelude hiding (div, head, span)
 
 foreign import ccall "microhttp_html.h mhhtml_escaped_length" c_escapedLength :: Ptr.Ptr CTypes.CUChar -> CTypes.CLong -> IO CTypes.CLong
 foreign import ccall "microhttp_html.h mhhtml_escape" c_escape :: Ptr.Ptr CTypes.CUChar -> CTypes.CLong -> Ptr.Ptr CTypes.CUChar -> IO CTypes.CLong
@@ -284,185 +261,93 @@ custom = el
 html_ :: [(String, String)] -> Html () -> Html ()
 html_ = el "html"
 
--- | Alias for 'html_'.
-html :: [(String, String)] -> Html () -> Html ()
-html = html_
-
 -- | The @\<head\>@ element.
 head_ :: [(String, String)] -> Html () -> Html ()
 head_ = el "head"
-
--- | Alias for 'head_'.
-head :: [(String, String)] -> Html () -> Html ()
-head = head_
 
 -- | The @\<body\>@ element.
 body_ :: [(String, String)] -> Html () -> Html ()
 body_ = el "body"
 
--- | Alias for 'body_'.
-body :: [(String, String)] -> Html () -> Html ()
-body = body_
-
 -- | The @\<title\>@ element.
 title_ :: [(String, String)] -> Html () -> Html ()
 title_ = el "title"
-
--- | Alias for 'title_'.
-title :: [(String, String)] -> Html () -> Html ()
-title = title_
 
 -- | The @\<main\>@ element.
 main_ :: [(String, String)] -> Html () -> Html ()
 main_ = el "main"
 
--- | Alias for 'main_'.
-main :: [(String, String)] -> Html () -> Html ()
-main = main_
-
 -- | The @\<section\>@ element.
 section_ :: [(String, String)] -> Html () -> Html ()
 section_ = el "section"
-
--- | Alias for 'section_'.
-section :: [(String, String)] -> Html () -> Html ()
-section = section_
 
 -- | The @\<header\>@ element.
 header_ :: [(String, String)] -> Html () -> Html ()
 header_ = el "header"
 
--- | Alias for 'header_'.
-header :: [(String, String)] -> Html () -> Html ()
-header = header_
-
 -- | The @\<nav\>@ element.
 nav_ :: [(String, String)] -> Html () -> Html ()
 nav_ = el "nav"
-
--- | Alias for 'nav_'.
-nav :: [(String, String)] -> Html () -> Html ()
-nav = nav_
 
 -- | The @\<div\>@ element.
 div_ :: [(String, String)] -> Html () -> Html ()
 div_ = el "div"
 
--- | Alias for 'div_'.
-div :: [(String, String)] -> Html () -> Html ()
-div = div_
-
 -- | The @\<span\>@ element.
 span_ :: [(String, String)] -> Html () -> Html ()
 span_ = el "span"
-
--- | Alias for 'span_'.
-span :: [(String, String)] -> Html () -> Html ()
-span = span_
 
 -- | The @\<h1\>@ element.
 h1_ :: [(String, String)] -> Html () -> Html ()
 h1_ = el "h1"
 
--- | Alias for 'h1_'.
-h1 :: [(String, String)] -> Html () -> Html ()
-h1 = h1_
-
 -- | The @\<h2\>@ element.
 h2_ :: [(String, String)] -> Html () -> Html ()
 h2_ = el "h2"
-
--- | Alias for 'h2_'.
-h2 :: [(String, String)] -> Html () -> Html ()
-h2 = h2_
 
 -- | The @\<h3\>@ element.
 h3_ :: [(String, String)] -> Html () -> Html ()
 h3_ = el "h3"
 
--- | Alias for 'h3_'.
-h3 :: [(String, String)] -> Html () -> Html ()
-h3 = h3_
-
 -- | The @\<p\>@ element.
 p_ :: [(String, String)] -> Html () -> Html ()
 p_ = el "p"
-
--- | Alias for 'p_'.
-p :: [(String, String)] -> Html () -> Html ()
-p = p_
 
 -- | The @\<a\>@ element.
 a_ :: [(String, String)] -> Html () -> Html ()
 a_ = el "a"
 
--- | Alias for 'a_'.
-a :: [(String, String)] -> Html () -> Html ()
-a = a_
-
 -- | The @\<ul\>@ element.
 ul_ :: [(String, String)] -> Html () -> Html ()
 ul_ = el "ul"
-
--- | Alias for 'ul_'.
-ul :: [(String, String)] -> Html () -> Html ()
-ul = ul_
 
 -- | The @\<ol\>@ element.
 ol_ :: [(String, String)] -> Html () -> Html ()
 ol_ = el "ol"
 
--- | Alias for 'ol_'.
-ol :: [(String, String)] -> Html () -> Html ()
-ol = ol_
-
 -- | The @\<li\>@ element.
 li_ :: [(String, String)] -> Html () -> Html ()
 li_ = el "li"
-
--- | Alias for 'li_'.
-li :: [(String, String)] -> Html () -> Html ()
-li = li_
 
 -- | The @\<label\>@ element.
 label_ :: [(String, String)] -> Html () -> Html ()
 label_ = el "label"
 
--- | Alias for 'label_'.
-label :: [(String, String)] -> Html () -> Html ()
-label = label_
-
 -- | The @\<button\>@ element.
 button_ :: [(String, String)] -> Html () -> Html ()
 button_ = el "button"
-
--- | Alias for 'button_'.
-button :: [(String, String)] -> Html () -> Html ()
-button = button_
 
 -- | The @\<form\>@ element.
 form_ :: [(String, String)] -> Html () -> Html ()
 form_ = el "form"
 
--- | Alias for 'form_'.
-form :: [(String, String)] -> Html () -> Html ()
-form = form_
-
 -- | The void @\<input\>@ element.
 input_ :: [(String, String)] -> Html ()
 input_ = voidEl "input"
 
--- | Alias for 'input_'.
-input :: [(String, String)] -> Html ()
-input = input_
-
 -- | The void @\<meta\>@ element.
 meta_ :: [(String, String)] -> Html ()
 meta_ = voidEl "meta"
-
--- | Alias for 'meta_'.
-meta :: [(String, String)] -> Html ()
-meta = meta_
 
 -- | Lifts a builder into an 'Html' action with a unit result.
 emit :: Builder -> Html ()

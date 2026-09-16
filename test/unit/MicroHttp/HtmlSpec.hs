@@ -16,8 +16,8 @@ spec =
             Html.renderHtml todoItem `shouldBe` expected
         it "given common document elements, when rendering, then matching HTML is returned" $
             Html.renderHtml document `shouldBe` documentExpected
-        it "given blaze-style elements and overloaded strings, when rendering, then text is escaped" $
-            Html.renderHtml blazeStyleDocument `shouldBe` blazeStyleExpected
+        it "given children written as overloaded strings, when rendering, then text is escaped" $
+            Html.renderHtml overloadedStringDocument `shouldBe` overloadedStringExpected
         it "given a rendered document, when chunked, then the concatenated chunks equal the string render" $
             BS.unpack (BS.concat (Html.renderChunks todoItem)) `shouldBe` Html.renderHtml todoItem
         it "given UTF-8 bytes, when escaped, then specials are escaped and other bytes pass through verbatim" $
@@ -139,18 +139,18 @@ documentExpected =
         ++ "<span class=\"badge\">ready</span></main></body>"
         ++ "</html>"
 
-blazeStyleDocument :: Html.Html ()
-blazeStyleDocument =
-    Html.html [Html.lang "en"] $ do
-        Html.head [] $
-            Html.title [] "MicroHttp"
-        Html.body [] $
-            Html.main [] $ do
-                Html.h1 [] "Hello <MicroHttp>"
-                Html.p [] "Overloaded strings render escaped text"
+overloadedStringDocument :: Html.Html ()
+overloadedStringDocument =
+    Html.html_ [Html.lang "en"] $ do
+        Html.head_ [] $
+            Html.title_ [] "MicroHttp"
+        Html.body_ [] $
+            Html.main_ [] $ do
+                Html.h1_ [] "Hello <MicroHttp>"
+                Html.p_ [] "Overloaded strings render escaped text"
 
-blazeStyleExpected :: String
-blazeStyleExpected =
+overloadedStringExpected :: String
+overloadedStringExpected =
     "<html lang=\"en\"><head><title>MicroHttp</title></head>"
         ++ "<body><main><h1>Hello &lt;MicroHttp&gt;</h1>"
         ++ "<p>Overloaded strings render escaped text</p></main></body></html>"

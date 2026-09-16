@@ -49,7 +49,7 @@ a desktop window is resized). It lives here so no page shell can omit it.
 -}
 chromeHeadAssets :: Html.Html ()
 chromeHeadAssets = do
-    Html.meta [Html.attr "name" "viewport", Html.attr "content" "width=device-width, initial-scale=1"]
+    Html.meta_ [Html.attr "name" "viewport", Html.attr "content" "width=device-width, initial-scale=1"]
     Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/roboto.css\">"
     Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/roboto-mono.css\">"
     Html.rawTrusted "<link rel=\"stylesheet\" href=\"/static/editor/basecoat.css\">"
@@ -73,15 +73,15 @@ these pages.
 -}
 versionPageShell :: String -> Html.Html () -> Html.Html ()
 versionPageShell pageTitle bodyContent =
-    Html.html [Html.lang "en"] $ do
-        Html.head [] $ do
-            Html.meta [Html.attr "charset" "utf-8"]
+    Html.html_ [Html.lang "en"] $ do
+        Html.head_ [] $ do
+            Html.meta_ [Html.attr "charset" "utf-8"]
             Html.rawTrusted "<script src=\"/static/editor/appearance-bootstrap.js\"></script>"
-            Html.title [] (Html.text pageTitle)
+            Html.title_ [] (Html.text pageTitle)
             chromeHeadAssets
             Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\" defer></script>"
-        Html.body [Html.class_ "markdown-editor-page verso-version-page"] $
-            Html.main [] bodyContent
+        Html.body_ [Html.class_ "markdown-editor-page verso-version-page"] $
+            Html.main_ [] bodyContent
 
 {- | The search page: the query form and, when search ran, its results.
 The outcome 'Nothing' means search is not enabled on this server; the origin
@@ -92,30 +92,30 @@ searchPage origin query outcome =
     versionPageShell "Search" $ do
         versionControls
         Html.el "h1" [] (Html.text "Search")
-        Html.p [Html.class_ "verso-version-back"] (backLink origin)
+        Html.p_ [Html.class_ "verso-version-back"] (backLink origin)
         -- The form still submits as a plain GET without JS; search-page.ts intercepts
         -- it for instant results, so there is no submit button. The clear button is a
         -- comfortable chrome icon button in place of the tiny native search-cancel
         -- affordance (the same trade the top-bar SearchPanel makes).
         Html.el "form" [Html.attr "method" "get", Html.attr "action" "/search", Html.class_ "verso-search-form"] $
             Html.el "div" [Html.class_ "verso-search-box"] $ do
-                Html.input [Html.class_ "input", Html.attr "type" "search", Html.attr "name" "q", Html.attr "value" query, Html.attr "placeholder" "Search the wiki", Html.attr "autofocus" ""]
+                Html.input_ [Html.class_ "input", Html.attr "type" "search", Html.attr "name" "q", Html.attr "value" query, Html.attr "placeholder" "Search the wiki", Html.attr "autofocus" ""]
                 Chrome.chromeButton
                     Chrome.IconControl
                     (("class", "verso-search-clear") : ("aria-label", "Clear search") : [("hidden", "") | null query])
                     (Chrome.chromeIcon "x")
         case outcome of
             Nothing ->
-                Html.p [] (Html.text "Search is not enabled on this server (see search_enabled and make search-shim).")
+                Html.p_ [] (Html.text "Search is not enabled on this server (see search_enabled and make search-shim).")
             Just (hits, depth) ->
                 -- The region search-page.ts re-renders on each keystroke; its absence
                 -- (search disabled) leaves the enhancement inert.
                 Html.el "div" [Html.class_ "verso-search-output"] $ do
                     Monad.when (depth > 0) $
-                        Html.p [Html.class_ "verso-search-pending"] (Html.text ("Indexing in progress: " ++ show depth ++ " page(s) pending; results may be incomplete."))
+                        Html.p_ [Html.class_ "verso-search-pending"] (Html.text ("Indexing in progress: " ++ show depth ++ " page(s) pending; results may be incomplete."))
                     Monad.unless (null query) $
                         if null hits
-                            then Html.p [] (Html.text "No results.")
+                            then Html.p_ [] (Html.text "No results.")
                             else Html.el "ol" [Html.class_ "verso-search-results"] (mapM_ searchResult hits)
 
 {- | One search result as a Basecoat card: the header links the page (and
@@ -126,11 +126,11 @@ searchResult hit =
     Html.el "li" [Html.class_ "card verso-search-result"] $ do
         Html.el "header" [] $
             Html.el "h2" [Html.class_ "verso-search-hit"] $ do
-                Html.a [Html.href ("/documents/" ++ Store.hitPage hit)] (Html.text (Store.hitPage hit))
+                Html.a_ [Html.href ("/documents/" ++ Store.hitPage hit)] (Html.text (Store.hitPage hit))
                 Monad.unless (null (Store.hitAnchor hit)) $
                     Html.el "span" [Html.class_ "verso-search-anchor"] (Html.text (" > " ++ Store.hitAnchor hit))
         Html.el "section" [] $
-            Html.p [Html.class_ "verso-search-excerpt"] (Html.text (excerptOf (Store.hitText hit)))
+            Html.p_ [Html.class_ "verso-search-excerpt"] (Html.text (excerptOf (Store.hitText hit)))
 
 {- | A result's one-line excerpt: the chunk text past its context line and
 its own heading line, flattened.
@@ -163,28 +163,28 @@ trashPage origin retentionDays entries =
     versionPageShell "Trash" $ do
         versionControls
         Html.el "h1" [] (Html.text "Trash")
-        Html.p [Html.class_ "verso-version-back"] (backLink origin)
+        Html.p_ [Html.class_ "verso-version-back"] (backLink origin)
         Monad.when (retentionDays > 0) $
-            Html.p
+            Html.p_
                 [Html.class_ "verso-trash-retention"]
                 (Html.text ("Items older than " ++ show retentionDays ++ " days will be permanently deleted."))
         if null entries
-            then Html.p [] (Html.text "Trash is empty.")
+            then Html.p_ [] (Html.text "Trash is empty.")
             else do
-                Html.p [] $
+                Html.p_ [] $
                     Chrome.chromeButton
                         Chrome.DangerAction
                         [Html.class_ "verso-trash-empty"]
                         (Html.text "Empty trash")
-                Html.div [Html.class_ "verso-trash-scroll"] $
+                Html.div_ [Html.class_ "verso-trash-scroll"] $
                     Html.el "table" [Html.class_ "verso-trash"] $ do
                         Html.el "thead" [] (Html.el "tr" [] (mapM_ (Html.el "th" [] . Html.text) ["When", "Item", "Kind", ""]))
                         Html.el "tbody" [] (mapM_ trashRow entries)
 
 -- | The trash and search pages' back link: to the originating page when known, else the wiki root.
 backLink :: Maybe String -> Html.Html ()
-backLink Nothing = Html.a [Html.href "/documents/"] (Html.text "Back to the wiki")
-backLink (Just path) = Html.a [Html.href ("/documents/" ++ path)] (Html.text ("Back to " ++ path))
+backLink Nothing = Html.a_ [Html.href "/documents/"] (Html.text "Back to the wiki")
+backLink (Just path) = Html.a_ [Html.href ("/documents/" ++ path)] (Html.text ("Back to " ++ path))
 
 -- | One trash-table row: deletion time, the original path, kind, and the Restore / Delete forever controls.
 trashRow :: (String, String, String, String) -> Html.Html ()
@@ -220,10 +220,10 @@ undoPage origin entries =
     versionPageShell "Undo" $ do
         versionControls
         Html.el "h1" [] (Html.text "Undo")
-        Html.p [Html.class_ "verso-version-back"] (backLink origin)
+        Html.p_ [Html.class_ "verso-version-back"] (backLink origin)
         if null entries
-            then Html.p [] (Html.text "No moves to undo.")
-            else Html.div [Html.class_ "verso-trash-scroll"] $
+            then Html.p_ [] (Html.text "No moves to undo.")
+            else Html.div_ [Html.class_ "verso-trash-scroll"] $
                 Html.el "table" [Html.class_ "verso-trash verso-undo"] $ do
                     Html.el "thead" [] (Html.el "tr" [] (mapM_ (Html.el "th" [] . Html.text) ["When", "From", "To", ""]))
                     Html.el "tbody" [] (mapM_ undoRow entries)
@@ -255,16 +255,16 @@ historyPage title path revs =
     versionPageShell ("History: " ++ title) $ do
         versionControls
         Html.el "h1" [] (Html.text "Revision history")
-        Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href ("/documents/" ++ path)] (Html.text ("Back to " ++ path)))
+        Html.p_ [Html.class_ "verso-version-back"] (Html.a_ [Html.href ("/documents/" ++ path)] (Html.text ("Back to " ++ path)))
         if null revs
-            then Html.p [] (Html.text "No revisions yet.")
+            then Html.p_ [] (Html.text "No revisions yet.")
             else do
-                Html.div [Html.class_ "verso-history-scroll"] $
+                Html.div_ [Html.class_ "verso-history-scroll"] $
                     Html.el "table" [Html.class_ "verso-history"] $ do
                         Html.el "thead" [] (Html.el "tr" [] (mapM_ (Html.el "th" [] . Html.text) ["", "When", "Who", "Message", ""]))
                         Html.el "tbody" [] (mapM_ (revisionRow path) revs)
-                Html.p [Html.attr "id" "verso-diff-hint", Html.class_ "verso-diff-hint"] (Html.text "Select two revisions to see a side-by-side diff.")
-                Html.div [Html.attr "id" "verso-diff-pane", Html.class_ "verso-diff-pane", Html.attr "data-path" path, Html.attr "hidden" ""] (pure ())
+                Html.p_ [Html.attr "id" "verso-diff-hint", Html.class_ "verso-diff-hint"] (Html.text "Select two revisions to see a side-by-side diff.")
+                Html.div_ [Html.attr "id" "verso-diff-pane", Html.class_ "verso-diff-pane", Html.attr "data-path" path, Html.attr "hidden" ""] (pure ())
                 Html.rawTrusted historyScript
 
 {- | The generic host where the deferred browser bundle renders standalone
@@ -272,9 +272,9 @@ appearance controls. With JavaScript disabled, the host stays empty.
 -}
 versionControls :: Html.Html ()
 versionControls =
-    Html.div [Html.class_ "markdown-editor__toolbar markdown-editor__toolbar--top verso-version-toolbar"] $
-        Html.div [Html.class_ "markdown-editor__toolbar-controls"] $
-            Html.div
+    Html.div_ [Html.class_ "markdown-editor__toolbar markdown-editor__toolbar--top verso-version-toolbar"] $
+        Html.div_ [Html.class_ "markdown-editor__toolbar-controls"] $
+            Html.div_
                 [ Html.class_ "markdown-editor__appearance"
                 , Html.attr "id" "verso-appearance-controls"
                 ]
@@ -284,13 +284,13 @@ versionControls =
 revisionRow :: String -> Git.Revision -> Html.Html ()
 revisionRow path rev =
     Html.el "tr" [] $ do
-        Html.el "td" [] (Html.input [Html.attr "type" "checkbox", Html.class_ "verso-pick", Html.attr "name" "rev", Html.attr "value" (Git.revHash rev)])
-        Html.el "td" [] (Html.a [Html.href ("/documents/" ++ path ++ "?at=" ++ Git.revHash rev), Html.attr "title" "View the page at this revision"] (Html.text (Git.revTimestamp rev)))
+        Html.el "td" [] (Html.input_ [Html.attr "type" "checkbox", Html.class_ "verso-pick", Html.attr "name" "rev", Html.attr "value" (Git.revHash rev)])
+        Html.el "td" [] (Html.a_ [Html.href ("/documents/" ++ path ++ "?at=" ++ Git.revHash rev), Html.attr "title" "View the page at this revision"] (Html.text (Git.revTimestamp rev)))
         Html.el "td" [] (Html.text (Git.revAuthor rev))
         Html.el "td" [] (Html.text (Git.revSubject rev ++ " (" ++ Git.revShort rev ++ ")"))
         Html.el "td" [] $
             Html.el "form" [Html.attr "method" "post", Html.attr "action" ("/documents/" ++ path ++ "?rollback")] $ do
-                Html.input [Html.attr "type" "hidden", Html.attr "name" "rev", Html.attr "value" (Git.revHash rev)]
+                Html.input_ [Html.attr "type" "hidden", Html.attr "name" "rev", Html.attr "value" (Git.revHash rev)]
                 Chrome.chromeSubmitButton Chrome.OutlineControl [Html.class_ "verso-rollback-button"] (Html.text "Restore")
 
 {- | The history page's client script limits revision selection to two and, as
@@ -323,19 +323,19 @@ diffPage title path fromRev toRev diff =
 diffChrome :: String -> Html.Html ()
 diffChrome path = do
     Html.el "h1" [] (Html.text "Diff")
-    Html.p [Html.class_ "verso-version-back"] (Html.a [Html.href ("/documents/" ++ path ++ "?history")] (Html.text "Back to history"))
+    Html.p_ [Html.class_ "verso-version-back"] (Html.a_ [Html.href ("/documents/" ++ path ++ "?history")] (Html.text "Back to history"))
 
 -- | The diff content (a revision-range caption and the side-by-side table), shared by the diff page and the history pane.
 diffBody :: String -> String -> String -> Html.Html ()
 diffBody fromRev toRev diff = do
     diffRevs fromRev toRev
     if null diff
-        then Html.p [] (Html.text "No differences.")
+        then Html.p_ [] (Html.text "No differences.")
         else diffTable (sideBySide diff)
 
 -- | The revision-range caption above a diff.
 diffRevs :: String -> String -> Html.Html ()
-diffRevs fromRev toRev = Html.p [Html.class_ "verso-diff-revs"] (Html.text (take 12 fromRev ++ " to " ++ take 12 toRev))
+diffRevs fromRev toRev = Html.p_ [Html.class_ "verso-diff-revs"] (Html.text (take 12 fromRev ++ " to " ++ take 12 toRev))
 
 -- | The side-by-side table wrapper around its rows.
 diffTable :: [SideRow] -> Html.Html ()
@@ -509,10 +509,10 @@ editorShell docId mode pageTitle versioned editable hasDraft attachments breadcr
         [Html.attr "name" "markdown", Html.attr "aria-label" "Markdown source", Html.class_ "markdown-editor__fallback"]
     before = do
         Html.elOpen "html" [Html.lang "en"]
-        Html.head [] $ do
-            Html.meta [Html.attr "charset" "utf-8"]
+        Html.head_ [] $ do
+            Html.meta_ [Html.attr "charset" "utf-8"]
             Html.rawTrusted "<script src=\"/static/editor/appearance-bootstrap.js\"></script>"
-            Html.title [] (Html.text pageTitle)
+            Html.title_ [] (Html.text pageTitle)
             chromeHeadAssets
             Html.rawTrusted "<script src=\"/static/editor/markdown-editor.js\" defer></script>"
         Html.elOpen "body" [Html.class_ "markdown-editor-page"]

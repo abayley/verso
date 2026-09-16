@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Architecture review — micro-http Haskell (framework and Verso)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 4 4; }
+      .deep-box { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .band { border-left-width: 4px; }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+
+      <header class="space-y-3">
+        <h1 class="font-serif text-3xl">Architecture review — the Haskell tree</h1>
+        <p class="text-sm text-slate-600">
+          <span class="font-mono">packages/micro-http/src</span> (19 modules, ~5,300 lines) and
+          <span class="font-mono">packages/verso/src/Verso</span> (26 modules, ~8,100 lines; <span class="font-mono">App.hs</span> is 2,290 of them and the hottest file since July)
+          &middot; 2026-09-16 &middot; main @ 4c061f6
+        </p>
+        <div class="flex flex-wrap gap-4 text-xs text-slate-500 pt-1">
+          <span><span class="inline-block w-3 h-3 border border-slate-400 bg-white align-middle mr-1"></span>module</span>
+          <span><span class="inline-block w-4 border-t border-dashed border-slate-500 align-middle mr-1" style="height:1px"></span>seam</span>
+          <span><span class="inline-block w-4 border-t-2 border-red-600 align-middle mr-1" style="height:2px"></span>leakage</span>
+          <span><span class="inline-block w-3 h-3 deep-box align-middle mr-1"></span>deep module</span>
+        </div>
+        <div class="border-l-4 border-indigo-400 bg-indigo-50 px-4 py-3 text-sm text-slate-700">
+          The streaming core is deep: one bracket, one failure shape, every byte path a row in one table. The friction is above it.
+          The <em>structural operations</em> of the document tree (move, delete, restore, undo) have no module: the filesystem half is in
+          <span class="font-mono">TreeMove</span>, the transaction half (operation log, link index, draft, revision) is in the request handlers,
+          and every one of them is reachable from a test only by building raw HTTP bytes. Most candidates below are that observation, cashed out.
+          Test note: the coverage run is GHC, which swaps in a different UTF-8 codec and file-open shim (<span class="font-mono">test/ghc-compat</span>), so the production codec is exercised only by the mhs suites.
+        </div>
+      </header>
+
+      <section id="candidates" class="space-y-10">
+
+        <!-- ============================================================ C1 -->
+        <article id="c1" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">1 &middot; One module for the tree's structural operations</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-emerald-100 text-emerald-800 rounded-full px-3 py-1">Strong</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">in-process</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">Verso/App.hs:493-774 &middot; Verso/TreeMove.hs &middot; Verso/OperationStore.hs &middot; Verso/Draft.hs &middot; Verso/Git.hs</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — a move is two modules and a handler's ordering</p>
+              <pre class="mermaid">
+flowchart TB
+  H["treeMoveHandler<br/>App.hs:493 (reads form, holds lock,<br/>maps Either to 409/JSON)"]
+  H --> TM["TreeMove.movePage<br/>rename, assets, meta dir,<br/>link rewrite, listing"]
+  H -.-> OL["OperationStore.append<br/>record built by hand ×5"]
+  H -.-> IM["IndexMaintenance.onMove"]
+  H -.-> DR["Draft.relocate"]
+  H -.-> GT["commitStructural"]
+  U["treeUndoHandler → applyInverse<br/>App.hs:712 returns JSON String"] -.-> TM
+  U -.-> OL
+  D["treeDeleteHandler App.hs:548<br/>same five steps, again"] -.-> TM
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class H,U,D leak
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 p-4 deep-box text-slate-100">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After — one interface, one transaction</p>
+              <div class="border border-slate-500 rounded-lg p-3 space-y-2">
+                <p class="text-xs uppercase tracking-wider text-emerald-300">Verso.Structure (or Reorganisation)</p>
+                <p class="font-mono text-xs text-slate-200">move :: Target -&gt; Destination -&gt; Confirm -&gt; IO (Either Refusal MoveOutcome)</p>
+                <p class="font-mono text-xs text-slate-200">delete, restore, undo :: ... -&gt; IO (Either Refusal Outcome)</p>
+                <div class="grid grid-cols-3 gap-1 text-[10px] uppercase tracking-wider text-slate-400 pt-2">
+                  <div class="border border-slate-600 rounded px-1 py-1 text-center">filesystem<br/>(TreeMove)</div>
+                  <div class="border border-slate-600 rounded px-1 py-1 text-center">operation log</div>
+                  <div class="border border-slate-600 rounded px-1 py-1 text-center">link index</div>
+                  <div class="border border-slate-600 rounded px-1 py-1 text-center">draft</div>
+                  <div class="border border-slate-600 rounded px-1 py-1 text-center">revision (git)</div>
+                  <div class="border border-slate-600 rounded px-1 py-1 text-center">write lock</div>
+                </div>
+              </div>
+              <p class="text-xs text-slate-300 mt-3">Handlers shrink to: parse request → call → render outcome. Outcomes are data; JSON is rendered once, in the handler.</p>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem.</span> The ordering contract "apply, append to the operation log, maintain the index, relocate the draft, commit a revision" lives in four handlers and the undo core, each rebuilding the log record by hand (App.hs:526, 563, 600, 756, 764); nothing tests that ordering except 1,155 lines of integration requests.</p>
+          <p class="text-sm"><span class="font-semibold">Solution.</span> Move the transaction into one module whose interface is the four structural operations returning outcome values; TreeMove becomes its filesystem implementation, and the log record is built in one place.</p>
+          <ul class="text-sm list-disc pl-5 space-y-1">
+            <li>locality: the transaction ordering has one home</li>
+            <li>leverage: undo reuses move/restore, not a copy</li>
+            <li>tests hit one interface, no Request bytes</li>
+            <li>delete: five hand-built log records, three draft helpers in App</li>
+            <li>preview and apply share a type, not just a code path</li>
+          </ul>
+          <div class="border-l-4 border-amber-400 bg-amber-50 px-4 py-2 text-xs text-slate-700">ADR-0060/0064 fix <em>what</em> a move does and that the log is append-only; this changes only where the steps are joined. No conflict.</div>
+        </article>
+
+        <!-- ============================================================ C2 -->
+        <article id="c2" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">2 &middot; The tree layout as a module: page path, section path, meta directory, peer assets</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-emerald-100 text-emerald-800 rounded-full px-3 py-1">Strong</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">in-process</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">Verso/TreeMove.hs &middot; Verso/App.hs &middot; Verso/DocumentMeta.hs &middot; Verso/DocumentLinks.hs &middot; Verso/Draft.hs</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4 space-y-2">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — the layout is re-derived at every call site</p>
+              <table class="text-xs w-full">
+                <tr class="border-b"><td class="font-mono py-1">Static.resolveStaticPath root (pathSegmentsOf p)</td><td class="text-right text-red-700 font-semibold">17 + 15 + 2</td></tr>
+                <tr class="border-b"><td class="font-mono py-1">reverse . drop 1 . dropWhile (/= '/') . reverse</td><td class="text-right text-red-700 font-semibold">4 (+ Draft.hs:50)</td></tr>
+                <tr class="border-b"><td class="font-mono py-1">TreeMove.parentRel ≡ DocumentLinks.dirOfPath</td><td class="text-right text-red-700 font-semibold">2 impls</td></tr>
+                <tr class="border-b"><td class="font-mono py-1">"&lt;dir&gt;/meta/&lt;base&gt;.meta"</td><td class="text-right text-red-700 font-semibold">DocumentMeta:54, TreeMove:465</td></tr>
+                <tr class="border-b"><td class="font-mono py-1">trashRoot ++ "/" ++ id (unsandboxed)</td><td class="text-right text-red-700 font-semibold">6</td></tr>
+                <tr><td class="font-mono py-1">pathSegments / splitOn / trim×3</td><td class="text-right text-red-700 font-semibold">App, DocumentMeta, DocumentLinks</td></tr>
+              </table>
+              <p class="text-xs text-slate-500">Root, tree-relative page path, section path and trash id are all <span class="font-mono">String</span>; <span class="font-mono">moveSection :: RelevantPages -&gt; FilePath -&gt; String -&gt; String -&gt; String -&gt; Bool</span> (TreeMove.hs:117) is told apart by argument order.</p>
+            </div>
+            <div class="rounded-lg border border-slate-200 p-4 deep-box text-slate-100">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After — one place knows the layout</p>
+              <div class="border border-slate-500 rounded-lg p-3 space-y-1">
+                <p class="text-xs uppercase tracking-wider text-emerald-300">Verso.TreePath</p>
+                <p class="font-mono text-xs">newtype PagePath, SectionPath, TrashId</p>
+                <p class="font-mono text-xs">resolve :: Root -&gt; PagePath -&gt; Maybe FilePath</p>
+                <p class="font-mono text-xs">parent, slug, metaDirectory, peerAssets, trashEntry</p>
+                <p class="font-mono text-xs">fromSegments :: [String] -&gt; Maybe PagePath</p>
+              </div>
+              <p class="text-xs text-slate-300 mt-3">The mass moves inward: ~40 resolution sites become calls; the sandbox check and the meta-dir convention become one implementation each, tested as pure functions.</p>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem.</span> The document tree's layout (where a page, its meta directory, its peer assets and its trash entry live) is knowledge spread across five modules as string arithmetic, so a layout change or a path-safety fix has ~40 edit points and one unsandboxed variant.</p>
+          <p class="text-sm"><span class="font-semibold">Solution.</span> A path module with newtypes for the three path kinds and the trash id, one resolver, one parent/slug/meta/assets derivation; callers hold typed paths, not strings.</p>
+          <ul class="text-sm list-disc pl-5 space-y-1">
+            <li>locality: layout and sandboxing fixed once</li>
+            <li>interface: argument order stops carrying meaning</li>
+            <li>delete: three parent-dir impls, two segment splitters</li>
+            <li>pure, tested without a filesystem</li>
+            <li>prerequisite that shrinks candidate 1</li>
+          </ul>
+          <div class="border-l-4 border-amber-400 bg-amber-50 px-4 py-2 text-xs text-slate-700">Touches the open MicroHs file-name limit (<span class="font-mono">docs/reviews/microhs-filepath-encoding-bug-report.md</span>): a typed path is also the one place a UTF-8 route through our own FFI would be decided. Do not decide it here; leave the seam.</div>
+        </article>
+
+        <!-- ============================================================ C3 -->
+        <article id="c3" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">3 &middot; Trash in one module, not three</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-amber-100 text-amber-800 rounded-full px-3 py-1">Worth exploring</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">in-process</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">Verso/Trash.hs &middot; Verso/TrashStore.hs &middot; Verso/TreeMove.hs:461-636 &middot; Verso/App.hs:780-862</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — the catalogue imports the move engine to list itself</p>
+              <pre class="mermaid">
+flowchart LR
+  TS["TrashStore<br/>warm catalogue (MVar)"] -->|listTrash| TM["TreeMove<br/>create entry, move in,<br/>list, purge, deleteTrashEntry"]
+  TM --> T["Trash<br/>manifest render/parse"]
+  A["App: purgeExpiredTrash<br/>(retention sweep inside two GETs)"] --> TS
+  A --> TM
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class TS leak
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After</p>
+              <pre class="mermaid">
+flowchart LR
+  S["Structure (c1)"] --> TR["Trash<br/>put, restore, list,<br/>purge(retention), forget<br/>manifest + catalogue inside"]
+  classDef deep fill:#0f172a,color:#f1f5f9,stroke:#0f172a;
+  class TR deep
+              </pre>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem.</span> The manifest format, the filesystem mechanics and the warm catalogue are three modules with a dependency running the wrong way (TrashStore.hs:27 imports TreeMove), and the retention policy is a helper in the route module run by a GET.</p>
+          <p class="text-sm"><span class="font-semibold">Solution.</span> One Trash module owning entry ids, manifest, catalogue and retention; TreeMove calls it to move a target in, the structural module calls it to restore.</p>
+          <ul class="text-sm list-disc pl-5 space-y-1">
+            <li>locality: trash mechanics leave TreeMove (−170 lines)</li>
+            <li>the digits-only id check guards every path, not one</li>
+            <li>retention tested as a function of time, not a request</li>
+            <li>TrashStore → TreeMove edge disappears</li>
+          </ul>
+          <div class="border-l-4 border-amber-400 bg-amber-50 px-4 py-2 text-xs text-slate-700">ADR-0065 (trash outside the corpus, with provenance) is unchanged.</div>
+        </article>
+
+        <!-- ============================================================ C4 -->
+        <article id="c4" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">4 &middot; The framework joins body types to body producers, not the application</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-amber-100 text-amber-800 rounded-full px-3 py-1">Worth exploring</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">in-process</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">MicroHttp/Http.hs:145-154, 437-451 &middot; MicroHttp/Stream.hs:257-279 &middot; MicroHttp/Middleware.hs:63-71 &middot; MicroHttp/Server.hs:222-236 &middot; Verso/App.hs:2087-2160</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4 space-y-1">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — four parties know the body taxonomy</p>
+              <div class="band border-slate-300 bg-slate-50 px-3 py-2 text-xs"><span class="font-mono">Http</span> defines StrictBody | StreamBody | SizedStreamBody | FileBody; writeResponse dispatches</div>
+              <div class="band border-slate-300 bg-slate-50 px-3 py-2 text-xs"><span class="font-mono">Stream</span> builds the producers (transformedFileBody, transformedTempFileBody) but no Response</div>
+              <div class="band border-slate-300 bg-slate-50 px-3 py-2 text-xs"><span class="font-mono">Middleware.fuseBody</span> re-matches all four, no-ops two</div>
+              <div class="band border-red-500 bg-red-50 px-3 py-2 text-xs"><span class="font-mono">Verso.App</span> is the only constructor of StreamBody/SizedStreamBody; runs the Content-Length counting pass under onException with no test (App.hs:2131)</div>
+              <div class="band border-red-500 bg-red-50 px-3 py-2 text-xs"><span class="font-mono">Server.socketSinkFile</span> re-stats the file and distrusts the size FileBody carries (Server.hs:230)</div>
+            </div>
+            <div class="rounded-lg border border-slate-200 p-4 deep-box text-slate-100">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After — body construction is an interface of the framework</p>
+              <div class="border border-slate-500 rounded-lg p-3 space-y-1">
+                <p class="text-xs uppercase tracking-wider text-emerald-300">MicroHttp.Http (or Stream)</p>
+                <p class="font-mono text-xs">streamedFileResponse :: Status -&gt; Headers -&gt; Framing -&gt; Prefix -&gt; BlockTransform -&gt; FilePath -&gt; Suffix -&gt; IO (Either NotFound Response)</p>
+                <p class="font-mono text-xs">data Framing = Chunked | Sized  -- the counting pass lives here</p>
+                <p class="font-mono text-xs">mapBody :: (Enumerator -&gt; Enumerator) -&gt; Response -&gt; Response</p>
+              </div>
+              <p class="text-xs text-slate-300 mt-3">App keeps only the document-specific prefix/suffix and the escaper. The counting pass and its missing-file path get a framework test with fault injection.</p>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem.</span> Serving a streamed document is a framework capability whose only implementation is in the application, so the framework has no test of its own Content-Length pre-count and the taxonomy is matched in three modules.</p>
+          <p class="text-sm"><span class="font-semibold">Solution.</span> Export a response constructor from the framework that takes the transform and framing choice and owns the count; keep the four constructors but make <span class="font-mono">mapBody</span> the one place that walks them.</p>
+          <ul class="text-sm list-disc pl-5 space-y-1">
+            <li>leverage: Verso gains three fewer response helpers</li>
+            <li>locality: taxonomy matched once (mapBody)</li>
+            <li>the untested onMissing path gets a unit test</li>
+            <li>decide FileBody's size: trusted or dropped</li>
+          </ul>
+          <div class="border-l-4 border-amber-400 bg-amber-50 px-4 py-2 text-xs text-slate-700">Brushes ADR-0034 ("sendfile with the size carried"): the writer already ignores that size (Server.hs:222-234). Worth reopening only to record which of the two the type means.</div>
+        </article>
+
+        <!-- ============================================================ C5 -->
+        <article id="c5" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">5 &middot; One consumer idiom in the core; Form and Http share one decoder</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-amber-100 text-amber-800 rounded-full px-3 py-1">Worth exploring</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">in-process</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">MicroHttp/Iteratee.hs &middot; MicroHttp/Stream.hs:155, 202, 361-380 &middot; MicroHttp/Form.hs:232-289 &middot; MicroHttp/Http.hs:198-222</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — the NeedInput/Chunk/EndOfStream loop, written five times</p>
+              <div class="grid grid-cols-5 gap-1 text-[10px] uppercase tracking-wider text-center">
+                <div class="border border-slate-300 rounded p-2">byteSinkI<br/><span class="normal-case text-slate-400">Iteratee:432</span></div>
+                <div class="border border-red-400 rounded p-2">fileSinkI<br/><span class="normal-case text-slate-400">Stream:368</span></div>
+                <div class="border border-red-400 rounded p-2">foldBlocksI<br/><span class="normal-case text-slate-400">Stream:155</span></div>
+                <div class="border border-red-400 rounded p-2">foldLinesI<br/><span class="normal-case text-slate-400">Stream:202</span></div>
+                <div class="border border-red-400 rounded p-2">readBodyStrict<br/><span class="normal-case text-slate-400">Iteratee</span></div>
+              </div>
+              <p class="text-xs text-slate-500 mt-3">And percent-decoding twice: <span class="font-mono">Form.decodeBlock</span> on bytes, <span class="font-mono">Http.decode</span> on String (Http.hs:208), each with its own <span class="font-mono">hexPair</span>.</p>
+            </div>
+            <div class="rounded-lg border border-slate-200 p-4 deep-box text-slate-100">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After</p>
+              <div class="border border-slate-500 rounded-lg p-3 space-y-1">
+                <p class="text-xs uppercase tracking-wider text-emerald-300">Iteratee</p>
+                <p class="font-mono text-xs">foldChunksI :: (s -&gt; Bytes -&gt; m (Either e s)) -&gt; s -&gt; IterT e m s</p>
+                <p class="font-mono text-xs">cappedI :: Int -&gt; e -&gt; IterT e m a -&gt; IterT e m a</p>
+              </div>
+              <p class="text-xs text-slate-300 mt-3">fileSinkI = cappedI limit err (foldChunksI write h); foldBlocksI, foldLinesI (via linesI) and readBodyStrict are instances. One percent-decoder on bytes; Http's String twin decodes through it.</p>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem.</span> Stream and Iteratee are split by error type rather than concept, so Stream hand-writes consumers the core could express, and two modules implement the same RFC 3986 rule.</p>
+          <p class="text-sm"><span class="font-semibold">Solution.</span> Two general consumers in the core (an effectful fold, a cap) that the file sink and the folds instantiate; one byte percent-decoder.</p>
+          <ul class="text-sm list-disc pl-5 space-y-1">
+            <li>locality: the consumer loop has one implementation</li>
+            <li>leverage: the cap becomes reusable (Form's tooLarge, uploads)</li>
+            <li>delete: one hexPair, ~40 lines of loops</li>
+            <li>keep the MicroHs slice rule; test with the existing StreamSpec</li>
+          </ul>
+          <div class="border-l-4 border-amber-400 bg-amber-50 px-4 py-2 text-xs text-slate-700">Each combinator is a dictionary and an allocation per chunk under MicroHs (streaming-algebra.md, "not missing"); bench <span class="font-mono">make bench-iteratee</span> before and after.</div>
+        </article>
+
+        <!-- ============================================================ C6 -->
+        <article id="c6" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">6 &middot; JSON as a value, rendered once</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-amber-100 text-amber-800 rounded-full px-3 py-1">Worth exploring</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">in-process</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">Verso/View.hs:476-501 &middot; Verso/TreeMove.hs:639, 708, 829, 842 &middot; Verso/App.hs (40 View.json* call sites)</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — strings concatenated in three modules</p>
+              <pre class="mermaid">
+flowchart LR
+  V["View.jsonObject/jsonString<br/>(a renderer inside the HTML view)"]
+  TM["TreeMove.jsonStr<br/>movePlanJson, trashListJson,<br/>replayReportJson"]
+  A["App: 40 call sites;<br/>applyInverse returns a JSON String<br/>(App.hs:732, 745, 758)"]
+  A --> V
+  TM -.duplicate.-> V
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class TM,A leak
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After</p>
+              <pre class="mermaid">
+flowchart LR
+  J["Verso.Json<br/>data Json = Obj | Arr | Str | Num | Bool | Null<br/>render :: Json -&gt; ByteString"]
+  S["Structure / Trash / Search<br/>return outcome records"] --> A["App: toJson outcome"] --> J
+  classDef deep fill:#0f172a,color:#f1f5f9,stroke:#0f172a;
+  class J deep
+              </pre>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem.</span> Domain modules return rendered JSON strings, so their results cannot be inspected in a test without parsing, and the escaping rule exists twice.</p>
+          <p class="text-sm"><span class="font-semibold">Solution.</span> A small JSON value type with one renderer; domain functions return records, handlers convert.</p>
+          <ul class="text-sm list-disc pl-5 space-y-1">
+            <li>tests compare values, not strings</li>
+            <li>delete: TreeMove's three renderers and jsonStr</li>
+            <li>enables candidate 1's outcome records</li>
+          </ul>
+        </article>
+
+        <!-- ============================================================ C7 -->
+        <article id="c7" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">7 &middot; Html: shrink the interface, one escaper contract</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-slate-200 text-slate-700 rounded-full px-3 py-1">Speculative</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">in-process</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">MicroHttp/Html.hs (66 exports / 80 definitions; 22 are aliases such as nav = nav_; escapeChars:503 vs escapeBlockBytes:205)</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before — interface nearly as wide as the implementation</p>
+              <div class="flex items-end gap-6 h-40">
+                <div class="flex flex-col items-center"><div class="w-16 bg-red-200 border border-red-400" style="height:132px"></div><span class="text-[10px] uppercase tracking-wider mt-1">interface 66</span></div>
+                <div class="flex flex-col items-center"><div class="w-16 bg-slate-300 border border-slate-400" style="height:160px"></div><span class="text-[10px] uppercase tracking-wider mt-1">defs 80</span></div>
+              </div>
+              <p class="text-xs text-slate-500 mt-2">Two escapers, byte-identical by contract, no shared implementation and no test that they agree.</p>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After</p>
+              <div class="flex items-end gap-6 h-40">
+                <div class="flex flex-col items-center"><div class="w-16 bg-emerald-200 border border-emerald-500" style="height:60px"></div><span class="text-[10px] uppercase tracking-wider mt-1">interface ~30</span></div>
+                <div class="flex flex-col items-center"><div class="w-16 deep-box" style="height:160px"></div><span class="text-[10px] uppercase tracking-wider mt-1">impl</span></div>
+              </div>
+              <p class="text-xs text-slate-500 mt-2">One alias per tag; <span class="font-mono">text</span> escapes through the byte path; a property test: String path ≡ C path on the same input.</p>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem.</span> The element vocabulary is exported twice over (and <span class="font-mono">form</span> only once, by accident, Html.hs:22), and the two escape paths are a contract held by a comment.</p>
+          <p class="text-sm"><span class="font-semibold">Solution.</span> Drop the duplicate aliases; route <span class="font-mono">escapeChars</span> through <span class="font-mono">escapeBlockBytes</span>; add the agreement test.</p>
+          <ul class="text-sm list-disc pl-5 space-y-1">
+            <li>interface halves; implementation unchanged</li>
+            <li>one escaper, so one escaping bug</li>
+            <li>low value: static UI text only (handoff note)</li>
+          </ul>
+          <div class="border-l-4 border-amber-400 bg-amber-50 px-4 py-2 text-xs text-slate-700">ADR-0013/0022/0038 keep the combinators and the coalesced builder; this only trims duplicates. No conflict.</div>
+        </article>
+
+        <!-- ============================================================ C8 -->
+        <article id="c8" class="rounded-xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="font-serif text-xl">8 &middot; Search runtime and Git: seams that exist but have one adapter</h2>
+            <div class="flex gap-2">
+              <span class="text-xs font-semibold uppercase tracking-wider bg-slate-200 text-slate-700 rounded-full px-3 py-1">Speculative</span>
+              <span class="text-xs uppercase tracking-wider bg-slate-100 text-slate-600 rounded-full px-3 py-1">ports &amp; adapters</span>
+            </div>
+          </div>
+          <p class="font-mono text-sm text-slate-500">Verso/SearchIndex.hs:203-413 (no unit spec) &middot; Verso/Git.hs:88-97, 105, 160 &middot; Verso/App.hs:356-362 (IndexMaintenance)</p>
+
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">Before</p>
+              <pre class="mermaid">
+flowchart TB
+  A["App"] --> IM["IndexMaintenance<br/>five String -&gt; IO () closures<br/>(already a seam)"]
+  IM --> LI["LinkIndexStore"]
+  IM --> SI["SearchIndex worker<br/>reconcile, query: IO only,<br/>tested via HTTP"]
+  A --> G["Git: ensureRepository and<br/>commitPaths discard results;<br/>logForPath maps failure to []"]
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class SI,G leak
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs uppercase tracking-wider text-slate-400 mb-2">After (if anything)</p>
+              <pre class="mermaid">
+flowchart TB
+  S["Structure (c1)"] --> IM["Maintenance: typed events<br/>Moved from to | Deleted | Created | Restored | Saved"]
+  IM --> LI["LinkIndexStore"]
+  IM --> SI["SearchIndex"]
+  IM -.test.-> REC["recording adapter"]
+  S --> G["Git: every call returns CommitResult / GitError"]
+              </pre>
+            </div>
+          </div>
+
+          <p class="text-sm"><span class="font-semibold">Problem.</span> The maintenance seam is real (two adapters: link index and search) but typed as five untyped closures; Git's failures are partly values and partly silence, so "not a repo" and "no history" are the same answer.</p>
+          <p class="text-sm"><span class="font-semibold">Solution.</span> A maintenance event type with one handler function; Git returns a result from every call. Only worth it once candidate 1 gives these a single caller.</p>
+          <ul class="text-sm list-disc pl-5 space-y-1">
+            <li>a recording adapter tests ordering without an index</li>
+            <li>Git silence becomes data (correctness, not depth)</li>
+            <li>the search worker still needs its own unit seam; not designed here</li>
+          </ul>
+        </article>
+
+      </section>
+
+      <section id="noted" class="rounded-xl border border-slate-200 bg-white p-6 space-y-3 shadow-sm">
+        <h2 class="font-serif text-xl">Noted, not candidates</h2>
+        <ul class="text-sm list-disc pl-5 space-y-1 text-slate-700">
+          <li><span class="font-mono">Frontmatter</span> imports <span class="font-mono">SearchChunks</span> for <span class="font-mono">isDashesLine</span> alone (Frontmatter.hs:29): move one function.</li>
+          <li><span class="font-mono">Static.safeComponent</span> is cited by FileSystem's header as the validator callers must use, but is private (Static.hs:74).</li>
+          <li><span class="font-mono">Router.notFound</span> and <span class="font-mono">Static.notFoundResponse</span> are the same response in two modules.</li>
+          <li>Access log decodes the request target byte-per-Char (Middleware.hs:236) while <span class="font-mono">Http.pathSegments</span> decodes UTF-8: the two conventions disagree on a non-ASCII path.</li>
+          <li>Four framework modules have no Haddock module header: Html, Router, Server, Network.Socket.</li>
+          <li><span class="font-mono">Server.reportConnectionFailure</span> writes to stderr outside the Logger (Server.hs:143), by its own admission.</li>
+          <li>Runtime gaps already recorded on the architecture page (an IO <span class="font-mono">mapChunksI</span>, <span class="font-mono">runNested3</span>, a pull cursor) stay deferred; nothing found here needs them.</li>
+        </ul>
+      </section>
+
+      <section id="top-recommendation" class="rounded-xl border-2 border-emerald-500 bg-emerald-50 p-8 space-y-3">
+        <p class="text-xs uppercase tracking-wider text-emerald-700">Top recommendation</p>
+        <h2 class="font-serif text-2xl"><a href="#c2" class="underline decoration-emerald-400">2 &middot; The tree layout as a module</a>, then <a href="#c1" class="underline decoration-emerald-400">1 &middot; structural operations</a></h2>
+        <p class="text-sm text-slate-700">Candidate 2 is pure, mechanical, and passes the deletion test at ~40 sites; it is the smallest change that makes candidate 1 tractable, because a structural-operations interface written over untyped strings would inherit every ambiguity TreeMove has now. Candidate 1 is where the leverage is: it is the only way the move/delete/undo transaction gets a test that is not an HTTP request, and it takes roughly 600 lines out of the route module.</p>
+      </section>
+
+    </main>
+  </body>
+</html>

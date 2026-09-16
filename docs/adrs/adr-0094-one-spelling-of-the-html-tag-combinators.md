@@ -60,6 +60,39 @@ back at the call site the coin-flip this ADR removes at the library boundary,
 so the 15 `el` calls in `Verso/View.hs` naming a tag that had a combinator were
 converted with the aliases.
 
+### The two escapers are kept separate, and tested instead
+
+The review that prompted this asked for a second thing: "route `escapeChars`
+through `escapeBlockBytes`", so that text escaping had "one escaper, so one
+escaping bug". That is declined for now, and the two paths are pinned against
+each other by test instead (`test/unit/MicroHttp/HtmlSpec.hs`, the agreement
+cases and the escape-set surveys).
+
+`escapeChars` is pure, `String -> Builder`; `escapeBlockBytes` is
+`ByteString -> IO ByteString`, in `IO` because it allocates and writes an output
+buffer. Merging them means calling the second from the first under
+`unsafePerformIO`. ADR-0086 permits `unsafePerformIO` only for a foreign call
+that is read-only over a private marshalled copy, and explicitly not for one
+that "writes, allocates observably, or touches shared state", so the merge does
+not fit the sanctioned shape as written. `Html.hs` already records that reading
+at the definition.
+
+The argument the other way is real and worth stating, so it is not relitigated
+from scratch. ADR-0086's own rationale names "two implementations that must be
+kept byte-identical" as the failure mode a single shared core exists to prevent
+-- which is exactly the position of these two escapers -- and the buffer
+`escapeBlockBytes` writes is freshly allocated and unaliased, not shared state,
+so the call is still a pure function of its argument's bytes.
+
+What settles it for now is that the merge is an architectural change with an
+unmeasured cost: a foreign call is ~2-3us, and `escapeChars` runs per text node
+and per attribute value, so a page with hundreds of nodes pays hundreds of
+calls. It might still win, because the current implementation does a
+`concatMap` over a `String`, the allocation pattern mhs is worst at. Nobody has
+measured it. Doing it properly means a benchmark and an amendment to ADR-0086,
+which is more than this change is worth; the tests remove the silent-drift risk
+that made it urgent.
+
 ## Consequences
 
 The interface narrows from 66 exported names to 44, one per tag, and new code

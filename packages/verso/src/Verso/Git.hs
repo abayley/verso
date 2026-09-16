@@ -98,7 +98,7 @@ ensureRepository root importer = do
                     _ <- git root ["add", "-A"]
                     _ <- commitStaged root importer "Import existing document tree"
                     pure (Right Initialised)
-                _ -> pure (Left (Utf8.decodeBytes (Process.procErr initRes)))
+                _ -> pure (Left (decodedErr initRes))
 
 {- | Stages the given tree-relative paths and commits them with the author
 identity and message. Reports 'NothingToCommit' when staging leaves no change
@@ -109,7 +109,7 @@ commitPaths :: FilePath -> Identity -> String -> [FilePath] -> IO CommitResult
 commitPaths root author message paths = do
     adds <- mapM (\p -> git root ["add", "--", p]) paths
     case filter ((/= Exit.ExitSuccess) . Process.procExit) adds of
-        (failed : _) -> pure (CommitFailed (Utf8.decodeBytes (Process.procErr failed)))
+        (failed : _) -> pure (CommitFailed (decodedErr failed))
         [] -> commitStaged root author message
 
 {- | Stages every change in the tree (@git add -A@) and commits it as one
@@ -148,7 +148,7 @@ commitStaged root author message = do
                 Exit.ExitSuccess -> do
                     headRes <- git root ["rev-parse", "--short", "HEAD"]
                     pure (Committed (chomp (BS.unpack (Process.procOut headRes))))
-                _ -> pure (CommitFailed (Utf8.decodeBytes (Process.procErr res)))
+                _ -> pure (CommitFailed (decodedErr res))
 
 {- | The revision history of a tree-relative page, newest first, following the
 page across renames\/moves (@git log --follow@). Returns @[]@ when the path has
@@ -202,6 +202,10 @@ parseRevision line =
   where
     -- the subject is the final field; rejoin defensively in case a value ever held the separator
     joinSubject = foldr (\a b -> if null b then a else a ++ "\031" ++ b) ""
+
+-- | The captured stderr of a git invocation, decoded from UTF-8, for a failure result.
+decodedErr :: Process.ProcResult -> String
+decodedErr = Utf8.decodeBytes . Process.procErr
 
 -- | Drops trailing carriage returns and newlines (git command output is newline-terminated).
 chomp :: String -> String

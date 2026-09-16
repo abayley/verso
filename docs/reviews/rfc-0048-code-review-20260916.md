@@ -95,3 +95,25 @@ be the point to reconsider. Left as they are.
 
 Correctness: four sections, no defects, the rename risk disproven by measurement. Spec: no findings.
 Standards: no violations; one small duplication worth removing, the rest documented and intended.
+
+## Remediation Summary
+
+Applied on 2026-09-16. The one actionable finding was addressed; every gate below was rerun.
+
+### Remediation of the standards finding
+
+- Standards 1 (fixed): a private `decodedErr :: Process.ProcResult -> String` in `Verso.Git` replaces
+  the three copies of `Utf8.decodeBytes (Process.procErr ...)` in `ensureRepository`, `commitPaths`
+  and `commitStaged`. Behaviour-preserving, covered by the existing `GitSpec`.
+
+### Findings left as they are
+
+- Standards 2 (the event's `String` payloads and the two-adapter switch) are documented, intended
+  choices, kept.
+- Correctness 4 (a present `.git` trusted without validation; `commitPaths` non-atomic on a partial
+  add failure) are pre-existing and out of scope, with no production caller reaching the second.
+
+### Verification after remediation
+
+MEASURED: `make format`, `make lint`, the mhs unit suite (612 examples) and integration suite (160),
+the same under GHC.

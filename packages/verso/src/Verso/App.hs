@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 
 module Verso.App (
     NodeKind (..),
@@ -60,6 +61,7 @@ import qualified Verso.OperationStore as OperationStore
 import qualified Verso.SearchIndex as SearchIndex
 import qualified Verso.TrashStore as TrashStore
 import qualified Verso.TreeMove as TreeMove
+import qualified Verso.TreePath as TreePath
 import qualified Verso.View as View
 
 {- | The application composed from configuration (RFC-0011): the access-log
@@ -212,21 +214,21 @@ commitStructural versioning root author message =
 (RFC-0032), so a draft is not orphaned at its old tree path. A no-op when
 versioning is off or there is no draft.
 -}
-relocateDraftForMove :: Versioning -> String -> String -> IO ()
+relocateDraftForMove :: Versioning -> TreePath.TreePath -> TreePath.TreePath -> IO ()
 relocateDraftForMove versioning fromPath toPath =
     Monad.when (versioningOn versioning) $ do
         let src = Draft.draftFsPath (draftStagingRoot versioning) fromPath
             dst = Draft.draftFsPath (draftStagingRoot versioning) toPath
         present <- draftPathPresent src
         Monad.when present $ do
-            Directory.createDirectoryIfMissing True (parentDirectory dst)
+            Directory.createDirectoryIfMissing True (Draft.draftFsPath (draftStagingRoot versioning) (TreePath.parent toPath))
             Monad.void (FileSystem.renamePath src dst)
 
 {- | Moves a deleted page's (or section's) staged draft into the trash entry
 (RFC-0032), so the draft is recoverable with the page rather than orphaned. A
 no-op when versioning is off or there is no draft.
 -}
-stashDraftToTrash :: Versioning -> FilePath -> String -> String -> IO ()
+stashDraftToTrash :: Versioning -> FilePath -> TreePath.TreePath -> TreePath.TrashId -> IO ()
 stashDraftToTrash versioning trashRoot path tid =
     Monad.when (versioningOn versioning) $ do
         let src = Draft.draftFsPath (draftStagingRoot versioning) path
@@ -237,19 +239,19 @@ stashDraftToTrash versioning trashRoot path tid =
 entry holds one (RFC-0032), the inverse of 'stashDraftToTrash'. A no-op when
 versioning is off or the entry has no draft.
 -}
-restoreDraftFromTrash :: Versioning -> FilePath -> String -> String -> IO ()
+restoreDraftFromTrash :: Versioning -> FilePath -> TreePath.TrashId -> TreePath.TreePath -> IO ()
 restoreDraftFromTrash versioning trashRoot trashId path =
     Monad.when (versioningOn versioning) $ do
         let src = trashDraftPath trashRoot trashId
             dst = Draft.draftFsPath (draftStagingRoot versioning) path
         present <- draftPathPresent src
         Monad.when present $ do
-            Directory.createDirectoryIfMissing True (parentDirectory dst)
+            Directory.createDirectoryIfMissing True (Draft.draftFsPath (draftStagingRoot versioning) (TreePath.parent path))
             Monad.void (FileSystem.renamePath src dst)
 
 -- | The reserved location of a draft stashed inside a trash entry (a page draft file or a section draft subtree).
-trashDraftPath :: FilePath -> String -> FilePath
-trashDraftPath trashRoot tid = trashRoot ++ "/" ++ tid ++ "/__draft"
+trashDraftPath :: FilePath -> TreePath.TrashId -> FilePath
+trashDraftPath trashRoot tid = TreePath.trashEntryDir trashRoot tid ++ "/__draft"
 
 -- | Whether a draft path exists as either a page draft (file) or a section draft (directory).
 draftPathPresent :: FilePath -> IO Bool
@@ -287,7 +289,7 @@ tree is reachable under @/documents/@; the editor opens at a document's own URL
 with @?edit@ (so the page's base path is the file's directory and relative
 @assets/...@ links resolve to the real files); a @POST@ writes the @.md@ back;
 and every other tree file (images, attachments, raw Markdown) is served
-statically and path-safely (reusing 'Static.resolveStaticPath'). The document id
+statically and path-safely (every request path is parsed once as a 'TreePath.TreePath'). The document id
 is the tree-relative path including the @.md@ extension.
 -}
 treeRoutes :: WriteLock -> Maybe LinkIndexStore.LinkIndexStore -> Maybe SearchIndex.SearchRuntime -> Versioning -> FilePath -> FilePath -> FilePath -> Int -> FilePath -> [Router.Route]
@@ -408,7 +410,7 @@ storeMaintenance root store =
         , onSave = \path -> reportIndexError (LinkIndexStore.applyChanges root [path] store)
         }
   where
-    parentIndexPath p = let par = parentOfRel p in if null par then "index.md" else par ++ "/index.md"
+    parentIndexPath p = maybe "index.md" (TreePath.render . TreePath.sectionIndex . TreePath.parent) (TreePath.parse p)
 
 {- | Logs an index-maintenance failure (a vanished file etc.) to stderr. The mutation
 itself already succeeded; the index may be slightly stale until the next refresh, which
@@ -493,24 +495,26 @@ treeDelete versioning writeLock findRelevant maint operationStore trashStore roo
 treeMoveHandler :: Versioning -> Git.Identity -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> OperationStore.OperationStore -> FilePath -> Router.Captures -> Iteratee.Iter Stream.StreamError Http.Response
 treeMoveHandler versioning author writeLock findRelevant maint operationStore root captures = do
     fields <- formFieldsI treeCreateMaxBytes
-    let srcRel = capture "path" captures
-        confirm = capture "confirm" fields == "true"
-        isPage = isMarkdownPath srcRel
-        move = if isPage then TreeMove.movePage else TreeMove.moveSection
+    let confirm = capture "confirm" fields == "true"
     -- The whole mutation (move + op-log append + index relocate + draft relocate + commit) runs under the
     -- write lock so a concurrent move/delete cannot interleave it; the body read above stays outside the lock.
     result <- Iteratee.liftIO $
-        withWriteLock writeLock $ do
-            r <- move findRelevant root srcRel (capture "to" fields) (capture "slug" fields) confirm
-            recordAppliedMove operationStore isPage r
-            maintainMove maint r -- an applied move relocates its subtree; maintain the index in place (no walk)
-            case r of
-                Right plan
-                    | TreeMove.planApplied plan -> do
-                        relocateDraftForMove versioning (TreeMove.planFrom plan) (TreeMove.planTo plan)
-                        commitStructural versioning root author ("Move " ++ TreeMove.planFrom plan ++ " to " ++ TreeMove.planTo plan)
-                _ -> pure ()
-            pure r
+        withWriteLock writeLock $
+            case (TreePath.parse (capture "path" captures), TreePath.parse (capture "to" fields)) of
+                (Just src, Just destParent) -> do
+                    let isPage = TreePath.kind src == TreePath.Page
+                        move = if isPage then TreeMove.movePage else TreeMove.moveSection
+                    r <- move findRelevant root src destParent (capture "slug" fields) confirm
+                    recordAppliedMove operationStore isPage r
+                    maintainMove maint r -- an applied move relocates its subtree; maintain the index in place (no walk)
+                    case r of
+                        Right plan
+                            | TreeMove.planApplied plan -> do
+                                relocateDraftForMove versioning (TreeMove.planFrom plan) (TreeMove.planTo plan)
+                                commitStructural versioning root author ("Move " ++ TreePath.render (TreeMove.planFrom plan) ++ " to " ++ TreePath.render (TreeMove.planTo plan))
+                        _ -> pure ()
+                    pure r
+                _ -> pure (Left "unsafe path")
     pure (either (statusResponse 409 "Conflict" . (++ "\n")) (jsonResponse . TreeMove.movePlanJson) result)
 
 {- | Appends a @move@ record to the operation log after a move was applied
@@ -527,8 +531,8 @@ recordAppliedMove operationStore isPage (Right plan)
             OperationLog.Operation
                 { OperationLog.opType = OperationLog.OpMove
                 , OperationLog.opKind = if isPage then "page" else "section"
-                , OperationLog.opFrom = Just (TreeMove.planFrom plan)
-                , OperationLog.opTo = Just (TreeMove.planTo plan)
+                , OperationLog.opFrom = Just (TreePath.render (TreeMove.planFrom plan))
+                , OperationLog.opTo = Just (TreePath.render (TreeMove.planTo plan))
                 , OperationLog.opSeq = seq'
                 , OperationLog.opTs = ts
                 , OperationLog.opTrash = Nothing
@@ -537,7 +541,7 @@ recordAppliedMove _ _ _ = pure ()
 
 -- | Relocates the moved subtree in the index, only when a move was actually applied (a preview/refusal changes nothing).
 maintainMove :: IndexMaintenance -> Either String TreeMove.MovePlan -> IO ()
-maintainMove maint (Right plan) | TreeMove.planApplied plan = onMove maint (TreeMove.planFrom plan) (TreeMove.planTo plan)
+maintainMove maint (Right plan) | TreeMove.planApplied plan = onMove maint (TreePath.render (TreeMove.planFrom plan)) (TreePath.render (TreeMove.planTo plan))
 maintainMove _ _ = pure ()
 
 {- | The delete endpoint (RFC-0027 phase 4 + RFC-0028 trash): @POST /tree/*path?delete@.
@@ -547,32 +551,37 @@ trash id. The trash id is the delete record's @seq@.
 -}
 treeDeleteHandler :: Versioning -> Git.Identity -> WriteLock -> TreeMove.RelevantPages -> IndexMaintenance -> OperationStore.OperationStore -> TrashStore.TrashStore -> FilePath -> FilePath -> Router.Captures -> Iteratee.Iter Stream.StreamError Http.Response
 treeDeleteHandler versioning author writeLock findRelevant maint operationStore trashStore root trashRoot captures = Iteratee.liftIO $ withWriteLock writeLock $ do
-    let path = capture "path" captures
-        isPage = isMarkdownPath path
     seqNo <- OperationStore.nextSeq operationStore
-    result <- TreeMove.deleteTarget findRelevant root trashRoot path (show seqNo) seqNo
-    case result of
-        Left err -> pure (statusResponse 409 "Conflict" (err ++ "\n"))
-        Right (TreeMove.Refused referrers) -> pure (statusResponse 409 "Conflict" (referrersJson referrers))
-        Right (TreeMove.Deleted tid p _) -> do
-            ts <- Log.localTimestamp
-            onDelete maint p
-            -- RFC-0032: stash any staged draft into the trash entry (recoverable), then commit the deletion.
-            stashDraftToTrash versioning trashRoot p tid
-            commitStructural versioning root author ("Delete " ++ p)
-            OperationStore.appendOperation
-                operationStore
-                OperationLog.Operation
-                    { OperationLog.opType = OperationLog.OpDelete
-                    , OperationLog.opKind = kindLabel isPage
-                    , OperationLog.opFrom = Just p
-                    , OperationLog.opTo = Nothing
-                    , OperationLog.opSeq = seqNo
-                    , OperationLog.opTs = ts
-                    , OperationLog.opTrash = Just tid
-                    }
-            recordTrashEntry trashStore tid p (kindLabel isPage) ts
-            pure (jsonResponse (View.jsonObject [("deleted", View.jsonString p), ("trashId", View.jsonString tid)]))
+    case (TreePath.parse (capture "path" captures), TreePath.trashIdForSeq seqNo) of
+        (Nothing, _) -> pure (statusResponse 409 "Conflict" "unsafe path\n")
+        (_, Nothing) -> pure (statusResponse 500 "Internal Server Error" "operation log sequence is not a trash id\n")
+        (Just target, Just trashId) -> deleteInto target trashId seqNo
+  where
+    deleteInto target trashId seqNo = do
+        let isPage = TreePath.kind target == TreePath.Page
+        result <- TreeMove.deleteTarget findRelevant root trashRoot target trashId seqNo
+        case result of
+            Left err -> pure (statusResponse 409 "Conflict" (err ++ "\n"))
+            Right (TreeMove.Refused referrers) -> pure (statusResponse 409 "Conflict" (referrersJson referrers))
+            Right (TreeMove.Deleted tid p _) -> do
+                ts <- Log.localTimestamp
+                onDelete maint p
+                -- RFC-0032: stash any staged draft into the trash entry (recoverable), then commit the deletion.
+                stashDraftToTrash versioning trashRoot target trashId
+                commitStructural versioning root author ("Delete " ++ p)
+                OperationStore.appendOperation
+                    operationStore
+                    OperationLog.Operation
+                        { OperationLog.opType = OperationLog.OpDelete
+                        , OperationLog.opKind = kindLabel isPage
+                        , OperationLog.opFrom = Just p
+                        , OperationLog.opTo = Nothing
+                        , OperationLog.opSeq = seqNo
+                        , OperationLog.opTs = ts
+                        , OperationLog.opTrash = Just tid
+                        }
+                recordTrashEntry trashStore tid p (kindLabel isPage) ts
+                pure (jsonResponse (View.jsonObject [("deleted", View.jsonString p), ("trashId", View.jsonString tid)]))
 
 -- | Adds a successful delete to the warm catalogue when production supplied one.
 recordTrashEntry :: TrashStore.TrashStore -> String -> String -> String -> String -> IO ()
@@ -585,17 +594,19 @@ restored path; a @409@ if the origin is now occupied or the entry is missing.
 -}
 treeRestoreHandler :: Versioning -> WriteLock -> IndexMaintenance -> OperationStore.OperationStore -> TrashStore.TrashStore -> FilePath -> FilePath -> Router.Handler
 treeRestoreHandler versioning writeLock maint operationStore trashStore root trashRoot captures request = Iteratee.liftIO $ withWriteLock writeLock $ do
-    let trashId = capture "id" captures
-        author = Identity.currentIdentity (versioningIdentity versioning) request
-    result <- TreeMove.restoreFromTrash root trashRoot trashId
+    let author = Identity.currentIdentity (versioningIdentity versioning) request
+    result <- case TreePath.parseTrashId (capture "id" captures) of
+        Nothing -> pure (Left "trash entry not found")
+        Just trashId -> fmap (fmap (trashId,)) (TreeMove.restoreFromTrash root trashRoot trashId)
     case result of
         Left err -> pure (statusResponse 409 "Conflict" (err ++ "\n"))
-        Right (path, kind) -> do
+        Right (trashId, (restored, kind)) -> do
+            let path = TreePath.render restored
             seqNo <- OperationStore.nextSeq operationStore
             ts <- Log.localTimestamp
             onRestore maint path
             -- RFC-0032: bring back any draft stashed with the entry, then commit the restore.
-            restoreDraftFromTrash versioning trashRoot trashId path
+            restoreDraftFromTrash versioning trashRoot trashId restored
             commitStructural versioning root author ("Restore " ++ path)
             OperationStore.appendOperation
                 operationStore
@@ -606,9 +617,9 @@ treeRestoreHandler versioning writeLock maint operationStore trashStore root tra
                     , OperationLog.opTo = Just path
                     , OperationLog.opSeq = seqNo
                     , OperationLog.opTs = ts
-                    , OperationLog.opTrash = Just trashId
+                    , OperationLog.opTrash = Just (TreePath.renderTrashId trashId)
                     }
-            TrashStore.forgetTrashEntry trashStore trashId
+            TrashStore.forgetTrashEntry trashStore (TreePath.renderTrashId trashId)
             pure (jsonResponse (View.jsonObject [("restored", View.jsonString path)]))
 
 -- | @"page"@ or @"section"@ for the operation log.
@@ -718,11 +729,13 @@ applyInverse findRelevant maint operationStore trashStore root trashRoot op = ca
     from = Maybe.fromMaybe "" (OperationLog.opFrom op)
     to = Maybe.fromMaybe "" (OperationLog.opTo op)
 
-    undoMove = do
-        let destParent = parentOfRel from
-            slug = slugForPath (OperationLog.opKind op) from
-            move = if OperationLog.opKind op == "page" then TreeMove.movePage else TreeMove.moveSection
-        result <- move findRelevant root to destParent slug True
+    undoMove = case (TreePath.parse from, TreePath.parse to) of
+        (Just fromPath, Just toPath) -> undoMoveOf fromPath toPath
+        _ -> pure (Left "operation names an unsafe path")
+
+    undoMoveOf fromPath toPath = do
+        let move = if OperationLog.opKind op == "page" then TreeMove.movePage else TreeMove.moveSection
+        result <- move findRelevant root toPath (TreePath.parent fromPath) (TreePath.slug fromPath) True
         case result of
             Left err -> pure (Left err)
             Right plan
@@ -732,13 +745,15 @@ applyInverse findRelevant maint operationStore trashStore root trashRoot op = ca
                     pure (Right (View.jsonObject [("undo", View.jsonString "move"), ("from", View.jsonString to), ("to", View.jsonString from)]))
                 | otherwise -> pure (Left "inverse move was not applied")
 
-    undoDelete = case OperationLog.opTrash op of
-        Nothing -> pure (Left "delete record has no trash id")
-        Just tid -> do
-            result <- TreeMove.restoreFromTrash root trashRoot tid
+    undoDelete = case OperationLog.opTrash op >>= TreePath.parseTrashId of
+        Nothing -> pure (Left "delete record has no valid trash id")
+        Just trashId -> do
+            result <- TreeMove.restoreFromTrash root trashRoot trashId
             case result of
                 Left err -> pure (Left err)
-                Right (path, kind) -> do
+                Right (restored, kind) -> do
+                    let path = TreePath.render restored
+                        tid = TreePath.renderTrashId trashId
                     onRestore maint path
                     appendInverse kind OperationLog.OpRestore Nothing (Just path) (Just tid)
                     TrashStore.forgetTrashEntry trashStore tid
@@ -746,16 +761,20 @@ applyInverse findRelevant maint operationStore trashStore root trashRoot op = ca
 
     undoRestore = do
         seqNo <- OperationStore.nextSeq operationStore
-        result <- TreeMove.deleteTarget findRelevant root trashRoot to (show seqNo) seqNo
-        case result of
-            Left err -> pure (Left err)
-            Right (TreeMove.Refused _) -> pure (Left "cannot undo restore: the target is now referenced")
-            Right (TreeMove.Deleted tid path _) -> do
-                ts <- Log.localTimestamp
-                onDelete maint to
-                OperationStore.appendOperation operationStore (OperationLog.Operation OperationLog.OpDelete (kindOf to) (Just path) Nothing seqNo ts (Just tid))
-                recordTrashEntry trashStore tid path (kindOf to) ts
-                pure (Right (View.jsonObject [("undo", View.jsonString "restore"), ("deleted", View.jsonString path), ("trashId", View.jsonString tid)]))
+        case (TreePath.parse to, TreePath.trashIdForSeq seqNo) of
+            (Just target, Just trashId) -> do
+                result <- TreeMove.deleteTarget findRelevant root trashRoot target trashId seqNo
+                case result of
+                    Left err -> pure (Left err)
+                    Right (TreeMove.Refused _) -> pure (Left "cannot undo restore: the target is now referenced")
+                    Right (TreeMove.Deleted tid path _) -> do
+                        ts <- Log.localTimestamp
+                        let kind = kindLabel (TreePath.kind target == TreePath.Page)
+                        onDelete maint to
+                        OperationStore.appendOperation operationStore (OperationLog.Operation OperationLog.OpDelete kind (Just path) Nothing seqNo ts (Just tid))
+                        recordTrashEntry trashStore tid path kind ts
+                        pure (Right (View.jsonObject [("undo", View.jsonString "restore"), ("deleted", View.jsonString path), ("trashId", View.jsonString tid)]))
+            _ -> pure (Left "operation names an unsafe path")
 
     -- Appends an inverse record with a fresh seq and timestamp.
     appendInverse kind typ opFrom' opTo' trash = do
@@ -808,8 +827,7 @@ purgeExpiredTrash trashStore retentionDays trashRoot
             Monad.forM entries $ \entry@(entryId, _, _, ts) ->
                 if not (null ts) && take 19 ts < take 19 cutoff
                     then do
-                        removed <- TreeMove.deleteTrashEntry trashRoot entryId
-                        Monad.when removed (TrashStore.forgetTrashEntry trashStore entryId)
+                        removed <- purgeTrashEntry trashStore trashRoot entryId
                         pure (if removed then Nothing else Just entry)
                     else pure (Just entry)
 
@@ -821,10 +839,7 @@ gone. A 404 for an unknown id.
 treeTrashDeleteHandler :: WriteLock -> TrashStore.TrashStore -> FilePath -> Router.Handler
 treeTrashDeleteHandler writeLock trashStore trashRoot captures _ = do
     let trashId = capture "id" captures
-    removed <- Iteratee.liftIO $ withWriteLock writeLock $ do
-        outcome <- TreeMove.deleteTrashEntry trashRoot trashId
-        Monad.when outcome (TrashStore.forgetTrashEntry trashStore trashId)
-        pure outcome
+    removed <- Iteratee.liftIO (withWriteLock writeLock (purgeTrashEntry trashStore trashRoot trashId))
     pure
         ( if removed
             then jsonResponse (View.jsonObject [("purged", View.jsonString trashId)])
@@ -838,14 +853,21 @@ treeTrashEmptyHandler :: WriteLock -> TrashStore.TrashStore -> FilePath -> Route
 treeTrashEmptyHandler writeLock trashStore trashRoot _ _ = do
     emptied <- Iteratee.liftIO $ withWriteLock writeLock $ do
         entryIds <- trashEntryIds trashStore
-        outcomes <- mapM deleteOne entryIds
+        outcomes <- mapM (purgeTrashEntry trashStore trashRoot) entryIds
         pure (length (filter id outcomes))
     pure (jsonResponse (View.jsonObject [("emptied", show emptied)]))
-  where
-    deleteOne entryId = do
-        removed <- TreeMove.deleteTrashEntry trashRoot entryId
-        Monad.when removed (TrashStore.forgetTrashEntry trashStore entryId)
-        pure removed
+
+{- | Permanently removes one trash entry by its raw id and forgets it in the
+catalogue, returning whether it existed; an id that is not a trash id names no entry.
+-}
+purgeTrashEntry :: TrashStore.TrashStore -> FilePath -> String -> IO Bool
+purgeTrashEntry trashStore trashRoot rawId =
+    case TreePath.parseTrashId rawId of
+        Nothing -> pure False
+        Just trashId -> do
+            removed <- TreeMove.deleteTrashEntry trashRoot trashId
+            Monad.when removed (TrashStore.forgetTrashEntry trashStore rawId)
+            pure removed
 
 -- | The entry ids known to the selected trash-store adapter.
 trashEntryIds :: TrashStore.TrashStore -> IO [String]
@@ -888,12 +910,11 @@ back to the root), so the link can never point off the tree.
 -}
 safeBackLinkOrigin :: String -> Maybe String
 safeBackLinkOrigin origin
-    | null origin = Nothing
-    | not (isMarkdownPath origin) = Nothing
     | "/" `List.isPrefixOf` origin = Nothing
     | "://" `List.isInfixOf` origin = Nothing
-    | ".." `elem` pathSegments origin = Nothing
-    | otherwise = Just origin
+    | otherwise = case TreePath.parse origin of
+        Just page | TreePath.kind page == TreePath.Page -> Just origin
+        _ -> Nothing
 
 {- | Trash entries as @(id, originalPath, kind, deletedAt)@, newest-first. A
 trash id is its delete's monotonic operation-log seq, so ordering by id
@@ -922,31 +943,6 @@ trashEntriesJson entries =
 -- endpoint, so it is deliberately not surfaced under the routes; the logic lives in
 -- 'Verso.TreeMove.replayLog'.
 
--- | @"page"@ or @"section"@ for a tree path.
-kindOf :: String -> String
-kindOf path = kindLabel (isMarkdownPath path)
-
--- | The parent tree path of a tree path (its segments minus the last; @""@ at the root).
-parentOfRel :: String -> String
-parentOfRel path = List.intercalate "/" (initOrEmpty (pathSegments path))
-  where
-    initOrEmpty [] = []
-    initOrEmpty xs = init xs
-
--- | The destination slug to move a path back to: a page's basename without @.md@, a section's last segment.
-slugForPath :: String -> String -> String
-slugForPath kind path =
-    let name = lastOrEmpty (pathSegments path)
-     in if kind == "page" && mdSuffix `List.isSuffixOf` name then take (length name - length mdSuffix) name else name
-  where
-    -- the signatures pin the OverloadedStrings literals, which GHC otherwise
-    -- reports as ambiguous (mhs defaults them)
-    mdSuffix :: String
-    mdSuffix = ".md"
-    lastOrEmpty :: [String] -> String
-    lastOrEmpty [] = ""
-    lastOrEmpty xs = last xs
-
 -- | A handler that redirects to a fixed location (a @303 See Other@ to a GET target).
 redirectTo :: String -> Router.Handler
 redirectTo location _ _ = pure (seeOtherResponse location)
@@ -973,42 +969,41 @@ appWithDocumentTreeVersioned root draftRoot =
 otherwise the file served statically (raw Markdown, images, attachments).
 -}
 treeGet :: Versioning -> FilePath -> Router.Handler
-treeGet versioning root captures request
-    | not (isMarkdownPath path) = treeServeFile root path
-    | hasQueryFlag "history" request = treeHistory root path
-    | hasQueryFlag "diff" request = treeDiff root path request
-    | hasQueryFlag "at" request = treeReadAt root path request
-    | hasQueryFlag "edit" request = treeEdit versioning root path request
-    | hasQueryFlag "raw" request = treeServeFile root path
-    | otherwise = treeRead versioning root path request
+treeGet versioning root captures request =
+    case TreePath.parse (capture "path" captures) of
+        Nothing -> pure treeNotFound
+        Just parsed -> dispatch (if TreePath.isRoot parsed then TreePath.sectionIndex parsed else parsed)
   where
     -- The tree root (@/documents@ or @/documents/@) resolves to its @index.md@ page.
-    path = case capture "path" captures of
-        "" -> "index.md"
-        captured -> captured
+    dispatch path
+        | TreePath.kind path /= TreePath.Page = treeServeFile root path
+        | hasQueryFlag "history" request = treeHistory root path
+        | hasQueryFlag "diff" request = treeDiff root path request
+        | hasQueryFlag "at" request = treeReadAt root path request
+        | hasQueryFlag "edit" request = treeEdit versioning root path request
+        | hasQueryFlag "raw" request = treeServeFile root path
+        | otherwise = treeRead versioning root path request
 
 {- | Renders the editable editor for a tree document, loading its current content
 (or a seed if the file is absent, so a missing page can be created by editing).
 -}
-treeEdit :: Versioning -> FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
-treeEdit versioning root path request =
-    case Static.resolveStaticPath root (pathSegments path) of
-        Nothing -> pure treeNotFound
-        Just fsPath -> do
-            -- Resume a staged draft if one exists (RFC-0032); otherwise the published page, or a seed.
-            hasDraft <-
-                if versioningOn versioning
-                    then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
-                    else pure False
-            if hasDraft
-                then -- The draft is a file in the staging root: stream it like a page (RFC-0040).
-                    editFromFile (Draft.draftFsPath (draftStagingRoot versioning) path) True
-                else do
-                    exists <- Iteratee.liftIO (Directory.doesFileExist fsPath)
-                    if exists
-                        then editFromFile fsPath False -- RFC-0040: stream the published page from disk.
-                        else editSeed -- a new page seeds in memory.
+treeEdit :: Versioning -> FilePath -> TreePath.TreePath -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
+treeEdit versioning root path request = do
+    -- Resume a staged draft if one exists (RFC-0032); otherwise the published page, or a seed.
+    hasDraft <-
+        if versioningOn versioning
+            then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
+            else pure False
+    if hasDraft
+        then -- The draft is a file in the staging root: stream it like a page (RFC-0040).
+            editFromFile (Draft.draftFsPath (draftStagingRoot versioning) path) True
+        else do
+            exists <- Iteratee.liftIO (Directory.doesFileExist fsPath)
+            if exists
+                then editFromFile fsPath False -- RFC-0040: stream the published page from disk.
+                else editSeed -- a new page seeds in memory.
   where
+    fsPath = TreePath.resolve root path
     -- The editable shell around the document hole, with the draft flag the read view sets.
     editShell = shellFor path request (versioningOn versioning) True
     editFromFile file hasDraft = do
@@ -1026,46 +1021,42 @@ treeEdit versioning root path request =
 the editor shell with editing disabled. A missing page is a @404@ -- reading never
 seeds (that stays an @?edit@ affordance).
 -}
-treeRead :: Versioning -> FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
-treeRead versioning root path request =
-    case Static.resolveStaticPath root (pathSegments path) of
-        Nothing -> pure treeNotFound
-        Just fsPath -> do
-            exists <- Iteratee.liftIO (Directory.doesFileExist fsPath)
-            if not exists
-                then pure treeNotFound
-                else do
-                    block <- Iteratee.liftIO (Frontmatter.readBlock fsPath)
-                    chrome <- Iteratee.liftIO (pageChrome root path False block)
-                    -- RFC-0032: flag an unpublished draft so the read view can mark it next to "Edit".
-                    hasDraft <-
-                        if versioningOn versioning
-                            then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
-                            else pure False
-                    -- RFC-0040: stream the document from disk between the shell halves; never held whole.
-                    let (before, after) = shellFor path request (versioningOn versioning) False hasDraft chrome
-                    Iteratee.liftIO (documentFileResponse before after fsPath)
+treeRead :: Versioning -> FilePath -> TreePath.TreePath -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
+treeRead versioning root path request = do
+    let fsPath = TreePath.resolve root path
+    exists <- Iteratee.liftIO (Directory.doesFileExist fsPath)
+    if not exists
+        then pure treeNotFound
+        else do
+            block <- Iteratee.liftIO (Frontmatter.readBlock fsPath)
+            chrome <- Iteratee.liftIO (pageChrome root path False block)
+            -- RFC-0032: flag an unpublished draft so the read view can mark it next to "Edit".
+            hasDraft <-
+                if versioningOn versioning
+                    then Iteratee.liftIO (Draft.hasDraft (draftStagingRoot versioning) path)
+                    else pure False
+            -- RFC-0040: stream the document from disk between the shell halves; never held whole.
+            let (before, after) = shellFor path request (versioningOn versioning) False hasDraft chrome
+            Iteratee.liftIO (documentFileResponse before after fsPath)
 
 -- | Serves a tree file as a sized 'FileBody' with a type from its extension, or a @404@ when absent.
-treeServeFile :: FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
-treeServeFile root path =
-    case Static.resolveStaticPath root (pathSegments path) of
-        Nothing -> pure treeNotFound
-        Just fsPath -> do
-            exists <- Iteratee.liftIO (Directory.doesFileExist fsPath)
-            if not exists
-                then pure treeNotFound
-                else do
-                    sized <- Iteratee.liftIO (Socket.fileSizeBytes fsPath)
-                    case sized of
-                        Nothing -> pure treeNotFound
-                        Just size ->
-                            pure
-                                ( Http.Response
-                                    Http.okStatus
-                                    [contentTypeHeader (Static.contentTypeFor fsPath)]
-                                    (Http.FileBody fsPath size)
-                                )
+treeServeFile :: FilePath -> TreePath.TreePath -> Iteratee.Iter Stream.StreamError Http.Response
+treeServeFile root path = do
+    let fsPath = TreePath.resolve root path
+    exists <- Iteratee.liftIO (Directory.doesFileExist fsPath)
+    if not exists
+        then pure treeNotFound
+        else do
+            sized <- Iteratee.liftIO (Socket.fileSizeBytes fsPath)
+            case sized of
+                Nothing -> pure treeNotFound
+                Just size ->
+                    pure
+                        ( Http.Response
+                            Http.okStatus
+                            [contentTypeHeader (Static.contentTypeFor fsPath)]
+                            (Http.FileBody fsPath size)
+                        )
 
 {- | A POST under the tree: an asset upload (@?asset@, a raw-body file) into the
 document's peer @assets/@ folder, or otherwise a document save.
@@ -1094,12 +1085,13 @@ treeUpload root captures request = do
     -- The body never exists as a value: it streams into a temp file beside its final
     -- home and is renamed into place (RFC-0040 phase 3). The refusals still consume the
     -- body, as the strict read did, so nothing is left on the connection.
-    case assetsDirectoryFor root path of
+    case TreePath.parse path of
         Nothing -> notFoundAfterDrain
-        Just assetsDir
+        Just page
             | not (Attachment.allowedExtension (Attachment.extensionOf name)) ->
                 drainBody >> pure (statusResponse 415 "Unsupported Media Type" "attachment type is not allowed\n")
             | otherwise -> do
+                let assetsDir = TreePath.resolve root (TreePath.peerAssets page)
                 Iteratee.liftIO (Directory.createDirectoryIfMissing True assetsDir)
                 tmp <- Iteratee.liftIO (FileSystem.uniqueTempPath assetsDir ".upload")
                 _ <- Stream.fileSinkI treeAssetMaxBytes (Stream.StreamParseError Parse.BodyTooLarge) tmp
@@ -1107,7 +1099,7 @@ treeUpload root captures request = do
                 case placed of
                     Left _ -> pure (statusResponse 500 "Internal Server Error" "could not store the attachment\n")
                     Right stored -> do
-                        Iteratee.liftIO (recordAssetMetadata root path stored (Attachment.originalUploadFilename request))
+                        Iteratee.liftIO (recordAssetMetadata root page stored (Attachment.originalUploadFilename request))
                         pure (jsonResponse (View.jsonObject [("url", View.jsonString ("assets/" ++ stored))]))
 
 -- | The @404@ for a write whose path is outside the tree, after draining the body so the connection is left clean.
@@ -1121,32 +1113,21 @@ drainBody = Iteratee.byteSinkI (\_ -> pure (Right ()))
 {- | Record a freshly stored asset in the page's sidecar metadata (ADR-0049): an
 inline image in @images.yaml@ (with the original filename as its initial
 @short_title@), anything else in @attachments.yaml@. Classification reuses the
-attachment store's @inlineImageExtension@. A no-op when the document path is
-unsafe (the upload itself has already been path-validated).
+attachment store's @inlineImageExtension@.
 -}
-recordAssetMetadata :: FilePath -> String -> String -> String -> IO ()
-recordAssetMetadata root path stored originalName =
-    case DocumentMeta.metaDirectoryFor root path of
-        Nothing -> pure ()
-        Just metaDir
-            | Attachment.inlineImageExtension extension -> DocumentMeta.appendImage metaDir localPath originalName
-            | otherwise -> DocumentMeta.appendAttachment metaDir (DocumentMeta.AttachmentEntry originalName localPath extension)
+recordAssetMetadata :: FilePath -> TreePath.TreePath -> String -> String -> IO ()
+recordAssetMetadata root page stored originalName
+    | Attachment.inlineImageExtension extension = DocumentMeta.appendImage metaDir localPath originalName
+    | otherwise = DocumentMeta.appendAttachment metaDir (DocumentMeta.AttachmentEntry originalName localPath extension)
   where
+    metaDir = DocumentMeta.metaDirectoryFor root page
     localPath = "assets/" ++ stored
     extension = Attachment.extensionOf stored
 
-{- | The peer @assets/@ directory of a tree document, or 'Nothing' if the document
-path is unsafe. The path is validated as a tree-relative file; its directory's
-@assets/@ sibling is where the page's images and attachments live.
--}
-assetsDirectoryFor :: FilePath -> String -> Maybe FilePath
-assetsDirectoryFor root path =
-    fmap (\fsPath -> parentDirectory fsPath ++ "/assets") (Static.resolveStaticPath root (pathSegments path))
-
 -- | The page's recorded attachments as @(name, local_path)@ pairs for the metadata panel, or @[]@.
-loadPageAttachments :: FilePath -> String -> IO [(String, String)]
-loadPageAttachments root path =
-    maybe (pure []) DocumentMeta.readAttachmentEntries (DocumentMeta.metaDirectoryFor root path)
+loadPageAttachments :: FilePath -> TreePath.TreePath -> IO [(String, String)]
+loadPageAttachments root page =
+    DocumentMeta.readAttachmentEntries (DocumentMeta.metaDirectoryFor root page)
 
 {- | Places an uploaded temp file in the assets folder under a meaningful name,
 returning the name actually used. An identical file already present is reused
@@ -1205,16 +1186,14 @@ the current crumb, so it is not also linked: @"a/b/page.md"@ links @["", "a", "a
 @["", "a"]@; @"a/page.md"@ links @["", "a"]@; the root @"index.md"@ links @[]@ (it is the current page).
 -}
 linkedFolderPaths :: String -> [String]
-linkedFolderPaths path
-    | isIndex && null dirSegs = []
-    | otherwise = "" : scanl1 joinSeg folderSegs
+linkedFolderPaths path =
+    case TreePath.parse path of
+        Nothing -> []
+        Just page -> map TreePath.render (properAncestors (if TreePath.name page == "index.md" then TreePath.parent page else page))
   where
-    segs = pathSegments path
-    isIndex = not (null segs) && last segs == "index.md"
-    dirSegs = if null segs then [] else init segs
-    folderSegs = if isIndex then dropLast dirSegs else dirSegs
-    dropLast xs = if null xs then [] else init xs
-    joinSeg acc s = acc ++ "/" ++ s
+    properAncestors node
+        | TreePath.isRoot node = []
+        | otherwise = properAncestors (TreePath.parent node) ++ [TreePath.parent node]
 
 {- | The link target for a folder rel-path: its @index.md@ page (a directory URL is not itself routable, so
 the trail links the explicit index document). Root is @/documents/index.md@, @"a/b"@ is @/documents/a/b/index.md@.
@@ -1227,24 +1206,23 @@ folderHref fp = "/documents/" ++ fp ++ "/index.md"
 current page's own title as the final unlinked crumb. A folder's label falls back to a humanised segment
 (and the root to @Cello@) when its @index.md@ is missing or has no @name@.
 -}
-breadcrumbsFor :: FilePath -> String -> BS.ByteString -> IO [View.Crumb]
-breadcrumbsFor root path content = do
-    links <- mapM folderCrumb (linkedFolderPaths path)
+breadcrumbsFor :: FilePath -> TreePath.TreePath -> BS.ByteString -> IO [View.Crumb]
+breadcrumbsFor root page content = do
+    links <- mapM folderCrumb (Maybe.mapMaybe TreePath.parse (linkedFolderPaths (TreePath.render page)))
     block <- Frontmatter.slice content
-    let currentLabel = Maybe.fromMaybe (humaniseSegment (lastSegment path)) (Frontmatter.titleOf block)
+    let currentLabel = Maybe.fromMaybe (humaniseSegment (TreePath.name page)) (Frontmatter.titleOf block)
     pure (links ++ [View.Crumb currentLabel Nothing])
   where
-    folderCrumb fp = do
-        name <- readIndexTitle root fp
-        pure (View.Crumb (Maybe.fromMaybe (folderFallback fp) name) (Just (folderHref fp)))
-    folderFallback "" = "Cello"
-    folderFallback fp = humaniseSegment (lastSegment fp)
+    folderCrumb folder = do
+        name <- readIndexTitle root folder
+        pure (View.Crumb (Maybe.fromMaybe (folderFallback folder) name) (Just (folderHref (TreePath.render folder))))
+    folderFallback folder
+        | TreePath.isRoot folder = "Cello"
+        | otherwise = humaniseSegment (TreePath.name folder)
 
 -- | The last @/@-separated segment of a path (the path itself when it has none).
 lastSegment :: String -> String
-lastSegment p = case pathSegments p of
-    [] -> p
-    segs -> last segs
+lastSegment p = maybe p TreePath.name (TreePath.parse p)
 
 -- | A fallback label from a path segment: hyphens and underscores to spaces, each word capitalised.
 humaniseSegment :: String -> String
@@ -1256,13 +1234,8 @@ humaniseSegment = unwords . map capitalise . words . map spacer . dropExtension
     dropExtension s = if ".md" `List.isSuffixOf` s then take (length s - 3) s else s
 
 -- | Reads a folder's @index.md@ frontmatter title, or Nothing when the file is absent or untitled.
-readIndexTitle :: FilePath -> String -> IO (Maybe String)
-readIndexTitle root fp =
-    case Static.resolveStaticPath root (pathSegments indexPath) of
-        Nothing -> pure Nothing
-        Just fsPath -> readTitle fsPath
-  where
-    indexPath = if null fp then "index.md" else fp ++ "/index.md"
+readIndexTitle :: FilePath -> TreePath.TreePath -> IO (Maybe String)
+readIndexTitle root folder = readTitle (TreePath.resolve root (TreePath.sectionIndex folder))
 
 {- | A document's frontmatter title read from disk, touching only the leading block; Nothing
 when the file is absent or untitled, decoded from the file's UTF-8 (RFC-0043).
@@ -1300,7 +1273,7 @@ treeEntryKind name isDir
     | isHidden = Nothing
     | isDir = Just Section
     | name == "index.md" = Nothing
-    | isMarkdownPath name = Just Page
+    | ".md" `List.isSuffixOf` name = Just Page
     | otherwise = Nothing
   where
     isHidden = isDotfile || name == "meta" || name == "assets"
@@ -1340,52 +1313,54 @@ empty for the root), read live from the filesystem and ordered for display
 -}
 childrenOf :: FilePath -> String -> IO [TreeNode]
 childrenOf root parentRel =
-    case Static.resolveStaticPath root (pathSegments parentRel) of
+    case TreePath.parse parentRel of
         Nothing -> pure []
-        Just dirFs -> do
+        Just dir -> do
+            let dirFs = TreePath.resolve root dir
             isDir <- Directory.doesDirectoryExist dirFs
             if not isDir
                 then pure []
                 else do
                     names <- Directory.listDirectory dirFs
-                    nodes <- mapM (childNode root parentRel dirFs) names
+                    nodes <- mapM (childNode root dir) names
                     pure (orderTreeNodes (Maybe.catMaybes nodes))
 
--- | Builds a navigation-tree node for one directory entry, or 'Nothing' when it is hidden.
-childNode :: FilePath -> String -> FilePath -> String -> IO (Maybe TreeNode)
-childNode root parentRel dirFs name = do
-    isDir <- Directory.doesDirectoryExist entryFs
-    case treeEntryKind name isDir of
+-- | Builds a navigation-tree node for one directory entry, or 'Nothing' when it is hidden (or not a safe name).
+childNode :: FilePath -> TreePath.TreePath -> String -> IO (Maybe TreeNode)
+childNode root dir name =
+    case TreePath.child dir name of
         Nothing -> pure Nothing
-        Just Section -> do
-            label <- sectionLabel root childRel name
-            hasKids <- dirHasVisibleChildren entryFs
-            pure (Just (TreeNode label childRel Section hasKids))
-        Just Page -> do
-            label <- pageLabel root childRel name
-            pure (Just (TreeNode label childRel Page False))
-  where
-    entryFs = dirFs ++ "/" ++ name
-    childRel = if null parentRel then name else parentRel ++ "/" ++ name
+        Just child -> do
+            let entryFs = TreePath.resolve root child
+            isDir <- Directory.doesDirectoryExist entryFs
+            case treeEntryKind name isDir of
+                Nothing -> pure Nothing
+                Just Section -> do
+                    label <- sectionLabel root child
+                    hasKids <- dirHasVisibleChildren entryFs
+                    pure (Just (TreeNode label (TreePath.render child) Section hasKids))
+                Just Page -> do
+                    label <- pageLabel root child
+                    pure (Just (TreeNode label (TreePath.render child) Page False))
 
 -- | A section's label: its @index.md@ frontmatter @name@, or a humanised directory segment.
-sectionLabel :: FilePath -> String -> String -> IO String
-sectionLabel root childRel name = do
-    title <- readIndexTitle root childRel
-    pure (Maybe.fromMaybe (humaniseSegment name) title)
+sectionLabel :: FilePath -> TreePath.TreePath -> IO String
+sectionLabel root section = do
+    title <- readIndexTitle root section
+    pure (Maybe.fromMaybe (humaniseSegment (TreePath.name section)) title)
 
 -- | A page's label: its frontmatter @name@, or a humanised filename.
-pageLabel :: FilePath -> String -> String -> IO String
-pageLabel root childRel name =
-    case Static.resolveStaticPath root (pathSegments childRel) of
-        Nothing -> pure (humaniseSegment name)
-        Just fsPath -> do
-            exists <- Directory.doesFileExist fsPath
-            if not exists
-                then pure (humaniseSegment name)
-                else do
-                    title <- readTitle fsPath
-                    pure (Maybe.fromMaybe (humaniseSegment name) title)
+pageLabel :: FilePath -> TreePath.TreePath -> IO String
+pageLabel root page = do
+    let fsPath = TreePath.resolve root page
+    exists <- Directory.doesFileExist fsPath
+    if not exists
+        then pure fallback
+        else do
+            title <- readTitle fsPath
+            pure (Maybe.fromMaybe fallback title)
+  where
+    fallback = humaniseSegment (TreePath.name page)
 
 -- | Whether a folder holds any entry the navigation tree would show (so a section is expandable).
 dirHasVisibleChildren :: FilePath -> IO Bool
@@ -1405,12 +1380,12 @@ ancestor folder, root-first, so the client opens the tree pre-expanded to the pa
 without load-time fetches. A JSON array of @{"path","children":[...]}@; the root
 is always present even for the root @index.md@.
 -}
-treeSpineFor :: FilePath -> String -> IO String
-treeSpineFor root path = do
+treeSpineFor :: FilePath -> TreePath.TreePath -> IO String
+treeSpineFor root page = do
     entries <- mapM folderEntry spineFolders
     pure ("[" ++ List.intercalate "," entries ++ "]")
   where
-    spineFolders = case linkedFolderPaths path of
+    spineFolders = case linkedFolderPaths (TreePath.render page) of
         [] -> [""]
         fps -> fps
     folderEntry fp = do
@@ -1428,29 +1403,29 @@ createTreeNode root parentRel kind title
     | null (trimSpace title) = pure (Left "missing title\n")
     | kind /= "page" && kind /= "section" = pure (Left "unknown kind\n")
     | otherwise =
-        case Static.resolveStaticPath root (pathSegments parentRel) of
+        case TreePath.parse parentRel of
             Nothing -> pure (Left "unsafe path\n")
-            Just parentFs -> do
+            Just parent -> do
+                let parentFs = TreePath.resolve root parent
                 parentExists <- Directory.doesDirectoryExist parentFs
                 if not parentExists
                     then pure (Left "parent not found\n")
                     else do
                         slug <- uniqueSlug parentFs (slugify title) (kind == "section")
-                        let childRel = joinRel parentRel slug
-                            seedBody = "---\nname: " ++ yamlScalar title ++ "\n---\n\n# " ++ title ++ "\n"
-                        if kind == "section"
-                            then do
-                                Directory.createDirectoryIfMissing True (parentFs ++ "/" ++ slug)
-                                writeDocumentText (parentFs ++ "/" ++ slug ++ "/index.md") seedBody
-                                pure (Right (jsonResponse (createdJson title childRel "section" (childRel ++ "/index.md")), childRel ++ "/index.md"))
-                            else do
-                                writeDocumentText (parentFs ++ "/" ++ slug ++ ".md") seedBody
-                                pure (Right (jsonResponse (createdJson title (childRel ++ ".md") "page" (childRel ++ ".md")), childRel ++ ".md"))
-
--- | Joins a parent tree-relative path and a child segment (the segment alone at the root).
-joinRel :: String -> String -> String
-joinRel "" s = s
-joinRel p s = p ++ "/" ++ s
+                        let seedBody = "---\nname: " ++ yamlScalar title ++ "\n---\n\n# " ++ title ++ "\n"
+                            isSection = kind == "section"
+                        case TreePath.child parent (if isSection then slug else slug ++ ".md") of
+                            Nothing -> pure (Left "unsafe path\n")
+                            Just node
+                                | isSection -> do
+                                    let indexRel = TreePath.render (TreePath.sectionIndex node)
+                                    Directory.createDirectoryIfMissing True (TreePath.resolve root node)
+                                    writeDocumentText (TreePath.resolve root (TreePath.sectionIndex node)) seedBody
+                                    pure (Right (jsonResponse (createdJson title (TreePath.render node) "section" indexRel), indexRel))
+                                | otherwise -> do
+                                    let pageRel = TreePath.render node
+                                    writeDocumentText (TreePath.resolve root node) seedBody
+                                    pure (Right (jsonResponse (createdJson title pageRel "page" pageRel), pageRel))
 
 {- | A kebab-case filename slug from a title: lower-cased, non-alphanumeric runs
 collapsed to single hyphens and trimmed, falling back to @untitled@ when nothing
@@ -1608,10 +1583,10 @@ draftPut versioning root captures _ = do
     -- still consume it, so nothing is left on the connection.
     if not (versioningOn versioning)
         then notFoundAfterDrain
-        else case Static.resolveStaticPath root (pathSegments path) of
+        else case TreePath.parse path of
             Nothing -> notFoundAfterDrain
-            Just _ -> do
-                staged <- sinkBodyToFile formBodyLimit (Draft.draftFsPath (draftStagingRoot versioning) path)
+            Just page -> do
+                staged <- sinkBodyToFile formBodyLimit (Draft.draftFsPath (draftStagingRoot versioning) page)
                 pure (either (const saveFailed) (const noContentResponse) staged)
 
 {- | The draft resource's @DELETE@ (RFC-0036): discards the page's staged draft
@@ -1622,10 +1597,10 @@ draftDelete versioning root captures _ = do
     let path = capture "path" captures
     if not (versioningOn versioning)
         then pure treeNotFound
-        else case Static.resolveStaticPath root (pathSegments path) of
+        else case TreePath.parse path of
             Nothing -> pure treeNotFound
-            Just _ -> do
-                Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) path)
+            Just page -> do
+                Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) page)
                 pure noContentResponse
 
 -- | The bodyless @204 No Content@ response for a completed state transfer.
@@ -1644,12 +1619,12 @@ apply to first-party files).
 treeSave :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
 treeSave versioning maint root captures _request = do
     let path = capture "path" captures
-    case Static.resolveStaticPath root (pathSegments path) of
+    case TreePath.parse path of
         Nothing -> notFoundAfterDrain
-        Just fsPath -> do
+        Just page -> do
             -- Versioning on: autosave stages a draft; the live page, its sidecar
             -- metadata, and the link index are untouched until Publish (RFC-0032).
-            let target = if versioningOn versioning then Draft.draftFsPath (draftStagingRoot versioning) path else fsPath
+            let target = if versioningOn versioning then Draft.draftFsPath (draftStagingRoot versioning) page else TreePath.resolve root page
             -- RFC-0042: the form streams through the part consumer. The document field
             -- is decoded and newline-normalised on its way into a temp beside the target
             -- and renamed into place; the other fields are collected under small caps.
@@ -1705,9 +1680,10 @@ draft.
 treePutDocument :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
 treePutDocument versioning maint root captures request = do
     let path = capture "path" captures
-    case Static.resolveStaticPath root (pathSegments path) of
+    case TreePath.parse path of
         Nothing -> notFoundAfterDrain
-        Just fsPath -> do
+        Just page -> do
+            let fsPath = TreePath.resolve root page
             -- The body streams into a temp beside the page and is renamed into place
             -- (RFC-0040): the document never exists as a value, and a crash mid-write
             -- leaves the previous page intact.
@@ -1720,7 +1696,7 @@ treePutDocument versioning maint root captures request = do
                         let author = Identity.currentIdentity (versioningIdentity versioning) request
                         message <- Iteratee.liftIO (publishMessage path fsPath)
                         _ <- Iteratee.liftIO (Git.commitPaths root author message [path])
-                        Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) path)
+                        Iteratee.liftIO (Draft.deleteDraft (draftStagingRoot versioning) page)
                     pure noContentResponse
 
 -- | The @500@ for a save whose body arrived but could not be placed as the page.
@@ -1768,11 +1744,10 @@ treeImageTitles root captures _request = do
     -- capped well below 'formBodyLimit': the fields are widened to Strings and a
     -- document-sized String is the cost RFC-0040 removed from every request path.
     fields <- formFieldsI imageTitlesBodyLimit
-    let path = capture "path" captures
-    case Static.resolveStaticPath root (pathSegments path) of
+    case TreePath.parse (capture "path" captures) of
         Nothing -> pure treeNotFound
-        Just _ -> do
-            Iteratee.liftIO (syncImageTitles root path fields)
+        Just page -> do
+            Iteratee.liftIO (syncImageTitles root page fields)
             pure noContentResponse
 
 {- | The most bytes an image-titles post may carry: a handful of indexed path and
@@ -1798,29 +1773,28 @@ the page's git revisions (newest first) with a compare form (pick two revisions 
 diff) and a per-row roll-back button. An empty history (no repository, or an
 untracked page) renders an empty-state page.
 -}
-treeHistory :: FilePath -> String -> Iteratee.Iter Stream.StreamError Http.Response
-treeHistory root path = do
+treeHistory :: FilePath -> TreePath.TreePath -> Iteratee.Iter Stream.StreamError Http.Response
+treeHistory root page = do
+    let path = TreePath.render page
     revs <- Iteratee.liftIO (Git.logForPath root path)
-    title <- Iteratee.liftIO (treePageTitle root path)
+    title <- Iteratee.liftIO (treePageTitle root page)
     pure (documentResponse (View.historyPage title path revs))
 
 -- | A tree page's display title read from disk (fallback: humanised filename).
-treePageTitle :: FilePath -> String -> IO String
-treePageTitle root path =
-    case Static.resolveStaticPath root (pathSegments path) of
-        Nothing -> pure (humaniseSegment (lastSegment path))
-        Just fsPath -> do
-            block <- Frontmatter.readBlock fsPath
-            documentPageTitle False path block
+treePageTitle :: FilePath -> TreePath.TreePath -> IO String
+treePageTitle root page = do
+    block <- Frontmatter.readBlock (TreePath.resolve root page)
+    documentPageTitle False (TreePath.render page) block
 
 {- | The diff view (RFC-0032): @GET /documents/\<path\>?diff&from=\<rev\>&to=\<rev\>@
 renders a side-by-side diff of the page between the two revisions. With the
 @pane@ flag it returns just the diff fragment (for the history page's diff pane);
 otherwise a full standalone page.
 -}
-treeDiff :: FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
-treeDiff root path request = do
-    let fromRev = queryValue "from" request
+treeDiff :: FilePath -> TreePath.TreePath -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
+treeDiff root page request = do
+    let path = TreePath.render page
+        fromRev = queryValue "from" request
         toRev = queryValue "to" request
         pane = hasQueryFlag "pane" request
     -- RFC-0040 phase 5/9: the diff is captured to a file and streamed through the side-by-side transform
@@ -1834,7 +1808,7 @@ treeDiff root path request = do
                     <$> if pane
                         then pure (htmlResponseChunks (View.diffBody fromRev toRev ""))
                         else do
-                            title <- treePageTitle root path
+                            title <- treePageTitle root page
                             pure (documentResponse (View.diffPage title path fromRev toRev ""))
             else do
                 -- The stderr capture is not needed; the stdout capture becomes the body's, removed when the body finishes.
@@ -1843,7 +1817,7 @@ treeDiff root path request = do
                     if pane
                         then pure (View.diffPaneHalves fromRev toRev)
                         else do
-                            title <- treePageTitle root path
+                            title <- treePageTitle root page
                             let (b, a) = View.diffPageHalves title path fromRev toRev
                             pure (BS.pack "<!doctype html>" `BS.append` b, a)
                 pure (Process.HandedOff (Http.Response Http.okStatus documentHtmlHeaders (Http.StreamBody (diffStreamBody before (Process.captureOut cap) after))))
@@ -1876,9 +1850,10 @@ referenced by the old content resolve against the /current/ tree, so an asset
 removed since then will be missing -- an accepted limitation. A revision where the
 page did not exist is a @404@.
 -}
-treeReadAt :: FilePath -> String -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
-treeReadAt root path request = do
-    let rev = queryValue "at" request
+treeReadAt :: FilePath -> TreePath.TreePath -> Http.RequestHead -> Iteratee.Iter Stream.StreamError Http.Response
+treeReadAt root page request = do
+    let path = TreePath.render page
+        rev = queryValue "at" request
     -- RFC-0040 phase 5: the revision is captured to a file, streamed as the document, and removed
     -- when the body finishes; it never enters the heap.
     Iteratee.liftIO $ Git.withFileAtRevisionCapture root rev path $ \cap -> do
@@ -1893,8 +1868,8 @@ treeReadAt root path request = do
                 Monad.void (FileSystem.removeFilePath (Process.captureErr cap))
                 let out = Process.captureOut cap
                 block <- Frontmatter.readBlock out
-                chrome <- pageChrome root path False block
-                let (before, after) = shellFor path request False False False chrome
+                chrome <- pageChrome root page False block
+                let (before, after) = shellFor page request False False False chrome
                 Process.HandedOff <$> documentTempFileResponse before after out
 
 {- | The rollback action (RFC-0032): @POST /documents/\<path\>?rollback@ with a
@@ -1906,10 +1881,11 @@ treeRollback :: Versioning -> IndexMaintenance -> FilePath -> Router.Handler
 treeRollback versioning maint root captures request = do
     fields <- formFieldsI treeCreateMaxBytes
     let rev = capture "rev" fields
-        path = capture "path" captures
-    case Static.resolveStaticPath root (pathSegments path) of
+    case TreePath.parse (capture "path" captures) of
         Nothing -> pure treeNotFound
-        Just fsPath -> do
+        Just page -> do
+            let path = TreePath.render page
+                fsPath = TreePath.resolve root page
             -- RFC-0040 phase 5: the revision is captured to a file and streamed into place, never
             -- routed through the heap.
             -- the capture lives only as long as the copy: withCapture removes it however this exits
@@ -2003,11 +1979,9 @@ update-only -- an unmatched @local_path@ or an unchanged value writes nothing
 (and a save without the fields, e.g. a no-JavaScript post, is a no-op). The count
 is capped so a crafted value cannot drive an unbounded loop.
 -}
-syncImageTitles :: FilePath -> String -> [(String, String)] -> IO ()
-syncImageTitles root path fields =
-    case DocumentMeta.metaDirectoryFor root path of
-        Nothing -> pure ()
-        Just metaDir -> mapM_ (applyImageTitle metaDir fields) [0 .. imageCount fields - 1]
+syncImageTitles :: FilePath -> TreePath.TreePath -> [(String, String)] -> IO ()
+syncImageTitles root page fields =
+    mapM_ (applyImageTitle (DocumentMeta.metaDirectoryFor root page) fields) [0 .. imageCount fields - 1]
 
 -- | Apply one indexed image-title field to the page's @images.yaml@ (no-op when its path is blank).
 applyImageTitle :: FilePath -> [(String, String)] -> Int -> IO ()
@@ -2036,16 +2010,6 @@ parseNonNegativeInt s
 hasQueryFlag :: String -> Http.RequestHead -> Bool
 hasQueryFlag name request =
     any (\(key, _) -> key == name) (Http.requestQuery request)
-
--- | Whether a tree path names a Markdown document.
-isMarkdownPath :: String -> Bool
-isMarkdownPath path =
-    ".md" `List.isSuffixOf` path
-
--- | The non-empty @/@-separated segments of a tree path (the input to 'Static.resolveStaticPath').
-pathSegments :: String -> [String]
-pathSegments path =
-    filter (not . null) (splitOn '/' path)
 
 -- | The parent directory of a filesystem path (everything up to the last @/@), or @"."@ if none.
 parentDirectory :: FilePath -> FilePath
@@ -2165,20 +2129,20 @@ data PageChrome = PageChrome
 {- | Loads a page's chrome from its leading frontmatter block (the whole content
 serves too, when it is already in hand). A new page takes the seed title.
 -}
-pageChrome :: FilePath -> String -> Bool -> BS.ByteString -> IO PageChrome
-pageChrome root path isNew block = do
-    attachments <- loadPageAttachments root path
-    breadcrumbs <- breadcrumbsFor root path block
-    spine <- treeSpineFor root path
-    title <- documentPageTitle isNew path block
+pageChrome :: FilePath -> TreePath.TreePath -> Bool -> BS.ByteString -> IO PageChrome
+pageChrome root page isNew block = do
+    attachments <- loadPageAttachments root page
+    breadcrumbs <- breadcrumbsFor root page block
+    spine <- treeSpineFor root page
+    title <- documentPageTitle isNew (TreePath.render page) block
     pure (PageChrome attachments breadcrumbs spine title)
 
 {- | The editor shell halves around the document hole for a page: the request's
 editor mode, the versioning, editable and draft flags, and the page's chrome.
 -}
-shellFor :: String -> Http.RequestHead -> Bool -> Bool -> Bool -> PageChrome -> (Html.Html (), Html.Html ())
-shellFor path request versioned editable hasDraft chrome =
-    View.editorShell path (editorMode request) (chromeTitle chrome) versioned editable hasDraft (chromeAttachments chrome) (chromeBreadcrumbs chrome) (chromeSpine chrome)
+shellFor :: TreePath.TreePath -> Http.RequestHead -> Bool -> Bool -> Bool -> PageChrome -> (Html.Html (), Html.Html ())
+shellFor page request versioned editable hasDraft chrome =
+    View.editorShell (TreePath.render page) (editorMode request) (chromeTitle chrome) versioned editable hasDraft (chromeAttachments chrome) (chromeBreadcrumbs chrome) (chromeSpine chrome)
 
 {- | Whether a subprocess capture yielded nothing to serve: the command failed, or
 its stdout capture is missing or empty. @git show@ exits non-zero when the path did
@@ -2253,13 +2217,6 @@ formFieldsI cap = do
   where
     limits = Form.FormLimits{Form.maxFieldBytes = cap, Form.maxCollectedBytes = cap, Form.maxFields = cap + 1}
 
--- | Splits a string on a separator character, keeping empty segments.
-splitOn :: Char -> String -> [String]
-splitOn separator text =
-    case break (== separator) text of
-        (before, _ : after) -> before : splitOn separator after
-        (before, []) -> [before]
-
 {- | The browser-tab title for a document page: the page's frontmatter
 @name@, falling back to the humanised filename for an untitled page.
 -}
@@ -2278,13 +2235,3 @@ documentPageTitle isNew docId content
 seededMarkdown :: String
 seededMarkdown =
     "# Hello from MicroHttp\n\nEdit this Markdown document."
-
--- | Trims leading and trailing whitespace.
-trim :: String -> String
-trim =
-    reverse . trimStart . reverse . trimStart
-
--- | Drops leading whitespace.
-trimStart :: String -> String
-trimStart =
-    dropWhile Char.isSpace

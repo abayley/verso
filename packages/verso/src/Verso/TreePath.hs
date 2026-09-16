@@ -23,12 +23,15 @@ module Verso.TreePath (
     slug,
     parent,
     child,
+    append,
+    within,
     sectionIndex,
     metaDirectory,
     peerAssets,
     resolve,
     TrashId,
     parseTrashId,
+    trashIdForSeq,
     renderTrashId,
     trashEntryDir,
 ) where
@@ -101,6 +104,16 @@ child (TreePath segs) childName
     | Static.safeComponent childName = Just (TreePath (segs ++ [childName]))
     | otherwise = Nothing
 
+{- | A relative path (one or more segments, as a page body or a sidecar names an
+asset) parsed and appended, or 'Nothing' if any segment is unsafe.
+-}
+append :: TreePath -> String -> Maybe TreePath
+append (TreePath segs) relative = fmap (\(TreePath more) -> TreePath (segs ++ more)) (parse relative)
+
+-- | Whether the first path is the second or lies beneath it.
+within :: TreePath -> TreePath -> Bool
+within (TreePath segs) (TreePath ancestor) = ancestor `List.isPrefixOf` segs
+
 -- | A section's landing page, its @index.md@.
 sectionIndex :: TreePath -> TreePath
 sectionIndex (TreePath segs) = TreePath (segs ++ ["index.md"])
@@ -127,6 +140,10 @@ parseTrashId :: String -> Maybe TrashId
 parseTrashId raw
     | not (null raw) && all Char.isDigit raw = Just (TrashId raw)
     | otherwise = Nothing
+
+-- | The trash id a delete takes from its operation-log sequence number; 'Nothing' for a negative one.
+trashIdForSeq :: Int -> Maybe TrashId
+trashIdForSeq = parseTrashId . show
 
 -- | The entry name as a string.
 renderTrashId :: TrashId -> String

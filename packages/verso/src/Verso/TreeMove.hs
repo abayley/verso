@@ -1,3 +1,5 @@
+{-# LANGUAGE TupleSections #-}
+
 {- | In-server section move (RFC-0027, phase 2): relocate a section folder to a new
 parent and/or slug, preserving link integrity. The pure cores do the work --
 'DocumentLinks.planMoveRewrites' computes the link rewrites across the
@@ -10,6 +12,13 @@ returns the impact ('MovePlan') without writing; with 'True' it applies the move
 returns the same plan marked applied. A move is best-effort transactional: the
 rewrites are computed up front against the pre-move tree, then the directory is
 renamed and the rewritten pages and listings are written.
+
+Every tree path an operation takes is a validated 'TreePath.TreePath' and every
+trash entry a 'TreePath.TrashId' (RFC-0044), so the operations are total on
+paths: the handler parses once and answers for an unsafe one. The tree layout
+(parent, slug, section index, meta directory, peer assets, trash entry) is
+'Verso.TreePath'; the pure planners in 'Verso.DocumentLinks' and
+'Verso.DocumentListing' work on rendered paths, so this module renders at that seam.
 -}
 module Verso.TreeMove (
     RelevantQuery (..),
@@ -37,7 +46,6 @@ import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified MicroHttp.FileSystem as FileSystem
-import qualified MicroHttp.Static as Static
 import qualified MicroHttp.Stream as Stream
 import qualified MicroHttp.Utf8 as Utf8
 import qualified System.Directory as Directory
@@ -50,14 +58,15 @@ import qualified Verso.LinkIndexStore as LinkIndexStore
 import qualified Verso.LinkRewrite as LinkRewrite
 import qualified Verso.OperationLog as OperationLog
 import qualified Verso.Trash as Trash
+import qualified Verso.TreePath as TreePath
 
-{- | The impact of a section move: the source and destination tree paths, the tree
-paths (final locations) of the pages whose links change, and whether it was applied
-(or is a preview).
+{- | The impact of a move: the source and destination tree paths, the tree paths
+(final locations, rendered) of the pages whose links change, and whether it was
+applied (or is a preview).
 -}
 data MovePlan = MovePlan
-    { planFrom :: String
-    , planTo :: String
+    { planFrom :: TreePath.TreePath
+    , planTo :: TreePath.TreePath
     , planChanged :: [String]
     , planApplied :: Bool
     }
@@ -101,45 +110,39 @@ indexRelevant store root query = do
     candidates <- mapM readCandidate paths
     pure (Maybe.catMaybes candidates)
   where
-    readCandidate path = fmap (fmap (withPath path)) (linksRel root path)
+    readCandidate path = case TreePath.parse path of
+        Nothing -> pure Nothing
+        Just page -> fmap (fmap (withPath path)) (linksRel root page)
     withPath path links = (path, links)
 
 -- | The subtree-membership predicate for a region path (the path itself and its descendants).
 inRegion :: String -> String -> Bool
 inRegion prefix path = path == prefix || (prefix ++ "/") `List.isPrefixOf` path
 
-{- | Moves the section at @srcRel@ under @destParentRel@ with slug @slug@ (the
-source's own slug when @slug@ is empty), previewing when @confirm@ is 'False' and
-applying when 'True'. Returns 'Left' with a reason on refusal (the root, a cycle,
-an unsafe path, a missing destination parent, or a destination collision). @findRelevant@
+{- | Moves the section at @src@ under @destParent@ with slug @slug@ (the source's
+own slug when @slug@ is empty), previewing when @confirm@ is 'False' and applying
+when 'True'. Returns 'Left' with a reason on refusal (the root, a cycle, an unsafe
+slug, a missing destination parent, or a destination collision). @findRelevant@
 supplies the pages to rewrite ('scanRelevant' or 'indexRelevant').
 -}
-moveSection :: RelevantPages -> FilePath -> String -> String -> String -> Bool -> IO (Either String MovePlan)
-moveSection findRelevant root rawSrcRel rawDestParentRel rawSlug confirm
-    | null srcSegs = pure (Left "cannot move the root")
-    | otherwise =
-        case (Static.resolveStaticPath root srcSegs, Static.resolveStaticPath root newSegs, Static.resolveStaticPath root destParentSegs) of
-            (Nothing, _, _) -> pure (Left "unsafe source path")
-            (_, Nothing, _) -> pure (Left "unsafe destination slug")
-            (_, _, Nothing) -> pure (Left "unsafe destination path")
-            (Just srcFs, Just newFs, Just destParentFs)
-                | srcRel == newPrefix -> pure (Left "destination is the source")
-                | (srcRel ++ "/") `List.isPrefixOf` newPrefix -> pure (Left "cannot move a section into itself")
-                | otherwise -> withChecks srcFs newFs destParentFs
+moveSection :: RelevantPages -> FilePath -> TreePath.TreePath -> TreePath.TreePath -> String -> Bool -> IO (Either String MovePlan)
+moveSection findRelevant root src destParent rawSlug confirm
+    | TreePath.isRoot src = pure (Left "cannot move the root")
+    | otherwise = case TreePath.child destParent slug of
+        Nothing -> pure (Left "unsafe destination slug")
+        Just new
+            | new == src -> pure (Left "destination is the source")
+            | new `TreePath.within` src -> pure (Left "cannot move a section into itself")
+            | otherwise -> withChecks new
   where
-    -- Canonicalise the raw request paths (drop empty/doubled/edge slashes) so the
-    -- string cycle checks and the listing-match target align with resolved paths.
-    srcSegs = DocumentLinks.pathSegmentsOf rawSrcRel
-    destParentSegs = DocumentLinks.pathSegmentsOf rawDestParentRel
-    srcRel = List.intercalate "/" srcSegs
-    destParentRel = List.intercalate "/" destParentSegs
-    slug = if null rawSlug then last srcSegs else rawSlug
-    newPrefix = joinRel destParentRel slug
-    newSegs = DocumentLinks.pathSegmentsOf newPrefix
+    slug = if null rawSlug then TreePath.name src else rawSlug
+    srcRel = TreePath.render src
+    srcFs = TreePath.resolve root src
 
-    withChecks srcFs newFs destParentFs = do
+    withChecks new = do
+        let newFs = TreePath.resolve root new
         srcIsDir <- Directory.doesDirectoryExist srcFs
-        destParentIsDir <- Directory.doesDirectoryExist destParentFs
+        destParentIsDir <- Directory.doesDirectoryExist (TreePath.resolve root destParent)
         collidesDir <- Directory.doesDirectoryExist newFs
         collidesFile <- Directory.doesFileExist newFs
         if not srcIsDir
@@ -150,20 +153,19 @@ moveSection findRelevant root rawSrcRel rawDestParentRel rawSlug confirm
                     else
                         if collidesDir || collidesFile
                             then pure (Left "destination already exists")
-                            else runMove srcFs newFs
+                            else runMove new newFs
 
-    runMove srcFs newFs = do
-        pages <- findRelevant root (RelevantQuery (BS.pack (last srcSegs)) (Just srcRel) (inRegion srcRel))
-        let srcParentRel = parentRel srcRel
-            srcIndexRel = indexRel srcParentRel
-            destIndexRel = indexRel destParentRel
-            excluded = [srcIndexRel, destIndexRel]
+    runMove new newFs = do
+        let newPrefix = TreePath.render new
+        pages <- findRelevant root (RelevantQuery (BS.pack (TreePath.name src)) (Just srcRel) (inRegion srcRel))
+        let srcParent = TreePath.parent src
+            excluded = map (TreePath.render . TreePath.sectionIndex) [srcParent, destParent]
             rewritePages = [(p, ls) | (p, ls) <- pages, p `notElem` excluded]
             rewrites = DocumentLinks.planMoveRewrites (srcRel, newPrefix) rewritePages
             relocated p = Maybe.fromMaybe p (DocumentLinks.relocatePath srcRel newPrefix p)
             changed = map (relocated . fst) rewrites
         if not confirm
-            then pure (Right (MovePlan srcRel newPrefix changed False))
+            then pure (Right (MovePlan src new changed False))
             else do
                 outcome <- FileSystem.renamePath srcFs newFs
                 case outcome of
@@ -171,8 +173,8 @@ moveSection findRelevant root rawSrcRel rawDestParentRel rawSlug confirm
                     Right () -> do
                         -- Each page is rewritten at its post-rename location, streaming (RFC-0039).
                         failures <- rewriteEach [(relocated oldPath, DocumentLinks.moveLinkEdit (srcRel, newPrefix) oldPath) | (oldPath, _) <- rewrites]
-                        relocateListing root srcRel srcParentRel destParentRel newPrefix
-                        pure (if null failures then Right (MovePlan srcRel newPrefix changed True) else Left (unlines failures))
+                        relocateListing root src srcParent destParent new
+                        pure (if null failures then Right (MovePlan src new changed True) else Left (unlines failures))
     rewriteEach = fmap Maybe.catMaybes . mapM (uncurry (rewriteRel root))
 
 {- | Relocates a member's listing entry from the source parent's index.md to the
@@ -180,72 +182,63 @@ destination parent's, repointing its link from @oldTarget@ to @newTarget@. When 
 source had no entry, the synthesised fallback is used. Shared by section move (a grid
 card, @newTarget@ ending @/index.md@) and page move (a flat bullet).
 -}
-relocateEntry :: FilePath -> String -> String -> String -> String -> String -> IO ()
-relocateEntry root srcParentRel destParentRel oldTarget newTarget synth = do
-    srcText <- readRel root srcIndexRel
+relocateEntry :: FilePath -> TreePath.TreePath -> TreePath.TreePath -> String -> String -> String -> IO ()
+relocateEntry root srcParent destParent oldTarget newTarget synth = do
+    srcText <- readRel root srcIndex
     removed <- case srcText of
         Just t -> do
-            (t', r) <- DocumentListing.removeListingEntry srcParentRel oldTarget (Utf8.decodeBytes t)
-            writeRel root srcIndexRel (Utf8.encodeText t')
+            (t', r) <- DocumentListing.removeListingEntry (TreePath.render srcParent) oldTarget (Utf8.decodeBytes t)
+            writeRel root srcIndex (Utf8.encodeText t')
             pure r
         Nothing -> pure Nothing
     let entry = Maybe.fromMaybe synth removed
-    destBase <- fmap (maybe "" Utf8.decodeBytes) (readRel root destIndexRel)
-    added <- DocumentListing.addListingEntry destParentRel newTarget entry destBase
-    writeRel root destIndexRel (Utf8.encodeText added)
+    destBase <- fmap (maybe "" Utf8.decodeBytes) (readRel root destIndex)
+    added <- DocumentListing.addListingEntry (TreePath.render destParent) newTarget entry destBase
+    writeRel root destIndex (Utf8.encodeText added)
   where
-    srcIndexRel = indexRel srcParentRel
-    destIndexRel = indexRel destParentRel
+    srcIndex = TreePath.sectionIndex srcParent
+    destIndex = TreePath.sectionIndex destParent
 
 -- | Relocates the moved section's listing card (a grid card linking the section's index.md).
-relocateListing :: FilePath -> String -> String -> String -> String -> IO ()
-relocateListing root srcRel srcParentRel destParentRel newPrefix = do
-    title <- frontmatterNameOf newSectionIndexFs
+relocateListing :: FilePath -> TreePath.TreePath -> TreePath.TreePath -> TreePath.TreePath -> TreePath.TreePath -> IO ()
+relocateListing root src srcParent destParent new = do
+    title <- frontmatterNameOf (TreePath.resolve root (TreePath.sectionIndex new))
     relocateEntry
         root
-        srcParentRel
-        destParentRel
-        (srcRel ++ "/index.md")
-        (newPrefix ++ "/index.md")
-        ("- [" ++ title ++ "](./" ++ last (DocumentLinks.pathSegmentsOf newPrefix) ++ "/index.md)")
-  where
-    newSectionIndexFs = Maybe.fromMaybe "" (Static.resolveStaticPath root (DocumentLinks.pathSegmentsOf (newPrefix ++ "/index.md")))
+        srcParent
+        destParent
+        (TreePath.render (TreePath.sectionIndex src))
+        (TreePath.render (TreePath.sectionIndex new))
+        ("- [" ++ title ++ "](./" ++ TreePath.name new ++ "/index.md)")
 
-{- | Moves the page at @srcRel@ (a @.md@ tree path) under @destParentRel@ with slug
+{- | Moves the page at @src@ (a @.md@ tree path) under @destParent@ with slug
 @slug@ (the source's own base name when empty), previewing when @confirm@ is 'False'.
 A same-folder change is a rename; a cross-folder move additionally co-moves the
 sidecar meta directory and runs the asset shared/exclusive analysis (ADR-0062),
 relocating exclusive assets and copying shared ones. Refuses the root-of-page
-edge cases: an unsafe path, a missing source/destination parent, a destination
+edge cases: an unsafe slug, a missing source/destination parent, a destination
 collision, a no-op (destination is the source), or a destination asset name that
 already holds different content. @findRelevant@ supplies the pages to rewrite
 ('scanRelevant' or 'indexRelevant').
 -}
-movePage :: RelevantPages -> FilePath -> String -> String -> String -> Bool -> IO (Either String MovePlan)
-movePage findRelevant root rawSrcRel rawDestParentRel rawSlug confirm
-    | not (".md" `List.isSuffixOf` srcRel) = pure (Left "source is not a page")
-    | otherwise =
-        case (Static.resolveStaticPath root srcSegs, Static.resolveStaticPath root newSegs, Static.resolveStaticPath root destParentSegs) of
-            (Nothing, _, _) -> pure (Left "unsafe source path")
-            (_, Nothing, _) -> pure (Left "unsafe destination slug")
-            (_, _, Nothing) -> pure (Left "unsafe destination path")
-            (Just srcFs, Just newFs, Just destParentFs)
-                | srcRel == newPath -> pure (Left "destination is the source")
-                | otherwise -> withChecks srcFs newFs destParentFs
+movePage :: RelevantPages -> FilePath -> TreePath.TreePath -> TreePath.TreePath -> String -> Bool -> IO (Either String MovePlan)
+movePage findRelevant root src destParent rawSlug confirm
+    | TreePath.kind src /= TreePath.Page = pure (Left "source is not a page")
+    | otherwise = case TreePath.child destParent (slug ++ ".md") of
+        Nothing -> pure (Left "unsafe destination slug")
+        Just new
+            | new == src -> pure (Left "destination is the source")
+            | otherwise -> withChecks new
   where
-    srcSegs = DocumentLinks.pathSegmentsOf rawSrcRel
-    srcRel = List.intercalate "/" srcSegs
-    destParentSegs = DocumentLinks.pathSegmentsOf rawDestParentRel
-    destParentRel = List.intercalate "/" destParentSegs
-    base = dropDotMd (last srcSegs)
-    slug = if null rawSlug then base else rawSlug
-    newPath = joinRel destParentRel (slug ++ ".md")
-    newSegs = DocumentLinks.pathSegmentsOf newPath
-    srcDir = parentRel srcRel
+    slug = if null rawSlug then TreePath.slug src else rawSlug
+    srcRel = TreePath.render src
+    srcFs = TreePath.resolve root src
+    srcDir = TreePath.parent src
 
-    withChecks srcFs newFs destParentFs = do
+    withChecks new = do
+        let newFs = TreePath.resolve root new
         srcIsFile <- Directory.doesFileExist srcFs
-        destParentIsDir <- Directory.doesDirectoryExist destParentFs
+        destParentIsDir <- Directory.doesDirectoryExist (TreePath.resolve root destParent)
         collides <- Directory.doesFileExist newFs
         if not srcIsFile
             then pure (Left "source page not found")
@@ -255,19 +248,20 @@ movePage findRelevant root rawSrcRel rawDestParentRel rawSlug confirm
                     else
                         if collides
                             then pure (Left "destination already exists")
-                            else runPageMove srcFs newFs
+                            else runPageMove new newFs
 
-    runPageMove srcFs newFs = do
-        let crossFolder = srcDir /= destParentRel
-            srcParentIndexRel = indexRel srcDir
-            destParentIndexRel = indexRel destParentRel
-            excluded = [srcParentIndexRel, destParentIndexRel]
-        assets <- if crossFolder then classifyMovingAssets root srcRel srcDir else pure []
-        conflicts <- assetConflicts root srcDir destParentRel (map fst assets)
+    runPageMove new newFs = do
+        let newPath = TreePath.render new
+            crossFolder = srcDir /= destParent
+            excluded = map (TreePath.render . TreePath.sectionIndex) [srcDir, destParent]
+            srcAssets = TreePath.peerAssets src
+            destAssets = TreePath.peerAssets new
+        assets <- if crossFolder then classifyMovingAssets root src else pure []
+        conflicts <- assetConflicts root srcAssets destAssets (map fst assets)
         if not (null conflicts)
             then pure (Left ("destination asset already exists with different content: " ++ List.intercalate ", " conflicts))
             else do
-                pages <- findRelevant root (RelevantQuery (BS.pack (last (DocumentLinks.pathSegmentsOf srcRel))) (Just srcRel) (== srcRel))
+                pages <- findRelevant root (RelevantQuery (BS.pack (TreePath.name src)) (Just srcRel) (== srcRel))
                 let rewritePages = filter ((`notElem` excluded) . fst) pages
                     rewrites = DocumentLinks.planPageMove (srcRel, newPath) rewritePages
                     changed = map fst rewrites
@@ -275,7 +269,7 @@ movePage findRelevant root rawSrcRel rawDestParentRel rawSlug confirm
                         | p == newPath = DocumentLinks.pageMoveLinkEdit (srcRel, newPath)
                         | otherwise = DocumentLinks.moveLinkEdit (srcRel, newPath) p
                 if not confirm
-                    then pure (Right (MovePlan srcRel newPath changed False))
+                    then pure (Right (MovePlan src new changed False))
                     else do
                         -- Rename the .md first: it is the cheapest op and the only one
                         -- whose failure has no clean recovery, so on failure nothing
@@ -285,51 +279,42 @@ movePage findRelevant root rawSrcRel rawDestParentRel rawSlug confirm
                         case outcome of
                             Left e -> pure (Left ("rename failed (" ++ show e ++ ")"))
                             Right () -> do
-                                Monad.forM_ assets (relocateOrCopyAsset root srcDir destParentRel)
-                                relocateMeta root srcRel newPath
+                                Monad.forM_ assets (relocateOrCopyAsset root srcAssets destAssets)
+                                relocateMeta root src new
                                 failures <- fmap Maybe.catMaybes (mapM (\(p, _) -> rewriteRel root p (decisionFor p)) rewrites)
                                 title <- frontmatterNameOf newFs
-                                relocateEntry root srcDir destParentRel srcRel newPath ("- [" ++ title ++ "](./" ++ slug ++ ".md)")
-                                pure (if null failures then Right (MovePlan srcRel newPath changed True) else Left (unlines failures))
-
--- | Drops a trailing @.md@ from a filename.
-dropDotMd :: String -> String
-dropDotMd name
-    | ".md" `List.isSuffixOf` name = take (length name - length ".md") name
-    | otherwise = name
+                                relocateEntry root srcDir destParent srcRel newPath ("- [" ++ title ++ "](./" ++ slug ++ ".md)")
+                                pure (if null failures then Right (MovePlan src new changed True) else Left (unlines failures))
 
 -- | The shared/exclusive classification of the moving page's assets against its source-folder peers (ADR-0062).
-classifyMovingAssets :: FilePath -> String -> String -> IO [(String, DocumentLinks.AssetClass)]
-classifyMovingAssets root srcRel srcDir = do
-    movingLinks <- fmap (Maybe.fromMaybe []) (linksRel root srcRel)
-    movingSidecar <- sidecarAssetNames root srcRel
+classifyMovingAssets :: FilePath -> TreePath.TreePath -> IO [(String, DocumentLinks.AssetClass)]
+classifyMovingAssets root src = do
+    movingLinks <- fmap (Maybe.fromMaybe []) (linksRel root src)
+    movingSidecar <- sidecarAssetNames root src
     let movingAssets = List.nub (DocumentLinks.assetNamesIn movingLinks ++ movingSidecar)
-    peers <- siblingPages root srcDir srcRel
+    peers <- siblingPages root src
     peerRefs <- Monad.forM peers $ \peer -> do
         links <- fmap (Maybe.fromMaybe []) (linksRel root peer)
         sidecar <- sidecarAssetNames root peer
         pure (List.nub (DocumentLinks.assetNamesIn links ++ sidecar))
     pure (DocumentLinks.classifyAssets movingAssets peerRefs)
 
--- | The @.md@ pages directly in a folder (non-recursive), excluding the named page.
-siblingPages :: FilePath -> String -> String -> IO [String]
-siblingPages root dir self =
-    case Static.resolveStaticPath root (DocumentLinks.pathSegmentsOf dir) of
-        Nothing -> pure []
-        Just dirFs -> do
-            names <- Directory.listDirectory dirFs
-            pure [r | n <- names, ".md" `List.isSuffixOf` n, let r = joinRel dir n, r /= self]
+-- | The @.md@ pages directly beside a page (non-recursive), excluding the page itself.
+siblingPages :: FilePath -> TreePath.TreePath -> IO [TreePath.TreePath]
+siblingPages root self = do
+    names <- Directory.listDirectory (TreePath.resolve root dir)
+    pure [r | n <- names, ".md" `List.isSuffixOf` n, Just r <- [TreePath.child dir n], r /= self]
+  where
+    dir = TreePath.parent self
 
 -- | The asset basenames referenced by a page's sidecar @images.yaml@/@attachments.yaml@ (local_path entries).
-sidecarAssetNames :: FilePath -> String -> IO [String]
-sidecarAssetNames root pageRel =
-    case DocumentMeta.metaDirectoryFor root pageRel of
-        Nothing -> pure []
-        Just metaFs -> do
-            imgs <- readLocalPaths (metaFs ++ "/images.yaml")
-            atts <- readLocalPaths (metaFs ++ "/attachments.yaml")
-            pure (imgs ++ atts)
+sidecarAssetNames :: FilePath -> TreePath.TreePath -> IO [String]
+sidecarAssetNames root page = do
+    imgs <- readLocalPaths (metaFs ++ "/images.yaml")
+    atts <- readLocalPaths (metaFs ++ "/attachments.yaml")
+    pure (imgs ++ atts)
   where
+    metaFs = DocumentMeta.metaDirectoryFor root page
     readLocalPaths f = do
         exists <- Directory.doesFileExist f
         if exists then either (const []) reverse <$> Stream.foldFileTextLines (\acc line -> pure (reverse (localPathName line) ++ acc)) [] f else pure []
@@ -347,10 +332,10 @@ assetBasenameOf value = case dropWhile (== ".") (DocumentLinks.pathSegmentsOf va
     _ -> Nothing
 
 -- | Names whose destination @assets/@ file already holds content differing from the source asset.
-assetConflicts :: FilePath -> String -> String -> [String] -> IO [String]
-assetConflicts root srcDir destDir names =
+assetConflicts :: FilePath -> TreePath.TreePath -> TreePath.TreePath -> [String] -> IO [String]
+assetConflicts root srcAssets destAssets names =
     fmap concat $ Monad.forM names $ \name ->
-        case (assetFs root srcDir name, assetFs root destDir name) of
+        case (assetFs root srcAssets name, assetFs root destAssets name) of
             (Just sf, Just df) -> do
                 srcExists <- Directory.doesFileExist sf
                 destExists <- Directory.doesFileExist df
@@ -367,13 +352,14 @@ assetConflicts root srcDir destDir names =
 destination @assets/@; a name already present (identical, as conflicts are refused
 beforehand) is reused. Skips an absent source.
 -}
-relocateOrCopyAsset :: FilePath -> String -> String -> (String, DocumentLinks.AssetClass) -> IO ()
-relocateOrCopyAsset root srcDir destDir (name, cls) =
-    case (assetFs root srcDir name, assetFs root destDir name) of
-        (Just sf, Just df) -> do
+relocateOrCopyAsset :: FilePath -> TreePath.TreePath -> TreePath.TreePath -> (String, DocumentLinks.AssetClass) -> IO ()
+relocateOrCopyAsset root srcAssets destAssets (name, cls) =
+    case (assetFs root srcAssets name, TreePath.append destAssets name) of
+        (Just sf, Just dest) -> do
+            let df = TreePath.resolve root dest
             srcExists <- Directory.doesFileExist sf
             Monad.when srcExists $ do
-                Directory.createDirectoryIfMissing True (parentDir df)
+                Directory.createDirectoryIfMissing True (TreePath.resolve root (TreePath.parent dest))
                 destExists <- Directory.doesFileExist df
                 if destExists
                     then pure ()
@@ -381,28 +367,23 @@ relocateOrCopyAsset root srcDir destDir (name, cls) =
                         DocumentLinks.ExclusiveAsset -> Monad.void (FileSystem.renamePath sf df)
                         DocumentLinks.SharedAsset -> Monad.void (Stream.copyFile sf df)
         _ -> pure ()
-  where
-    parentDir = reverse . drop 1 . dropWhile (/= '/') . reverse
 
--- | The filesystem path of a folder's @assets/<name>@, or 'Nothing' for an unsafe path.
-assetFs :: FilePath -> String -> String -> Maybe FilePath
-assetFs root dir name = Static.resolveStaticPath root (DocumentLinks.pathSegmentsOf (joinRel dir ("assets/" ++ name)))
+-- | The filesystem path of @<name>@ under an assets folder, or 'Nothing' for an unsafe name.
+assetFs :: FilePath -> TreePath.TreePath -> String -> Maybe FilePath
+assetFs root assets name = fmap (TreePath.resolve root) (TreePath.append assets name)
 
 -- | Co-moves a page's sidecar meta directory to follow the moved page (within or across folders).
-relocateMeta :: FilePath -> String -> String -> IO ()
-relocateMeta root srcRel newRel =
-    case (DocumentMeta.metaDirectoryFor root srcRel, DocumentMeta.metaDirectoryFor root newRel) of
-        (Just srcMeta, Just destMeta) -> do
-            srcExists <- Directory.doesDirectoryExist srcMeta
-            destExists <- Directory.doesDirectoryExist destMeta
-            -- Never clobber an existing destination meta dir (an orphan edge); only
-            -- co-move when the source has one and the destination is free.
-            Monad.when (srcExists && not destExists) $ do
-                Directory.createDirectoryIfMissing True (parentDir destMeta)
-                Monad.void (FileSystem.renamePath srcMeta destMeta)
-        _ -> pure ()
-  where
-    parentDir = reverse . drop 1 . dropWhile (/= '/') . reverse
+relocateMeta :: FilePath -> TreePath.TreePath -> TreePath.TreePath -> IO ()
+relocateMeta root src new = do
+    let srcMeta = DocumentMeta.metaDirectoryFor root src
+        destMeta = DocumentMeta.metaDirectoryFor root new
+    srcExists <- Directory.doesDirectoryExist srcMeta
+    destExists <- Directory.doesDirectoryExist destMeta
+    -- Never clobber an existing destination meta dir (an orphan edge); only
+    -- co-move when the source has one and the destination is free.
+    Monad.when (srcExists && not destExists) $ do
+        Directory.createDirectoryIfMissing True (TreePath.resolve root (TreePath.parent (TreePath.metaDirectory new)))
+        Monad.void (FileSystem.renamePath srcMeta destMeta)
 
 -- | The outcome of a delete: the target was moved to trash, or refused because other pages still link in.
 data DeleteOutcome
@@ -410,7 +391,7 @@ data DeleteOutcome
     | Refused {refReferrers :: [(String, String)]}
     deriving (Eq, Show)
 
-{- | Deletes the page or section at @relPath@ (RFC-0027 phase 4 + RFC-0028 trash).
+{- | Deletes the page or section at @target@ (RFC-0027 phase 4 + RFC-0028 trash).
 The target's parent index.md listing entry is not counted as a referrer (it is
 removed as part of the delete); if any /other/ page still links to the target (for a
 section, any page outside the subtree links into it) the delete is 'Refused' with the
@@ -420,82 +401,79 @@ into the trash entry @trashId@ with a provenance manifest (ADR-0065), the listin
 entry removed, and 'Deleted' returned for the caller to log. @findRelevant@ supplies the
 pages scanned for referrers ('scanRelevant' or 'indexRelevant').
 -}
-deleteTarget :: RelevantPages -> FilePath -> FilePath -> String -> String -> Int -> IO (Either String DeleteOutcome)
-deleteTarget findRelevant root trashRoot relPathRaw trashId seqNo
-    | null segs = pure (Left "cannot delete the root")
-    | otherwise = case Static.resolveStaticPath root segs of
-        Nothing -> pure (Left "unsafe path")
-        Just fs -> do
-            exists <- if isPage then Directory.doesFileExist fs else Directory.doesDirectoryExist fs
-            if not exists
-                then pure (Left "not found")
-                else do
-                    -- The referrer scan needs the region's pages (to exclude subtree-internal
-                    -- links) and everything linking into it. The index returns exactly that
-                    -- candidate set; the scan byte-prefilters on the target's name (only files
-                    -- whose raw bytes mention it can link to it) -- either way far less than the
-                    -- whole corpus, the difference between sub-second and ~90s on a large tree.
-                    let region = if isPage then (== relPath) else inRegion relPath
-                    pages <- findRelevant root (RelevantQuery (BS.pack (last segs)) Nothing region)
-                    if isPage
-                        then
-                            let referrers = DocumentLinks.referrersMatching (== relPath) [parentIndexRel, relPath] pages
-                             in if not (null referrers)
-                                    then pure (Right (Refused referrers))
-                                    else applyPageDelete root trashRoot relPath parent parentIndexRel trashId seqNo
-                        else
-                            let inSub t = t == relPath || ((relPath ++ "/") `List.isPrefixOf` t)
-                                subtreePaths = [p | (p, _) <- pages, inSub p]
-                                referrers = DocumentLinks.referrersMatching inSub (parentIndexRel : subtreePaths) pages
-                             in if not (null referrers)
-                                    then pure (Right (Refused referrers))
-                                    else applySectionDelete root trashRoot relPath parent parentIndexRel trashId seqNo
+deleteTarget :: RelevantPages -> FilePath -> FilePath -> TreePath.TreePath -> TreePath.TrashId -> Int -> IO (Either String DeleteOutcome)
+deleteTarget findRelevant root trashRoot target trashId seqNo
+    | TreePath.isRoot target = pure (Left "cannot delete the root")
+    | otherwise = do
+        exists <- if isPage then Directory.doesFileExist fs else Directory.doesDirectoryExist fs
+        if not exists
+            then pure (Left "not found")
+            else do
+                -- The referrer scan needs the region's pages (to exclude subtree-internal
+                -- links) and everything linking into it. The index returns exactly that
+                -- candidate set; the scan byte-prefilters on the target's name (only files
+                -- whose raw bytes mention it can link to it) -- either way far less than the
+                -- whole corpus, the difference between sub-second and ~90s on a large tree.
+                let region = if isPage then (== relPath) else inRegion relPath
+                pages <- findRelevant root (RelevantQuery (BS.pack (TreePath.name target)) Nothing region)
+                if isPage
+                    then
+                        let referrers = DocumentLinks.referrersMatching (== relPath) [parentIndexRel, relPath] pages
+                         in if not (null referrers)
+                                then pure (Right (Refused referrers))
+                                else applyPageDelete root trashRoot target trashId seqNo
+                    else
+                        let inSub t = t == relPath || ((relPath ++ "/") `List.isPrefixOf` t)
+                            subtreePaths = [p | (p, _) <- pages, inSub p]
+                            referrers = DocumentLinks.referrersMatching inSub (parentIndexRel : subtreePaths) pages
+                         in if not (null referrers)
+                                then pure (Right (Refused referrers))
+                                else applySectionDelete root trashRoot target trashId seqNo
   where
-    segs = DocumentLinks.pathSegmentsOf relPathRaw
-    relPath = List.intercalate "/" segs
-    isPage = ".md" `List.isSuffixOf` relPath
-    parent = parentRel relPath
-    parentIndexRel = indexRel parent
+    fs = TreePath.resolve root target
+    relPath = TreePath.render target
+    isPage = TreePath.kind target == TreePath.Page
+    parentIndexRel = TreePath.render (TreePath.sectionIndex (TreePath.parent target))
 
 -- | Moves a page (its .md, sidecar meta dir, exclusive assets) to trash, removes its listing bullet, writes the manifest.
-applyPageDelete :: FilePath -> FilePath -> String -> String -> String -> String -> Int -> IO (Either String DeleteOutcome)
-applyPageDelete root trashRoot relPath parent parentIndexRel trashId seqNo = do
-    let entryDir = trashRoot ++ "/" ++ trashId
-        base = last (DocumentLinks.pathSegmentsOf relPath)
-        metaRel = joinRel parent ("meta/" ++ dropDotMd base ++ ".meta")
+applyPageDelete :: FilePath -> FilePath -> TreePath.TreePath -> TreePath.TrashId -> Int -> IO (Either String DeleteOutcome)
+applyPageDelete root trashRoot page trashId seqNo = do
+    let entryDir = TreePath.trashEntryDir trashRoot trashId
+        relPath = TreePath.render page
     Directory.createDirectoryIfMissing True entryDir
-    assetClasses <- classifyMovingAssets root relPath parent
+    assetClasses <- classifyMovingAssets root page
     let exclusives = [name | (name, DocumentLinks.ExclusiveAsset) <- assetClasses]
-    mdItem <- moveIntoTrash root entryDir "page.md" relPath False
-    metaItem <- moveDirIntoTrash root entryDir "meta" metaRel
+    mdItem <- moveIntoTrash root entryDir "page.md" page False
+    metaItem <- moveDirIntoTrash root entryDir "meta" (TreePath.metaDirectory page)
     assetItems <-
         Monad.zipWithM
-            (\i name -> moveIntoTrash root entryDir ("asset-" ++ show i) (joinRel parent ("assets/" ++ name)) False)
+            (\i name -> maybe (pure Nothing) (\asset -> moveIntoTrash root entryDir ("asset-" ++ show i) asset False) (TreePath.append (TreePath.peerAssets page) name))
             [(0 :: Int) ..]
             exclusives
-    removed <- removeParentListing root parentIndexRel parent relPath
+    removed <- removeParentListing root (TreePath.parent page) relPath
     let items = Maybe.catMaybes (mdItem : metaItem : assetItems)
     writeManifest entryDir (Trash.Manifest relPath "page" seqNo removed items)
-    pure (Right (Deleted trashId relPath "page"))
+    pure (Right (Deleted (TreePath.renderTrashId trashId) relPath "page"))
 
 -- | Moves a whole section folder to trash, removes its listing card, writes the manifest.
-applySectionDelete :: FilePath -> FilePath -> String -> String -> String -> String -> Int -> IO (Either String DeleteOutcome)
-applySectionDelete root trashRoot relPath parent parentIndexRel trashId seqNo = do
-    let entryDir = trashRoot ++ "/" ++ trashId
+applySectionDelete :: FilePath -> FilePath -> TreePath.TreePath -> TreePath.TrashId -> Int -> IO (Either String DeleteOutcome)
+applySectionDelete root trashRoot section trashId seqNo = do
+    let entryDir = TreePath.trashEntryDir trashRoot trashId
+        relPath = TreePath.render section
     Directory.createDirectoryIfMissing True entryDir
-    removed <- removeParentListing root parentIndexRel parent (relPath ++ "/index.md")
-    payloadItem <- moveIntoTrash root entryDir "payload" relPath True
+    removed <- removeParentListing root (TreePath.parent section) (TreePath.render (TreePath.sectionIndex section))
+    payloadItem <- moveIntoTrash root entryDir "payload" section True
     writeManifest entryDir (Trash.Manifest relPath "section" seqNo removed (Maybe.catMaybes [payloadItem]))
-    pure (Right (Deleted trashId relPath "section"))
+    pure (Right (Deleted (TreePath.renderTrashId trashId) relPath "section"))
 
 {- | Restores a trash entry to its provenance path (RFC-0028), re-adding the parent
 listing entry. Refuses if the original location is now occupied (prompting a new
 location, like a move collision). Returns the restored @(path, kind)@ for the caller
 to log a @restore@ operation.
 -}
-restoreFromTrash :: FilePath -> FilePath -> String -> IO (Either String (String, String))
+restoreFromTrash :: FilePath -> FilePath -> TreePath.TrashId -> IO (Either String (TreePath.TreePath, String))
 restoreFromTrash root trashRoot trashId = do
-    let entryDir = trashRoot ++ "/" ++ trashId
+    let entryDir = TreePath.trashEntryDir trashRoot trashId
         manifestFile = entryDir ++ "/manifest"
     hasManifest <- Directory.doesFileExist manifestFile
     -- (the manifest read below streams the file; the existence check keeps the "not found" reply distinct)
@@ -503,91 +481,87 @@ restoreFromTrash root trashRoot trashId = do
         then pure (Left "trash entry not found")
         else do
             parsed <- Trash.readManifest entryDir
-            case parsed of
+            case parsed >>= withOrigin of
                 Nothing -> pure (Left "corrupt trash manifest")
-                Just manifest -> do
-                    occupied <- targetOccupied root (Trash.manPath manifest) (Trash.manKind manifest)
+                Just (manifest, origin) -> do
+                    occupied <- targetOccupied root origin (Trash.manKind manifest)
                     if occupied
                         then pure (Left "original location is occupied")
                         else do
                             Monad.forM_ (Trash.manItems manifest) (restoreItem root entryDir)
-                            reAddListing root manifest
+                            reAddListing root origin manifest
                             Monad.void (FileSystem.removeFilePath manifestFile)
                             Monad.void (FileSystem.removeEmptyDir entryDir)
-                            pure (Right (Trash.manPath manifest, Trash.manKind manifest))
+                            pure (Right (origin, Trash.manKind manifest))
+  where
+    withOrigin manifest = fmap (manifest,) (TreePath.parse (Trash.manPath manifest))
 
 -- | Moves one tree path into a trash entry under the given stored name (best-effort), yielding its manifest item.
-moveIntoTrash :: FilePath -> FilePath -> String -> String -> Bool -> IO (Maybe Trash.TrashItem)
-moveIntoTrash root entryDir stored originRel isDir =
-    case Static.resolveStaticPath root (DocumentLinks.pathSegmentsOf originRel) of
-        Nothing -> pure Nothing
-        Just srcFs -> do
-            outcome <- FileSystem.renamePath srcFs (entryDir ++ "/" ++ stored)
-            pure
-                ( either
-                    (const Nothing)
-                    (const (Just (Trash.TrashItem stored isDir originRel)))
-                    outcome
-                )
+moveIntoTrash :: FilePath -> FilePath -> String -> TreePath.TreePath -> Bool -> IO (Maybe Trash.TrashItem)
+moveIntoTrash root entryDir stored origin isDir = do
+    outcome <- FileSystem.renamePath (TreePath.resolve root origin) (entryDir ++ "/" ++ stored)
+    pure
+        ( either
+            (const Nothing)
+            (const (Just (Trash.TrashItem stored isDir (TreePath.render origin))))
+            outcome
+        )
 
 -- | As 'moveIntoTrash' for a directory that may be absent (a page with no sidecar meta dir).
-moveDirIntoTrash :: FilePath -> FilePath -> String -> String -> IO (Maybe Trash.TrashItem)
-moveDirIntoTrash root entryDir stored originRel =
-    case Static.resolveStaticPath root (DocumentLinks.pathSegmentsOf originRel) of
-        Nothing -> pure Nothing
-        Just srcFs -> do
-            exists <- Directory.doesDirectoryExist srcFs
-            if not exists then pure Nothing else moveIntoTrash root entryDir stored originRel True
+moveDirIntoTrash :: FilePath -> FilePath -> String -> TreePath.TreePath -> IO (Maybe Trash.TrashItem)
+moveDirIntoTrash root entryDir stored origin = do
+    exists <- Directory.doesDirectoryExist (TreePath.resolve root origin)
+    if not exists then pure Nothing else moveIntoTrash root entryDir stored origin True
 
--- | Moves one trashed item back to its origin tree path (creating parent directories).
+-- | Moves one trashed item back to its origin tree path (creating parent directories); an item whose origin does not parse is left in the entry.
 restoreItem :: FilePath -> FilePath -> Trash.TrashItem -> IO ()
 restoreItem root entryDir item =
-    case Static.resolveStaticPath root (DocumentLinks.pathSegmentsOf (Trash.itemOrigin item)) of
+    case TreePath.parse (Trash.itemOrigin item) of
         Nothing -> pure ()
-        Just destFs -> do
-            Directory.createDirectoryIfMissing True (parentDir destFs)
-            Monad.void (FileSystem.renamePath (entryDir ++ "/" ++ Trash.itemStored item) destFs)
-  where
-    parentDir = reverse . drop 1 . dropWhile (/= '/') . reverse
+        Just dest -> do
+            Directory.createDirectoryIfMissing True (TreePath.resolve root (TreePath.parent dest))
+            Monad.void (FileSystem.renamePath (entryDir ++ "/" ++ Trash.itemStored item) (TreePath.resolve root dest))
 
 -- | Removes a target's entry from its parent index.md listing, returning the removed line.
-removeParentListing :: FilePath -> String -> String -> String -> IO (Maybe String)
-removeParentListing root parentIndexRel parent target = do
-    txt <- readRel root parentIndexRel
+removeParentListing :: FilePath -> TreePath.TreePath -> String -> IO (Maybe String)
+removeParentListing root parent target = do
+    txt <- readRel root parentIndex
     case txt of
         Just t -> do
-            (t', removed) <- DocumentListing.removeListingEntry parent target (Utf8.decodeBytes t)
-            writeRel root parentIndexRel (Utf8.encodeText t')
+            (t', removed) <- DocumentListing.removeListingEntry (TreePath.render parent) target (Utf8.decodeBytes t)
+            writeRel root parentIndex (Utf8.encodeText t')
             pure removed
         Nothing -> pure Nothing
+  where
+    parentIndex = TreePath.sectionIndex parent
 
 -- | Re-adds a restored item's listing entry to its parent index.md (the preserved line, or nothing when absent).
-reAddListing :: FilePath -> Trash.Manifest -> IO ()
-reAddListing root manifest =
+reAddListing :: FilePath -> TreePath.TreePath -> Trash.Manifest -> IO ()
+reAddListing root origin manifest =
     case Trash.manListing manifest of
         Nothing -> pure ()
         Just entry -> do
-            base <- fmap (maybe "" Utf8.decodeBytes) (readRel root parentIndexRel)
-            added <- DocumentListing.addListingEntry parent target entry base
-            writeRel root parentIndexRel (Utf8.encodeText added)
+            base <- fmap (maybe "" Utf8.decodeBytes) (readRel root parentIndex)
+            added <- DocumentListing.addListingEntry (TreePath.render parent) target entry base
+            writeRel root parentIndex (Utf8.encodeText added)
   where
-    parent = parentRel (Trash.manPath manifest)
-    parentIndexRel = indexRel parent
-    target = if Trash.manKind manifest == "section" then Trash.manPath manifest ++ "/index.md" else Trash.manPath manifest
+    parent = TreePath.parent origin
+    parentIndex = TreePath.sectionIndex parent
+    target = TreePath.render (if Trash.manKind manifest == "section" then TreePath.sectionIndex origin else origin)
 
 -- | Whether a tree path is currently occupied (a page's file, a section's directory).
-targetOccupied :: FilePath -> String -> String -> IO Bool
+targetOccupied :: FilePath -> TreePath.TreePath -> String -> IO Bool
 targetOccupied root path kind =
-    case Static.resolveStaticPath root (DocumentLinks.pathSegmentsOf path) of
-        Nothing -> pure True
-        Just fs -> if kind == "section" then Directory.doesDirectoryExist fs else Directory.doesFileExist fs
+    if kind == "section" then Directory.doesDirectoryExist fs else Directory.doesFileExist fs
+  where
+    fs = TreePath.resolve root path
 
 -- | Writes a trash entry's provenance manifest.
 writeManifest :: FilePath -> Trash.Manifest -> IO ()
 writeManifest = Trash.writeManifest
 
 {- | Lists the trash entries (RFC-0028) as @(id, originalPath, kind)@, newest-id last,
-reading each entry's manifest. Entries without a readable manifest are skipped.
+reading each entry's manifest. Entries without a valid id or a readable manifest are skipped.
 -}
 listTrash :: FilePath -> IO [(String, String, String)]
 listTrash trashRoot = do
@@ -595,35 +569,31 @@ listTrash trashRoot = do
     if not exists
         then pure []
         else do
-            ids <- Directory.listDirectory trashRoot
-            entries <- mapM entryFor ids
+            names <- Directory.listDirectory trashRoot
+            entries <- mapM entryFor (Maybe.mapMaybe TreePath.parseTrashId names)
             pure (Maybe.catMaybes entries)
   where
-    entryFor entryId = do
-        let manifestFile = trashRoot ++ "/" ++ entryId ++ "/manifest"
-        hasManifest <- Directory.doesFileExist manifestFile
+    entryFor trashId = do
+        let entryDir = TreePath.trashEntryDir trashRoot trashId
+        hasManifest <- Directory.doesFileExist (entryDir ++ "/manifest")
         if not hasManifest
             then pure Nothing
             else do
-                parsed <- Trash.readManifest (trashRoot ++ "/" ++ entryId)
-                pure (fmap (\m -> (entryId, Trash.manPath m, Trash.manKind m)) parsed)
+                parsed <- Trash.readManifest entryDir
+                pure (fmap (\m -> (TreePath.renderTrashId trashId, Trash.manPath m, Trash.manKind m)) parsed)
 
 {- | Permanently removes a trash entry (its directory and everything stored in
-it). The id must be a plain all-digit entry name -- anything path-like is
-refused, so a crafted id can never escape the trash root. Returns whether the
-entry existed.
+it). Returns whether the entry existed.
 -}
-deleteTrashEntry :: FilePath -> String -> IO Bool
-deleteTrashEntry trashRoot trashId
-    | null trashId || not (all Char.isDigit trashId) = pure False
-    | otherwise = do
-        let entryDir = trashRoot ++ "/" ++ trashId
-        exists <- Directory.doesDirectoryExist entryDir
-        if not exists
-            then pure False
-            else do
-                removeTree entryDir
-                pure True
+deleteTrashEntry :: FilePath -> TreePath.TrashId -> IO Bool
+deleteTrashEntry trashRoot trashId = do
+    let entryDir = TreePath.trashEntryDir trashRoot trashId
+    exists <- Directory.doesDirectoryExist entryDir
+    if not exists
+        then pure False
+        else do
+            removeTree entryDir
+            pure True
 
 -- | Recursively removes a directory tree (MicroHs's System.Directory has no removeDirectoryRecursive).
 removeTree :: FilePath -> IO ()
@@ -654,9 +624,10 @@ data ReplayEntry = ReplayEntry
 {- | Replays the operation log onto a (refreshed, original-layout) corpus in @seq@
 order (RFC-0028 phase 4), each operation going through the same move/delete/restore
 machinery. Best-effort: an operation whose precondition no longer holds (source
-missing, destination occupied, now-referenced) is skipped and recorded, and replay
-continues. A delete reuses the operation's recorded trash id so a later restore in
-the log finds the entry; replay does not append to the log.
+missing, destination occupied, now-referenced, a path or trash id that does not
+parse) is skipped and recorded, and replay continues. A delete reuses the
+operation's recorded trash id so a later restore in the log finds the entry;
+replay does not append to the log.
 -}
 replayLog :: FilePath -> FilePath -> [OperationLog.Operation] -> IO [ReplayEntry]
 replayLog root trashRoot = mapM replayOne
@@ -668,35 +639,38 @@ replayLog root trashRoot = mapM replayOne
 -- | Applies one operation during replay, returning @applied@ or @skipped: <reason>@.
 applyReplayOp :: FilePath -> FilePath -> OperationLog.Operation -> IO String
 applyReplayOp root trashRoot op = case OperationLog.opType op of
-    OperationLog.OpMove -> do
-        let from = Maybe.fromMaybe "" (OperationLog.opFrom op)
-            to = Maybe.fromMaybe "" (OperationLog.opTo op)
-            move = if OperationLog.opKind op == "page" then movePage else moveSection
-        -- replay-tool is a separate process with no warm index, so it uses the scan (ADR-0066).
-        result <- move scanRelevant root from (parentRel to) (slugOfPath (OperationLog.opKind op) to) True
-        pure (movePlanStatus result)
-    OperationLog.OpDelete -> do
-        let from = Maybe.fromMaybe "" (OperationLog.opFrom op)
-            trashId = Maybe.fromMaybe (show (OperationLog.opSeq op)) (OperationLog.opTrash op)
-        result <- deleteTarget scanRelevant root trashRoot from trashId (OperationLog.opSeq op)
-        pure $ case result of
-            Left err -> "skipped: " ++ err
-            Right (Refused _) -> "skipped: referenced"
-            Right Deleted{} -> "applied"
-    OperationLog.OpRestore -> do
-        result <- restoreFromTrash root trashRoot (Maybe.fromMaybe "" (OperationLog.opTrash op))
-        pure (either ("skipped: " ++) (const "applied") result)
+    OperationLog.OpMove ->
+        case (TreePath.parse from, TreePath.parse to) of
+            (Just src, Just dest) -> do
+                let move = if OperationLog.opKind op == "page" then movePage else moveSection
+                -- replay-tool is a separate process with no warm index, so it uses the scan (ADR-0066).
+                result <- move scanRelevant root src (TreePath.parent dest) (TreePath.slug dest) True
+                pure (movePlanStatus result)
+            _ -> pure unsafePath
+    OperationLog.OpDelete ->
+        case (TreePath.parse from, TreePath.parseTrashId (Maybe.fromMaybe (show (OperationLog.opSeq op)) (OperationLog.opTrash op))) of
+            (Just target, Just trashId) -> do
+                result <- deleteTarget scanRelevant root trashRoot target trashId (OperationLog.opSeq op)
+                pure $ case result of
+                    Left err -> "skipped: " ++ err
+                    Right (Refused _) -> "skipped: referenced"
+                    Right Deleted{} -> "applied"
+            _ -> pure unsafePath
+    OperationLog.OpRestore ->
+        case TreePath.parseTrashId (Maybe.fromMaybe "" (OperationLog.opTrash op)) of
+            Just trashId -> do
+                result <- restoreFromTrash root trashRoot trashId
+                pure (either ("skipped: " ++) (const "applied") result)
+            Nothing -> pure unsafePath
+  where
+    from = Maybe.fromMaybe "" (OperationLog.opFrom op)
+    to = Maybe.fromMaybe "" (OperationLog.opTo op)
+    unsafePath = "skipped: unsafe path or trash id"
 
 -- | The status word for a move result during replay.
 movePlanStatus :: Either String MovePlan -> String
 movePlanStatus (Left err) = "skipped: " ++ err
 movePlanStatus (Right plan) = if planApplied plan then "applied" else "skipped: not applied"
-
--- | The destination slug to move a path to: a page's basename without @.md@, a section's last segment.
-slugOfPath :: String -> String -> String
-slugOfPath kind path = case DocumentLinks.pathSegmentsOf path of
-    [] -> ""
-    segs -> if kind == "page" then dropDotMd (last segs) else last segs
 
 -- | The wire word for an operation type.
 typeWord :: OperationLog.OpType -> String
@@ -728,110 +702,85 @@ byte pre-filter never drops a real referrer (false positives only cost a parse),
 link's path always contains the slug/filename of what it points at.
 -}
 enumerateRelevant :: FilePath -> BS.ByteString -> Maybe String -> IO [(String, [DocumentLinks.Link])]
-enumerateRelevant root hint subtreePrefix = walk ""
+enumerateRelevant root hint subtreePrefix = walk TreePath.root
   where
     inSubtree path = case subtreePrefix of
         Nothing -> False
         Just prefix -> path == prefix || (prefix ++ "/") `List.isPrefixOf` path
-    walk rel = do
-        let dirFs = Maybe.fromMaybe root (Static.resolveStaticPath root (DocumentLinks.pathSegmentsOf rel))
-        names <- Directory.listDirectory dirFs
-        fmap concat (mapM (collect rel dirFs) names)
-    collect rel dirFs name
+    walk dir = do
+        names <- Directory.listDirectory (TreePath.resolve root dir)
+        fmap concat (mapM (collect dir) names)
+    collect dir name
         | isDot name = pure []
-        | otherwise = do
-            let childRel = joinRel rel name
-                childFs = dirFs ++ "/" ++ name
-            isDir <- Directory.doesDirectoryExist childFs
-            if isDir
-                then if name == "assets" || name == "meta" then pure [] else walk childRel
-                else
-                    if ".md" `List.isSuffixOf` name
-                        then do
-                            -- RFC-0040 phase 6: the page is never read whole. The hint pre-filter is a
-                            -- streamed substring scan (Stream.fileContains, block plus overlap), and a
-                            -- relevant page's links come from the streamed scanner that linksRel uses.
-                            mentioned <-
-                                if inSubtree childRel
-                                    then pure True
-                                    else do
-                                        contained <- Stream.fileContains hint childFs
-                                        pure (contained == Right True)
-                            if mentioned
-                                then do
-                                    links <- fmap (Maybe.fromMaybe []) (LinkIndexStore.scanPageLinks childFs)
-                                    length links `seq` pure [(childRel, links)]
-                                else pure []
-                        else pure []
+        | otherwise = case TreePath.child dir name of
+            Nothing -> pure []
+            Just child -> do
+                let childRel = TreePath.render child
+                    childFs = TreePath.resolve root child
+                isDir <- Directory.doesDirectoryExist childFs
+                if isDir
+                    then if name == "assets" || name == "meta" then pure [] else walk child
+                    else
+                        if ".md" `List.isSuffixOf` name
+                            then do
+                                -- RFC-0040 phase 6: the page is never read whole. The hint pre-filter is a
+                                -- streamed substring scan (Stream.fileContains, block plus overlap), and a
+                                -- relevant page's links come from the streamed scanner that linksRel uses.
+                                mentioned <-
+                                    if inSubtree childRel
+                                        then pure True
+                                        else do
+                                            contained <- Stream.fileContains hint childFs
+                                            pure (contained == Right True)
+                                if mentioned
+                                    then do
+                                        links <- fmap (Maybe.fromMaybe []) (LinkIndexStore.scanPageLinks childFs)
+                                        length links `seq` pure [(childRel, links)]
+                                    else pure []
+                            else pure []
     isDot ('.' : _) = True
     isDot _ = False
 
--- | A tree-relative page's links, scanned as a stream; 'Nothing' when it is absent or its path is unsafe.
-linksRel :: FilePath -> String -> IO (Maybe [DocumentLinks.Link])
-linksRel root rel =
-    case Static.resolveStaticPath root (DocumentLinks.pathSegmentsOf rel) of
-        Nothing -> pure Nothing
-        Just fs -> LinkIndexStore.scanPageLinks fs
+-- | A page's links, scanned as a stream; 'Nothing' when it is absent.
+linksRel :: FilePath -> TreePath.TreePath -> IO (Maybe [DocumentLinks.Link])
+linksRel root page = LinkIndexStore.scanPageLinks (TreePath.resolve root page)
 
-{- | Rewrites a tree-relative page's links in place per the decision, streaming with a
-temp-then-rename write; 'Just' a reason on failure, and an unsafe path is skipped.
+{- | Rewrites a planned page's links in place per the decision, streaming with a
+temp-then-rename write; 'Just' a reason on failure. The path comes from the planner
+as a rendered path; one that does not parse is skipped.
 -}
 rewriteRel :: FilePath -> String -> (DocumentLinks.Link -> Maybe String) -> IO (Maybe String)
 rewriteRel root rel decide =
-    case Static.resolveStaticPath root (DocumentLinks.pathSegmentsOf rel) of
+    case TreePath.parse rel of
         Nothing -> pure Nothing
-        Just fs -> do
-            outcome <- LinkRewrite.rewriteFileLinks decide fs
+        Just page -> do
+            outcome <- LinkRewrite.rewriteFileLinks decide (TreePath.resolve root page)
             pure (either (\reason -> Just ("rewrite of " ++ rel ++ " failed: " ++ reason)) (const Nothing) outcome)
 
--- | Reads a tree-relative file as bytes, or 'Nothing' when it is absent or its path is unsafe.
-readRel :: FilePath -> String -> IO (Maybe BS.ByteString)
-readRel root rel =
-    case Static.resolveStaticPath root (DocumentLinks.pathSegmentsOf rel) of
-        Nothing -> pure Nothing
-        Just fs -> do
-            exists <- Directory.doesFileExist fs
-            if exists then fmap Just (BS.readFile fs) else pure Nothing -- whole-file: index.md, bounded by formBodyLimit
+-- | Reads a tree file as bytes, or 'Nothing' when it is absent.
+readRel :: FilePath -> TreePath.TreePath -> IO (Maybe BS.ByteString)
+readRel root path = do
+    let fs = TreePath.resolve root path
+    exists <- Directory.doesFileExist fs
+    if exists then fmap Just (BS.readFile fs) else pure Nothing -- whole-file: index.md, bounded by formBodyLimit
 
--- | Writes a tree-relative file's bytes (creating parent directories), ignoring an unsafe path.
-writeRel :: FilePath -> String -> BS.ByteString -> IO ()
-writeRel root rel content =
-    case Static.resolveStaticPath root (DocumentLinks.pathSegmentsOf rel) of
-        Nothing -> pure ()
-        Just fs -> do
-            Directory.createDirectoryIfMissing True (parentDir fs)
-            BS.writeFile fs content
-  where
-    parentDir = reverse . drop 1 . dropWhile (/= '/') . reverse
+-- | Writes a tree file's bytes (creating parent directories).
+writeRel :: FilePath -> TreePath.TreePath -> BS.ByteString -> IO ()
+writeRel root path content = do
+    Directory.createDirectoryIfMissing True (TreePath.resolve root (TreePath.parent path))
+    BS.writeFile (TreePath.resolve root path) content
 
 -- | The frontmatter @name@ of an index.md (for a synthesised listing entry), or a fallback.
 frontmatterNameOf :: FilePath -> IO String
 frontmatterNameOf fs = fmap (Maybe.fromMaybe "Untitled" . Frontmatter.titleOf) (Frontmatter.readBlock fs)
 
--- | The parent tree path of a tree path (its segments minus the last; @""@ at the root).
-parentRel :: String -> String
-parentRel rel = List.intercalate "/" (initOrEmpty (DocumentLinks.pathSegmentsOf rel))
-  where
-    initOrEmpty [] = []
-    initOrEmpty xs = init xs
-
--- | The index.md tree path of a folder path (@index.md@ at the root).
-indexRel :: String -> String
-indexRel "" = "index.md"
-indexRel r = r ++ "/index.md"
-
--- | Joins a parent tree path and a child segment (the segment alone at the root).
-joinRel :: String -> String -> String
-joinRel "" s = s
-joinRel p s = p ++ "/" ++ s
-
 -- | A move plan as JSON @{"from","to","changed":[...],"applied":bool}@.
 movePlanJson :: MovePlan -> String
 movePlanJson plan =
     "{\"from\":"
-        ++ jsonStr (planFrom plan)
+        ++ jsonStr (TreePath.render (planFrom plan))
         ++ ",\"to\":"
-        ++ jsonStr (planTo plan)
+        ++ jsonStr (TreePath.render (planTo plan))
         ++ ",\"changed\":["
         ++ List.intercalate "," (map jsonStr (planChanged plan))
         ++ "],\"applied\":"

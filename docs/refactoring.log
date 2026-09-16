@@ -32,3 +32,7 @@
 2026-09-13 14:41:36  packages/verso/src/Verso/View.hs:diffScanStep:341: Motivation: sideBySide parsed the whole diff String; a line-at-a-time scan producing HTML row bytes lets the diff stream without holding the whole String or the whole rendered table (RFC-0040 phase 9).. Substitute Algorithm.
 2026-09-13 14:41:36  packages/verso/src/Verso/App.hs:treeDiff:1750: Motivation: treeDiff unpacked the whole diff to String and rendered it whole; now captures the diff, streams its lines into HTML rows, and serves a StreamBody.. Substitute Algorithm.
 2026-09-16 13:56:24  packages/verso/src/Verso/TreePath.hs:splitOnSlash:141: Duplicated Code. Deferred: DocumentMeta and DocumentLinks keep their own segment splitters until RFC-0044 phases 2-4 route them through TreePath.
+2026-09-16 14:16:33  packages/verso/src/Verso/TreeMove.hs:moveSection:128: Primitive Obsession. Replace Primitive with Object.
+2026-09-16 14:16:33  packages/verso/src/Verso/TreeMove.hs:parentRel:812: Duplicated Code. Extract Function.
+2026-09-16 14:16:33  packages/verso/src/Verso/App.hs:createTreeNode:1400: Motivation: A slug that was not a safe segment fell back to the parent path instead of refusing. Replace Nested Conditional with Guard Clauses.
+2026-09-16 14:16:33  packages/verso/src/Verso/App.hs:lastSegment:1240: Lazy Element. Deferred: still needed by the search title callback, which receives a rendered String path.

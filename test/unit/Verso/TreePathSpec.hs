@@ -60,6 +60,17 @@ spec =
                 TreePath.child (path "a") "b/c" `shouldBe` Nothing
             it "given an empty name, when a child is made, then it is refused" $
                 TreePath.child (path "a") "" `shouldBe` Nothing
+        describe "append and within" $ do
+            it "given a page's peer assets folder and a nested asset name, when appended, then the asset path is under it" $
+                fmap TreePath.render (TreePath.append (path "a/assets") "sub/x.png") `shouldBe` Just "a/assets/sub/x.png"
+            it "given a relative path that climbs out, when appended, then it is refused" $
+                TreePath.append (path "a") "../b" `shouldBe` Nothing
+            it "given a section and a page inside it, when asked, then the page is within the section" $
+                TreePath.within (path "a/b/c.md") (path "a/b") `shouldBe` True
+            it "given a section and itself, when asked, then it is within itself" $
+                TreePath.within (path "a") (path "a") `shouldBe` True
+            it "given two siblings, when asked, then neither is within the other" $
+                TreePath.within (path "a/b") (path "a/c") `shouldBe` False
         describe "layout" $ do
             it "given the root, when its section index is taken, then it is index.md" $
                 TreePath.render (TreePath.sectionIndex TreePath.root) `shouldBe` "index.md"
@@ -87,5 +98,9 @@ spec =
                 TreePath.parseTrashId "../x" `shouldBe` Nothing
             it "given an id with letters, when parsed, then it is refused" $
                 TreePath.parseTrashId "7a" `shouldBe` Nothing
+            it "given an operation-log sequence number, when made a trash id, then it is that number" $
+                fmap TreePath.renderTrashId (TreePath.trashIdForSeq 12) `shouldBe` Just "12"
+            it "given a negative sequence number, when made a trash id, then it is refused" $
+                TreePath.trashIdForSeq (-1) `shouldBe` Nothing
             it "given a trash id, when its entry directory is derived, then it sits under the trash root" $
                 fmap (TreePath.trashEntryDir "trash") (TreePath.parseTrashId "42") `shouldBe` Just "trash/42"

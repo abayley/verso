@@ -8,8 +8,7 @@ A draft mirrors the page's tree-relative path under the draft root
 a direct path. Because the staging root is outside the tree, drafts are never
 served, never walked by the link index, and never appear in git status.
 
-Callers pass an already-validated tree-relative path (the tree handlers validate
-via 'MicroHttp.Static.resolveStaticPath' before staging), so this module performs
+The page is named by its validated 'TreePath.TreePath', so this module performs
 no path-safety checks of its own -- the same contract as 'MicroHttp.FileSystem'.
 -}
 module Verso.Draft (
@@ -22,29 +21,25 @@ module Verso.Draft (
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified System.Directory as Directory
+import qualified Verso.TreePath as TreePath
 
 -- | The filesystem path of a page's draft: the tree-relative path under the draft root.
-draftFsPath :: FilePath -> String -> FilePath
-draftFsPath draftRoot treePath = draftRoot ++ "/" ++ treePath
+draftFsPath :: FilePath -> TreePath.TreePath -> FilePath
+draftFsPath = TreePath.resolve
 
 -- | Writes (creating or overwriting) a page's draft, creating parent directories as needed.
-writeDraft :: FilePath -> String -> BS.ByteString -> IO ()
-writeDraft draftRoot treePath content = do
-    let path = draftFsPath draftRoot treePath
-    Directory.createDirectoryIfMissing True (parentDir path)
-    BS.writeFile path content
+writeDraft :: FilePath -> TreePath.TreePath -> BS.ByteString -> IO ()
+writeDraft draftRoot page content = do
+    Directory.createDirectoryIfMissing True (draftFsPath draftRoot (TreePath.parent page))
+    BS.writeFile (draftFsPath draftRoot page) content
 
 -- | Whether a draft is currently staged for the page.
-hasDraft :: FilePath -> String -> IO Bool
-hasDraft draftRoot treePath = Directory.doesFileExist (draftFsPath draftRoot treePath)
+hasDraft :: FilePath -> TreePath.TreePath -> IO Bool
+hasDraft draftRoot page = Directory.doesFileExist (draftFsPath draftRoot page)
 
 -- | Removes a page's draft if present (a no-op when there is none), e.g. after publishing or discarding.
-deleteDraft :: FilePath -> String -> IO ()
-deleteDraft draftRoot treePath = do
-    let path = draftFsPath draftRoot treePath
+deleteDraft :: FilePath -> TreePath.TreePath -> IO ()
+deleteDraft draftRoot page = do
+    let path = draftFsPath draftRoot page
     exists <- Directory.doesFileExist path
     Monad.when exists (Directory.removeFile path)
-
--- | The parent directory of a path (everything up to and including the last @/@).
-parentDir :: FilePath -> FilePath
-parentDir = reverse . dropWhile (/= '/') . reverse

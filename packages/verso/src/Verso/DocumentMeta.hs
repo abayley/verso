@@ -31,9 +31,9 @@ import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
 import qualified Data.List as List
 import qualified Data.Maybe as Maybe
-import qualified MicroHttp.Static as Static
 import qualified MicroHttp.Utf8 as Utf8
 import qualified System.Directory as Directory
+import qualified Verso.TreePath as TreePath
 
 -- | An attachment record as written for a new upload: the legacy @id@/@path@ are omitted (ADR-0049).
 data AttachmentEntry = AttachmentEntry
@@ -46,16 +46,13 @@ data AttachmentEntry = AttachmentEntry
     }
     deriving (Eq, Show)
 
-{- | The meta directory of a tree document, or 'Nothing' if the document path is
-unsafe. For @\<dir>/\<base>.md@ it is @\<dir>/meta/\<base>.meta@ (an @index.md@
-page yields @\<dir>/meta/index.meta@). The path is validated as a tree-relative
-file via 'Static.resolveStaticPath' (ADR-0030), so traversal is rejected.
+{- | The filesystem path of a page's meta directory under the tree root: for
+@\<dir>/\<base>.md@ it is @\<dir>/meta/\<base>.meta@ (an @index.md@ page yields
+@\<dir>/meta/index.meta@). The layout is 'TreePath.metaDirectory'; the path is
+already validated, so this is total.
 -}
-metaDirectoryFor :: FilePath -> String -> Maybe FilePath
-metaDirectoryFor root path =
-    fmap metaDir (Static.resolveStaticPath root (pathSegments path))
-  where
-    metaDir fsPath = dirName fsPath ++ "/meta/" ++ dropMarkdownExtension (fileName fsPath) ++ ".meta"
+metaDirectoryFor :: FilePath -> TreePath.TreePath -> FilePath
+metaDirectoryFor root page = TreePath.resolve root (TreePath.metaDirectory page)
 
 -- | A new attachment entry block (one YAML list item), ending in a newline.
 renderAttachmentEntry :: AttachmentEntry -> String
@@ -279,16 +276,6 @@ trim = trimEnd . dropWhile Char.isSpace
   where
     trimEnd = reverse . dropWhile Char.isSpace . reverse
 
--- | The non-empty @/@-separated segments of a tree path.
-pathSegments :: String -> [String]
-pathSegments path = filter (not . null) (splitOnSlash path)
-
--- | Split a string on @/@, keeping empty segments.
-splitOnSlash :: String -> [String]
-splitOnSlash s = case break (== '/') s of
-    (a, []) -> [a]
-    (a, _ : rest) -> a : splitOnSlash rest
-
 -- | The final path segment (filename).
 fileName :: FilePath -> String
 fileName = reverse . takeWhile (/= '/') . reverse
@@ -298,7 +285,3 @@ dirName :: FilePath -> FilePath
 dirName p = case break (== '/') (reverse p) of
     (_, '/' : rest) -> reverse rest
     (_, _) -> "."
-
--- | Drop a trailing @.md@ extension from a filename, if present.
-dropMarkdownExtension :: String -> String
-dropMarkdownExtension name = if ".md" `List.isSuffixOf` name then take (length name - 3) name else name

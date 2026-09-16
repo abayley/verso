@@ -5,6 +5,7 @@ import qualified MicroHttp.FileSystem as FileSystem
 import qualified System.Directory as Directory
 import Test.Hspec
 import qualified Verso.DocumentMeta as DocumentMeta
+import qualified Verso.TreePath as TreePath
 
 -- | A meta directory under build/, cleaned per IO test by removing its two list files.
 ioDir :: FilePath
@@ -20,6 +21,12 @@ cleanMeta = do
     cleanFile (ioDir ++ "/attachments.yaml")
     cleanFile (ioDir ++ "/images.yaml")
 
+-- | Parses a page path the spec knows to be valid.
+page :: String -> TreePath.TreePath
+page raw = case TreePath.parse raw of
+    Just p -> p
+    Nothing -> error ("DocumentMetaSpec: fixture path does not parse: " ++ raw)
+
 sampleAttachment :: DocumentMeta.AttachmentEntry
 sampleAttachment =
     DocumentMeta.AttachmentEntry
@@ -33,19 +40,16 @@ spec =
     describe "Verso.DocumentMeta" $ do
         describe "metaDirectoryFor" $ do
             it "given a nested page, when its meta directory is derived, then it sits beside the page" $
-                DocumentMeta.metaDirectoryFor "root" "tenants/anzco/overview.md"
-                    `shouldBe` Just "root/tenants/anzco/meta/overview.meta"
+                DocumentMeta.metaDirectoryFor "root" (page "tenants/anzco/overview.md")
+                    `shouldBe` "root/tenants/anzco/meta/overview.meta"
 
             it "given a section index page, when its meta directory is derived, then it sits beside the section" $
-                DocumentMeta.metaDirectoryFor "root" "engineering/index.md"
-                    `shouldBe` Just "root/engineering/meta/index.meta"
+                DocumentMeta.metaDirectoryFor "root" (page "engineering/index.md")
+                    `shouldBe` "root/engineering/meta/index.meta"
 
             it "given a top-level page, when its meta directory is derived, then it sits at the root" $
-                DocumentMeta.metaDirectoryFor "root" "index.md"
-                    `shouldBe` Just "root/meta/index.meta"
-
-            it "given a path escaping the root, when its meta directory is derived, then nothing is returned" $
-                DocumentMeta.metaDirectoryFor "root" "../secret.md" `shouldBe` Nothing
+                DocumentMeta.metaDirectoryFor "root" (page "index.md")
+                    `shouldBe` "root/meta/index.meta"
 
         describe "renderAttachmentEntry" $ do
             it "given an attachment, when rendered, then name, local_path, extension and external are emitted and id and path omitted" $

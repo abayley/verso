@@ -149,9 +149,12 @@ contract for stale operations.
 ## Reliability Impact
 
 - Behaviour-preserving refactor protected by the existing unit and integration suites.
-- `TreeMove` loses three refusal messages ("unsafe source path", "unsafe destination slug", "unsafe
-  destination path"); the handler answers `404` for an unparseable path, as it already does before
-  reaching `TreeMove`. The destination slug is validated through `TreePath.child`, refused as before.
+- `TreeMove` loses two refusal messages ("unsafe source path", "unsafe destination path"); the move
+  handler answers `409 unsafe path` for an unparseable source or destination, the same status the
+  refusal carried. A destination slug is now one segment (`TreePath.child`): a slug containing `/`,
+  which the old string join silently nested, is refused as "unsafe destination slug".
+- The undo and replay paths parse the operation log's recorded paths and trash ids; a record that
+  does not parse is refused (undo, `409`) or skipped (replay), where before it reached the filesystem.
 
 ## Compatibility Impact
 
@@ -172,33 +175,33 @@ Test-first; each phase is committed when green.
 
 ### Phase 1: The Module
 
-- [ ] `Static.safeComponent` exported and unit tested directly.
-- [ ] `TreePathSpec`: parse and render round-trip; canonicalisation of `/a//b/`; the root; rejection of
+- [x] `Static.safeComponent` exported and unit tested directly.
+- [x] `TreePathSpec`: parse and render round-trip; canonicalisation of `/a//b/`; the root; rejection of
   `.`, `..`, backslash and NUL segments; `kind`; `parent`; `name` and `slug`; `child` and its refusal;
   `sectionIndex`; `metaDirectory`; `peerAssets`; `resolve`; `parseTrashId` and `trashEntryDir`.
-- [ ] `Verso.TreePath` passes them. Registered in `test/unit/Main.hs`.
+- [x] `Verso.TreePath` passes them. Registered in `test/unit/Main.hs`.
 
 ### Phase 2: DocumentMeta And Draft
 
-- [ ] `DocumentMeta.metaDirectoryFor :: FilePath -> TreePath -> FilePath`; its private segment helpers
+- [x] `DocumentMeta.metaDirectoryFor :: FilePath -> TreePath -> FilePath`; its private segment helpers
   deleted; spec updated.
-- [ ] `Draft` takes a `TreePath`; its `parentDir` deleted; spec updated.
-- [ ] Callers in `App` and `TreeMove` parse at their edge.
+- [x] `Draft` takes a `TreePath`; its `parentDir` deleted; spec updated.
+- [x] Callers in `App` and `TreeMove` parse at their edge.
 
 ### Phase 3: TreeMove
 
-- [ ] `moveSection`, `movePage`, `deleteTarget`, `restoreFromTrash`, `listTrash`, `deleteTrashEntry`,
+- [x] `moveSection`, `movePage`, `deleteTarget`, `restoreFromTrash`, `listTrash`, `deleteTrashEntry`,
   `replayLog` take `TreePath` and `TrashId`.
-- [ ] `parentRel`, `indexRel`, `joinRel`, `dropDotMd`, `slugOfPath`, the four `parentDir` copies, and the
+- [x] `parentRel`, `indexRel`, `joinRel`, `dropDotMd`, `slugOfPath`, the four `parentDir` copies, and the
   `resolveStaticPath`/`trashRoot ++` sites replaced.
-- [ ] `TreeMoveSpec` updated; the removed "unsafe" refusal cases become `parse` cases in `TreePathSpec`.
+- [x] `TreeMoveSpec` updated; the removed "unsafe" refusal cases become `parse` cases in `TreePathSpec`.
 
 ### Phase 4: App
 
-- [ ] Every handler parses its capture once; the 17 `resolveStaticPath` sites, `pathSegments`,
+- [x] Every handler parses its capture once; the 17 `resolveStaticPath` sites, `pathSegments`,
   `parentOfRel`, `isMarkdownPath`, `joinRel`, `slugForPath`, `lastSegment`, `splitOn` and the duplicate
   trimmers replaced or deleted.
-- [ ] `assetsDirectoryFor` becomes `TreePath.peerAssets`.
+- [x] `assetsDirectoryFor` becomes `TreePath.peerAssets`.
 
 ### Phase 5: Records
 

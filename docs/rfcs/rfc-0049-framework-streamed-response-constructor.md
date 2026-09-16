@@ -1,7 +1,7 @@
 ---
 id: RFC-0049
 name: Framework Streamed-Response Constructor
-status: Draft
+status: In Progress
 owners:
     - alistair
 created: 2026-09-17
@@ -21,7 +21,7 @@ design_contract_rfcs:
 | Stage     | Timestamp  |
 | --------- | ---------- |
 | Authored  | 2026-09-17 |
-| Started   |            |
+| Started   | 2026-09-17 |
 | Completed |            |
 
 ## Summary
@@ -71,11 +71,10 @@ phase checklist.
 
 ## Non-Goals
 
-- The chunked diff body (`Verso.App.diffStreamBody`) and the in-memory seed page
-  (`documentBytesResponse`). The diff streams a bespoke row-scanning transform, not the block transform
-  this constructor takes, and the seed page is a small in-memory value; both stay as they are and remain
-  ordinary `StreamBody`/`SizedStreamBody` values that `mapBody` still handles for egress. A chunked
-  file-response variant is deferred until a caller needs it (YAGNI).
+- The chunked diff body (`Verso.App.diffStreamBody`). It streams a bespoke row-scanning transform, not
+  the block transform these constructors take, so it stays as it is and remains an ordinary `StreamBody`
+  that `mapBody` still handles for egress. A chunked file-response variant is deferred until a caller
+  needs it (YAGNI).
 - Changing the `sendfile` path or the `FileBody` zero-copy send. This RFC only records how the carried
   `FileBody` size is used (below); it does not change it.
 - Folding `StrictBody`/`FileBody` construction (the framework's `Router`/`Static`/`Middleware` 404 and
@@ -117,6 +116,12 @@ transformedFileResponse
 transformedTempFileResponse
     :: Status -> Headers -> BS.ByteString -> BlockTransform -> FilePath -> BS.ByteString
     -> IO (Either Stream.StreamError Response)
+
+-- The in-memory sibling for a document that is not a file (the new-page seed): the content is
+-- transformed once in memory and emitted as a sized stream. No file, so no Left.
+transformedBytesResponse
+    :: Status -> Headers -> BS.ByteString -> (BS.ByteString -> IO BS.ByteString) -> BS.ByteString -> BS.ByteString
+    -> IO Response
 ```
 
 The constructor runs `Stream.foldFileBlocks (btBlockSize t) (\n b -> (n +) <$> btLength t b) 0 path`
@@ -130,8 +135,9 @@ bytes an in-memory sink receives.
 
 `Verso.App` keeps only what is document-specific. `documentFileResponse` and `documentTempFileResponse`
 become calls passing `BlockTransform docBlockBytes Html.escapeBlockBytes Html.escapedLength` and the
-document's shell bytes, mapping a `Left` to `treeNotFound`. `documentStreamedResponse`, the local count
-pass and its `onException` cleanup leave `App`.
+document's shell bytes, mapping a `Left` to `treeNotFound`; `documentBytesResponse` becomes a call to
+`transformedBytesResponse` with `Html.escapeBlockBytes`, so every document response is built through the
+framework. `documentStreamedResponse`, the local count pass and its `onException` cleanup leave `App`.
 
 ### One Place Walks The Taxonomy
 
@@ -215,8 +221,8 @@ Test-first; committed when green.
    equals the bytes written; a missing file is a `Left`; the temp variant removes the file on failure.
 2. `Http.BlockTransform`, `transformedFileResponse`, `transformedTempFileResponse` implemented over
    `Stream.foldFileBlocks`/`transformedFileBody`.
-3. `Verso.App`'s `documentFileResponse`/`documentTempFileResponse` call them; `documentStreamedResponse`
-   and its count pass are deleted.
+3. `Verso.App`'s `documentFileResponse`/`documentTempFileResponse`/`documentBytesResponse` call the
+   constructors; `documentStreamedResponse` and its count pass are deleted.
 
 ### Phase 2: One Taxonomy Walk
 
@@ -230,7 +236,5 @@ Test-first; committed when green.
 
 ## Open Questions
 
-- Should the in-memory seed page (`documentBytesResponse`) also route through the constructor for
-  uniformity, or stay a direct `SizedStreamBody` over a strict enumerator? The proposal leaves it,
-  because it is not file-backed and the constructor is about the file count; a reviewer may prefer one
-  builder for every document response.
+- Resolved at acceptance: the in-memory seed page (`documentBytesResponse`) routes through a sibling
+  `transformedBytesResponse`, so every document response is built through the framework (uniformity).

@@ -22,7 +22,6 @@ module Verso.App (
 import qualified Concordance.Embedding as Embedding
 import qualified Concordance.Store as Store
 import qualified Control.Concurrent.MVar as MVar
-import qualified Control.Exception as Exception
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
@@ -1700,7 +1699,8 @@ The document is never held whole. A file that will not open (it vanished between
 the existence check and here) is a @404@.
 -}
 documentFileResponse :: Html.Html () -> Html.Html () -> FilePath -> IO Http.Response
-documentFileResponse = documentStreamedResponse Stream.transformedFileBody (pure ())
+documentFileResponse beforeHtml afterHtml fsPath =
+    orNotFound <$> Http.transformedFileResponse Http.okStatus documentHtmlHeaders (documentShellBytes beforeHtml) documentEscaper fsPath (documentSuffixBytes afterHtml)
 
 {- | As 'documentFileResponse', but for a temporary capture served once (a
 document at a git revision, RFC-0040): the streaming pass removes the file when
@@ -1709,44 +1709,29 @@ still owns any sibling capture (e.g. the stderr file) and removes that itself.
 -}
 documentTempFileResponse :: Html.Html () -> Html.Html () -> FilePath -> IO Http.Response
 documentTempFileResponse beforeHtml afterHtml tmpPath =
-    documentStreamedResponse Stream.transformedTempFileBody (Monad.void (FileSystem.removeFilePath tmpPath)) beforeHtml afterHtml tmpPath
-
-{- | Shared core of the streamed document responses: count the escaped document
-length over the file, then build a sized stream whose body is @before@, the
-document escaped block by block through @producer@, then @after@. @onMissing@
-runs when the file cannot be read for the count (it cleans up a temp capture).
--}
-documentStreamedResponse ::
-    (Int -> BS.ByteString -> (BS.ByteString -> IO BS.ByteString) -> FilePath -> BS.ByteString -> Iteratee.Enumerator Stream.StreamError ()) ->
-    IO () ->
-    Html.Html () ->
-    Html.Html () ->
-    FilePath ->
-    IO Http.Response
-documentStreamedResponse producer onMissing beforeHtml afterHtml fsPath = do
-    -- the count runs before the body owns the file, so a throw here cleans up as a missing file would
-    counted <- Exception.onException (Stream.foldFileBlocks docBlockBytes addEscapedLength 0 fsPath) onMissing
-    case counted of
-        Left _ -> onMissing >> pure treeNotFound
-        Right docLen ->
-            let total = BS.length before + docLen + BS.length after
-                body = producer docBlockBytes before Html.escapeBlockBytes fsPath after
-             in pure (Http.Response Http.okStatus documentHtmlHeaders (Http.SizedStreamBody total body))
-  where
-    before = documentShellBytes beforeHtml
-    after = BS.concat (Html.renderChunksRaw afterHtml)
-    addEscapedLength n block = (n +) <$> Html.escapedLength block
+    orNotFound <$> Http.transformedTempFileResponse Http.okStatus documentHtmlHeaders (documentShellBytes beforeHtml) documentEscaper tmpPath (documentSuffixBytes afterHtml)
 
 {- | A document page whose content is already in memory -- the new-page seed, the
 one document that is not a file -- escaped once and emitted as a sized stream, so
-its response takes the same shape as a page streamed from disk (RFC-0040). Every
-other page (published, drafted, or captured from git) streams from its file.
+its response takes the same shape as a page streamed from disk (RFC-0040, RFC-0049).
+Every other page (published, drafted, or captured from git) streams from its file.
 -}
 documentBytesResponse :: Html.Html () -> Html.Html () -> BS.ByteString -> IO Http.Response
-documentBytesResponse beforeHtml afterHtml content = do
-    escaped <- Html.escapeBlockBytes content
-    let body = BS.concat [documentShellBytes beforeHtml, escaped, BS.concat (Html.renderChunksRaw afterHtml)]
-    pure (Http.Response Http.okStatus documentHtmlHeaders (Http.SizedStreamBody (BS.length body) (Iteratee.strictEnumerator body)))
+documentBytesResponse beforeHtml afterHtml content =
+    Http.transformedBytesResponse Http.okStatus documentHtmlHeaders (documentShellBytes beforeHtml) Html.escapeBlockBytes content (documentSuffixBytes afterHtml)
+
+-- | The document block transform: the HTML escaper and its matching escaped-length, block by block (RFC-0049).
+documentEscaper :: Http.BlockTransform
+documentEscaper = Http.BlockTransform docBlockBytes Html.escapeBlockBytes Html.escapedLength
+
+-- | The @after@ shell bytes (the suffix a document streams after its content).
+documentSuffixBytes :: Html.Html () -> BS.ByteString
+documentSuffixBytes afterHtml = BS.concat (Html.renderChunksRaw afterHtml)
+
+-- | Maps a framework streamed-response failure (the file vanished before the count) to a @404@.
+orNotFound :: Either Stream.StreamError Http.Response -> Http.Response
+orNotFound (Right response) = response
+orNotFound (Left _) = treeNotFound
 
 {- | The chrome the editor shell carries around a page besides the document itself:
 its attachments, breadcrumbs, tree spine and browser-tab title.

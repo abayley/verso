@@ -40,11 +40,18 @@ module MicroHttp.Http (
     serialiseHead,
     serialiseSizedHead,
     writeResponse,
+    BlockTransform (..),
+    transformedFileResponse,
+    transformedTempFileResponse,
+    transformedBytesResponse,
 ) where
 
+import qualified Control.Exception as Exception
+import qualified Control.Monad as Monad
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
 import qualified Data.Char as Char
+import qualified MicroHttp.FileSystem as FileSystem
 import MicroHttp.Http.Parse (ParseError (..), ParseLimits (..), defaultParseLimits)
 import qualified MicroHttp.Http.Parse as Parse
 import qualified MicroHttp.Iteratee as Iteratee
@@ -449,6 +456,70 @@ writeResponse sink response =
                 Left err -> return (Left err)
                 Right () -> enumerator (Iteratee.byteSinkI (sinkChunk sink)) >>= Iteratee.run
         FileBody path _ -> sinkFile sink response path
+
+{- | The per-block operation of a sized streamed body (RFC-0049): the block size, the
+transform applied to each block of the file, and the byte length that transform
+produces -- computed cheaply, without allocating the transformed bytes, so the
+count pass that sizes the response stays constant-space. The caller supplies both,
+and the contract is @btLength b == fmap BS.length (btApply b)@; the response's
+@Content-Length@ is summed from @btLength@ and the body streams @btApply@.
+-}
+data BlockTransform = BlockTransform
+    { btBlockSize :: Int
+    , btApply :: BS.ByteString -> IO BS.ByteString
+    , btLength :: BS.ByteString -> IO Int
+    }
+
+{- | Builds a sized streamed response (RFC-0049): the @prefix@ bytes, the file at
+@path@ streamed block by block through the transform, then the @suffix@ bytes,
+behind an exact @Content-Length@ summed from the prefix and suffix lengths and the
+transform's per-block length (a first pass counts it without holding the file). A
+'Left' is returned when the file cannot be read for the count (it vanished), so the
+caller answers a 404; the head is never written for a 'Left'.
+-}
+transformedFileResponse :: Status -> Headers -> BS.ByteString -> BlockTransform -> FilePath -> BS.ByteString -> IO (Either Stream.StreamError Response)
+transformedFileResponse = sizedFileResponse Stream.transformedFileBody (const (pure ()))
+
+{- | As 'transformedFileResponse' for a temporary capture served once: the streaming
+body removes the file when it finishes or the consumer stops, and a count failure
+removes it before the 'Left'.
+-}
+transformedTempFileResponse :: Status -> Headers -> BS.ByteString -> BlockTransform -> FilePath -> BS.ByteString -> IO (Either Stream.StreamError Response)
+transformedTempFileResponse = sizedFileResponse Stream.transformedTempFileBody (Monad.void . FileSystem.removeFilePath)
+
+-- | Shared core of the two file constructors: count under a cleanup, then build the sized body from the given producer.
+sizedFileResponse ::
+    (Int -> BS.ByteString -> (BS.ByteString -> IO BS.ByteString) -> FilePath -> BS.ByteString -> Iteratee.Enumerator Stream.StreamError ()) ->
+    (FilePath -> IO ()) ->
+    Status ->
+    Headers ->
+    BS.ByteString ->
+    BlockTransform ->
+    FilePath ->
+    BS.ByteString ->
+    IO (Either Stream.StreamError Response)
+sizedFileResponse producer onMissing status headers prefix transform path suffix = do
+    -- the count runs before the body owns the file, so a throw here cleans up as a missing file would
+    counted <- Exception.onException (Stream.foldFileBlocks (btBlockSize transform) addLength 0 path) (onMissing path)
+    case counted of
+        Left err -> onMissing path >> pure (Left err)
+        Right contentLength ->
+            let total = BS.length prefix + contentLength + BS.length suffix
+                body = producer (btBlockSize transform) prefix (btApply transform) path suffix
+             in pure (Right (Response status headers (SizedStreamBody total body)))
+  where
+    addLength n block = (n +) <$> btLength transform block
+
+{- | Builds a sized streamed response from in-memory content (RFC-0049): the
+document that is not a file (a new-page seed). The content is transformed once and
+emitted with the prefix and suffix as a single sized segment; there is no file, so
+no failure.
+-}
+transformedBytesResponse :: Status -> Headers -> BS.ByteString -> (BS.ByteString -> IO BS.ByteString) -> BS.ByteString -> BS.ByteString -> IO Response
+transformedBytesResponse status headers prefix apply content suffix = do
+    transformed <- apply content
+    let body = BS.concat [prefix, transformed, suffix]
+    pure (Response status headers (SizedStreamBody (BS.length body) (Iteratee.strictEnumerator body)))
 
 {- | Serialises a response with a strict body: status line, headers, an exact
 @Content-Length@, @Connection: close@, then the body bytes.

@@ -51,3 +51,4 @@
 2026-09-16 21:56:34  packages/verso/src/Verso/Maintenance.hs:Event:20: Repeated Switches. Replace Conditional with Polymorphism.
 2026-09-16 22:01:03  packages/verso/src/Verso/Git.hs:ensureRepository:89: Motivation: ensureRepository discarded git init's result, so a failed init reported success. Change Function Declaration.
 2026-09-16 22:21:43  packages/verso/src/Verso/Git.hs:decodedErr:207: Duplicated Code. Extract Function.
+2026-09-17 08:54:55  packages/micro-http/src/MicroHttp/Http.hs:transformedFileResponse:480: Motivation: the sized streamed-document count and missing-file cleanup lived only in Verso.App, untested by the framework. Move Function.

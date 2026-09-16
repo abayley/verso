@@ -48,3 +48,14 @@ the sink `lseek` for the size; carrying it on the body instead gives a single
 source of truth shared by the head and the log without the log re-opening the
 file. `Range`/partial content and Linux `sendfile` are later work. The
 symlink-escape limitation (ADR-0030) is unchanged.
+
+## Amendment (RFC-0049): The Carried Size Is Advisory, The Sink Authoritative
+
+The socket sink (`MicroHttp.Server.socketSinkFile`) re-opens the file and sizes it
+itself, and writes the head with that freshly-read size; the size carried on
+`FileBody` is used only for the access-log byte count. So the carried size is
+advisory and the sink is authoritative, which the original "single source of
+truth" wording above overstated. The re-stat is deliberate: it gives a correct
+`Content-Length` even if the file changed between the body's construction and its
+send. Trusting the carried size and dropping the re-stat was considered and
+rejected in RFC-0049 as less safe for one saved `stat`.

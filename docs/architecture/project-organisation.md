@@ -94,6 +94,16 @@ surfaces a setup or staging failure as a typed result the caller logs, rather th
 discarding it (ADR-0093): `Git.ensureRepository` returns `Either String RepoInit`
 and `Git.commitPaths` returns `CommitFailed` on a staging failure.
 
+Building a sized, streamed response from a file -- a prefix, the file through a
+per-block transform, and a suffix, behind an exact `Content-Length` from a
+pre-count pass -- is a framework capability: `MicroHttp.Http.transformedFileResponse`
+(and its temp-file and in-memory siblings) owns the count and the missing-file
+cleanup (RFC-0049). `Verso.App`'s document responses call it, supplying the HTML
+escaper as the block transform. The response-body taxonomy is matched only inside
+`MicroHttp.Http` (`writeResponse`, `serialiseResponse`, and `mapBody`, the one
+place an egress stage rewrites a body); `MicroHttp.Middleware` and `Verso.App` no
+longer name the body constructors.
+
 The Markdown editor follows a source-vs-asset distinction:
 
 - `packages/verso-editor/src/` contains TypeScript source for the application's

@@ -1,7 +1,7 @@
 ---
 id: RFC-0049
 name: Framework Streamed-Response Constructor
-status: In Progress
+status: Implemented
 owners:
     - alistair
 created: 2026-09-17
@@ -22,7 +22,7 @@ design_contract_rfcs:
 | --------- | ---------- |
 | Authored  | 2026-09-17 |
 | Started   | 2026-09-17 |
-| Completed |            |
+| Completed | 2026-09-17 |
 
 ## Summary
 

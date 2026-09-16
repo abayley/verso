@@ -119,7 +119,7 @@ Every byte path in the server is one row of this table. The columns are the alge
 | Read a request | `socketEnumerator` | | `frameHeadersI`, then the handler's sink on the residue |
 | Upload an asset to disk | `socketEnumerator` | | `fileSinkI` into a temp beside the target |
 | No-JS form save | `socketEnumerator` | `normaliseNewlinesI`, `decodeFormValueI` per part | `formI` routing the `markdown` part to `fileSinkI` |
-| Serve a document page | `appendEnumerators` of the shell prefix, the file (the escaper per block) and the suffix | | `byteSinkI` over the socket |
+| Serve a document page | `appendEnumerators` of the shell prefix, the file (the escaper per block) and the suffix (built by `Http.transformedFileResponse`, sized) | | `byteSinkI` over the socket |
 | Serve a static or asset file | `FileBody` (no Haskell in the loop: `sendfile`) | | the kernel |
 | `transformedTempFileBody` | as above, and the file is removed once the body is produced or the consumer stops | `Stream` | |
 | `appendEnumerators sources` | each source in turn under its own bracket; the consumer sees one stream with one end | `Iteratee` | |

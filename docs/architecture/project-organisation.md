@@ -63,6 +63,15 @@ and trash entry directory are functions of that module and are not derived by
 string arithmetic elsewhere. The path-safety rule itself stays in the framework as
 `MicroHttp.Static.safeComponent`, shared with the static mount.
 
+The tree's structural operations (create, move, delete, restore, undo) likewise have
+one home, `Verso.Structure` (RFC-0045). It owns the transaction each performs over
+its collaborators (the page source, the maintenance hooks, the operation and trash
+stores, the versioning context and the revision commit), all fields of one record
+the route table builds once. `Verso.TreeMove` beneath it is the filesystem
+implementation; `Verso.App` above it parses a request, calls the operation and
+renders the outcome. `test/integration/Verso/StructureSpec.hs` tests the
+transaction through recording adapters, without a request.
+
 The Markdown editor follows a source-vs-asset distinction:
 
 - `packages/verso-editor/src/` contains TypeScript source for the application's

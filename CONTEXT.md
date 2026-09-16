@@ -54,6 +54,17 @@ keeps the parent (just a slug change) is the "rename" case; editing the **title*
 _Avoid_: rename (a UX label for the same-parent slug change, not a separate
 operation).
 
+**Structural operation**:
+A change to the shape of the **document tree** rather than to a **page**'s body:
+create, **move**, delete (to the **trash**), restore, and undo (RFC-0045). Each is
+one transaction, in `Verso.Structure`: the filesystem change, the **operation
+log** record, the derived indexes (**link index**, **search index**), the
+**draft** carried with the page, and a **revision**, under the server's write
+lock. Returns an outcome or a refusal; the route handler only parses the request
+and renders the outcome.
+_Avoid_: tree mutation (the older code word), reorganisation (the migration-era
+sense: a whole batch of operations replayed), command.
+
 **Operation log**:
 An append-only log, held outside the **document tree**, of the **navigation
 tree**'s structural operations -- **moves** and deletes -- as _logical_ records

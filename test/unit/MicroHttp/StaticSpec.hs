@@ -21,6 +21,15 @@ spec =
                 Static.resolveStaticPath "root" ["a\\b"] `shouldBe` Nothing
             it "given a component with a NUL, when resolving, then it is rejected" $
                 Static.resolveStaticPath "root" ["a\NULb"] `shouldBe` Nothing
+        describe "safeComponent" $ do
+            it "given a plain file name, when checked, then it is safe" $
+                Static.safeComponent "overview.md" `shouldBe` True
+            it "given an empty component, when checked, then it is unsafe" $
+                Static.safeComponent "" `shouldBe` False
+            it "given a parent-directory component, when checked, then it is unsafe" $
+                Static.safeComponent ".." `shouldBe` False
+            it "given a component with an embedded slash, when checked, then it is unsafe" $
+                Static.safeComponent "a/b" `shouldBe` False
         describe "contentTypeFor" $ do
             it "given a css file, when choosing a type, then text/css is returned" $
                 Static.contentTypeFor "app.css" `shouldBe` "text/css"

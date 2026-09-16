@@ -44,6 +44,7 @@ import qualified Verso.SearchChunksSpec as SearchChunksSpec
 import qualified Verso.SearchQueueSpec as SearchQueueSpec
 import qualified Verso.TrashSpec as TrashSpec
 import qualified Verso.TreeMoveSpec as TreeMoveSpec
+import qualified Verso.TreePathSpec as TreePathSpec
 import qualified Verso.ViewSpec as ViewSpec
 
 main :: IO ()
@@ -79,6 +80,7 @@ main = hspec $ do
     Utf8Spec.spec
     TrashSpec.spec
     TreeMoveSpec.spec
+    TreePathSpec.spec
     IterateeSpec.spec
     LogSpec.spec
     MiddlewareSpec.spec

@@ -11,6 +11,7 @@ module MicroHttp.Static (
     static,
     serveStatic,
     resolveStaticPath,
+    safeComponent,
     contentTypeFor,
 ) where
 
@@ -75,7 +76,10 @@ resolveStaticPath root components
     | otherwise = Nothing
 
 {- | True if a path component is safe: non-empty, not @.@ or @..@, and free of
-path separators or a NUL.
+path separators or a NUL. The one path-safety rule in the tree: 'resolveStaticPath'
+applies it to a request path, and an application building paths from its own
+segments (a validated path type, a file name from a header) applies it before
+handing them to 'MicroHttp.FileSystem'.
 -}
 safeComponent :: String -> Bool
 safeComponent component =

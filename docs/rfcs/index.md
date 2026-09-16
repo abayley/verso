@@ -53,3 +53,4 @@ Implemented RFC files live under `docs/rfcs/implemented/`. All other RFCs remain
 | [RFC-0045](implemented/rfc-0045-structural-operations-module.md)              | Implemented | Structural Operations Module                                                    |
 | [RFC-0046](implemented/rfc-0046-json-value-type.md)                           | Implemented | JSON Value Type                                                                 |
 | [RFC-0047](implemented/rfc-0047-trash-owns-its-mechanics.md)                  | Implemented | Trash Owns Its Mechanics                                                        |
+| [RFC-0048](implemented/rfc-0048-maintenance-events-and-git-results.md)        | Implemented | Maintenance Events And Git Results                                              |

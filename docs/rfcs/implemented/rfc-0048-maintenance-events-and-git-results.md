@@ -1,7 +1,7 @@
 ---
 id: RFC-0048
 name: Maintenance Events And Git Results
-status: In Progress
+status: Implemented
 owners:
     - alistair
 created: 2026-09-16
@@ -21,7 +21,7 @@ related_rfcs:
 | --------- | ---------- |
 | Authored  | 2026-09-16 |
 | Started   | 2026-09-16 |
-| Completed |            |
+| Completed | 2026-09-16 |
 
 ## Summary
 
@@ -163,21 +163,21 @@ Test-first; committed when green.
 
 ### Phase 1: Maintenance Events
 
-- [ ] `Verso.Maintenance` with `Event`, `Maintenance`, `none`, `combine`.
-- [ ] `Structure` emits events; `App`'s two adapters and the content handlers use the handler;
+- [x] `Verso.Maintenance` with `Event`, `Maintenance`, `none`, `combine`.
+- [x] `Structure` emits events; `App`'s two adapters and the content handlers use the handler;
   `IndexMaintenance` and its combinators leave `Structure`.
-- [ ] `StructureSpec`'s recording adapter is a handler; the recorded-order assertions are unchanged.
+- [x] `StructureSpec`'s recording adapter is a handler; the recorded-order assertions are unchanged.
 
 ### Phase 2: Git Results
 
-- [ ] `GitSpec` gains the `ensureRepository` success, already-present and failure cases and the
+- [x] `GitSpec` gains the `ensureRepository` success, already-present and failure cases and the
   `commitPaths` staging-failure case.
-- [ ] `ensureRepository` returns `Either String RepoInit`; `commitPaths` surfaces a staging failure;
+- [x] `ensureRepository` returns `Either String RepoInit`; `commitPaths` surfaces a staging failure;
   `appFromConfig` and `treePutDocument` handle the results. ADR-0093 recorded.
 
 ### Phase 3: Records
 
-- [ ] Architecture page and `CONTEXT.md` (if it names the seam) updated; RFC moved to `implemented/`;
+- [x] Architecture page and `CONTEXT.md` (if it names the seam) updated; RFC moved to `implemented/`;
   `bun run rfc:index`, `bun run adr:index`.
 
 ## Open Questions

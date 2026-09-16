@@ -86,6 +86,14 @@ calls `Verso.Trash` for the entry mechanics. The warm catalogue `Verso.TrashStor
 and the retention sweep in `Verso.Structure` depend on `Verso.Trash`, not on the
 move engine.
 
+A structural operation tells the derived indexes what changed by emitting a
+`Verso.Maintenance.Event` to a handler, rather than calling one of five named hooks
+(RFC-0048). `Verso.App` builds the handler from the link-index and search adapters;
+`Verso.Structure` and the content-save handlers emit the events. The git layer
+surfaces a setup or staging failure as a typed result the caller logs, rather than
+discarding it (ADR-0093): `Git.ensureRepository` returns `Either String RepoInit`
+and `Git.commitPaths` returns `CommitFailed` on a staging failure.
+
 The Markdown editor follows a source-vs-asset distinction:
 
 - `packages/verso-editor/src/` contains TypeScript source for the application's

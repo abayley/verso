@@ -36,9 +36,7 @@ module Verso.TreeMove (
     restoreFromTrash,
     ReplayEntry (..),
     replayLog,
-    replayReportJson,
     listTrash,
-    trashListJson,
     deleteTrashEntry,
 ) where
 
@@ -55,6 +53,7 @@ import qualified Verso.DocumentLinks as DocumentLinks
 import qualified Verso.DocumentListing as DocumentListing
 import qualified Verso.DocumentMeta as DocumentMeta
 import qualified Verso.Frontmatter as Frontmatter
+import qualified Verso.Json as Json
 import qualified Verso.LinkIndex as LinkIndex
 import qualified Verso.LinkIndexStore as LinkIndexStore
 import qualified Verso.LinkRewrite as LinkRewrite
@@ -622,14 +621,6 @@ removeTree dir = do
         if isDir then removeTree child else Monad.void (FileSystem.removeFilePath child)
     Monad.void (FileSystem.removeEmptyDir dir)
 
--- | The trash listing as JSON @[{"id","path","kind"}]@.
-trashListJson :: [(String, String, String)] -> String
-trashListJson entries =
-    "[" ++ List.intercalate "," (map one entries) ++ "]"
-  where
-    one (entryId, path, kind) =
-        "{\"id\":" ++ jsonStr entryId ++ ",\"path\":" ++ jsonStr path ++ ",\"kind\":" ++ jsonStr kind ++ "}"
-
 -- | One operation's outcome during replay: its seq, type, and @applied@ or @skipped: <reason>@ status.
 data ReplayEntry = ReplayEntry
     { reSeq :: Int
@@ -698,20 +689,6 @@ typeWord :: OperationLog.OpType -> String
 typeWord OperationLog.OpMove = "move"
 typeWord OperationLog.OpDelete = "delete"
 typeWord OperationLog.OpRestore = "restore"
-
--- | A replay report as JSON @{"replayed":[{"seq","type","status"}]}@.
-replayReportJson :: [ReplayEntry] -> String
-replayReportJson entries =
-    "{\"replayed\":[" ++ List.intercalate "," (map one entries) ++ "]}"
-  where
-    one e =
-        "{\"seq\":"
-            ++ show (reSeq e)
-            ++ ",\"type\":"
-            ++ jsonStr (reType e)
-            ++ ",\"status\":"
-            ++ jsonStr (reStatus e)
-            ++ "}"
 
 {- | Reads the @.md@ pages /relevant/ to an operation, as @(treeRelPath, links)@, skipping
 dot-entries and @assets@/@meta@ folders. A page is returned only when its raw bytes contain
@@ -795,26 +772,12 @@ writeRel root path content = do
 frontmatterNameOf :: FilePath -> IO String
 frontmatterNameOf fs = fmap (Maybe.fromMaybe "Untitled" . Frontmatter.titleOf) (Frontmatter.readBlock fs)
 
--- | A move plan as JSON @{"from","to","changed":[...],"applied":bool}@.
-movePlanJson :: MovePlan -> String
+-- | A move plan as the JSON @{"from","to","changed":[...],"applied":bool}@.
+movePlanJson :: MovePlan -> Json.Json
 movePlanJson plan =
-    "{\"from\":"
-        ++ jsonStr (TreePath.render (planFrom plan))
-        ++ ",\"to\":"
-        ++ jsonStr (TreePath.render (planTo plan))
-        ++ ",\"changed\":["
-        ++ List.intercalate "," (map jsonStr (planChanged plan))
-        ++ "],\"applied\":"
-        ++ (if planApplied plan then "true" else "false")
-        ++ "}"
-
--- | A minimal JSON string literal (escaping quotes, backslashes, and control characters).
-jsonStr :: String -> String
-jsonStr s = "\"" ++ concatMap esc s ++ "\""
-  where
-    esc '"' = "\\\""
-    esc '\\' = "\\\\"
-    esc '\n' = "\\n"
-    esc '\r' = "\\r"
-    esc '\t' = "\\t"
-    esc c = [c]
+    Json.object
+        [ ("from", Json.string (TreePath.render (planFrom plan)))
+        , ("to", Json.string (TreePath.render (planTo plan)))
+        , ("changed", Json.array (map Json.string (planChanged plan)))
+        , ("applied", Json.bool (planApplied plan))
+        ]

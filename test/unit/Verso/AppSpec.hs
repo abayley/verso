@@ -13,6 +13,7 @@ import qualified System.Directory as Directory
 import Test.Hspec
 import qualified TestSupport.ResponseBody as ResponseBody
 import qualified Verso.App as App
+import qualified Verso.Json as Json
 import qualified Verso.OperationLog as OperationLog
 
 spec :: Spec
@@ -53,7 +54,7 @@ spec =
                     `shouldBe` ["alpha", "Beta", "Apple", "zebra.md"]
 
             it "given nodes, when serialised, then the json carries name, path, kind, and hasChildren" $ do
-                App.treeChildrenJson [App.TreeNode "Alpha" "alpha" App.Section True]
+                Json.render (App.treeChildrenJson [App.TreeNode "Alpha" "alpha" App.Section True])
                     `shouldBe` "[{\"name\":\"Alpha\",\"path\":\"alpha\",\"kind\":\"section\",\"hasChildren\":true}]"
 
             it "given the tree root, when children read, then sections come first then pages, index.md folded and sidecars hidden" $ do
@@ -98,7 +99,7 @@ spec =
                             , Store.hitScore = 0.5
                             , Store.hitText = "Guide > Setup\nConfigure the \"failover\" timeouts."
                             }
-                App.searchResultsJson 2 [hit]
+                Json.render (App.searchResultsJson 2 [hit])
                     `shouldBe` "{\"enabled\":true,\"pending\":2,\"results\":[{\"path\":\"guides/a.md\",\"title\":\"Guide\",\"anchor\":\"Failover\",\"excerpt\":\"Configure the \\\"failover\\\" timeouts.\"}]}"
 
             it "given the search page, when rendered, then its controls carry basecoat chrome classes" $ do

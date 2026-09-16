@@ -19,10 +19,6 @@ module Verso.View (
     editorShell,
     excerptOf,
     historyPage,
-    jsonArray,
-    jsonBool,
-    jsonObject,
-    jsonString,
     searchPage,
     trashPage,
     undoPage,
@@ -32,12 +28,12 @@ module Verso.View (
 import qualified Concordance.Store as Store
 import qualified Control.Monad as Monad
 import qualified Data.ByteString.Char8 as BS
-import qualified Data.List as List
 import qualified Data.Maybe as Maybe
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Utf8 as Utf8
 import qualified Verso.Chrome as Chrome
 import qualified Verso.Git as Git
+import qualified Verso.Json as Json
 
 {- | The head tags shared by every full page: the responsive viewport, the
 vendored Roboto and Roboto Mono fonts, the Basecoat chrome bundle (RFC-0035),
@@ -462,53 +458,20 @@ objects, embedded on the editor element for the metadata panel (RFC-0019). Strin
 are JSON-escaped; the surrounding HTML attribute is escaped by the renderer.
 -}
 attachmentsJson :: [(String, String)] -> String
-attachmentsJson entries = jsonArray (map attachmentObject entries)
+attachmentsJson entries = Json.render (Json.array (map attachmentObject entries))
   where
     attachmentObject (name, localPath) =
-        jsonObject [("name", jsonString name), ("localPath", jsonString localPath)]
-
-{- | A JSON object from @(key, rendered value)@ pairs, in the given order. The
-keys are escaped; each value is emitted verbatim, so the caller picks its
-rendering -- 'jsonString' for text, 'show' for a number, @"true"@\/@"false"@ for
-a boolean, or a nested 'jsonObject' \/ 'jsonArray'. Preferred over writing the
-braces and commas by hand, which is where the escaping and separators get lost.
--}
-jsonObject :: [(String, String)] -> String
-jsonObject fields = "{" ++ List.intercalate "," (map field fields) ++ "}"
-  where
-    field (key, value) = jsonString key ++ ":" ++ value
-
-{- | A JSON array from already-rendered elements, in the given order (the
-element counterpart of 'jsonObject').
--}
-jsonArray :: [String] -> String
-jsonArray items = "[" ++ List.intercalate "," items ++ "]"
-
--- | A JSON boolean literal, for use as a 'jsonObject' value.
-jsonBool :: Bool -> String
-jsonBool True = "true"
-jsonBool False = "false"
-
--- | A JSON string literal: the value wrapped in quotes with the structural characters escaped.
-jsonString :: String -> String
-jsonString s = "\"" ++ concatMap escape s ++ "\""
-  where
-    escape '"' = "\\\""
-    escape '\\' = "\\\\"
-    escape '\n' = "\\n"
-    escape '\r' = "\\r"
-    escape '\t' = "\\t"
-    escape c = [c]
+        Json.object [("name", Json.string name), ("localPath", Json.string localPath)]
 
 -- | A breadcrumb in the path navigation: a visible label and an optional link (Nothing for the current page).
 data Crumb = Crumb String (Maybe String)
 
 -- | The breadcrumb trail as a JSON array of @{"label","href"}@ (href omitted for the current page).
 breadcrumbsJson :: [Crumb] -> String
-breadcrumbsJson crumbs = jsonArray (map crumbObject crumbs)
+breadcrumbsJson crumbs = Json.render (Json.array (map crumbObject crumbs))
   where
     crumbObject (Crumb label href) =
-        jsonObject (("label", jsonString label) : maybe [] (\h -> [("href", jsonString h)]) href)
+        Json.object (("label", Json.string label) : maybe [] (\h -> [("href", Json.string h)]) href)
 
 editorPage :: String -> Maybe String -> String -> Html.Escaped -> Bool -> Bool -> Bool -> [(String, String)] -> [Crumb] -> String -> Html.Html ()
 editorPage docId mode pageTitle content versioned editable hasDraft attachments breadcrumbs treeSpine =

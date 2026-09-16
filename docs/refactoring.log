@@ -43,3 +43,5 @@
 2026-09-16 14:58:52  packages/verso/src/Verso/Structure.hs:purgeMatching:380: Motivation: The trash sweep and empty took the write lock per entry after RFC-0045; one batch operation holds it once. Extract Function.
 2026-09-16 14:58:52  packages/verso/src/Verso/Structure.hs:undo:300: Motivation: Undo carries drafts through the shared delete/restore transactions; decided to keep on 2026-09-16 (RFC-0045 Reliability Impact). Change Function Declaration.
 2026-09-16 15:24:23  packages/verso/src/Verso/Json.hs:render:55: no refactoring needed
+2026-09-16 16:53:53  packages/verso/src/Verso/TreeMove.hs:trashListJson:626: Dead Code. Remove Dead Code.
+2026-09-16 16:53:53  packages/verso/src/Verso/View.hs:jsonObject:466: Duplicated Code. Extract Function.

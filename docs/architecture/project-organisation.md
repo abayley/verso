@@ -72,6 +72,12 @@ implementation; `Verso.App` above it parses a request, calls the operation and
 renders the outcome. `test/integration/Verso/StructureSpec.hs` tests the
 transaction through recording adapters, without a request.
 
+The wiki's JSON API responses are built from a value, not concatenated strings:
+`Verso.Json` is the small JSON tree and its one spec-correct renderer (RFC-0046).
+Domain renderers and handlers build a `Json`; `App.jsonResponse` renders it at the
+boundary. The one exception is the `/operations` endpoint, which splices the
+persisted operation-log lines (`Verso.OperationLog.renderOperation`) verbatim.
+
 The Markdown editor follows a source-vs-asset distinction:
 
 - `packages/verso-editor/src/` contains TypeScript source for the application's

@@ -1,7 +1,7 @@
 ---
 id: RFC-0046
 name: JSON Value Type
-status: In Progress
+status: Implemented
 owners:
     - alistair
 created: 2026-09-16
@@ -18,7 +18,7 @@ related_rfcs:
 | --------- | ---------- |
 | Authored  | 2026-09-16 |
 | Started   | 2026-09-16 |
-| Completed |            |
+| Completed | 2026-09-16 |
 
 ## Summary
 
@@ -151,19 +151,21 @@ Test-first; each phase is committed when green.
 
 ### Phase 1: The Module
 
-- [ ] `JsonSpec` covers the render of each variant, nesting, and the full-spec escaping.
-- [ ] `Verso.Json` passes it; registered in `test/unit/Main.hs`.
+- [x] `JsonSpec` covers the render of each variant, nesting, and the full-spec escaping.
+- [x] `Verso.Json` passes it; registered in `test/unit/Main.hs`.
 
 ### Phase 2: The Renderers Build Values
 
-- [ ] `App.jsonResponse :: Json -> Http.Response`; the eight `App` body functions return `Json`;
+- [x] `App.jsonResponse :: Json -> Http.Response`; the eight `App` body functions return `Json`;
   `View.attachmentsJson`/`breadcrumbsJson` and `TreeMove`'s three renderers return `Json`.
-- [ ] `View.jsonObject`/`jsonArray`/`jsonString`/`jsonBool` and `TreeMove.jsonStr` deleted; the
-  `/operations` endpoint keeps its raw-body response.
+- [x] `View.jsonObject`/`jsonArray`/`jsonString`/`jsonBool` and `TreeMove.jsonStr` deleted; the
+  `/operations` endpoint keeps its raw-body response. Two dead `TreeMove` renderers
+  (`trashListJson`, `replayReportJson`) and the stale `ViewSpec` primitive tests were removed in
+  passing; the equivalent behaviour is now in `Verso.JsonSpec`.
 
 ### Phase 3: Records
 
-- [ ] `docs/reviews/` remediation note updated (candidate 6 done); RFC moved to `implemented/`;
+- [x] `docs/reviews/` remediation note updated (candidate 6 done); RFC moved to `implemented/`;
   `bun run rfc:index`.
 
 ## Open Questions

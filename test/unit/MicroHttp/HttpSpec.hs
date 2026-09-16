@@ -30,6 +30,42 @@ spec =
             (Http.FileBody "build/a.txt" 1 == Http.FileBody "build/b.txt" 1) `shouldBe` False
         it "given a file body, when showing, then the path and size are shown" $
             show (Http.FileBody "build/asset.txt" 9) `shouldBe` "FileBody \"build/asset.txt\" 9"
+        percentDecodeSpec
+
+{- | The percent decoders' whole-value behaviour (RFC 3986 section 2.1). Both are
+exported framework API and reached from 'Http.pathSegments' and 'Http.parseQuery',
+which percent-decode and then read the result as UTF-8, so a decoded value is a
+string of bytes, not of characters: @%C3%A9@ decodes to two chars, 195 and 169,
+and it is 'MicroHttp.Utf8.decodeUtf8' that makes them one.
+-}
+percentDecodeSpec :: Spec
+percentDecodeSpec = do
+    it "given no escapes, when decoded, then the text passes through" $ do
+        Http.decodePathSegment "plain-text_1.2" `shouldBe` "plain-text_1.2"
+        Http.decodeFormValue "" `shouldBe` ""
+    it "given an escape, when decoded, then it is the byte it names" $
+        Http.decodePathSegment "%41%42" `shouldBe` "AB"
+    it "given hex digits in either case, when decoded, then both are accepted" $
+        Http.decodePathSegment "%c3%A9" `shouldBe` "\195\169"
+    it "given a multibyte escape, when decoded, then it is the bytes, not the character" $
+        Http.decodePathSegment "caf%C3%A9" `shouldBe` "caf\195\169"
+    it "given a plus, when decoded as a path segment, then it is kept" $
+        Http.decodePathSegment "a+b" `shouldBe` "a+b"
+    it "given a plus, when decoded as a form value, then it is a space" $
+        Http.decodeFormValue "a+b" `shouldBe` "a b"
+    it "given an escaped plus, when decoded as a form value, then it stays a plus" $
+        Http.decodeFormValue "a%2Bb" `shouldBe` "a+b"
+    it "given a non-hex escape, when decoded, then all three bytes pass through" $
+        Http.decodeFormValue "%zz%g1" `shouldBe` "%zz%g1"
+    it "given a truncated escape at the end, when decoded, then it passes through" $ do
+        Http.decodeFormValue "a%4" `shouldBe` "a%4"
+        Http.decodeFormValue "a%" `shouldBe` "a%"
+    it "given an escape naming a percent, when decoded, then the result is not rescanned" $
+        Http.decodeFormValue "%2541" `shouldBe` "%41"
+    it "given a NUL escape, when decoded, then the NUL byte is produced" $
+        Http.decodeFormValue "a%00b" `shouldBe` "a\0b"
+    it "given a character above U+00FF, when decoded, then it passes through unchanged" $
+        Http.decodePathSegment "caf\8212" `shouldBe` "caf\8212"
 
 bs :: String -> BS.ByteString
 bs = BS.pack

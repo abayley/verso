@@ -1,7 +1,7 @@
 ---
 id: RFC-0044
 name: Tree Path Module
-status: In Progress
+status: Implemented
 owners:
     - alistair
 created: 2026-09-16
@@ -20,7 +20,7 @@ related_rfcs:
 | --------- | ---------- |
 | Authored  | 2026-09-16 |
 | Started   | 2026-09-16 |
-| Completed |            |
+| Completed | 2026-09-16 |
 
 ## Summary
 
@@ -34,7 +34,8 @@ The route handlers parse a request path once at the edge; `TreeMove`, `DocumentM
 ## Context
 
 The architecture review of 2026-09-16 (`docs/reviews/architecture-review-haskell-20260916.html`,
-candidate 2) found the layout of the document tree spread across five modules as string arithmetic:
+candidate 2) found the layout of the document tree spread across five modules as string arithmetic (the numbers
+below are the state at that commit, `4c061f6`):
 
 - `Static.resolveStaticPath root (pathSegmentsOf p)` appears 17 times in `Verso.App`, 15 in
   `Verso.TreeMove` and twice in `Verso.DocumentMeta`, each site handling its own `Nothing`.
@@ -205,8 +206,8 @@ Test-first; each phase is committed when green.
 
 ### Phase 5: Records
 
-- [ ] `CONTEXT.md` gains "Tree path" and "Trash entry id".
-- [ ] `docs/architecture/` note where the layout lives; RFC moved to `implemented/`; `bun run rfc:index`.
+- [x] `CONTEXT.md` gains "Tree path" and "Trash entry id".
+- [x] `docs/architecture/` note where the layout lives; RFC moved to `implemented/`; `bun run rfc:index`.
 
 ## Open Questions
 

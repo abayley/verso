@@ -54,6 +54,15 @@ The framework is installed into the MicroHs package database and the application
 resolves it from there, the same way `base` and `mtl` resolve; the Makefile
 reinstalls it when its sources change.
 
+Inside the application, the document tree's layout has one home: `Verso.TreePath`
+(RFC-0044). A request path is parsed there once, in the handler, and every module
+below the handler (`Verso.TreeMove`, `Verso.DocumentMeta`, `Verso.Draft`) takes the
+resulting `TreePath` or `TrashId` value rather than a string. Parent, slug, kind,
+section `index.md`, meta directory, peer `assets/` folder, served filesystem path
+and trash entry directory are functions of that module and are not derived by
+string arithmetic elsewhere. The path-safety rule itself stays in the framework as
+`MicroHttp.Static.safeComponent`, shared with the static mount.
+
 The Markdown editor follows a source-vs-asset distinction:
 
 - `packages/verso-editor/src/` contains TypeScript source for the application's

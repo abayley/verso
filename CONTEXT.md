@@ -26,6 +26,17 @@ it shows a humanised label and is expand-only (no landing page). A section's
 `index.md` is folded into the section, not shown as a separate child.
 _Avoid_: directory (filesystem term), category, subsection.
 
+**Tree path**:
+The tree-relative location of a **page** or **section**, as validated segments
+(no empty, `.`, `..`, separator or NUL segment), the root being the empty path
+(RFC-0044). Every layout fact derives from it: its kind (page when the last
+segment ends in `.md`, else section), parent, slug, section `index.md`, **meta
+directory**, **peer assets** folder and served filesystem path. Parsed once from
+a request and carried as a value (`Verso.TreePath`); a raw string is not a tree
+path until it has parsed.
+_Avoid_: rel path, document id (the older name for a page's tree path), URL
+(the tree path is the part after `/documents/`).
+
 **Index.md listing**:
 A **section**'s listing, in its `index.md`, of its direct members: **subsections**
 as `grid cards` (`- :icon: __[Title](./child/index.md)__` with a description span)
@@ -63,6 +74,13 @@ record of its original tree path, so it can be restored (RFC-0028). Browsed and
 recovered through a Trash view in the **navigation tree**; restore is refused if
 the original location is now occupied.
 _Avoid_: recycle bin, archive, bin.
+
+**Trash entry id**:
+The name of one entry in the **trash**: the **operation log** `seq` of the delete
+that created it, so an all-digit string (RFC-0044). Validated on parse
+(`Verso.TreePath.TrashId`) before any trash path is built from it, so an id can
+never name anything outside the trash root.
+_Avoid_: trash id (ambiguous with the trash root), entry name.
 
 **Draft**:
 An unpublished, staged edit of a **page** (RFC-0032). Autosave in the **edit

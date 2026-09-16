@@ -49,4 +49,4 @@ Implemented RFC files live under `docs/rfcs/implemented/`. All other RFCs remain
 | [RFC-0041](implemented/rfc-0041-multi-source-iteratees.md)                    | Implemented | Multi-source iteratees                                                          |
 | [RFC-0042](implemented/rfc-0042-streaming-form-consumer.md)                   | Implemented | Streaming form consumer                                                         |
 | [RFC-0043](implemented/rfc-0043-streaming-io-by-default.md)                   | Implemented | Streaming I/O by default                                                        |
-| [RFC-0044](rfc-0044-tree-path-module.md)                                      | In Progress | Tree Path Module                                                                |
+| [RFC-0044](implemented/rfc-0044-tree-path-module.md)                          | Implemented | Tree Path Module                                                                |

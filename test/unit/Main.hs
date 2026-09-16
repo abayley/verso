@@ -35,6 +35,7 @@ import qualified Verso.DocumentMetaSpec as DocumentMetaSpec
 import qualified Verso.DraftSpec as DraftSpec
 import qualified Verso.FrontmatterSpec as FrontmatterSpec
 import qualified Verso.IdentitySpec as IdentitySpec
+import qualified Verso.JsonSpec as JsonSpec
 import qualified Verso.LinkFingerprintSpec as LinkFingerprintSpec
 import qualified Verso.LinkIndexSpec as LinkIndexSpec
 import qualified Verso.LinkIndexStoreSpec as LinkIndexStoreSpec
@@ -89,6 +90,7 @@ main = hspec $ do
     DraftSpec.spec
     FrontmatterSpec.spec
     IdentitySpec.spec
+    JsonSpec.spec
     OperationLogSpec.spec
     AppSpec.spec
     ChromeSpec.spec

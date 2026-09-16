@@ -51,3 +51,4 @@ Implemented RFC files live under `docs/rfcs/implemented/`. All other RFCs remain
 | [RFC-0043](implemented/rfc-0043-streaming-io-by-default.md)                   | Implemented | Streaming I/O by default                                                        |
 | [RFC-0044](implemented/rfc-0044-tree-path-module.md)                          | Implemented | Tree Path Module                                                                |
 | [RFC-0045](implemented/rfc-0045-structural-operations-module.md)              | Implemented | Structural Operations Module                                                    |
+| [RFC-0046](rfc-0046-json-value-type.md)                                       | In Progress | JSON Value Type                                                                 |

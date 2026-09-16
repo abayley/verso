@@ -100,3 +100,28 @@ two-clause match, since mhs's `Data.Either` lacks `fromRight`) are both sound.
 Correctness: three sections, no defects, parity verified textually. Spec: three findings, the real one
 being the overstated single-site claim in the architecture doc, contradicted by the logging tap; plus a
 partial test the RFC named. Standards: no violations, two documented judgement calls.
+
+## Remediation Summary
+
+Applied on 2026-09-17. Both spec findings were addressed; every gate below was rerun.
+
+### Remediation of the spec findings
+
+- Spec 1 (fixed): `docs/architecture/project-organisation.md` now says an egress stage rewrites a body
+  in one place (`Http.mapBody`, used by `Middleware.fuseBody`), that `writeResponse`/`serialiseResponse`
+  dispatch the body kinds, and that the access-log tap in `Middleware` still matches them to size each
+  body. The overstated "matched only inside `MicroHttp.Http`" wording is gone.
+- Spec 2 (fixed): `test/integration/MicroHttp/Http/ResponseFileSpec.hs` gains the identity-transform
+  case the RFC named, asserting the `Content-Length` is the prefix, file and suffix lengths and the
+  bytes are unchanged, alongside the existing length-changing case.
+
+### Findings left as they are
+
+- The two Standards judgement calls (`BlockTransform` versus the plain transform of
+  `transformedBytesResponse`; `mapBody`'s single caller) are documented, intended shapes.
+- The pre-existing `mapBody` size caveat is unchanged and documented.
+
+### Verification after remediation
+
+MEASURED: `make format`, `make lint`, `make docs`, the mhs integration suite (166 examples) and the same
+under GHC.

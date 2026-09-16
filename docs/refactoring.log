@@ -53,3 +53,4 @@
 2026-09-16 22:21:43  packages/verso/src/Verso/Git.hs:decodedErr:207: Duplicated Code. Extract Function.
 2026-09-17 08:54:55  packages/micro-http/src/MicroHttp/Http.hs:transformedFileResponse:480: Motivation: the sized streamed-document count and missing-file cleanup lived only in Verso.App, untested by the framework. Move Function.
 2026-09-17 09:00:40  packages/micro-http/src/MicroHttp/Middleware.hs:fuseBody:63: Duplicated Code. Extract Function.
+2026-09-17 09:14:51  test/integration/MicroHttp/Http/ResponseFileSpec.hs:identityTransform:590: no refactoring needed

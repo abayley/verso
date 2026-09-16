@@ -39,6 +39,18 @@ spec =
                         , bs "abc!"
                         , bs "S"
                         ]
+            it "given a file streamed through an identity transform, when built and written, then the Content-Length is the prefix, file and suffix lengths and the bytes are unchanged" $ do
+                BS.writeFile responseFile (bs "abc")
+                built <- Http.transformedFileResponse Http.okStatus [] (bs "P") identityTransform responseFile (bs "S")
+                chunks <- either (pure . Left) recordResponse built
+                Directory.removeFile responseFile
+                chunks
+                    `shouldBe` Right
+                        [ bs "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: close\r\n\r\n"
+                        , bs "P"
+                        , bs "abc"
+                        , bs "S"
+                        ]
             it "given a file that does not exist, when a response is built, then the count fails and a Left is returned before any head is written" $ do
                 built <- Http.transformedFileResponse Http.okStatus [] (bs "P") appendBang "no-such-response-file.tmp" (bs "S")
                 isLeft built `shouldBe` True
@@ -62,6 +74,10 @@ spec =
                         [ bs "HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\n"
                         , bs "Pabc!S"
                         ]
+
+-- | An identity block transform for the tests: each block and its length unchanged.
+identityTransform :: Http.BlockTransform
+identityTransform = Http.BlockTransform 65536 pure (pure . BS.length)
 
 -- | A length-changing block transform for the tests: append @!@ to each block, and its matching length.
 appendBang :: Http.BlockTransform

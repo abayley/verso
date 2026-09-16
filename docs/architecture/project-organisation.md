@@ -99,10 +99,12 @@ per-block transform, and a suffix, behind an exact `Content-Length` from a
 pre-count pass -- is a framework capability: `MicroHttp.Http.transformedFileResponse`
 (and its temp-file and in-memory siblings) owns the count and the missing-file
 cleanup (RFC-0049). `Verso.App`'s document responses call it, supplying the HTML
-escaper as the block transform. The response-body taxonomy is matched only inside
-`MicroHttp.Http` (`writeResponse`, `serialiseResponse`, and `mapBody`, the one
-place an egress stage rewrites a body); `MicroHttp.Middleware` and `Verso.App` no
-longer name the body constructors.
+escaper as the block transform. An egress stage rewrites a body in one place,
+`MicroHttp.Http.mapBody`, which `MicroHttp.Middleware.fuseBody` now uses;
+`writeResponse` and `serialiseResponse` dispatch the body kinds, and the access-log
+tap in `MicroHttp.Middleware` still matches them to size each body for the log.
+`Verso.App` no longer matches the taxonomy for an egress transform, though it still
+constructs a `FileBody` for a static file.
 
 The Markdown editor follows a source-vs-asset distinction:
 

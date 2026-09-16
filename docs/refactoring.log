@@ -56,3 +56,4 @@
 2026-09-17 09:14:51  test/integration/MicroHttp/Http/ResponseFileSpec.hs:identityTransform:590: no refactoring needed
 2026-09-17 10:38:43  packages/micro-http/src/MicroHttp/Html.hs:div:347: Motivation: The element vocabulary was exported twice over (23 aliases x = x_); callers mixed both spellings 43/44 in one file.. Remove Dead Code.
 2026-09-17 10:38:49  test/unit/MicroHttp/HtmlSpec.hs:escaperAgreementCase:107: Motivation: Nine fixed inputs left the Char-vs-byte difference in kind unguarded; the escape set is now surveyed exhaustively.. Introduce Assertion.
+2026-09-17 11:49:32  packages/micro-http/src/MicroHttp/Percent.hs:decodeBlock:45: Motivation: One RFC 3986 rule was implemented four times and two of them disagreed on malformed input; the framework under-decoded relative to browsers.. Pull Up Method.

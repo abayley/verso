@@ -91,14 +91,14 @@ searchPage :: Maybe String -> String -> Maybe ([Store.Hit], Int) -> Html.Html ()
 searchPage origin query outcome =
     versionPageShell "Search" $ do
         versionControls
-        Html.el "h1" [] (Html.text "Search")
+        Html.h1_ [] (Html.text "Search")
         Html.p_ [Html.class_ "verso-version-back"] (backLink origin)
         -- The form still submits as a plain GET without JS; search-page.ts intercepts
         -- it for instant results, so there is no submit button. The clear button is a
         -- comfortable chrome icon button in place of the tiny native search-cancel
         -- affordance (the same trade the top-bar SearchPanel makes).
-        Html.el "form" [Html.attr "method" "get", Html.attr "action" "/search", Html.class_ "verso-search-form"] $
-            Html.el "div" [Html.class_ "verso-search-box"] $ do
+        Html.form_ [Html.attr "method" "get", Html.attr "action" "/search", Html.class_ "verso-search-form"] $
+            Html.div_ [Html.class_ "verso-search-box"] $ do
                 Html.input_ [Html.class_ "input", Html.attr "type" "search", Html.attr "name" "q", Html.attr "value" query, Html.attr "placeholder" "Search the wiki", Html.attr "autofocus" ""]
                 Chrome.chromeButton
                     Chrome.IconControl
@@ -110,26 +110,26 @@ searchPage origin query outcome =
             Just (hits, depth) ->
                 -- The region search-page.ts re-renders on each keystroke; its absence
                 -- (search disabled) leaves the enhancement inert.
-                Html.el "div" [Html.class_ "verso-search-output"] $ do
+                Html.div_ [Html.class_ "verso-search-output"] $ do
                     Monad.when (depth > 0) $
                         Html.p_ [Html.class_ "verso-search-pending"] (Html.text ("Indexing in progress: " ++ show depth ++ " page(s) pending; results may be incomplete."))
                     Monad.unless (null query) $
                         if null hits
                             then Html.p_ [] (Html.text "No results.")
-                            else Html.el "ol" [Html.class_ "verso-search-results"] (mapM_ searchResult hits)
+                            else Html.ol_ [Html.class_ "verso-search-results"] (mapM_ searchResult hits)
 
 {- | One search result as a Basecoat card: the header links the page (and
 section), the body is a text excerpt.
 -}
 searchResult :: Store.Hit -> Html.Html ()
 searchResult hit =
-    Html.el "li" [Html.class_ "card verso-search-result"] $ do
-        Html.el "header" [] $
-            Html.el "h2" [Html.class_ "verso-search-hit"] $ do
+    Html.li_ [Html.class_ "card verso-search-result"] $ do
+        Html.header_ [] $
+            Html.h2_ [Html.class_ "verso-search-hit"] $ do
                 Html.a_ [Html.href ("/documents/" ++ Store.hitPage hit)] (Html.text (Store.hitPage hit))
                 Monad.unless (null (Store.hitAnchor hit)) $
-                    Html.el "span" [Html.class_ "verso-search-anchor"] (Html.text (" > " ++ Store.hitAnchor hit))
-        Html.el "section" [] $
+                    Html.span_ [Html.class_ "verso-search-anchor"] (Html.text (" > " ++ Store.hitAnchor hit))
+        Html.section_ [] $
             Html.p_ [Html.class_ "verso-search-excerpt"] (Html.text (excerptOf (Store.hitText hit)))
 
 {- | A result's one-line excerpt: the chunk text past its context line and
@@ -162,7 +162,7 @@ trashPage :: Maybe String -> Int -> [(String, String, String, String)] -> Html.H
 trashPage origin retentionDays entries =
     versionPageShell "Trash" $ do
         versionControls
-        Html.el "h1" [] (Html.text "Trash")
+        Html.h1_ [] (Html.text "Trash")
         Html.p_ [Html.class_ "verso-version-back"] (backLink origin)
         Monad.when (retentionDays > 0) $
             Html.p_
@@ -219,7 +219,7 @@ undoPage :: Maybe String -> [(String, String, String, String)] -> Html.Html ()
 undoPage origin entries =
     versionPageShell "Undo" $ do
         versionControls
-        Html.el "h1" [] (Html.text "Undo")
+        Html.h1_ [] (Html.text "Undo")
         Html.p_ [Html.class_ "verso-version-back"] (backLink origin)
         if null entries
             then Html.p_ [] (Html.text "No moves to undo.")
@@ -254,7 +254,7 @@ historyPage :: String -> String -> [Git.Revision] -> Html.Html ()
 historyPage title path revs =
     versionPageShell ("History: " ++ title) $ do
         versionControls
-        Html.el "h1" [] (Html.text "Revision history")
+        Html.h1_ [] (Html.text "Revision history")
         Html.p_ [Html.class_ "verso-version-back"] (Html.a_ [Html.href ("/documents/" ++ path)] (Html.text ("Back to " ++ path)))
         if null revs
             then Html.p_ [] (Html.text "No revisions yet.")
@@ -289,7 +289,7 @@ revisionRow path rev =
         Html.el "td" [] (Html.text (Git.revAuthor rev))
         Html.el "td" [] (Html.text (Git.revSubject rev ++ " (" ++ Git.revShort rev ++ ")"))
         Html.el "td" [] $
-            Html.el "form" [Html.attr "method" "post", Html.attr "action" ("/documents/" ++ path ++ "?rollback")] $ do
+            Html.form_ [Html.attr "method" "post", Html.attr "action" ("/documents/" ++ path ++ "?rollback")] $ do
                 Html.input_ [Html.attr "type" "hidden", Html.attr "name" "rev", Html.attr "value" (Git.revHash rev)]
                 Chrome.chromeSubmitButton Chrome.OutlineControl [Html.class_ "verso-rollback-button"] (Html.text "Restore")
 
@@ -322,7 +322,7 @@ diffPage title path fromRev toRev diff =
 -- | The page-only chrome above the diff content: the heading and the back link.
 diffChrome :: String -> Html.Html ()
 diffChrome path = do
-    Html.el "h1" [] (Html.text "Diff")
+    Html.h1_ [] (Html.text "Diff")
     Html.p_ [Html.class_ "verso-version-back"] (Html.a_ [Html.href ("/documents/" ++ path ++ "?history")] (Html.text "Back to history"))
 
 -- | The diff content (a revision-range caption and the side-by-side table), shared by the diff page and the history pane.

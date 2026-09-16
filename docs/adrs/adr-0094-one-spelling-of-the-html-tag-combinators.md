@@ -53,15 +53,25 @@ current rule and supersedes it in practice.
 Attribute helpers keep their suffixes where the unsuffixed name would be
 awkward or reserved, such as `class_`. That convention is unchanged.
 
+The rule extends to `el`, which is the other way to spell a tag. Where a
+combinator exists, callers use it; `el "x"` is for tags that have none, such as
+the table elements and `svg`. Leaving both in play for the same tag would put
+back at the call site the coin-flip this ADR removes at the library boundary,
+so the 15 `el` calls in `Verso/View.hs` naming a tag that had a combinator were
+converted with the aliases.
+
 ## Consequences
 
-The interface roughly halves, to one obvious name per tag, and new code has a
-rule to follow rather than a coin to flip. Nothing about rendering changes:
+The interface narrows from 66 exported names to 44, one per tag, and new code
+has a rule to follow rather than a coin to flip. The review that prompted this
+sketched an interface of ~30; that is not reached, because only the tag aliases
+were dropped and no other narrowing was attempted. Nothing about rendering changes:
 every alias was a direct synonym, so the emitted bytes are identical, which is
 what let the change be verified by the existing golden cases rather than new
 ones.
 
-The cost is a one-off edit across the two HTML authoring modules, 55 call sites
-in `Verso/View.hs`, `Verso/Chrome.hs` and `HtmlSpec.hs`. Callers written against
+The cost is a one-off edit across the two HTML authoring modules: 55 alias call
+sites in `Verso/View.hs`, `Verso/Chrome.hs` and `HtmlSpec.hs`, plus the 15 `el`
+calls above. Callers written against
 the unprefixed spelling, including any outside this tree, no longer compile and
 must add the suffix; the fix is mechanical and the compiler names every site.

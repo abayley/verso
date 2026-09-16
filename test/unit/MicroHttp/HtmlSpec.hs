@@ -3,6 +3,7 @@
 module MicroHttp.HtmlSpec (spec) where
 
 import qualified Data.ByteString.Char8 as BS
+import qualified Data.Char as Char
 import qualified MicroHttp.Html as Html
 import qualified MicroHttp.Utf8 as Utf8
 import Test.Hspec
@@ -55,10 +56,30 @@ spec =
         it "given an unbounded chunk source, when coalesced, then the first buffer-sized segment is yielded without forcing the rest" $
             (BS.length (head (Html.coalesce 16 (repeat (BS.pack "abcd")))) >= 16) `shouldBe` True
         mapM_ escaperAgreementCase escaperInputs
+        it "given every character up to U+00FF and some beyond, when escaped by the String path, then exactly the five specials are entities" $
+            [c | c <- escapeSurvey, stringEscape [c] /= Utf8.encodeText [c]] `shouldBe` specials
+        it "given every byte value, when escaped by the byte path, then exactly the five special bytes are entities" $ do
+            escaped <- mapM (\c -> Html.escapeBlockBytes (BS.pack [c])) allBytes
+            [c | (c, out) <- zip allBytes escaped, out /= BS.pack [c]] `shouldBe` specials
+
+-- | The five characters both escapers are contracted to escape, and nothing else.
+specials :: String
+specials = "\"&'<>"
+
+{- | The characters the escape-set survey walks: every character up to U+00FF, which
+covers the Latin-1 range an added entity such as @&nbsp;@ would most likely target,
+plus multibyte and astral samples past it.
+-}
+escapeSurvey :: String
+escapeSurvey = allBytes ++ "\8212\1046\10084\128512"
+
+-- | Every byte value, as the Char8 characters the byte path sees.
+allBytes :: String
+allBytes = [Char.chr c | c <- [0 .. 255]]
 
 {- | Inputs the two production escapers must agree on: each of the five specials,
-the specials together, a non-special string, multibyte UTF-8, and the empty
-string. Named so failures point at the offending case.
+the specials together, a non-special string, multibyte UTF-8, an astral character,
+a NUL, and the empty string. Named so failures point at the offending case.
 -}
 escaperInputs :: [(String, String)]
 escaperInputs =
@@ -70,6 +91,9 @@ escaperInputs =
     , ("all five specials together", "<>&\"'")
     , ("a string with no specials", "plain text")
     , ("multibyte UTF-8 around specials", "caf\233 \8212 \1046 <b> & '\10084'")
+    , ("an astral character beside specials", "<\128512>")
+    , ("a NUL beside a special", "a\0<\0b")
+    , ("a non-breaking space beside specials", "<\160>")
     , ("the empty string", "")
     ]
 
@@ -83,13 +107,16 @@ the length/transform invariant a sized streamed response relies on (RFC-0040/004
 escaperAgreementCase :: (String, String) -> Spec
 escaperAgreementCase (label, input) = do
     let utf8 = Utf8.encodeText input
-        stringPath = BS.concat (Html.renderChunks (Html.text input))
     it ("given " ++ label ++ ", when escaped by the String path and the byte path, then the bytes agree") $ do
         bytePath <- Html.escapeBlockBytes utf8
-        bytePath `shouldBe` stringPath
+        bytePath `shouldBe` stringEscape input
     it ("given " ++ label ++ ", when its escaped length is computed, then it equals the escaped byte count") $ do
         escaped <- Html.escapeBlockBytes utf8
         Html.escapedLength utf8 `shouldReturn` BS.length escaped
+
+-- | The bytes the production String path escapes an input to, via 'Html.text'.
+stringEscape :: String -> BS.ByteString
+stringEscape = BS.concat . Html.renderChunks . Html.text
 
 todoItem :: Html.Html ()
 todoItem =

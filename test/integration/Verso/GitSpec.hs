@@ -39,17 +39,37 @@ isCommitted :: Git.CommitResult -> Bool
 isCommitted (Git.Committed _) = True
 isCommitted _ = False
 
+isCommitFailed :: Git.CommitResult -> Bool
+isCommitFailed (Git.CommitFailed _) = True
+isCommitFailed _ = False
+
+isLeft :: Either a b -> Bool
+isLeft (Left _) = True
+isLeft (Right _) = False
+
 spec :: Spec
 spec =
     describe "Verso.Git" $ do
         it "given a directory with no repository, when one is ensured twice, then it is initialised once and the second call is a no-op" $ do
             root <- freshDir
             first <- Git.ensureRepository root importer
-            first `shouldBe` Git.Initialised
+            first `shouldBe` Right Git.Initialised
             hasGit <- Directory.doesDirectoryExist (root ++ "/.git")
             hasGit `shouldBe` True
             second <- Git.ensureRepository root importer
-            second `shouldBe` Git.AlreadyPresent
+            second `shouldBe` Right Git.AlreadyPresent
+
+        it "given a path that is a regular file rather than a directory, when a repository is ensured, then a failure is surfaced" $ do
+            _ <- freshDir
+            let filePath = ioDir ++ "/afile"
+            writeText filePath "not a directory"
+            result <- Git.ensureRepository filePath importer
+            isLeft result `shouldBe` True
+
+        it "given a path that does not exist under the tree, when it is committed, then the staging failure is surfaced" $ do
+            root <- freshRepo
+            result <- Git.commitPaths root author "Add missing" ["nope.md"]
+            isCommitFailed result `shouldBe` True
 
         it "given a page, when it is committed, then it can be read back from the log" $ do
             root <- freshRepo

@@ -83,28 +83,34 @@ gitAvailable = do
 {- | Ensures the tree root is a git repository: if it already has a @.git@, uses
 it unchanged; otherwise @git init@s it and records an initial import commit of the
 current tree state attributed to the supplied import identity. Returns which path
-was taken (for startup logging).
+was taken (for startup logging), or a @Left@ with the captured stderr when @git
+init@ fails, so a broken setup is surfaced rather than reported as initialised.
 -}
-ensureRepository :: FilePath -> Identity -> IO RepoInit
+ensureRepository :: FilePath -> Identity -> IO (Either String RepoInit)
 ensureRepository root importer = do
     present <- Directory.doesDirectoryExist (root ++ "/.git")
     if present
-        then pure AlreadyPresent
+        then pure (Right AlreadyPresent)
         else do
-            _ <- git root ["init"]
-            _ <- git root ["add", "-A"]
-            _ <- commitStaged root importer "Import existing document tree"
-            pure Initialised
+            initRes <- git root ["init"]
+            case Process.procExit initRes of
+                Exit.ExitSuccess -> do
+                    _ <- git root ["add", "-A"]
+                    _ <- commitStaged root importer "Import existing document tree"
+                    pure (Right Initialised)
+                _ -> pure (Left (Utf8.decodeBytes (Process.procErr initRes)))
 
 {- | Stages the given tree-relative paths and commits them with the author
 identity and message. Reports 'NothingToCommit' when staging leaves no change
 (so an unchanged Publish does not create an empty revision), or 'CommitFailed'
-with stderr on error.
+with the captured stderr when staging a path or the commit itself fails.
 -}
 commitPaths :: FilePath -> Identity -> String -> [FilePath] -> IO CommitResult
 commitPaths root author message paths = do
-    mapM_ (\p -> git root ["add", "--", p]) paths
-    commitStaged root author message
+    adds <- mapM (\p -> git root ["add", "--", p]) paths
+    case filter ((/= Exit.ExitSuccess) . Process.procExit) adds of
+        (failed : _) -> pure (CommitFailed (Utf8.decodeBytes (Process.procErr failed)))
+        [] -> commitStaged root author message
 
 {- | Stages every change in the tree (@git add -A@) and commits it as one
 revision. This is the "commit the resulting tree state" form used by structural

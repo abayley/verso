@@ -49,3 +49,4 @@
 2026-09-16 21:07:18  packages/verso/src/Verso/TrashStore.hs:loadTrashEntries:56: Motivation: TrashStore imported the 800-line move engine only to list entries; the dependency now points at Verso.Trash. Move Function.
 2026-09-16 21:30:38  test/unit/Verso/JsonSpec.hs:spec:40: no refactoring needed
 2026-09-16 21:56:34  packages/verso/src/Verso/Maintenance.hs:Event:20: Repeated Switches. Replace Conditional with Polymorphism.
+2026-09-16 22:01:03  packages/verso/src/Verso/Git.hs:ensureRepository:89: Motivation: ensureRepository discarded git init's result, so a failed init reported success. Change Function Declaration.

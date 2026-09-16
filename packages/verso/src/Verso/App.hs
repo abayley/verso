@@ -121,7 +121,12 @@ appFromConfig console settings vc = do
                         console
                         "startup: check for git"
                         (Git.ensureRepository (VConfig.documentTreeRoot vc) (importIdentity vc))
-                console (case outcome of Git.Initialised -> "git repository initialised (import commit)"; Git.AlreadyPresent -> "git repository present")
+                console
+                    ( case outcome of
+                        Right Git.Initialised -> "git repository initialised (import commit)"
+                        Right Git.AlreadyPresent -> "git repository present"
+                        Left err -> "versioning ON but git repository setup failed (history/publish degraded): " ++ err
+                    )
     -- Serialize structural tree mutations across the server's connection threads (see 'Structure.WriteLock').
     writeLock <- MVar.newMVar ()
     -- Concordance search (RFC-0034): optional; absent shim/model degrades to disabled.
@@ -1313,9 +1318,18 @@ treePutDocument versioning maint root captures request = do
                     Monad.when (Structure.versioningOn versioning) $ do
                         let author = Identity.currentIdentity (Structure.versioningIdentity versioning) request
                         message <- Iteratee.liftIO (publishMessage path fsPath)
-                        _ <- Iteratee.liftIO (Git.commitPaths root author message [path])
+                        committed <- Iteratee.liftIO (Git.commitPaths root author message [path])
+                        Iteratee.liftIO (reportPublishCommit committed)
                         Iteratee.liftIO (Draft.deleteDraft (Structure.draftStagingRoot versioning) page)
                     pure noContentResponse
+
+{- | Logs a failed publish commit to stderr; a successful or empty commit is silent. The page bytes are
+already saved on disk, so a publish still answers 204, but the commit failure is not swallowed
+(matching 'Structure.commitRevision').
+-}
+reportPublishCommit :: Git.CommitResult -> IO ()
+reportPublishCommit (Git.CommitFailed err) = IO.hPutStrLn IO.stderr ("git commit (publish) failed: " ++ err)
+reportPublishCommit _ = pure ()
 
 -- | The @500@ for a save whose body arrived but could not be placed as the page.
 saveFailed :: Http.Response

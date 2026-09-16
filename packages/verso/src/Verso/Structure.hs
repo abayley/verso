@@ -52,6 +52,7 @@ import qualified Verso.Git as Git
 import qualified Verso.Identity as Identity
 import qualified Verso.OperationLog as OperationLog
 import qualified Verso.OperationStore as OperationStore
+import qualified Verso.Trash as Trash
 import qualified Verso.TrashStore as TrashStore
 import qualified Verso.TreeMove as TreeMove
 import qualified Verso.TreePath as TreePath
@@ -391,7 +392,7 @@ purgeEntry structure rawId =
     case TreePath.parseTrashId rawId of
         Nothing -> pure False
         Just trashId -> do
-            removed <- TreeMove.deleteTrashEntry (structureTrashRoot structure) trashId
+            removed <- Trash.deleteTrashEntry (structureTrashRoot structure) trashId
             Monad.when removed (TrashStore.forgetTrashEntry (structureTrash structure) rawId)
             pure removed
 

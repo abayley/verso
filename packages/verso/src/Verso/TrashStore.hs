@@ -24,7 +24,7 @@ import qualified Data.Map as Map
 import qualified Data.Maybe as Maybe
 import qualified Verso.OperationLog as OperationLog
 import qualified Verso.OperationStore as OperationStore
-import qualified Verso.TreeMove as TreeMove
+import qualified Verso.Trash as Trash
 
 -- | One restorable trash item, enriched with the timestamp of its delete operation.
 data TrashEntry = TrashEntry
@@ -53,7 +53,7 @@ uncachedTrashStore = UncachedTrashStore
 -- | Loads and enriches the durable trash state.
 loadTrashEntries :: FilePath -> OperationStore.OperationStore -> IO [TrashEntry]
 loadTrashEntries trashRoot operationStore = do
-    manifests <- TreeMove.listTrash trashRoot
+    manifests <- Trash.listTrash trashRoot
     operations <- OperationStore.readOperations operationStore
     let deletionTimestamps =
             Map.fromList

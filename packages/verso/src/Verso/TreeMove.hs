@@ -36,8 +36,6 @@ module Verso.TreeMove (
     restoreFromTrash,
     ReplayEntry (..),
     replayLog,
-    listTrash,
-    deleteTrashEntry,
 ) where
 
 import qualified Control.Monad as Monad
@@ -459,16 +457,16 @@ applyPageDelete root trashRoot page trashId seqNo = do
     Directory.createDirectoryIfMissing True entryDir
     assetClasses <- classifyMovingAssets root page
     let exclusives = [name | (name, DocumentLinks.ExclusiveAsset) <- assetClasses]
-    mdItem <- moveIntoTrash root entryDir "page.md" page False
-    metaItem <- moveDirIntoTrash root entryDir "meta" (TreePath.metaDirectory page)
+    mdItem <- Trash.moveIntoTrash root entryDir "page.md" page False
+    metaItem <- Trash.moveDirIntoTrash root entryDir "meta" (TreePath.metaDirectory page)
     assetItems <-
         Monad.zipWithM
-            (\i name -> maybe (pure Nothing) (\asset -> moveIntoTrash root entryDir ("asset-" ++ show i) asset False) (TreePath.append (TreePath.peerAssets page) name))
+            (\i name -> maybe (pure Nothing) (\asset -> Trash.moveIntoTrash root entryDir ("asset-" ++ show i) asset False) (TreePath.append (TreePath.peerAssets page) name))
             [(0 :: Int) ..]
             exclusives
     removed <- removeParentListing root (TreePath.parent page) relPath
     let items = Maybe.catMaybes (mdItem : metaItem : assetItems)
-    writeManifest entryDir (Trash.Manifest relPath "page" seqNo removed items)
+    Trash.writeManifest entryDir (Trash.Manifest relPath "page" seqNo removed items)
     pure (Right (Deleted (TreePath.renderTrashId trashId) relPath "page"))
 
 -- | Moves a whole section folder to trash, removes its listing card, writes the manifest.
@@ -478,8 +476,8 @@ applySectionDelete root trashRoot section trashId seqNo = do
         relPath = TreePath.render section
     Directory.createDirectoryIfMissing True entryDir
     removed <- removeParentListing root (TreePath.parent section) (TreePath.render (TreePath.sectionIndex section))
-    payloadItem <- moveIntoTrash root entryDir "payload" section True
-    writeManifest entryDir (Trash.Manifest relPath "section" seqNo removed (Maybe.catMaybes [payloadItem]))
+    payloadItem <- Trash.moveIntoTrash root entryDir "payload" section True
+    Trash.writeManifest entryDir (Trash.Manifest relPath "section" seqNo removed (Maybe.catMaybes [payloadItem]))
     pure (Right (Deleted (TreePath.renderTrashId trashId) relPath "section"))
 
 {- | Restores a trash entry to its provenance path (RFC-0028), re-adding the parent
@@ -500,43 +498,17 @@ restoreFromTrash root trashRoot trashId = do
             case parsed >>= withOrigin of
                 Nothing -> pure (Left "corrupt trash manifest")
                 Just (manifest, origin) -> do
-                    occupied <- targetOccupied root origin (Trash.manKind manifest)
+                    occupied <- Trash.targetOccupied root origin (Trash.manKind manifest)
                     if occupied
                         then pure (Left "original location is occupied")
                         else do
-                            Monad.forM_ (Trash.manItems manifest) (restoreItem root entryDir)
+                            Monad.forM_ (Trash.manItems manifest) (Trash.restoreItem root entryDir)
                             reAddListing root origin manifest
                             Monad.void (FileSystem.removeFilePath manifestFile)
                             Monad.void (FileSystem.removeEmptyDir entryDir)
                             pure (Right (origin, Trash.manKind manifest))
   where
     withOrigin manifest = fmap (manifest,) (TreePath.parse (Trash.manPath manifest))
-
--- | Moves one tree path into a trash entry under the given stored name (best-effort), yielding its manifest item.
-moveIntoTrash :: FilePath -> FilePath -> String -> TreePath.TreePath -> Bool -> IO (Maybe Trash.TrashItem)
-moveIntoTrash root entryDir stored origin isDir = do
-    outcome <- FileSystem.renamePath (TreePath.resolve root origin) (entryDir ++ "/" ++ stored)
-    pure
-        ( either
-            (const Nothing)
-            (const (Just (Trash.TrashItem stored isDir (TreePath.render origin))))
-            outcome
-        )
-
--- | As 'moveIntoTrash' for a directory that may be absent (a page with no sidecar meta dir).
-moveDirIntoTrash :: FilePath -> FilePath -> String -> TreePath.TreePath -> IO (Maybe Trash.TrashItem)
-moveDirIntoTrash root entryDir stored origin = do
-    exists <- Directory.doesDirectoryExist (TreePath.resolve root origin)
-    if not exists then pure Nothing else moveIntoTrash root entryDir stored origin True
-
--- | Moves one trashed item back to its origin tree path (creating parent directories); an item whose origin does not parse is left in the entry.
-restoreItem :: FilePath -> FilePath -> Trash.TrashItem -> IO ()
-restoreItem root entryDir item =
-    case TreePath.parse (Trash.itemOrigin item) of
-        Nothing -> pure ()
-        Just dest -> do
-            Directory.createDirectoryIfMissing True (TreePath.resolve root (TreePath.parent dest))
-            Monad.void (FileSystem.renamePath (entryDir ++ "/" ++ Trash.itemStored item) (TreePath.resolve root dest))
 
 -- | Removes a target's entry from its parent index.md listing, returning the removed line.
 removeParentListing :: FilePath -> TreePath.TreePath -> String -> IO (Maybe String)
@@ -564,62 +536,6 @@ reAddListing root origin manifest =
     parent = TreePath.parent origin
     parentIndex = TreePath.sectionIndex parent
     target = TreePath.render (if Trash.manKind manifest == "section" then TreePath.sectionIndex origin else origin)
-
--- | Whether a tree path is currently occupied (a page's file, a section's directory).
-targetOccupied :: FilePath -> TreePath.TreePath -> String -> IO Bool
-targetOccupied root path kind =
-    if kind == "section" then Directory.doesDirectoryExist fs else Directory.doesFileExist fs
-  where
-    fs = TreePath.resolve root path
-
--- | Writes a trash entry's provenance manifest.
-writeManifest :: FilePath -> Trash.Manifest -> IO ()
-writeManifest = Trash.writeManifest
-
-{- | Lists the trash entries (RFC-0028) as @(id, originalPath, kind)@, newest-id last,
-reading each entry's manifest. Entries without a valid id or a readable manifest are skipped.
--}
-listTrash :: FilePath -> IO [(String, String, String)]
-listTrash trashRoot = do
-    exists <- Directory.doesDirectoryExist trashRoot
-    if not exists
-        then pure []
-        else do
-            names <- Directory.listDirectory trashRoot
-            entries <- mapM entryFor (Maybe.mapMaybe TreePath.parseTrashId names)
-            pure (Maybe.catMaybes entries)
-  where
-    entryFor trashId = do
-        let entryDir = TreePath.trashEntryDir trashRoot trashId
-        hasManifest <- Directory.doesFileExist (entryDir ++ "/manifest")
-        if not hasManifest
-            then pure Nothing
-            else do
-                parsed <- Trash.readManifest entryDir
-                pure (fmap (\m -> (TreePath.renderTrashId trashId, Trash.manPath m, Trash.manKind m)) parsed)
-
-{- | Permanently removes a trash entry (its directory and everything stored in
-it). Returns whether the entry existed.
--}
-deleteTrashEntry :: FilePath -> TreePath.TrashId -> IO Bool
-deleteTrashEntry trashRoot trashId = do
-    let entryDir = TreePath.trashEntryDir trashRoot trashId
-    exists <- Directory.doesDirectoryExist entryDir
-    if not exists
-        then pure False
-        else do
-            removeTree entryDir
-            pure True
-
--- | Recursively removes a directory tree (MicroHs's System.Directory has no removeDirectoryRecursive).
-removeTree :: FilePath -> IO ()
-removeTree dir = do
-    names <- Directory.listDirectory dir
-    Monad.forM_ names $ \name -> do
-        let child = dir ++ "/" ++ name
-        isDir <- Directory.doesDirectoryExist child
-        if isDir then removeTree child else Monad.void (FileSystem.removeFilePath child)
-    Monad.void (FileSystem.removeEmptyDir dir)
 
 -- | One operation's outcome during replay: its seq, type, and @applied@ or @skipped: <reason>@ status.
 data ReplayEntry = ReplayEntry

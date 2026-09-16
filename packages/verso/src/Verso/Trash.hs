@@ -15,12 +15,22 @@ module Verso.Trash (
     parseManifest,
     readManifest,
     writeManifest,
+    moveIntoTrash,
+    moveDirIntoTrash,
+    restoreItem,
+    targetOccupied,
+    listTrash,
+    deleteTrashEntry,
 ) where
 
+import qualified Control.Monad as Monad
 import qualified Data.List as List
+import qualified Data.Maybe as Maybe
+import qualified MicroHttp.FileSystem as FileSystem
 import qualified MicroHttp.Stream as Stream
 import qualified MicroHttp.Utf8 as Utf8
 import qualified System.Directory as Directory
+import qualified Verso.TreePath as TreePath
 
 -- | One stored file or directory in a trash entry: its name inside the entry, whether it is a directory, and its origin tree path.
 data TrashItem = TrashItem
@@ -134,3 +144,81 @@ readInt :: String -> Maybe Int
 readInt s = case reads s of
     [(n, "")] -> Just n
     _ -> Nothing
+
+-- | Moves one tree path into a trash entry under the given stored name (best-effort), yielding its manifest item.
+moveIntoTrash :: FilePath -> FilePath -> String -> TreePath.TreePath -> Bool -> IO (Maybe TrashItem)
+moveIntoTrash root entryDir stored origin isDir = do
+    outcome <- FileSystem.renamePath (TreePath.resolve root origin) (entryDir ++ "/" ++ stored)
+    pure
+        ( either
+            (const Nothing)
+            (const (Just (TrashItem stored isDir (TreePath.render origin))))
+            outcome
+        )
+
+-- | As 'moveIntoTrash' for a directory that may be absent (a page with no sidecar meta dir).
+moveDirIntoTrash :: FilePath -> FilePath -> String -> TreePath.TreePath -> IO (Maybe TrashItem)
+moveDirIntoTrash root entryDir stored origin = do
+    exists <- Directory.doesDirectoryExist (TreePath.resolve root origin)
+    if not exists then pure Nothing else moveIntoTrash root entryDir stored origin True
+
+-- | Moves one trashed item back to its origin tree path (creating parent directories); an item whose origin does not parse is left in the entry.
+restoreItem :: FilePath -> FilePath -> TrashItem -> IO ()
+restoreItem root entryDir item =
+    case TreePath.parse (itemOrigin item) of
+        Nothing -> pure ()
+        Just dest -> do
+            Directory.createDirectoryIfMissing True (TreePath.resolve root (TreePath.parent dest))
+            Monad.void (FileSystem.renamePath (entryDir ++ "/" ++ itemStored item) (TreePath.resolve root dest))
+
+-- | Whether a tree path is currently occupied (a page's file, a section's directory).
+targetOccupied :: FilePath -> TreePath.TreePath -> String -> IO Bool
+targetOccupied root path kind =
+    if kind == "section" then Directory.doesDirectoryExist fs else Directory.doesFileExist fs
+  where
+    fs = TreePath.resolve root path
+
+{- | Lists the trash entries (RFC-0028) as @(id, originalPath, kind)@, newest-id last,
+reading each entry's manifest. Entries without a valid id or a readable manifest are skipped.
+-}
+listTrash :: FilePath -> IO [(String, String, String)]
+listTrash trashRoot = do
+    exists <- Directory.doesDirectoryExist trashRoot
+    if not exists
+        then pure []
+        else do
+            names <- Directory.listDirectory trashRoot
+            entries <- mapM entryFor (Maybe.mapMaybe TreePath.parseTrashId names)
+            pure (Maybe.catMaybes entries)
+  where
+    entryFor trashId = do
+        let entryDir = TreePath.trashEntryDir trashRoot trashId
+        hasManifest <- Directory.doesFileExist (entryDir ++ "/manifest")
+        if not hasManifest
+            then pure Nothing
+            else do
+                parsed <- readManifest entryDir
+                pure (fmap (\m -> (TreePath.renderTrashId trashId, manPath m, manKind m)) parsed)
+
+{- | Permanently removes a trash entry (its directory and everything stored in
+it). Returns whether the entry existed.
+-}
+deleteTrashEntry :: FilePath -> TreePath.TrashId -> IO Bool
+deleteTrashEntry trashRoot trashId = do
+    let entryDir = TreePath.trashEntryDir trashRoot trashId
+    exists <- Directory.doesDirectoryExist entryDir
+    if not exists
+        then pure False
+        else do
+            removeTree entryDir
+            pure True
+
+-- | Recursively removes a directory tree (MicroHs's System.Directory has no removeDirectoryRecursive).
+removeTree :: FilePath -> IO ()
+removeTree dir = do
+    names <- Directory.listDirectory dir
+    Monad.forM_ names $ \name -> do
+        let child = dir ++ "/" ++ name
+        isDir <- Directory.doesDirectoryExist child
+        if isDir then removeTree child else Monad.void (FileSystem.removeFilePath child)
+    Monad.void (FileSystem.removeEmptyDir dir)

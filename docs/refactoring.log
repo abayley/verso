@@ -45,3 +45,5 @@
 2026-09-16 15:24:23  packages/verso/src/Verso/Json.hs:render:55: no refactoring needed
 2026-09-16 16:53:53  packages/verso/src/Verso/TreeMove.hs:trashListJson:626: Dead Code. Remove Dead Code.
 2026-09-16 16:53:53  packages/verso/src/Verso/View.hs:jsonObject:466: Duplicated Code. Extract Function.
+2026-09-16 21:07:18  packages/verso/src/Verso/Trash.hs:moveIntoTrash:148: Feature Envy. Move Function.
+2026-09-16 21:07:18  packages/verso/src/Verso/TrashStore.hs:loadTrashEntries:56: Motivation: TrashStore imported the 800-line move engine only to list entries; the dependency now points at Verso.Trash. Move Function.

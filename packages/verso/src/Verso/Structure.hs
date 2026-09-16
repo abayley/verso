@@ -13,9 +13,6 @@ transaction's effects and their order through them.
 -}
 module Verso.Structure (
     Structure (..),
-    IndexMaintenance (..),
-    noIndexMaintenance,
-    combineMaintenance,
     WriteLock,
     withWriteLock,
     Versioning (..),
@@ -50,6 +47,7 @@ import qualified System.IO as IO
 import qualified Verso.Draft as Draft
 import qualified Verso.Git as Git
 import qualified Verso.Identity as Identity
+import qualified Verso.Maintenance as Maintenance
 import qualified Verso.OperationLog as OperationLog
 import qualified Verso.OperationStore as OperationStore
 import qualified Verso.Trash as Trash
@@ -68,7 +66,7 @@ data Structure = Structure
     , structureTrashRoot :: FilePath
     , structureLock :: WriteLock
     , structurePages :: TreeMove.RelevantPages
-    , structureMaintenance :: IndexMaintenance
+    , structureMaintenance :: Maintenance.Maintenance
     , structureOperations :: OperationStore.OperationStore
     , structureTrash :: TrashStore.TrashStore
     , structureVersioning :: Versioning
@@ -89,34 +87,6 @@ type WriteLock = Maybe (MVar.MVar ())
 withWriteLock :: WriteLock -> IO a -> IO a
 withWriteLock Nothing act = act
 withWriteLock (Just lock) act = MVar.withMVar lock (const act)
-
-{- | The link-index maintenance hooks a tree mutation calls (RFC-0029): each keeps the
-warm in-memory graph correct without a whole-tree walk. 'noIndexMaintenance' is the
-no-op used without a store (tests, scan mode).
--}
-data IndexMaintenance = IndexMaintenance
-    { onMove :: String -> String -> IO ()
-    , onDelete :: String -> IO ()
-    , onCreate :: String -> IO ()
-    , onRestore :: String -> IO ()
-    , onSave :: String -> IO ()
-    }
-
--- | The no-op index-maintenance hooks, used without a store (tests, scan mode).
-noIndexMaintenance :: IndexMaintenance
-noIndexMaintenance =
-    IndexMaintenance (\_ _ -> pure ()) (const (pure ())) (const (pure ())) (const (pure ())) (const (pure ()))
-
--- | Runs two maintenance hook sets (link index, then search) per mutation.
-combineMaintenance :: IndexMaintenance -> IndexMaintenance -> IndexMaintenance
-combineMaintenance a b =
-    IndexMaintenance
-        { onMove = \from to -> onMove a from to >> onMove b from to
-        , onDelete = \path -> onDelete a path >> onDelete b path
-        , onCreate = \path -> onCreate a path >> onCreate b path
-        , onRestore = \path -> onRestore a path >> onRestore b path
-        , onSave = \path -> onSave a path >> onSave b path
-        }
 
 {- | The versioning context for the tree handlers (RFC-0032): whether
 draft/publish versioning is on, and the draft staging root. When off, the tree
@@ -216,7 +186,7 @@ create structure parent kind title
                         let editPath = if isSection then TreePath.sectionIndex node else node
                         Monad.when isSection (Directory.createDirectoryIfMissing True (TreePath.resolve root node))
                         BS.writeFile (TreePath.resolve root editPath) (Utf8.encodeText seedBody)
-                        onCreate (structureMaintenance structure) (TreePath.render editPath)
+                        structureMaintenance structure (Maintenance.Created (TreePath.render editPath))
                         pure (Right (Created title node kind editPath))
   where
     root = structureRoot structure
@@ -241,7 +211,7 @@ move structure author src destParent slug confirm = withWriteLock (structureLock
                 let from = TreeMove.planFrom plan
                     to = TreeMove.planTo plan
                 appendRecord structure OperationLog.OpMove (kindWord isPage) (Just from) (Just to) Nothing
-                onMove (structureMaintenance structure) (TreePath.render from) (TreePath.render to)
+                structureMaintenance structure (Maintenance.Moved (TreePath.render from) (TreePath.render to))
                 relocateDraftForMove (structureVersioning structure) from to
                 structureCommit structure author ("Move " ++ TreePath.render from ++ " to " ++ TreePath.render to)
             pure (Right plan)
@@ -268,7 +238,7 @@ deleteInto structure author target trashId seqNo = do
         Right (TreeMove.Deleted _ _ kind) -> do
             let path = TreePath.render target
             ts <- Log.localTimestamp
-            onDelete (structureMaintenance structure) path
+            structureMaintenance structure (Maintenance.Deleted path)
             -- RFC-0032: stash any staged draft into the trash entry (recoverable), then commit the deletion.
             stashDraftToTrash (structureVersioning structure) (structureTrashRoot structure) target trashId
             structureCommit structure author ("Delete " ++ path)
@@ -292,7 +262,7 @@ restoreEntry structure author trashId = do
         Left reason -> pure (Left (Refused reason))
         Right (restored, kind) -> do
             let path = TreePath.render restored
-            onRestore (structureMaintenance structure) path
+            structureMaintenance structure (Maintenance.Restored path)
             -- RFC-0032: bring back any draft stashed with the entry, then commit the restore.
             restoreDraftFromTrash (structureVersioning structure) (structureTrashRoot structure) trashId restored
             structureCommit structure author ("Restore " ++ path)
@@ -339,7 +309,7 @@ applyInverse structure author op = case OperationLog.opType op of
                 Left reason -> pure (Left (Refused reason))
                 Right plan
                     | TreeMove.planApplied plan -> do
-                        onMove (structureMaintenance structure) to from
+                        structureMaintenance structure (Maintenance.Moved to from)
                         appendRecord structure OperationLog.OpMove (OperationLog.opKind op) (Just toPath) (Just fromPath) Nothing
                         pure (Right (UndoneMove toPath fromPath))
                     | otherwise -> pure (Left (Refused "inverse move was not applied"))

@@ -8,6 +8,7 @@ import qualified System.Directory as Directory
 import Test.Hspec
 import qualified Verso.Draft as Draft
 import qualified Verso.Git as Git
+import qualified Verso.Maintenance as Maintenance
 import qualified Verso.OperationLog as OperationLog
 import qualified Verso.OperationStore as OperationStore
 import qualified Verso.Structure as Structure
@@ -63,14 +64,12 @@ fixture versioning = do
     writeAt "refed.md" "# Refed\n"
     events <- IORef.newIORef []
     let record event = IORef.modifyIORef events (++ [event])
-        maintenance =
-            Structure.IndexMaintenance
-                { Structure.onMove = \from to -> record ("index move " ++ from ++ " -> " ++ to)
-                , Structure.onDelete = \path -> record ("index delete " ++ path)
-                , Structure.onCreate = \path -> record ("index create " ++ path)
-                , Structure.onRestore = \path -> record ("index restore " ++ path)
-                , Structure.onSave = \path -> record ("index save " ++ path)
-                }
+        maintenance event = case event of
+            Maintenance.Moved from to -> record ("index move " ++ from ++ " -> " ++ to)
+            Maintenance.Deleted path -> record ("index delete " ++ path)
+            Maintenance.Created path -> record ("index create " ++ path)
+            Maintenance.Restored path -> record ("index restore " ++ path)
+            Maintenance.Saved path -> record ("index save " ++ path)
         structure =
             Structure.Structure
                 { Structure.structureRoot = root

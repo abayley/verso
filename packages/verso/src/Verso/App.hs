@@ -56,6 +56,7 @@ import qualified Verso.Git as Git
 import qualified Verso.Identity as Identity
 import qualified Verso.Json as Json
 import qualified Verso.LinkIndexStore as LinkIndexStore
+import qualified Verso.Maintenance as Maintenance
 import qualified Verso.OperationLog as OperationLog
 import qualified Verso.OperationStore as OperationStore
 import qualified Verso.SearchIndex as SearchIndex
@@ -242,7 +243,7 @@ treeRoutesWithStores operationStore trashStore writeLock indexStore search versi
     -- after a re-export. Without a store (tests, replay) the scan is used and maintenance
     -- is a no-op (RFC-0029).
     findRelevant = maybe TreeMove.scanRelevant TreeMove.indexRelevant indexStore
-    maint = Structure.combineMaintenance (maybe Structure.noIndexMaintenance (storeMaintenance root) indexStore) (searchMaintenance search)
+    maint = Maintenance.combine (maybe Maintenance.none (storeMaintenance root) indexStore) (searchMaintenance search)
     -- The structural operations (RFC-0045): one transaction each over these collaborators.
     structure =
         Structure.Structure
@@ -268,31 +269,27 @@ enqueue the page; structural mutations queue a reconcile sweep, which also
 catches the pages the mutation rewrote (referrers, parent listings --
 decision 14's populations). No-ops when search is off.
 -}
-searchMaintenance :: Maybe SearchIndex.SearchRuntime -> Structure.IndexMaintenance
-searchMaintenance Nothing = Structure.noIndexMaintenance
-searchMaintenance (Just runtime) =
-    Structure.IndexMaintenance
-        { Structure.onMove = \_ _ -> SearchIndex.enqueueReconcile runtime
-        , Structure.onDelete = \_ -> SearchIndex.enqueueReconcile runtime
-        , Structure.onCreate = SearchIndex.enqueuePage runtime
-        , Structure.onRestore = \_ -> SearchIndex.enqueueReconcile runtime
-        , Structure.onSave = SearchIndex.enqueuePage runtime
-        }
+searchMaintenance :: Maybe SearchIndex.SearchRuntime -> Maintenance.Maintenance
+searchMaintenance Nothing _ = pure ()
+searchMaintenance (Just runtime) event = case event of
+    Maintenance.Moved _ _ -> SearchIndex.enqueueReconcile runtime
+    Maintenance.Deleted _ -> SearchIndex.enqueueReconcile runtime
+    Maintenance.Created path -> SearchIndex.enqueuePage runtime path
+    Maintenance.Restored _ -> SearchIndex.enqueueReconcile runtime
+    Maintenance.Saved path -> SearchIndex.enqueuePage runtime path
 
 {- | The maintenance hooks backed by a live store: a move relocates the subtree's keys
 and targets in place (pure, no re-read); a delete drops the subtree and re-reads the
 parent listing; create/save re-read the written page; restore re-reads the restored
 page/subtree and the parent listing. None walk the whole tree.
 -}
-storeMaintenance :: FilePath -> LinkIndexStore.LinkIndexStore -> Structure.IndexMaintenance
-storeMaintenance root store =
-    Structure.IndexMaintenance
-        { Structure.onMove = \from to -> LinkIndexStore.relocateInIndex from to store
-        , Structure.onDelete = \path -> LinkIndexStore.removeSubtreeInIndex path store >> reportIndexError (LinkIndexStore.applyChanges root [parentIndexPath path] store)
-        , Structure.onCreate = \path -> reportIndexError (LinkIndexStore.applyChanges root [path] store)
-        , Structure.onRestore = \path -> reportIndexError (LinkIndexStore.addSubtreeToIndex root path store) >> reportIndexError (LinkIndexStore.applyChanges root [parentIndexPath path] store)
-        , Structure.onSave = \path -> reportIndexError (LinkIndexStore.applyChanges root [path] store)
-        }
+storeMaintenance :: FilePath -> LinkIndexStore.LinkIndexStore -> Maintenance.Maintenance
+storeMaintenance root store event = case event of
+    Maintenance.Moved from to -> LinkIndexStore.relocateInIndex from to store
+    Maintenance.Deleted path -> LinkIndexStore.removeSubtreeInIndex path store >> reportIndexError (LinkIndexStore.applyChanges root [parentIndexPath path] store)
+    Maintenance.Created path -> reportIndexError (LinkIndexStore.applyChanges root [path] store)
+    Maintenance.Restored path -> reportIndexError (LinkIndexStore.addSubtreeToIndex root path store) >> reportIndexError (LinkIndexStore.applyChanges root [parentIndexPath path] store)
+    Maintenance.Saved path -> reportIndexError (LinkIndexStore.applyChanges root [path] store)
   where
     parentIndexPath p = maybe "index.md" (TreePath.render . TreePath.sectionIndex . TreePath.parent) (TreePath.parse p)
 
@@ -774,7 +771,7 @@ treeServeFile root path = do
 {- | A POST under the tree: an asset upload (@?asset@, a raw-body file) into the
 document's peer @assets/@ folder, or otherwise a document save.
 -}
-treePost :: Structure.Versioning -> Structure.IndexMaintenance -> FilePath -> Router.Handler
+treePost :: Structure.Versioning -> Maintenance.Maintenance -> FilePath -> Router.Handler
 treePost versioning maint root captures request
     | hasQueryFlag "asset" request = treeUpload root captures request
     | hasQueryFlag "image-titles" request = treeImageTitles root captures request
@@ -1237,7 +1234,7 @@ raw HTML would block legitimate saves -- the editor preserves it verbatim, and
 nothing renders it as live HTML (the trust boundary that guard defends does not
 apply to first-party files).
 -}
-treeSave :: Structure.Versioning -> Structure.IndexMaintenance -> FilePath -> Router.Handler
+treeSave :: Structure.Versioning -> Maintenance.Maintenance -> FilePath -> Router.Handler
 treeSave versioning maint root captures _request = do
     let path = capture "path" captures
     case TreePath.parse path of
@@ -1255,7 +1252,7 @@ treeSave versioning maint root captures _request = do
                 Left _ -> pure saveFailed
                 Right _ -> do
                     -- The page's body (and so its outbound links) changed; maintain its index entry.
-                    Monad.unless (Structure.versioningOn versioning) (Iteratee.liftIO (Structure.onSave maint path))
+                    Monad.unless (Structure.versioningOn versioning) (Iteratee.liftIO (maint (Maintenance.Saved path)))
                     saveResponse path
 
 {- | The save form's part consumer, writing into @tmp@: the @markdown@ field is
@@ -1298,7 +1295,7 @@ to the acting author, and the page's staged draft cleared. Idempotent: an
 unchanged body yields no new commit (git sees no diff) but still clears the
 draft.
 -}
-treePutDocument :: Structure.Versioning -> Structure.IndexMaintenance -> FilePath -> Router.Handler
+treePutDocument :: Structure.Versioning -> Maintenance.Maintenance -> FilePath -> Router.Handler
 treePutDocument versioning maint root captures request = do
     let path = capture "path" captures
     case TreePath.parse path of
@@ -1312,7 +1309,7 @@ treePutDocument versioning maint root captures request = do
             case written of
                 Left _ -> pure saveFailed
                 Right _ -> do
-                    Iteratee.liftIO (Structure.onSave maint path)
+                    Iteratee.liftIO (maint (Maintenance.Saved path))
                     Monad.when (Structure.versioningOn versioning) $ do
                         let author = Identity.currentIdentity (Structure.versioningIdentity versioning) request
                         message <- Iteratee.liftIO (publishMessage path fsPath)
@@ -1498,7 +1495,7 @@ treeReadAt root page request = do
 publish-time path, commits it as a new revision (forward-only -- history is never
 rewritten), and returns to the read view.
 -}
-treeRollback :: Structure.Versioning -> Structure.IndexMaintenance -> FilePath -> Router.Handler
+treeRollback :: Structure.Versioning -> Maintenance.Maintenance -> FilePath -> Router.Handler
 treeRollback versioning maint root captures request = do
     fields <- formFieldsI treeCreateMaxBytes
     let rev = capture "rev" fields
@@ -1519,7 +1516,7 @@ treeRollback versioning maint root captures request = do
                 Nothing -> pure (statusResponse 409 "Conflict" "cannot read that revision\n")
                 Just (Left _) -> pure (statusResponse 500 "Internal Server Error" "could not restore that revision\n")
                 Just (Right ()) -> do
-                    Iteratee.liftIO (Structure.onSave maint path)
+                    Iteratee.liftIO (maint (Maintenance.Saved path))
                     let author = Identity.currentIdentity (Structure.versioningIdentity versioning) request
                     _ <- Iteratee.liftIO (Git.commitAll root author ("Roll back " ++ path ++ " to " ++ rev))
                     -- Rollback is a plain history-page form post: classic POST -> 303 -> GET.

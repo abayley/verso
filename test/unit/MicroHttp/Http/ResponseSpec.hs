@@ -47,6 +47,21 @@ spec =
             sizedChunks <- recordResponse (Http.Response Http.okStatus [] (Http.SizedStreamBody 8 (Iteratee.strictEnumerator (bs "streamed"))))
             sizedChunks
                 `shouldBe` Right [bs "HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\n", bs "streamed"]
+        describe "mapBody" $ do
+            it "given a strict body, when mapped, then the response is unchanged" $
+                Http.responseBody (Http.mapBody prependX (Http.Response Http.okStatus [] (Http.StrictBody (bs "ok"))))
+                    `shouldBe` Http.StrictBody (bs "ok")
+            it "given a file body, when mapped, then the response is unchanged" $
+                Http.responseBody (Http.mapBody prependX (Http.Response Http.okStatus [] (Http.FileBody "x.txt" 3)))
+                    `shouldBe` Http.FileBody "x.txt" 3
+            it "given a sized streaming body, when mapped and written, then the mapped stream is served under the original Content-Length" $ do
+                mappedChunks <- recordResponse (Http.mapBody prependX (Http.Response Http.okStatus [] (Http.SizedStreamBody 8 (Iteratee.strictEnumerator (bs "streamed")))))
+                mappedChunks
+                    `shouldBe` Right [bs "HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\n", bs "X", bs "streamed"]
+
+-- | An enumerator transform that feeds an @X@ chunk before the wrapped stream, for the 'Http.mapBody' tests.
+prependX :: Iteratee.Enumerator Stream.StreamError () -> Iteratee.Enumerator Stream.StreamError ()
+prependX enumerator sink = Iteratee.feedChunk (bs "X") sink >>= enumerator
 
 recordResponse :: Http.Response -> IO (Either Stream.StreamError [BS.ByteString])
 recordResponse response = do

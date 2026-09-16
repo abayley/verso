@@ -61,13 +61,9 @@ egress stage app conn = fmap (fuseBody stage) (app conn)
 
 -- | Fuses an egress enumeratee onto a streaming body, leaving strict and file bodies untouched.
 fuseBody :: (Iteratee.Iter Stream.StreamError () -> Iteratee.Iter Stream.StreamError ()) -> Http.Response -> Http.Response
-fuseBody stage response =
-    case Http.responseBody response of
-        Http.StrictBody _ -> response
-        Http.FileBody _ _ -> response
-        Http.StreamBody enumerator -> response{Http.responseBody = Http.StreamBody (fuse enumerator)}
-        Http.SizedStreamBody size enumerator -> response{Http.responseBody = Http.SizedStreamBody size (fuse enumerator)}
+fuseBody stage = Http.mapBody fuse
   where
+    -- fuse the egress sink stage onto the body's enumerator; 'Http.mapBody' walks the body taxonomy
     fuse :: Iteratee.Enumerator Stream.StreamError () -> Iteratee.Enumerator Stream.StreamError ()
     fuse enumerator sink = enumerator (stage sink)
 

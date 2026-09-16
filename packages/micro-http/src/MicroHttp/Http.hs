@@ -40,6 +40,7 @@ module MicroHttp.Http (
     serialiseHead,
     serialiseSizedHead,
     writeResponse,
+    mapBody,
     BlockTransform (..),
     transformedFileResponse,
     transformedTempFileResponse,
@@ -456,6 +457,21 @@ writeResponse sink response =
                 Left err -> return (Left err)
                 Right () -> enumerator (Iteratee.byteSinkI (sinkChunk sink)) >>= Iteratee.run
         FileBody path _ -> sinkFile sink response path
+
+{- | Transforms the enumerator of a streaming body (sized or close-delimited),
+leaving a strict or file body unchanged (RFC-0049). The single place an egress
+stage rewrites a body, so the body taxonomy is matched here, in the core module,
+and not in the middleware. The @Content-Length@ of a 'SizedStreamBody' is kept, so
+a stage that changes the byte count of a sized body is the caller's responsibility,
+as it was before.
+-}
+mapBody :: (Iteratee.Enumerator Stream.StreamError () -> Iteratee.Enumerator Stream.StreamError ()) -> Response -> Response
+mapBody f response =
+    case responseBody response of
+        StrictBody _ -> response
+        FileBody _ _ -> response
+        StreamBody enumerator -> response{responseBody = StreamBody (f enumerator)}
+        SizedStreamBody size enumerator -> response{responseBody = SizedStreamBody size (f enumerator)}
 
 {- | The per-block operation of a sized streamed body (RFC-0049): the block size, the
 transform applied to each block of the file, and the byte length that transform

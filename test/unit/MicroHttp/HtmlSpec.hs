@@ -54,6 +54,42 @@ spec =
             Html.coalesce 16 [BS.pack "abc"] `shouldBe` strictCoalesce 16 [BS.pack "abc"]
         it "given an unbounded chunk source, when coalesced, then the first buffer-sized segment is yielded without forcing the rest" $
             (BS.length (head (Html.coalesce 16 (repeat (BS.pack "abcd")))) >= 16) `shouldBe` True
+        mapM_ escaperAgreementCase escaperInputs
+
+{- | Inputs the two production escapers must agree on: each of the five specials,
+the specials together, a non-special string, multibyte UTF-8, and the empty
+string. Named so failures point at the offending case.
+-}
+escaperInputs :: [(String, String)]
+escaperInputs =
+    [ ("the less-than special", "<")
+    , ("the greater-than special", ">")
+    , ("the ampersand special", "&")
+    , ("the double-quote special", "\"")
+    , ("the single-quote special", "'")
+    , ("all five specials together", "<>&\"'")
+    , ("a string with no specials", "plain text")
+    , ("multibyte UTF-8 around specials", "caf\233 \8212 \1046 <b> & '\10084'")
+    , ("the empty string", "")
+    ]
+
+{- | Pins the two production HTML escapers against each other over one input, so a
+future edit to one set (the Haskell 'Html.escapeChar' / 'escapeChars' String path, or
+the C byte path behind 'Html.escapeBlockBytes') that is not mirrored in the other is
+caught. The String path is reached through 'Html.text'; the byte path takes the input's
+UTF-8 bytes. Also pins 'Html.escapedLength' as the exact byte count of 'escapeBlockBytes',
+the length/transform invariant a sized streamed response relies on (RFC-0040/0049).
+-}
+escaperAgreementCase :: (String, String) -> Spec
+escaperAgreementCase (label, input) = do
+    let utf8 = Utf8.encodeText input
+        stringPath = BS.concat (Html.renderChunks (Html.text input))
+    it ("given " ++ label ++ ", when escaped by the String path and the byte path, then the bytes agree") $ do
+        bytePath <- Html.escapeBlockBytes utf8
+        bytePath `shouldBe` stringPath
+    it ("given " ++ label ++ ", when its escaped length is computed, then it equals the escaped byte count") $ do
+        escaped <- Html.escapeBlockBytes utf8
+        Html.escapedLength utf8 `shouldReturn` BS.length escaped
 
 todoItem :: Html.Html ()
 todoItem =

@@ -85,31 +85,35 @@ phase checklist.
 `Verso.TreePath` exports an abstract `TreePath` (`Eq`, `Ord`, `Show`) whose value is a list of validated
 segments, the root being the empty list, and:
 
-| Function                                        | Meaning                                                                            |
-| ----------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `parse :: String -> Maybe TreePath`             | Split on `/`, drop empty segments, accept only if every segment is safe            |
-| `root :: TreePath`                              | The document tree itself                                                           |
-| `render :: TreePath -> String`                  | Segments joined by `/`; `""` for the root                                          |
-| `segments :: TreePath -> [String]`              | The validated segments                                                             |
-| `isRoot :: TreePath -> Bool`                    |                                                                                    |
-| `kind :: TreePath -> Kind`                      | `Page` when the last segment ends in `.md`, else `Section` (the root is a section) |
-| `name :: TreePath -> String`                    | The last segment; `""` for the root                                                |
-| `slug :: TreePath -> String`                    | The name without `.md` for a page; the name for a section                          |
-| `parent :: TreePath -> TreePath`                | Segments minus the last; the root's parent is the root                             |
-| `child :: TreePath -> String -> Maybe TreePath` | One safe segment appended                                                          |
-| `sectionIndex :: TreePath -> TreePath`          | The section's `index.md`                                                           |
-| `metaDirectory :: TreePath -> TreePath`         | `<parent>/meta/<base>.meta` for a page                                             |
-| `peerAssets :: TreePath -> TreePath`            | `<parent>/assets` for a page                                                       |
-| `resolve :: FilePath -> TreePath -> FilePath`   | The served filesystem path under a root; total                                     |
+| Function                                         | Meaning                                                                            |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------- |
+| `parse :: String -> Maybe TreePath`              | Split on `/`, drop empty segments, accept only if every segment is safe            |
+| `root :: TreePath`                               | The document tree itself                                                           |
+| `render :: TreePath -> String`                   | Segments joined by `/`; `""` for the root                                          |
+| `segments :: TreePath -> [String]`               | The validated segments                                                             |
+| `isRoot :: TreePath -> Bool`                     |                                                                                    |
+| `kind :: TreePath -> Kind`                       | `Page` when the last segment ends in `.md`, else `Section` (the root is a section) |
+| `name :: TreePath -> String`                     | The last segment; `""` for the root                                                |
+| `slug :: TreePath -> String`                     | The name without `.md` for a page; the name for a section                          |
+| `parent :: TreePath -> TreePath`                 | Segments minus the last; the root's parent is the root                             |
+| `child :: TreePath -> String -> Maybe TreePath`  | One safe segment appended                                                          |
+| `append :: TreePath -> String -> Maybe TreePath` | A relative path (several segments, as a body names an asset) parsed and appended   |
+| `within :: TreePath -> TreePath -> Bool`         | Whether the first is the second or lies beneath it                                 |
+| `Kind = Page \| Section`                         | What a path names                                                                  |
+| `sectionIndex :: TreePath -> TreePath`           | The section's `index.md`                                                           |
+| `metaDirectory :: TreePath -> TreePath`          | `<parent>/meta/<base>.meta` for a page                                             |
+| `peerAssets :: TreePath -> TreePath`             | `<parent>/assets` for a page                                                       |
+| `resolve :: FilePath -> TreePath -> FilePath`    | The served filesystem path under a root; total                                     |
 
 and, for the trash:
 
-| Function                                           | Meaning                                  |
-| -------------------------------------------------- | ---------------------------------------- |
-| `TrashId` (abstract, `Eq`, `Ord`, `Show`)          | An all-digit trash entry name            |
-| `parseTrashId :: String -> Maybe TrashId`          | Non-empty and all digits                 |
-| `renderTrashId :: TrashId -> String`               |                                          |
-| `trashEntryDir :: FilePath -> TrashId -> FilePath` | The entry directory under the trash root |
+| Function                                           | Meaning                                            |
+| -------------------------------------------------- | -------------------------------------------------- |
+| `TrashId` (abstract, `Eq`, `Ord`, `Show`)          | An all-digit trash entry name                      |
+| `parseTrashId :: String -> Maybe TrashId`          | Non-empty and all digits                           |
+| `trashIdForSeq :: Int -> Maybe TrashId`            | The id a delete takes from its operation-log `seq` |
+| `renderTrashId :: TrashId -> String`               |                                                    |
+| `trashEntryDir :: FilePath -> TrashId -> FilePath` | The entry directory under the trash root           |
 
 `parse` canonicalises as `TreeMove` does today (drops empty, doubled and edge slashes) so that string
 comparisons in the cycle checks keep working on `render`ed paths. Safety is `MicroHttp.Static.safeComponent`,
@@ -200,8 +204,9 @@ Test-first; each phase is committed when green.
 ### Phase 4: App
 
 - [x] Every handler parses its capture once; the 17 `resolveStaticPath` sites, `pathSegments`,
-  `parentOfRel`, `isMarkdownPath`, `joinRel`, `slugForPath`, `lastSegment`, `splitOn` and the duplicate
-  trimmers replaced or deleted.
+  `parentOfRel`, `isMarkdownPath`, `joinRel`, `slugForPath`, `splitOn` and the duplicate trimmers
+  replaced or deleted. `lastSegment` stays, over a parse, for the search title callback, which is
+  handed a rendered path (deferred in `docs/refactoring.log`).
 - [x] `assetsDirectoryFor` becomes `TreePath.peerAssets`.
 
 ### Phase 5: Records

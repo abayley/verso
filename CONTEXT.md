@@ -91,7 +91,7 @@ The name of one entry in the **trash**: the **operation log** `seq` of the delet
 that created it, so an all-digit string (RFC-0044). Validated on parse
 (`Verso.TreePath.TrashId`) before any trash path is built from it, so an id can
 never name anything outside the trash root.
-_Avoid_: trash id (ambiguous with the trash root), entry name.
+_Avoid_: entry name, trash path (the id names the entry; the path is derived from it).
 
 **Draft**:
 An unpublished, staged edit of a **page** (RFC-0032). Autosave in the **edit

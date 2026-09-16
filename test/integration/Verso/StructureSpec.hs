@@ -187,6 +187,17 @@ spec =
                 ops <- loggedOperations
                 last ops `shouldBe` (OperationLog.OpMove, "section", Just "dest/sub", Just "sub", Nothing)
 
+            it "given a section moved to a slug ending in .md, when its undo is undone, then it returns to the recorded path" $ do
+                (structure, _) <- fixture Structure.noVersioning
+                _ <- Structure.move structure author (tp "sub") (tp "dest") "notes.md" True
+                _ <- Structure.undo structure author Nothing
+                result <- Structure.undo structure author Nothing
+                case result of
+                    Right (Structure.UndoneMove from to) -> (TreePath.render from, TreePath.render to) `shouldBe` ("sub", "dest/notes.md")
+                    other -> show (Monad.void other) `shouldBe` "Right (UndoneMove ...)"
+                Directory.doesDirectoryExist (root ++ "/dest/notes.md") `shouldReturn` True
+                Directory.doesDirectoryExist (root ++ "/dest/notes") `shouldReturn` False
+
             it "given a logged delete, when it is undone, then the page is restored and the restore is logged" $ do
                 (structure, _) <- fixture Structure.noVersioning
                 _ <- Structure.delete structure author (tp "lonely.md")
@@ -224,6 +235,16 @@ spec =
                 Structure.purge structure "0" `shouldReturn` True
                 Directory.doesDirectoryExist (trashRoot ++ "/0") `shouldReturn` False
                 TrashStore.trashEntries (Structure.structureTrash structure) `shouldReturn` []
+
+            it "given two trashed pages, when the entries matching a predicate are purged, then those are gone and the rest are kept" $ do
+                (structure, _) <- fixture Structure.noVersioning
+                _ <- Structure.delete structure author (tp "lonely.md")
+                _ <- Structure.delete structure author (tp "sub/page.md")
+                (purged, kept) <- Structure.purgeMatching structure ((== "0") . TrashStore.entryId)
+                map TrashStore.entryId purged `shouldBe` ["0"]
+                map TrashStore.entryId kept `shouldBe` ["1"]
+                Directory.doesDirectoryExist (trashRoot ++ "/0") `shouldReturn` False
+                Directory.doesDirectoryExist (trashRoot ++ "/1") `shouldReturn` True
 
             it "given an id that is not a trash id, when a purge is requested, then nothing is removed" $ do
                 (structure, _) <- fixture Structure.noVersioning

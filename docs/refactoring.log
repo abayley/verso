@@ -39,3 +39,6 @@
 2026-09-16 14:33:07  packages/verso/src/Verso/Structure.hs:move:214: Motivation: The move/delete/restore/undo transaction lived in four request handlers and could be tested only through HTTP bytes. Extract Class.
 2026-09-16 14:33:07  packages/verso/src/Verso/Structure.hs:record:372: Duplicated Code. Extract Function.
 2026-09-16 14:33:08  packages/verso/src/Verso/Structure.hs:applyInverse:314: Motivation: undo does not carry a page's draft through the inverse (RFC-0032 known limitation). Deferred: behaviour change; needs its own decision.
+2026-09-16 14:58:52  packages/verso/src/Verso/TreeMove.hs:moveTarget:300: Repeated Switches. Extract Function.
+2026-09-16 14:58:52  packages/verso/src/Verso/Structure.hs:purgeMatching:380: Motivation: The trash sweep and empty took the write lock per entry after RFC-0045; one batch operation holds it once. Extract Function.
+2026-09-16 14:58:52  packages/verso/src/Verso/Structure.hs:undo:300: Motivation: Undo carries drafts through the shared delete/restore transactions; decided to keep on 2026-09-16 (RFC-0045 Reliability Impact). Change Function Declaration.

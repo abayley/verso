@@ -28,6 +28,8 @@ module Verso.TreeMove (
     MovePlan (..),
     moveSection,
     movePage,
+    moveTarget,
+    slugOf,
     movePlanJson,
     DeleteOutcome (..),
     deleteTarget,
@@ -285,6 +287,21 @@ movePage findRelevant root src destParent rawSlug confirm
                                 title <- frontmatterNameOf newFs
                                 relocateEntry root srcDir destParent srcRel newPath ("- [" ++ title ++ "](./" ++ slug ++ ".md)")
                                 pure (if null failures then Right (MovePlan src new changed True) else Left (unlines failures))
+
+{- | 'movePage' or 'moveSection' by the kind the caller knows the target to be
+(the request path's suffix, or an operation log record's kind word). The one
+place that dispatch is written.
+-}
+moveTarget :: TreePath.Kind -> RelevantPages -> FilePath -> TreePath.TreePath -> TreePath.TreePath -> String -> Bool -> IO (Either String MovePlan)
+moveTarget TreePath.Page = movePage
+moveTarget TreePath.Section = moveSection
+
+{- | The slug a path moves back to, by the kind its record gives it: a page's name
+without @.md@, a section's whole name (a section may be named like a page).
+-}
+slugOf :: TreePath.Kind -> TreePath.TreePath -> String
+slugOf TreePath.Page = TreePath.slug
+slugOf TreePath.Section = TreePath.name
 
 -- | The shared/exclusive classification of the moving page's assets against its source-folder peers (ADR-0062).
 classifyMovingAssets :: FilePath -> TreePath.TreePath -> IO [(String, DocumentLinks.AssetClass)]
@@ -642,9 +659,9 @@ applyReplayOp root trashRoot op = case OperationLog.opType op of
     OperationLog.OpMove ->
         case (TreePath.parse from, TreePath.parse to) of
             (Just src, Just dest) -> do
-                let move = if OperationLog.opKind op == "page" then movePage else moveSection
+                let kind = recordKind op
                 -- replay-tool is a separate process with no warm index, so it uses the scan (ADR-0066).
-                result <- move scanRelevant root src (TreePath.parent dest) (TreePath.slug dest) True
+                result <- moveTarget kind scanRelevant root src (TreePath.parent dest) (slugOf kind dest) True
                 pure (movePlanStatus result)
             _ -> pure unsafePath
     OperationLog.OpDelete ->
@@ -666,6 +683,10 @@ applyReplayOp root trashRoot op = case OperationLog.opType op of
     from = Maybe.fromMaybe "" (OperationLog.opFrom op)
     to = Maybe.fromMaybe "" (OperationLog.opTo op)
     unsafePath = "skipped: unsafe path or trash id"
+
+-- | The kind an operation log record gives its target.
+recordKind :: OperationLog.Operation -> TreePath.Kind
+recordKind op = if OperationLog.opKind op == "page" then TreePath.Page else TreePath.Section
 
 -- | The status word for a move result during replay.
 movePlanStatus :: Either String MovePlan -> String

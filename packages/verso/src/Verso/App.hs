@@ -550,20 +550,13 @@ zone suffix is ignored), which is exact to well under a day -- ample here.
 -}
 purgeExpiredTrash :: Structure.Structure -> Int -> IO [(String, String, String, String)]
 purgeExpiredTrash structure retentionDays
-    | retentionDays <= 0 = trashEntriesNewestFirst trashStore
+    | retentionDays <= 0 = trashEntriesNewestFirst (Structure.structureTrash structure)
     | otherwise = do
         now <- TimeMilli.getTimeMilli
         cutoff <- Log.localTimestampAtMillis (now - retentionDays * 86400000)
-        entries <- trashEntriesNewestFirst trashStore
-        fmap Maybe.catMaybes $
-            Monad.forM entries $ \entry@(entryId, _, _, ts) ->
-                if not (null ts) && take 19 ts < take 19 cutoff
-                    then do
-                        removed <- Structure.purge structure entryId
-                        pure (if removed then Nothing else Just entry)
-                    else pure (Just entry)
-  where
-    trashStore = Structure.structureTrash structure
+        let expired entry = let ts = TrashStore.entryDeletedAt entry in not (null ts) && take 19 ts < take 19 cutoff
+        (_, kept) <- Structure.purgeMatching structure expired
+        pure (map entryTuple kept)
 
 {- | Permanently deletes one trash entry (@DELETE /trash/\<id\>@, RFC-0028 as
 amended): the entry's files are removed for good. Nothing is logged -- the op
@@ -585,15 +578,8 @@ Answers with the removed count.
 -}
 treeTrashEmptyHandler :: Structure.Structure -> Router.Handler
 treeTrashEmptyHandler structure _ _ = do
-    emptied <- Iteratee.liftIO $ do
-        entryIds <- trashEntryIds (Structure.structureTrash structure)
-        outcomes <- mapM (Structure.purge structure) entryIds
-        pure (length (filter id outcomes))
-    pure (jsonResponse (View.jsonObject [("emptied", show emptied)]))
-
--- | The entry ids known to the selected trash-store adapter.
-trashEntryIds :: TrashStore.TrashStore -> IO [String]
-trashEntryIds store = fmap (map TrashStore.entryId) (TrashStore.trashEntries store)
+    (purged, _) <- Iteratee.liftIO (Structure.purgeMatching structure (const True))
+    pure (jsonResponse (View.jsonObject [("emptied", show (length purged))]))
 
 {- | The trash page (@GET /trashbin@): a full, newest-first listing of every
 restorable item with a per-row Restore, for when the recent-deletes dropdown is
@@ -644,9 +630,11 @@ descending is newest-first; the deletion timestamp is joined from the log's
 delete records (empty when the log has no matching entry).
 -}
 trashEntriesNewestFirst :: TrashStore.TrashStore -> IO [(String, String, String, String)]
-trashEntriesNewestFirst store = do
-    entries <- TrashStore.trashEntries store
-    pure [(TrashStore.entryId entry, TrashStore.entryPath entry, TrashStore.entryKind entry, TrashStore.entryDeletedAt entry) | entry <- entries]
+trashEntriesNewestFirst store = fmap (map entryTuple) (TrashStore.trashEntries store)
+
+-- | A trash entry as the @(id, path, kind, deletedAt)@ tuple the views take.
+entryTuple :: TrashStore.TrashEntry -> (String, String, String, String)
+entryTuple entry = (TrashStore.entryId entry, TrashStore.entryPath entry, TrashStore.entryKind entry, TrashStore.entryDeletedAt entry)
 
 -- | The enriched trash listing as JSON @[{"id","path","kind","ts"}]@, newest-first.
 trashEntriesJson :: [(String, String, String, String)] -> String
@@ -965,10 +953,6 @@ when the file is absent or untitled, decoded from the file's UTF-8 (RFC-0043).
 readTitle :: FilePath -> IO (Maybe String)
 readTitle fsPath = fmap Frontmatter.titleOf (Frontmatter.readBlock fsPath)
 
--- | Trims leading and trailing whitespace.
-trimSpace :: String -> String
-trimSpace = f . f where f = reverse . dropWhile Char.isSpace
-
 -- | A navigation-tree node kind: a section (a folder) or a page (a Markdown file).
 data NodeKind = Section | Page
     deriving (Eq, Show)
@@ -1252,7 +1236,7 @@ treeSave versioning maint root captures _request = do
     case TreePath.parse path of
         Nothing -> notFoundAfterDrain
         Just page -> do
-            -- Structure.Versioning on: autosave stages a draft; the live page, its sidecar
+            -- Versioning on: autosave stages a draft; the live page, its sidecar
             -- metadata, and the link index are untouched until Publish (RFC-0032).
             let target = if Structure.versioningOn versioning then Draft.draftFsPath (Structure.draftStagingRoot versioning) page else TreePath.resolve root page
             -- RFC-0042: the form streams through the part consumer. The document field

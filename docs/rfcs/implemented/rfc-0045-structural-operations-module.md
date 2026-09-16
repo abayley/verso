@@ -122,11 +122,17 @@ for the tests that name them.
 ## Reliability Impact
 
 - Behaviour-preserving refactor protected by the integration `AppSpec` and a new `StructureSpec` that
-  asserts the transaction's effects and their order through recording adapters.
-- Two small differences from the handlers as they were: emptying the trash and the retention sweep
-  now take the write lock once per entry rather than once for the whole sweep (each purge is still
-  atomic), and a create checks the parent path and the kind before the title, so a request that is
-  wrong in both ways reports the path or kind first. `Verso.App` shrank from 2,290 to 1,868 lines.
+  asserts the transaction's effects and their order through recording adapters; delete and restore
+  commit before they append, as the handlers did, and move appends before it commits.
+- Differences from the handlers as they were, found in the code review of 2026-09-16 and kept:
+  undo now carries a page's draft, because the inverse of a delete is the restore transaction and
+  the inverse of a restore is the delete transaction (the old inverse moved no draft); undoing a
+  restore that is refused because the target is referenced answers with the referrers JSON rather
+  than a text reason; the undo refusal for a delete record without a trash id says "no valid trash
+  id"; the navigation tree hides a directory entry whose name is not a safe path segment; a create
+  checks the parent path and the kind before the title. Emptying the trash and the retention sweep
+  run under one hold of the write lock through `purgeMatching`, as before. `Verso.App` shrank from
+  2,290 to about 1,860 lines.
 
 ## Compatibility Impact
 

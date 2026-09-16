@@ -33,6 +33,7 @@ module Verso.Structure (
     restore,
     undo,
     purge,
+    purgeMatching,
     slugify,
 ) where
 
@@ -229,9 +230,9 @@ nothing but the tree it previews.
 -}
 move :: Structure -> Git.Identity -> TreePath.TreePath -> TreePath.TreePath -> String -> Bool -> IO (Either Refusal TreeMove.MovePlan)
 move structure author src destParent slug confirm = withWriteLock (structureLock structure) $ do
-    let isPage = TreePath.kind src == TreePath.Page
-        apply = if isPage then TreeMove.movePage else TreeMove.moveSection
-    result <- apply (structurePages structure) (structureRoot structure) src destParent slug confirm
+    let kind = TreePath.kind src
+        isPage = kind == TreePath.Page
+    result <- TreeMove.moveTarget kind (structurePages structure) (structureRoot structure) src destParent slug confirm
     case result of
         Left reason -> pure (Left (Refused reason))
         Right plan -> do
@@ -303,7 +304,9 @@ restore for a delete, a delete for a restore -- and appends that inverse as a ne
 record (undo is itself logged, so a further undo is a redo). @Just seq@ selects the
 operation; 'Nothing' inverts the latest. Refused when the log is empty, the seq is
 unknown, or the inverse cannot be applied (its target is occupied, missing, or now
-referenced). Draft consistency through undo is not maintained (RFC-0032).
+referenced). The inverse of a delete brings back the draft stashed with the entry
+and the inverse of a restore stashes one, as the operations themselves do
+(RFC-0045); the reverse of a move does not relocate a draft.
 -}
 undo :: Structure -> Git.Identity -> Maybe Int -> IO (Either Refusal Undone)
 undo structure author wantedSeq = withWriteLock (structureLock structure) $ do
@@ -328,9 +331,9 @@ applyInverse :: Structure -> Git.Identity -> OperationLog.Operation -> IO (Eithe
 applyInverse structure author op = case OperationLog.opType op of
     OperationLog.OpMove -> case (TreePath.parse from, TreePath.parse to) of
         (Just fromPath, Just toPath) -> do
-            let isPage = OperationLog.opKind op == "page"
-                apply = if isPage then TreeMove.movePage else TreeMove.moveSection
-            result <- apply (structurePages structure) (structureRoot structure) toPath (TreePath.parent fromPath) (TreePath.slug fromPath) True
+            -- the record's kind, not the path's suffix: a section may be named like a page
+            let kind = if OperationLog.opKind op == "page" then TreePath.Page else TreePath.Section
+            result <- TreeMove.moveTarget kind (structurePages structure) (structureRoot structure) toPath (TreePath.parent fromPath) (TreeMove.slugOf kind fromPath) True
             case result of
                 Left reason -> pure (Left (Refused reason))
                 Right plan
@@ -363,7 +366,28 @@ entry. Nothing is logged: the log keeps the original delete, and undoing it simp
 refuses once the entry is gone.
 -}
 purge :: Structure -> String -> IO Bool
-purge structure rawId = withWriteLock (structureLock structure) $
+purge structure rawId = withWriteLock (structureLock structure) (purgeEntry structure rawId)
+
+{- | Permanently removes every trash entry the predicate selects, under one hold of
+the write lock (so a sweep cannot interleave with a concurrent delete or restore),
+returning the purged entries and the kept ones in the catalogue's newest-first
+order. The retention sweep and emptying the trash are its two callers.
+-}
+purgeMatching :: Structure -> (TrashStore.TrashEntry -> Bool) -> IO ([TrashStore.TrashEntry], [TrashStore.TrashEntry])
+purgeMatching structure selected = withWriteLock (structureLock structure) $ do
+    entries <- TrashStore.trashEntries (structureTrash structure)
+    outcomes <- mapM purgeOne entries
+    pure ([entry | (entry, True) <- outcomes], [entry | (entry, False) <- outcomes])
+  where
+    purgeOne entry
+        | selected entry = do
+            removed <- purgeEntry structure (TrashStore.entryId entry)
+            pure (entry, removed)
+        | otherwise = pure (entry, False)
+
+-- | One entry's removal and catalogue forget, with the lock already held.
+purgeEntry :: Structure -> String -> IO Bool
+purgeEntry structure rawId =
     case TreePath.parseTrashId rawId of
         Nothing -> pure False
         Just trashId -> do

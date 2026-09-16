@@ -275,6 +275,20 @@ spec = do
             Directory.doesDirectoryExist (root ++ "/y/x") `shouldReturn` True
             Directory.doesDirectoryExist (root ++ "/x") `shouldReturn` False
 
+        it "given a section record whose destination ends in .md, when replayed, then the section lands at the recorded path" $ do
+            removeTree root
+            removeTree trashRoot
+            Directory.createDirectoryIfMissing True (root ++ "/x")
+            Directory.createDirectoryIfMissing True (root ++ "/y")
+            writeAt "index.md" "# Root\n"
+            writeAt "x/index.md" "# X\n"
+            writeAt "y/index.md" "# Y\n"
+            let op = OperationLog.Operation{OperationLog.opType = OperationLog.OpMove, OperationLog.opKind = "section", OperationLog.opFrom = Just "x", OperationLog.opTo = Just "y/notes.md", OperationLog.opSeq = 0, OperationLog.opTs = "t", OperationLog.opTrash = Nothing}
+            report <- TreeMove.replayLog root trashRoot [op]
+            map (isApplied . TreeMove.reStatus) report `shouldBe` [True]
+            Directory.doesDirectoryExist (root ++ "/y/notes.md") `shouldReturn` True
+            Directory.doesDirectoryExist (root ++ "/y/notes") `shouldReturn` False
+
     -- The index backend (RFC-0029) must produce identical observable outcomes to the
     -- scan: it only changes which pages are read, not what the planners compute.
     describe "index-backed move/delete (RFC-0029, indexRelevant)" $ do

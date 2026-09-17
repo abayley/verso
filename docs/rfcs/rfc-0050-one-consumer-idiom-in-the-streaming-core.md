@@ -34,6 +34,11 @@ combinator layer does not cost more than the duplication is worth. Under MicroHs
 dictionary and an allocation per chunk, so this RFC is written to be abandonable at its measurement
 gate, and phase 1 exists to decide that before any consumer is rewritten.
 
+**Outcome.** The fold is cheap (1.17x per chunk) and landed for the three consumers that fit it. The
+cap as a wrapper is not (2.40x) and was dropped. The two consumers with a cap keep their own loops:
+they refuse a chunk before accepting it, which gives a different failure residue, and one of them must
+also act on every terminal path to close and remove its file.
+
 ## Context
 
 The architecture review of 2026-09-16 (`docs/reviews/architecture-review-haskell-20260916.html`,
@@ -110,7 +115,8 @@ These are observable and tested, and they are where a careless unification would
 ## Goals
 
 - One implementation of the `NeedInput` / `Chunk` / `EndOfStream` loop in `MicroHttp.Iteratee`.
-- One implementation of the byte cap, reusable by `Form`'s `tooLarge` and by upload sinks.
+- The byte cap written the same way in the consumers that have one, in their step, after phase 1
+  measured a shared cap combinator at more than the loop it wraps.
 - The five consumers keep their exact observable behaviour, residues included.
 - A recorded before-and-after measurement, whatever it says.
 
@@ -125,36 +131,36 @@ These are observable and tested, and they are where a careless unification would
 
 ## Proposal
 
-Add to `MicroHttp.Iteratee`:
+Add one function to `MicroHttp.Iteratee`:
 
 ```haskell
 foldChunksI :: (Monad m) => (s -> BS.ByteString -> m (Either e s)) -> s -> IterT e m s
-cappedI     :: Int -> e -> (s -> Int) -> IterT e m s -> IterT e m s
 ```
 
-`foldChunksI` is the loop: empty chunks skipped, orderly end resolves with the accumulator, failed end
-propagates, and a step returning `Left` fails with that error. `cappedI` counts bytes as they pass and
-fails before handing on the chunk that would exceed the limit, leaving the residue the current
-consumers leave.
+It is the loop: empty chunks skipped, orderly end resolves with the accumulator, failed end propagates,
+and a step returning `Left` fails with that error.
+
+**There is no `cappedI`.** The wrapper this RFC originally proposed was written and measured in phase 1
+and costs 2.40x per chunk, more than the loop it wraps. A consumer that needs a cap carries the running
+count in its own accumulator and returns `Left` when the next chunk would exceed it, which is 1.26x and
+keeps the check where the current consumers already have it: before the write. The cap is still written
+once per consumer, but it is four lines inside a step rather than a second consumer in the path.
 
 Then:
 
-- `byteSinkI` = `foldChunksI` over `()` with the writer's `Either`.
+- `byteSinkI` = `foldChunksI` over `()` with the writer's `Either`. (Done in phase 1.)
 - `foldBlocksI`, `foldLinesI` = `foldChunksI` with the step lifted into `Right`, `foldLinesI` dropping
   the newline in its step.
-- `readBodyStrict` = `cappedI` over `foldChunksI` accumulating chunks, then concatenated.
-- `fileSinkI` = the handle bracket, then `cappedI` over `foldChunksI`, with the existing release path.
-
-**The decision is at the end of phase 1, not here.** If the benchmark shows a per-chunk regression that
-matters, phases 2 onward do not happen; the RFC is closed as Rejected with the measurement in it, and
-`streaming-algebra.md` gains the number so the next reader does not re-propose this.
+- `readBodyStrict` = `foldChunksI` over the chunks seen and their total, capped in the step.
+- `fileSinkI` = the handle bracket, then `foldChunksI` over the count, capped in the step, with the
+  existing release path.
 
 ## Alternatives Considered
 
-- **Share only the cap.** `cappedI` alone removes the duplicated, subtly divergent limit logic -- the
-  part with real correctness risk -- and leaves the loops alone, so it adds one combinator layer to two
-  consumers rather than to five. If phase 1 says the fold is too expensive but the cap is not, this is
-  the fallback, and it collects most of the value.
+- **Share only the cap.** Proposed here as the safe retreat if the fold proved expensive, and
+  **measured in phase 1 as the worst option of the three**: as a wrapper the cap costs 2.40x per chunk
+  against the fold's 1.17x. Recorded because the reasoning that made it look safe -- that the cap is
+  where the correctness risk is -- was sound, and only the measurement overturned it.
 - **Share nothing; add a test that the five agree.** The tactic ADR-0094 chose for the two HTML
   escapers. It does not fit here: the five deliberately differ, so there is no single behaviour to pin.
 - **A typeclass over consumer shapes.** Rejected on the same grounds as the free monad in
@@ -261,36 +267,75 @@ gives it 1 MB so it survives. This is a pre-existing limit, not a regression, bu
 re-express this consumer and must not make it worse; its per-chunk numbers are dominated by that final
 concat, so it is useless as a probe for loop cost.
 
-- [ ] **Gate.** Decide whether ~1.17x per chunk on the loop is worth one implementation of it.
+- [x] **Gate: proceed.** ~1.17x on a loop costing about a microsecond is roughly 0.18 microseconds per
+      chunk, about 12 microseconds per megabyte at socket-sized chunks, against consumers that also
+      write a file or a socket. `cappedI` is dropped rather than kept unused; its measurement stays
+      reproducible from a local copy in the bench, the way `PercentDecodeBench` keeps the escaper it
+      replaced.
 
 ### Phase 2: the consumers with no cap and no resource
 
-- [ ] `foldLinesI`, then `byteSinkI`, in terms of `foldChunksI`.
-- [ ] `StreamSpec` and `IterateeSpec` green with no test edits; a test that needs editing means
-      behaviour changed, so investigate rather than edit.
+- [x] `foldBlocksI` and `foldLinesI` in terms of `foldChunksI` (`byteSinkI` landed in phase 1).
+- [x] `StreamSpec` and `IterateeSpec` green with no test edits.
 
-### Phase 3: the cap
+Each is now one line plus its step. `foldLinesI` resolved with `Done acc s` where the fold resolves
+with `Done acc (EndOfStream Nothing)`; on the orderly path those are the same value, which settles the
+third open question.
 
-- [ ] `readBodyStrict` in terms of `cappedI` and `foldChunksI`, residue preserved.
-- [ ] `FormSpec`'s cap cases green unedited.
+### Phase 3: the cap -- declined
 
-### Phase 4: the file sink
+`readBodyStrict` stays hand-written, for two independent reasons found on the code.
 
-- [ ] `fileSinkI` in terms of the same two, keeping the open-on-demand bracket and every release path.
-- [ ] The partial-file removal cases green unedited.
+**Its failure residue is not the fold's.** Over the cap it fails with `Chunk bytes`, the chunk it
+refused, because the check happens *before* the chunk is accepted. `foldChunksI` fails with
+`Chunk BS.empty`, which is right for `byteSinkI`, where the step fails *after* attempting the write.
+Both are correct for their consumer and they are not the same rule; `MicroHttp.Middleware` propagates
+that residue (`Middleware.hs:93,127`), so it is not private. Making the fold carry either would mean a
+parameter that exists for one caller.
+
+**Its step is pure.** It conses a chunk onto a list and nothing else, so it is the one consumer with no
+`IterM` per chunk at all. Folding it adds one. Measured with `make bench-consumer`, at the chunk sizes
+that matter: 38656 to 54828 ns/chunk at 4096 bytes, 40000 to 53015 at 16384, so a third to two fifths
+slower. (These rows are dominated by the final concat, so treat them as a direction, not a precise
+figure; the direction is unambiguous.)
+
+### Phase 4: the file sink -- declined
+
+`fileSinkI` stays hand-written, for the residue reason above and one more: it is the only consumer that
+must act on **every** terminal path. It closes the handle on an orderly end, and closes and removes the
+partial file both when the cap is exceeded and when the stream fails (`Stream.hs`, `abandon`).
+`foldChunksI` resolves with `Done acc` and offers no hook for the orderly close, so expressing this
+consumer needs a fold that takes a finaliser -- which is a bracket, and the module already has
+`onFailure` and `resourceEnumerator` for that. Adding a third mechanism for one caller is the
+generality this RFC's non-goals rule out.
+
+This is the answer to the second open question: the bracket stays outside, because the consumer that
+has one does not go through the fold.
 
 ### Phase 5: close
 
-- [ ] Re-measure and record the final number against the phase 1 baseline.
-- [ ] `make check`.
+- [x] Re-measure and record the final numbers against the phase 1 baseline (above; `make
+      bench-consumer` is now a standing target).
+- [x] `make check`.
 - [ ] Code review over the range (Standards, Spec, Correctness), remediate, then move this RFC to
       `docs/rfcs/implemented/` and run `bun run rfc:index`.
 
+#### Where this landed
+
+Three of the five consumers go through `foldChunksI`: `byteSinkI`, `foldBlocksI`, `foldLinesI` -- the
+three with no cap and no resource. The two that have one keep their own loops, and the reasons are
+recorded above rather than left for the next reader to rediscover. The review's "delete ~40 lines of
+loops" is about half met.
+
+That is a smaller result than the RFC set out to get, and it is the right one: the five consumers were
+never five copies of one thing. Three are the same loop and now say so once. The other two differ in
+where they refuse a chunk and in what they must do when the stream ends, which is exactly the part a
+shared loop cannot hold.
+
 ## Open Questions
 
-- Should `cappedI` count the bytes it passes on, or take a `s -> Int` from the accumulator? The
-  signature above takes the projection so the fold's own state stays the source of truth, but
-  `byteSinkI`'s state is `()`, so a counting `cappedI` may be simpler. Phase 1 settles it on the code.
+- ~~Should `cappedI` count the bytes it passes on, or take a projection from the accumulator?~~
+  Settled by phase 1: there is no `cappedI`, and the count lives in the consumer's accumulator.
 - Does `fileSinkI`'s bracket belong inside `foldChunksI` as an acquire parameter, or stay outside as it
   is now? Keeping it outside is assumed; phase 4 confirms or reopens.
 - `foldLinesI` resolves with `Done acc s` where `foldBlocksI` uses `Done acc (EndOfStream Nothing)`.

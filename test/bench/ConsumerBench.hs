@@ -37,6 +37,7 @@ main = do
     mapM_ (row "inline-cap sink" totalBytes runInlineCapSink) chunkSizes
     putStrLn ("total " ++ show (collectedBytes `div` 1024) ++ " KB per run for the collector")
     mapM_ (row "readBodyStrict" collectedBytes runReadBody) chunkSizes
+    mapM_ (row "readBody via fold" collectedBytes runReadBodyFolded) chunkSizes
 
 -- | Bytes moved per run, the same at every chunk size.
 totalBytes :: Int
@@ -138,12 +139,33 @@ handSink writeBytes = go
         Left err -> Iteratee.IterFailed err (Iteratee.Chunk BS.empty)
         Right () -> go
 
--- | The same sink behind 'Iteratee.cappedI': the cost of one more combinator.
+{- | The cap as a wrapper: the shape RFC-0050 proposed and phase 1 rejected, at
+2.40x the hand-written loop against the shared fold's 1.17x. It lives here rather
+than in the library because nothing should use it; the row is kept so the number
+that rejected it stays reproducible.
+-}
+cappedI :: Int -> e -> Iteratee.Iter e a -> Iteratee.Iter e a
+cappedI limit tooLarge = go 0
+  where
+    go seen inner = case inner of
+        Iteratee.NeedInput _ -> Iteratee.NeedInput (step seen inner)
+        Iteratee.IterM m -> Iteratee.IterM (fmap (go seen) m)
+        other -> other
+    step seen inner s = case s of
+        Iteratee.Chunk bytes
+            | BS.null bytes -> go seen inner
+            | seen + BS.length bytes > limit -> Iteratee.IterFailed tooLarge (Iteratee.Chunk bytes)
+            | otherwise -> Iteratee.IterM (fmap (go (seen + BS.length bytes)) (Iteratee.feedChunk bytes inner))
+        end -> case inner of
+            Iteratee.NeedInput k -> k end
+            other -> other
+
+-- | The same sink behind that wrapper: the cost of one more combinator.
 runCappedSink :: [BS.ByteString] -> IO Int
 runCappedSink chunks = do
     counter <- IORef.newIORef (0 :: Int)
     let sink = Iteratee.byteSinkI (\bytes -> IORef.modifyIORef' counter (+ BS.length bytes) >> pure (Right ()))
-    outcome <- feedAll chunks (Iteratee.cappedI (totalBytes * 2) "too large" sink :: Iteratee.Iter String ())
+    outcome <- feedAll chunks (cappedI (totalBytes * 2) "too large" sink :: Iteratee.Iter String ())
     case outcome of
         Left err -> error ("capped byteSinkI failed: " ++ err)
         Right () -> IORef.readIORef counter
@@ -174,6 +196,23 @@ runReadBody chunks = do
     case outcome of
         Left err -> error ("readBodyStrict failed: " ++ err)
         Right bytes -> pure (BS.length bytes)
+
+{- | 'Iteratee.readBodyStrict' expressed through the shared fold, to price what
+that would cost. The consumer's step is pure today -- it only conses a chunk onto
+a list -- so folding it adds an 'Iteratee.IterM' per chunk where there is none,
+which is the cost this row isolates. It is here rather than in the library
+because RFC-0050 phase 3 declined the change.
+-}
+runReadBodyFolded :: [BS.ByteString] -> IO Int
+runReadBodyFolded chunks = do
+    let limit = collectedBytes * 2
+        step (seen, acc) bytes
+            | seen + BS.length bytes > limit = pure (Left "too large")
+            | otherwise = pure (Right (seen + BS.length bytes, bytes : acc))
+    outcome <- feedAll chunks (Iteratee.foldChunksI step (0 :: Int, []) :: Iteratee.Iter String (Int, [BS.ByteString]))
+    case outcome of
+        Left err -> error ("readBody via fold failed: " ++ err)
+        Right (_, acc) -> pure (BS.length (BS.concat (reverse acc)))
 
 -- | Feeds every chunk, then ends the stream, as an enumerator would.
 feedAll :: [BS.ByteString] -> Iteratee.Iter e a -> IO (Either e a)

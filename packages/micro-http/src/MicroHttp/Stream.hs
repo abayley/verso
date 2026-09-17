@@ -153,15 +153,7 @@ foldFileBlocks blockSize step initial path =
 
 -- | A consumer that folds the effectful @step@ over every non-empty chunk it receives.
 foldBlocksI :: (a -> BS.ByteString -> IO a) -> a -> Iteratee.Iter StreamError a
-foldBlocksI step = go
-  where
-    go acc = Iteratee.NeedInput (consume acc)
-    consume acc s = case s of
-        Iteratee.Chunk block
-            | BS.null block -> go acc
-            | otherwise -> Iteratee.IterM (fmap go (step acc block))
-        Iteratee.EndOfStream Nothing -> Iteratee.Done acc (Iteratee.EndOfStream Nothing)
-        Iteratee.EndOfStream (Just err) -> Iteratee.IterFailed err (Iteratee.EndOfStream (Just err))
+foldBlocksI step = Iteratee.foldChunksI (\acc block -> fmap Right (step acc block))
 
 {- | Folds a per-line step over a file read in blocks, one line at a time, so a
 line-oriented file (a git diff, a persisted index) is parsed without being held
@@ -200,15 +192,8 @@ foldTempFileTextLines step = foldTempFileLines (\acc line -> step acc (Utf8.deco
 
 -- | Folds each delivered line, less its terminating newline, into the accumulator (the sink under 'Iteratee.linesI').
 foldLinesI :: (a -> BS.ByteString -> IO a) -> a -> Iteratee.Iter StreamError a
-foldLinesI step = go
+foldLinesI step = Iteratee.foldChunksI (\acc line -> fmap Right (step acc (dropNewline line)))
   where
-    go acc = Iteratee.NeedInput (consume acc)
-    consume acc s = case s of
-        Iteratee.Chunk line
-            | BS.null line -> go acc
-            | otherwise -> Iteratee.IterM (go <$> step acc (dropNewline line))
-        Iteratee.EndOfStream Nothing -> Iteratee.Done acc s
-        Iteratee.EndOfStream (Just err) -> Iteratee.IterFailed err s
     dropNewline line = if BS.last line == 10 then BS.init line else line
 
 -- | The block size for 'foldFileLines'.

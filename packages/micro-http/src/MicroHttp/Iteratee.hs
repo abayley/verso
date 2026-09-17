@@ -29,7 +29,6 @@ module MicroHttp.Iteratee (
     appendEnumerators,
     readBodyStrict,
     foldChunksI,
-    cappedI,
     strictEnumerator,
     resourceEnumerator,
     byteSinkI,
@@ -457,28 +456,6 @@ foldChunksI step = go
     stepped outcome = case outcome of
         Left err -> IterFailed err (Chunk BS.empty)
         Right acc' -> go acc'
-
-{- | Caps the bytes a consumer may be fed, failing with the supplied error before
-the chunk that would exceed the limit reaches it, so an over-cap stream leaves
-the inner consumer having seen at most @limit@ bytes and the offending chunk
-unconsumed in the residue (RFC-0050). The inner consumer's own end of stream is
-its to handle; this only counts what passes.
--}
-cappedI :: (Monad m) => Int -> e -> IterT e m a -> IterT e m a
-cappedI limit tooLarge = go 0
-  where
-    go seen inner = case inner of
-        NeedInput _ -> NeedInput (step seen inner)
-        IterM m -> IterM (fmap (go seen) m)
-        other -> other
-    step seen inner s = case s of
-        Chunk bytes
-            | BS.null bytes -> go seen inner
-            | seen + BS.length bytes > limit -> IterFailed tooLarge (Chunk bytes)
-            | otherwise -> IterM (fmap (go (seen + BS.length bytes)) (feedChunk bytes inner))
-        end -> case inner of
-            NeedInput k -> k end
-            other -> other
 
 {- | Feeds one chunk to a consumer and resolves any effect it triggers, WITHOUT
 signalling end of stream, returning the consumer ready for more input. This is

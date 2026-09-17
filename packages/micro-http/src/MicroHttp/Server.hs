@@ -150,10 +150,22 @@ invisible to the request logger -- it never became a logged request -- and was
 previously discarded silently. Logging it to stderr makes stalled or failing
 connections visible (e.g. a flood of idle-read timeouts when clients connect but
 no request is ever read). A successful exchange logs nothing here (the request
-logger already recorded it). Note: a total event-manager wedge in which the read
-never returns and the idle timer never fires cannot be reported from inside the
-frozen runtime; that is an environmental fault, signalled by clients hanging with
-no entries in either log.
+logger already recorded it).
+
+Stderr, and not one of this framework's two logging seams, is the deliberate
+choice. A 'MicroHttp.Log.Logger' takes an 'MicroHttp.Log.AccessEvent', and this
+failure is by definition not one: no request was ever read, so there is nothing to
+record about a request. A 'MicroHttp.Log.Console' would fit, but it is injected
+through 'Settings', which would have to learn about logging to carry it, and it
+writes to stdout -- which would move connection diagnostics onto the stream a
+reader is least likely to be watching for them. Stderr is where a server's
+operational faults conventionally go, and a diagnostic nobody configured is better
+than a seam nobody wanted. (The architecture review of 2026-09-16 noted the
+inconsistency; this is the answer to it, not an oversight.)
+
+Note: a total event-manager wedge in which the read never returns and the idle
+timer never fires cannot be reported from inside the frozen runtime; that is an
+environmental fault, signalled by clients hanging with no entries in either log.
 -}
 reportConnectionFailure :: Socket.ConnectionInfo -> Either ServerError () -> IO ()
 reportConnectionFailure _ (Right ()) = pure ()

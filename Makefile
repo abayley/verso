@@ -305,17 +305,17 @@ run-verso-ghc-prof: editor-build $(BUILD)/ghc-prof/verso
 # would then be defined twice and the link would fail.
 
 # Measurement spike: Haskell vs C for the form-decode per-byte pass.
-bench-form-decode:
+bench-form-decode: $(MICROHTTP_PKG)
 	mkdir -p $(BUILD)
 	$(MHS) $(MHSFLAGS) -optc -I$(CBITS) -i$(SRC) -i$(BENCH) $(BENCH)/FormDecodeBench.hs -o $(BUILD)/form-decode-bench
 	$(BUILD)/form-decode-bench
 
-bench-percent-decode:
+bench-percent-decode: $(MICROHTTP_PKG)
 	mkdir -p $(BUILD)
 	$(MHS) $(MHSFLAGS) -optc -I$(CBITS) -i$(SRC) -i$(BENCH) $(BENCH)/PercentDecodeBench.hs -o $(BUILD)/percent-decode-bench
 	$(BUILD)/percent-decode-bench
 
-bench-socket:
+bench-socket: $(MICROHTTP_PKG)
 	mkdir -p $(BUILD)
 	$(MHS) $(MHSFLAGS) -optc -I$(CBITS) -i$(SRC) -i$(BENCH) $(BENCH)/SocketBench.hs -o $(BUILD)/socket-bench
 	$(BUILD)/socket-bench
@@ -326,12 +326,6 @@ bench-socket:
 # bench-socket had rotted, one on a duplicate C symbol and one on a socket
 # signature that had gained a field. Run this after changing a framework
 # signature the benches use.
-# Per-chunk cost of the streaming consumers, in process (RFC-0050 phase 1).
-bench-consumer: $(MICROHTTP_PKG)
-	mkdir -p $(BUILD)
-	$(MHS) $(MHSFLAGS) -optc -I$(CBITS) -i$(SRC) -i$(BENCH) $(BENCH)/ConsumerBench.hs -o $(BUILD)/consumer-bench
-	$(BUILD)/consumer-bench
-
 BENCH_SOURCES = $(wildcard $(BENCH)/*.hs)
 # Depends on the installed package: a bench resolves micro-http from the package
 # database, so without this a standalone run would link against a stale install
@@ -344,20 +338,27 @@ bench-build: $(MICROHTTP_PKG)
 	done
 	@echo "bench-build OK"
 
+# Per-chunk cost of the streaming consumers, measured in process: no socket and no
+# file, so the loop is not hidden behind syscalls (RFC-0050).
+bench-consumer: $(MICROHTTP_PKG)
+	mkdir -p $(BUILD)
+	$(MHS) $(MHSFLAGS) -optc -I$(CBITS) -i$(SRC) -i$(BENCH) $(BENCH)/ConsumerBench.hs -o $(BUILD)/consumer-bench
+	$(BUILD)/consumer-bench
+
 bench-socket-saturated:
 	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) MHS_LINK_FLAGS="$(MHS_LINK_FLAGS)" bash $(BENCH)/socket-saturated-bench.sh
 
-bench-html-builder:
+bench-html-builder: $(MICROHTTP_PKG)
 	mkdir -p $(BUILD)
 	$(MHS) $(MHSFLAGS) -i$(SRC) -i$(BENCH) $(BENCH)/HtmlBuilderBench.hs -o $(BUILD)/html-builder-bench
 	$(BUILD)/html-builder-bench
 
-bench-link-parse:
+bench-link-parse: $(MICROHTTP_PKG)
 	mkdir -p $(BUILD)
 	$(MHS) $(MHSFLAGS) -i$(SRC) -i$(BENCH) $(BENCH)/LinkParseBench.hs -o $(BUILD)/link-parse-bench
 	$(BUILD)/link-parse-bench
 
-bench-search-chunk:
+bench-search-chunk: $(MICROHTTP_PKG)
 	mkdir -p $(BUILD)
 	$(MHS) $(MHSFLAGS) -i$(SRC) -i$(BENCH) $(BENCH)/SearchChunkBench.hs -o $(BUILD)/search-chunk-bench
 	$(BUILD)/search-chunk-bench

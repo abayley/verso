@@ -434,14 +434,21 @@ byteSinkI :: (IOClass.MonadIO m) => (BS.ByteString -> IO (Either e ())) -> IterT
 byteSinkI writeBytes = foldChunksI (\_ bytes -> IOClass.liftIO (writeBytes bytes)) ()
 
 {- | The consumer loop, once: a chunk at a time through an effectful step that
-carries an accumulator and may fail, until the stream ends (RFC-0050). An empty
-chunk is skipped, an orderly end resolves with the accumulator, and a failed end
-propagates unchanged. A step returning 'Left' fails the consumer with that error,
-with the residue 'byteSinkI' leaves.
+carries an accumulator and may fail, until the stream ends (RFC-0050).
 
-This is the shape five consumers in this module and 'MicroHttp.Stream' write out
-by hand; whether they should all be expressed through it is RFC-0050's question,
-which is answered by measurement, not by counting the lines it would save.
+The step never sees an empty chunk -- one is skipped before the step is reached,
+which is what lets a step index into the chunk it is given, as the line fold's
+does. An orderly end resolves with the accumulator; a failed end propagates
+unchanged.
+
+A step returning 'Left' fails the consumer with that error and an **empty**
+residue, because the step had the chunk and is presumed to have consumed it. A
+consumer that refuses a chunk *before* accepting it wants the refused chunk in
+its residue instead, and cannot be written with this fold: that is why
+'readBodyStrict' and 'MicroHttp.Stream.fileSinkI' keep their own loops, along
+with the file sink's need to act on every terminal path, which 'Done' gives no
+hook for (RFC-0050 phases 3 and 4). 'byteSinkI' and the block and line folds in
+'MicroHttp.Stream' are written through this.
 -}
 foldChunksI :: (Monad m) => (s -> BS.ByteString -> m (Either e s)) -> s -> IterT e m s
 foldChunksI step = go

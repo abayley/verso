@@ -22,6 +22,7 @@ overhead rather than throughput.
 -}
 module Main (main) where
 
+import qualified Control.Monad.IO.Class as IOClass
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.IORef as IORef
 import qualified MicroHttp.Iteratee as Iteratee
@@ -83,8 +84,8 @@ row name bytes consume size = do
 chunksOf :: Int -> Int -> [BS.ByteString]
 chunksOf bytes size = replicate (bytes `div` size) (BS.replicate size 'x')
 
-{- | The best wall of @n@ runs. Best rather than mean: the question is the cost
-of the code, and a slower run only means the machine was busy.
+{- | The best CPU time of @n@ runs. Best rather than mean: the question is the
+cost of the code, and a slower run only means the machine was busy.
 -}
 bestOf :: Int -> IO Int -> IO Double
 bestOf n action = go n (1 / 0)
@@ -125,14 +126,19 @@ runHandSink chunks = do
         Left err -> error ("handSink failed: " ++ err)
         Right () -> IORef.readIORef counter
 
-handSink :: (BS.ByteString -> IO (Either e ())) -> Iteratee.Iter e ()
+{- | Copied verbatim from 'Iteratee.byteSinkI' as it stood before the fold, down
+to the 'IOClass.MonadIO' constraint and the 'IOClass.liftIO' it wrapped the writer
+in. Both matter: a monomorphic copy would not pay the dictionary the real one paid,
+and the row would then charge the fold for a cost that was already there.
+-}
+handSink :: (IOClass.MonadIO m) => (BS.ByteString -> IO (Either e ())) -> Iteratee.IterT e m ()
 handSink writeBytes = go
   where
     go = Iteratee.NeedInput consume
     consume s = case s of
         Iteratee.Chunk bytes
             | BS.null bytes -> go
-            | otherwise -> Iteratee.IterM (fmap afterWrite (writeBytes bytes))
+            | otherwise -> Iteratee.IterM (fmap afterWrite (IOClass.liftIO (writeBytes bytes)))
         Iteratee.EndOfStream Nothing -> Iteratee.Done () (Iteratee.EndOfStream Nothing)
         Iteratee.EndOfStream (Just err) -> Iteratee.IterFailed err (Iteratee.EndOfStream (Just err))
     afterWrite sent = case sent of

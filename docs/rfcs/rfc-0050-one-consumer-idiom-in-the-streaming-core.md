@@ -34,8 +34,8 @@ combinator layer does not cost more than the duplication is worth. Under MicroHs
 dictionary and an allocation per chunk, so this RFC is written to be abandonable at its measurement
 gate, and phase 1 exists to decide that before any consumer is rewritten.
 
-**Outcome.** The fold is cheap (1.17x per chunk) and landed for the three consumers that fit it. The
-cap as a wrapper is not (2.40x) and was dropped. The two consumers with a cap keep their own loops:
+**Outcome.** The fold costs nothing measurable and landed for the three consumers that fit it. The cap
+as a wrapper doubles the per-chunk cost and was dropped. The two consumers with a cap keep their own loops:
 they refuse a chunk before accepting it, which gives a different failure residue, and one of them must
 also act on every terminal path to close and remove its file.
 
@@ -115,8 +115,9 @@ These are observable and tested, and they are where a careless unification would
 ## Goals
 
 - One implementation of the `NeedInput` / `Chunk` / `EndOfStream` loop in `MicroHttp.Iteratee`.
-- The byte cap written the same way in the consumers that have one, in their step, after phase 1
-  measured a shared cap combinator at more than the loop it wraps.
+- ~~One implementation of the byte cap.~~ Dropped after phase 1 measured a shared cap combinator at
+  about twice the loop it wraps, and phases 3 and 4 found that the two consumers with a cap cannot use
+  the fold at all. The cap stays written once per consumer, in the loop each already has.
 - The five consumers keep their exact observable behaviour, residues included.
 - A recorded before-and-after measurement, whatever it says.
 
@@ -171,8 +172,9 @@ Then:
 
 ## Security Impact
 
-None. The caps are the security-relevant behaviour, and this RFC preserves them exactly; phase 3
-includes a test that an over-cap stream still writes at most `limit` bytes and leaves no partial file.
+None. The caps are the security-relevant behaviour, and this RFC preserves them exactly -- in the end
+by not touching either capped consumer at all, so the existing cover in `StreamSpec` (an over-cap body
+fails and leaves no partial file) still applies unchanged to unchanged code.
 
 ## Reliability Impact
 
@@ -229,31 +231,36 @@ the measurement comes first.
 
 #### What it measured
 
-Nanoseconds per chunk, best of 9, 8 MB per run at each chunk size; 64 bytes exaggerates per-chunk cost
-on purpose, 4096 is the decoder slice, 16384 a socket read. The writer only bumps a counter, so these
-are the loop's own cost, not the sink's work.
+Nanoseconds per chunk, best of 9, 8 MB per run at each of the three chunk sizes for the sink rows;
+64 bytes exaggerates per-chunk cost on purpose, 4096 is the decoder slice, 16384 a socket read. The
+writer only bumps a counter, so these are the loop's own cost, not the sink's work. Ranges are across
+three whole runs, because at these margins one run's best is not a number to quote alone.
 
-| variant                         |    64 B |  4096 B | 16384 B | vs hand-written |
-| ------------------------------- | ------: | ------: | ------: | --------------: |
-| hand-written loop (before)      | 1135.94 | 1030.76 | 1003.91 |            1.00 |
-| `foldChunksI`                   | 1323.19 | 1194.34 | 1187.50 |       **~1.17** |
-| `cappedI` wrapped around it     | 2659.10 | 2499.02 | 2396.48 |       **~2.40** |
-| the same cap inline in the fold | 1441.35 | 1314.45 | 1255.86 |       **~1.26** |
+| variant                         | vs hand-written |
+| ------------------------------- | --------------: |
+| hand-written loop (before)      |            1.00 |
+| `foldChunksI`                   |   **1.00-1.10** |
+| `cappedI` wrapped around it     |   **2.00-2.21** |
+| the same cap inline in the fold |   **1.05-1.18** |
 
-The ratios hold across all three chunk sizes, so they are per-chunk overhead and not a throughput
-artefact.
+The wrapper's ratio holds at all three chunk sizes, so it is per-chunk overhead and not a throughput
+artefact. The fold's does not separate from the noise at any of them.
 
-**The shared fold is cheap and the shared cap, as a wrapper, is not.** `foldChunksI` costs about 17%
-of a loop whose whole cost is around a microsecond, so roughly 0.18 microseconds per chunk: at
-socket-sized chunks that is about 12 microseconds per megabyte streamed, against a real consumer that
-also writes to a file or a socket. `cappedI` costs 1.4 microseconds per chunk, more than the loop it
-wraps, because a chunk passes through a second consumer: its own `NeedInput`, then `feedChunk` into
-the inner one. That is precisely the "dictionary and an allocation per chunk" that
-`streaming-algebra.md:203` warns about, arriving exactly where the warning said it would.
+**Sharing the loop costs nothing measurable; sharing the cap as a wrapper doubles the per-chunk cost.**
+`cappedI` adds about 1.2 microseconds per chunk, roughly the whole cost of the loop it wraps, because a
+chunk passes through a second consumer: the wrapper's own `NeedInput`, then a `feedChunk` into the
+inner one. That is precisely the "dictionary and an allocation per chunk" that
+`streaming-algebra.md:203` warns about, arriving exactly where the warning said it would. The fourth
+row is the constructive part: the same cap checked inside a fold's step, with the running count in the
+accumulator, is back down in the noise.
 
-The fourth row is the constructive part: the same cap checked inside the fold, with the running count
-carried in the accumulator instead of a wrapper, costs 1.26x rather than 2.40x. So the cap is cheap to
-share; only its packaging as a combinator is expensive.
+**A correction to this table's first version.** It reported the fold at 1.17x. That figure was an
+artefact of the bench, not of the fold: the hand-written row was a monomorphic copy, while the library
+consumer it was compared against is `MonadIO m => IterT e m ()` and wraps its writer in `liftIO`, so
+the row charged the fold for a dictionary the old consumer already paid. With the copy made faithful,
+down to the constraint, the difference disappears. The error only ever made the fold look worse than
+it is, so the gate decision stands, but the number was wrong and is corrected here rather than
+quietly.
 
 **This inverts the fallback this RFC proposed.** "Share only the cap" was written as the safe retreat
 if the fold proved costly. It is the worst of the options measured: the fold is the cheap half.
@@ -293,11 +300,12 @@ Both are correct for their consumer and they are not the same rule; `MicroHttp.M
 that residue (`Middleware.hs:93,127`), so it is not private. Making the fold carry either would mean a
 parameter that exists for one caller.
 
-**Its step is pure.** It conses a chunk onto a list and nothing else, so it is the one consumer with no
-`IterM` per chunk at all. Folding it adds one. Measured with `make bench-consumer`, at the chunk sizes
-that matter: 38656 to 54828 ns/chunk at 4096 bytes, 40000 to 53015 at 16384, so a third to two fifths
-slower. (These rows are dominated by the final concat, so treat them as a direction, not a precise
-figure; the direction is unambiguous.)
+**Its step is pure**, which is a second, weaker reason. It conses a chunk onto a list and nothing else,
+so it is the one consumer with no `IterM` per chunk at all, and folding it adds one. The cost of that
+is not reliably measurable here: these rows are dominated by the final `BS.concat`, which is
+O(total x pieces), and repeat runs put the difference anywhere from 2% to 40%. It is a reason to
+prefer leaving the consumer alone, not a number to quote. **The residue rule above is what decides
+this phase**, and it decides it on its own.
 
 ### Phase 4: the file sink -- declined
 
@@ -336,8 +344,10 @@ shared loop cannot hold.
 
 - ~~Should `cappedI` count the bytes it passes on, or take a projection from the accumulator?~~
   Settled by phase 1: there is no `cappedI`, and the count lives in the consumer's accumulator.
-- Does `fileSinkI`'s bracket belong inside `foldChunksI` as an acquire parameter, or stay outside as it
-  is now? Keeping it outside is assumed; phase 4 confirms or reopens.
-- `foldLinesI` resolves with `Done acc s` where `foldBlocksI` uses `Done acc (EndOfStream Nothing)`.
-  These are the same value on the orderly path, but the shared fold must pick one; confirm no spec
-  distinguishes them.
+- ~~Does `fileSinkI`'s bracket belong inside `foldChunksI`, or stay outside?~~ Settled by phase 4:
+  outside, because the consumer that has one does not go through the fold.
+- ~~`foldLinesI` resolves with `Done acc s` where `foldBlocksI` uses `Done acc (EndOfStream Nothing)`.~~
+  Settled by phase 2: in that branch `s` is bound by the pattern `EndOfStream Nothing`, so they are the
+  same value.
+
+Nothing is open.

@@ -199,7 +199,29 @@ Judged against the pipelines above and the ones a wiki is likely to need next, n
 - **No pull-side adapter.** Nothing turns an enumerator into something a caller can step. The tree has
   not needed it; the form consumer is the closest, and it stays push.
 
+- **Closed 2026-09-17.** `foldChunksI` is the consumer loop -- `NeedInput`, a chunk at a time through
+  an effectful step that may fail, an orderly end, a failed end -- written once instead of in every
+  consumer. `byteSinkI`, `foldBlocksI` and `foldLinesI` are now it plus a step. `readBodyStrict` and
+  `fileSinkI` are not, and the reason is a contract rather than a preference: both refuse an over-cap
+  chunk *before* accepting it, so they fail with that chunk as their residue, where the fold fails with
+  an empty one because its step had the chunk; and `fileSinkI` must act on every terminal path, closing
+  its handle on an orderly end and removing the partial file otherwise, which `Done` gives no hook for.
+  A fold taking a finaliser is a bracket, and this page already has two (RFC-0050).
+
 What is not missing, and should not be copied from `streaming`: element-typed streams (everything here
 is bytes, by design), a `ResourceT`, and a large combinator surface. Each combinator is a dictionary
 and an allocation per chunk under MicroHs, and the tree's rule is that a pipeline is written from one
 source, one sink, and the fewest transformers that make it correct.
+
+That rule now has a measurement behind it rather than only a cost model. RFC-0050 proposed a `cappedI`
+combinator wrapping a consumer to enforce a byte cap, built it, and measured it with
+`make bench-consumer`: a chunk passing through the wrapper costs **about twice** what the consumer
+costs on its own, because it pays the wrapper's own `NeedInput` and a `feedChunk` into the inner
+consumer. The same cap checked inside a fold's step, with the running count in the accumulator, costs
+a few percent. `cappedI` was deleted; a copy survives in `test/bench/ConsumerBench.hs` so the number
+stays reproducible.
+
+The complement is worth recording too: sharing a loop is not what costs. Re-expressing a consumer
+through `foldChunksI` measured within noise of the hand-written loop it replaced, a few percent either
+way across runs. The cost the rule warns about is a combinator a chunk must *pass through*, not one a
+consumer is *built from*.

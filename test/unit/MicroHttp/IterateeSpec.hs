@@ -43,6 +43,26 @@ spec =
         it "given a failing iteratee, when it fails mid-chunk, then IterFailed carries the unconsumed residue" $ do
             let result = step (Iteratee.Chunk (BS.pack "LEFTOVER")) failOnInput
             residueOf result `shouldBe` Just (Iteratee.Chunk (BS.pack "LEFTOVER"))
+        it "given chunks, when folded, then the step sees each in order and the accumulator is returned" $ do
+            (result, _) <- drive ["ab", "cd", "ef"] (collectFold 100)
+            fmap reverse result `shouldBe` Right [BS.pack "ab", BS.pack "cd", BS.pack "ef"]
+        it "given an empty chunk, when folded, then the step is not called for it" $ do
+            -- The line fold's step indexes into the chunk it is handed, so an
+            -- empty one reaching a step would be a crash, not a wrong answer.
+            (result, _) <- drive ["ab", "", "cd"] (collectFold 100)
+            fmap reverse result `shouldBe` Right [BS.pack "ab", BS.pack "cd"]
+        it "given a step that fails, when folded, then the consumer fails with that error and an empty residue" $ do
+            -- fed rather than stepped: the step runs in IO, so the consumer is an
+            -- IterM until something resolves it.
+            failed <- Iteratee.feedChunk (BS.pack "abc") (collectFold 0)
+            residueOf failed `shouldBe` Just (Iteratee.Chunk BS.empty)
+            isFailed failed `shouldBe` True
+        it "given a failed end of stream, when folded, then the failure propagates with the end as residue" $ do
+            let ended = step (Iteratee.EndOfStream (Just Boom)) (collectFold 100)
+            residueOf ended `shouldBe` Just (Iteratee.EndOfStream (Just Boom))
+        it "given no chunks at all, when folded, then the initial accumulator is returned" $ do
+            (result, _) <- drive [] (collectFold 100)
+            result `shouldBe` Right []
         it "given a body within the bound, when reading strictly, then the whole body is returned" $ do
             (result, _) <- drive ["hello", " world"] (Iteratee.readBodyStrict TooLarge 100)
             result `shouldBe` Right (BS.pack "hello world")
@@ -356,6 +376,17 @@ extract it = case it of
     Iteratee.IterFailed err _ -> Left err
     Iteratee.NeedInput _ -> error "extract: still needs input"
     Iteratee.IterM _ -> error "extract: unresolved effect"
+
+{- | A fold that collects the chunks it is given, newest first, and fails once it
+has seen more than @limit@ bytes. Enough of a step to show what 'foldChunksI'
+hands it and what it does with a refusal.
+-}
+collectFold :: Int -> Iteratee.Iter TestError [BS.ByteString]
+collectFold limit = fmap snd (Iteratee.foldChunksI stepChunk (0 :: Int, []))
+  where
+    stepChunk (seen, acc) bytes
+        | seen + BS.length bytes > limit = pure (Left TooLarge)
+        | otherwise = pure (Right (seen + BS.length bytes, bytes : acc))
 
 residueOf :: Iteratee.Iter e a -> Maybe (Iteratee.Stream e)
 residueOf it = case it of

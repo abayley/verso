@@ -138,7 +138,7 @@ $(PROC_OBJ): $(MICROHTTP_CBITS)/microhttp_process.c $(MICROHTTP_INCLUDE)/microht
 	mkdir -p $(BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(MICROHTTP_INCLUDE)
 
-.PHONY: build-verso-ghc build-verso-ghc-prof run-verso-ghc run-verso-ghc-prof test-ghc test-ghc-unit test-ghc-integration test-ghc-smoke chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-form-decode bench-percent-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-memory bench-html-builder bench-link-parse bench-search-chunk search-lancedb search-nanoarrow search-model search-shim check clean
+.PHONY: build-verso-ghc build-verso-ghc-prof run-verso-ghc run-verso-ghc-prof test-ghc test-ghc-unit test-ghc-integration test-ghc-smoke chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-build bench-form-decode bench-percent-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-memory bench-html-builder bench-link-parse bench-search-chunk search-lancedb search-nanoarrow search-model search-shim check clean
 
 
 docs:
@@ -300,23 +300,39 @@ VERSO_GHC_PROF_RTS ?= -p -hc -s
 run-verso-ghc-prof: editor-build $(BUILD)/ghc-prof/verso
 	$(BUILD)/ghc-prof/verso +RTS $(VERSO_GHC_PROF_RTS) -po$(BUILD)/ghc-prof/verso -RTS
 
+# A bench resolves micro-http from the package database, and the package ships its
+# own cbits, so the local $(CBITS_OBJS) must not be passed as well: every C symbol
+# would then be defined twice and the link would fail.
+
 # Measurement spike: Haskell vs C for the form-decode per-byte pass.
-bench-form-decode: $(CBITS_OBJS)
+bench-form-decode:
 	mkdir -p $(BUILD)
-	$(MHS) $(MHSFLAGS) -optc -I$(CBITS) $(foreach o,$(CBITS_OBJS),-optl $(o)) -i$(SRC) -i$(BENCH) $(BENCH)/FormDecodeBench.hs -o $(BUILD)/form-decode-bench
+	$(MHS) $(MHSFLAGS) -optc -I$(CBITS) -i$(SRC) -i$(BENCH) $(BENCH)/FormDecodeBench.hs -o $(BUILD)/form-decode-bench
 	$(BUILD)/form-decode-bench
 
-# Links against the package's own cbits; passing the local $(CBITS_OBJS) as well
-# would define every C symbol twice (see bench-form-decode).
 bench-percent-decode:
 	mkdir -p $(BUILD)
 	$(MHS) $(MHSFLAGS) -optc -I$(CBITS) -i$(SRC) -i$(BENCH) $(BENCH)/PercentDecodeBench.hs -o $(BUILD)/percent-decode-bench
 	$(BUILD)/percent-decode-bench
 
-bench-socket: $(FS_OBJ)
+bench-socket:
 	mkdir -p $(BUILD)
-	$(MHS) $(MHSFLAGS) -optc -I$(CBITS) -optl $(FS_OBJ) -i$(SRC) -i$(BENCH) $(BENCH)/SocketBench.hs -o $(BUILD)/socket-bench
+	$(MHS) $(MHSFLAGS) -optc -I$(CBITS) -i$(SRC) -i$(BENCH) $(BENCH)/SocketBench.hs -o $(BUILD)/socket-bench
 	$(BUILD)/socket-bench
+
+# Compiles and links every bench without running one. Benches are not part of
+# `check` (they measure, and some want a quiet machine and several minutes), so
+# nothing else notices when a bench stops building: both bench-form-decode and
+# bench-socket had rotted, one on a duplicate C symbol and one on a socket
+# signature that had gained a field. Run this after changing a framework
+# signature the benches use.
+bench-build:
+	mkdir -p $(BUILD)/bench-link
+	for b in FormDecodeBench PercentDecodeBench SocketBench HtmlBuilderBench LinkParseBench SearchChunkBench IterateeReceiver SocketReceiver EgressSender; do \
+	    echo "linking $$b"; \
+	    $(MHS) $(MHSFLAGS) -optc -I$(CBITS) -i$(SRC) -i$(BENCH) $(BENCH)/$$b.hs -o $(BUILD)/bench-link/$$b || exit 1; \
+	done
+	@echo "bench-build OK"
 
 bench-socket-saturated:
 	MHS_PACKAGE_DB=$(MHS_PACKAGE_DB) MHS_LINK_FLAGS="$(MHS_LINK_FLAGS)" bash $(BENCH)/socket-saturated-bench.sh
@@ -416,7 +432,7 @@ chrome-gates:
 		if [ -n "$$dead_classes" ]; then echo "chrome-gates FAILED: CSS classes without a source producer:"; echo "$$dead_classes"; exit 1; fi
 	@echo "chrome-gates OK"
 
-check: docs format-check lint test editor-check test-editor-browser test-ghc test-ghc-smoke chrome-gates
+check: docs format-check lint test editor-check test-editor-browser test-ghc test-ghc-smoke chrome-gates bench-build
 
 clean:
 	rm -rf $(BUILD)

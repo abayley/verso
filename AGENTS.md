@@ -86,8 +86,14 @@ and then carried into `packages/verso-editor/moebius/`.
 `make check` runs, in order: the docs build, the format check, the linters, the
 Haskell unit and integration suites, the editor checks (lint, typecheck and
 Vitest), the Playwright editor smoke, the Haskell suites and the same smoke under
-GHC, and the chrome gates. It rebuilds the
+GHC, the chrome gates, and `bench-build`. It rebuilds the
 editor bundle and the `verso` binary along the way, so it takes several minutes.
+
+`bench-build` links every bench without running one (about 35 seconds). Benches
+measure, so they are not otherwise part of `check`, and that let two of them rot
+unnoticed: one on a duplicate C symbol, one on a signature that had gained a
+field. A bench links against the micro-http package's own cbits, so a bench rule
+must not also pass the local `build/*.o`, or every C symbol is defined twice.
 
 ```bash
 make check

@@ -27,13 +27,13 @@ command -v ab >/dev/null 2>&1 || { echo "ab (ApacheBench) not found on PATH" >&2
 command -v mhs >/dev/null 2>&1 || { echo "mhs not found on PATH" >&2; exit 1; }
 
 mkdir -p "$BUILD"
-# Link the cbits the server needs: the filesystem syscall wrappers and the
-# concordance stub (search stays off in a bench; no index worker interference).
+# Link the concordance stub the server needs (search stays off in a bench, so no
+# index worker interferes). The framework's own cbits come with the micro-http
+# package; compiling them here as well would define every C symbol twice.
 # Built to verso-bench so the user's real build/verso is not clobbered.
-cc -O2 -Wall -c "$ROOT/cbits/microhttp_fs.c" -o "$BUILD/microhttp_fs.o" -I"$ROOT/cbits"
-cc -O2 -Wall -c "$ROOT/cbits/concordance_stub.c" -o "$BUILD/concordance_stub_bench.o" -I"$ROOT/cbits"
-mhs -a"$DB" $LINK -optc -I"$ROOT/cbits" -optl "$BUILD/microhttp_fs.o" -optl "$BUILD/concordance_stub_bench.o" \
-    -i"$ROOT/src" "$ROOT/src/Verso/Main.hs" -o "$BUILD/verso-bench"
+cc -O2 -Wall -c "$ROOT/packages/verso/cbits/concordance_stub.c" -o "$BUILD/concordance_stub_bench.o" -I"$ROOT/packages/verso/cbits"
+mhs -a"$DB" $LINK -optc -I"$ROOT/packages/verso/cbits" -optl "$BUILD/concordance_stub_bench.o" \
+    -i"$ROOT/packages/verso/src" "$ROOT/packages/verso/src/Verso/Main.hs" -o "$BUILD/verso-bench"
 
 # A private config so the user's micro-http.conf and port 8080 are untouched.
 CONF="$(mktemp)"

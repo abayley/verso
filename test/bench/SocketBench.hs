@@ -110,7 +110,7 @@ withConnectedPair use = do
                             accepted <- accept socket
                             case accepted of
                                 Left err -> error ("accept failed: " ++ show err)
-                                Right served -> do
+                                Right (served, _peer) -> do
                                     use client served
                                     _ <- closeClientSocket served
                                     _ <- closeClientSocket client

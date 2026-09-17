@@ -1,3 +1,18 @@
+{- | The accept loop: sockets in, responses out.
+
+'serve' binds, listens, and hands each connection to the application, bounding
+concurrency with a semaphore whose slot is released under 'Control.Exception.finally'
+so a dying handler cannot leak capacity. 'serveWithReady' is the same with a
+callback once the port is bound, which is how a test takes an ephemeral port
+without racing the listener. 'serveOne' and 'handleClient' expose single steps for
+tests.
+
+Everything about a request that is not the accept loop lives elsewhere: parsing in
+'MicroHttp.Http', reading and writing in 'MicroHttp.Stream', logging and error
+translation in 'MicroHttp.Middleware'. What is here is the lifecycle -- a
+connection's bounds, its idle timeouts, and making a failure that never became a
+request visible rather than silent ('reportConnectionFailure').
+-}
 module MicroHttp.Server (
     Application,
     ServerError (..),

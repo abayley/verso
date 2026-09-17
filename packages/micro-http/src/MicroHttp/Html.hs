@@ -1,3 +1,19 @@
+{- | Server-side HTML: a pure builder that renders to bytes.
+
+An 'Html' value is a writer over a difference list of 'Data.ByteString.Char8.ByteString'
+chunks (ADR-0038), assembled with @do@ notation and run by 'renderChunks' into
+segments large enough that the socket sees one write for a typical page. Text and
+attribute values are escaped on the way in, so a handler composes content without
+deciding what is safe; 'rawTrusted' is the one way past that, and names itself.
+
+Tags are the @x_@ combinators, one per element, over 'el' and 'voidEl'. There is
+one spelling: the unprefixed aliases this module used to also export are gone, and
+'el' is for a tag with no combinator of its own (ADR-0094).
+
+A document whose body is a file does not come through here: it is escaped a block
+at a time in C and streamed (RFC-0039, 'escapeBytes'), because a page-sized value
+must never be held whole.
+-}
 module MicroHttp.Html (
     Html,
     attr,

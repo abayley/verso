@@ -1,3 +1,15 @@
+{- | The sockets and file descriptors themselves, and nothing above them.
+
+A thin, typed layer over the BSD socket calls and the few file operations that
+belong beside them: 'listenTcp', 'accept', 'connectTcp', the reads and writes, and
+@sendfile@ for a response body that never enters the heap. Errors come back as a
+'SocketError' rather than an exception, so a caller decides what is fatal.
+
+Descriptors are non-blocking and driven by the runtime's event manager, which is
+what lets one interpreter thread hold many connections (RFC-0007). The types
+distinguish what a descriptor is for -- 'ListenSocket', 'ClientSocket', 'FileFd' --
+so a call cannot be made against the wrong one.
+-}
 module MicroHttp.Network.Socket (
     ClientSocket,
     ConnectionInfo (..),

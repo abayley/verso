@@ -1,3 +1,15 @@
+{- | Matching a request to a handler.
+
+A 'Route' pairs a method and a path pattern with a 'Handler'; 'route' builds one,
+'serveRoutes' tries them in order and answers 'notFound' when none matches. A
+pattern's segments may capture, and the captured values reach the handler as
+'Captures'.
+
+Routing happens after the head is parsed and before the body is read, so a handler
+receives the request head and the still-unread body stream and decides what to do
+with it: this is what lets a handler stream a large upload rather than be handed
+it (RFC-0012). 'frameAndParse' is that boundary.
+-}
 module MicroHttp.Router (
     Captures,
     Handler,
@@ -5,6 +17,7 @@ module MicroHttp.Router (
     delete,
     frameAndParse,
     get,
+    notFound,
     post,
     put,
     route,
@@ -162,7 +175,11 @@ splitOn separator text =
         (before, _ : after) -> before : splitOn separator after
         (before, []) -> [before]
 
--- | The 404 response for an unmatched path.
+{- | The framework's 404: a plain-text body, used for an unmatched route and by
+'MicroHttp.Static' for a file that is absent, refused or outside its mount. One
+response rather than one per module, so a server answers a miss the same way
+whichever layer decided it was one.
+-}
 notFound :: Http.Response
 notFound =
     Http.Response

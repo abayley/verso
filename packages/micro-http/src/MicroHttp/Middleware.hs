@@ -228,7 +228,17 @@ breakCrlf bytes =
             | BS.null after -> Nothing
             | otherwise -> Just before
 
--- | Parses a request line's bytes into its method and target.
+{- | Parses a request line's bytes into its method and target.
+
+The target is kept as it arrived, byte per character, and is logged that way:
+an access log records what a client sent, not what the server made of it. That is
+deliberately not what a handler sees -- 'MicroHttp.Http.pathSegments'
+percent-decodes and then reads the result as UTF-8, so the same non-ASCII path is
+escaped bytes in the log and real characters in the handler. The log's writer
+appends these bytes rather than re-encoding the 'String' ('MicroHttp.Log',
+'fileLogfmtLogger'), which is what keeps the round trip exact; writing it through
+'String' I/O would double-encode every byte above 127 under MicroHs.
+-}
 parseRequestLine :: BS.ByteString -> Log.RequestLine
 parseRequestLine lineBytes =
     case BSC.words lineBytes of

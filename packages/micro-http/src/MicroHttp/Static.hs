@@ -42,7 +42,7 @@ serveStatic prefixCount root _ request =
   where
     resolve components =
         case resolveStaticPath root components of
-            Nothing -> pure notFoundResponse
+            Nothing -> pure Router.notFound
             Just path -> serveResolved path
 
 -- | Serves @path@ as a sized file response if it is a regular file, else 404s.
@@ -52,7 +52,7 @@ serveResolved path = do
     isDirectory <- Directory.doesDirectoryExist path
     if isFile && not isDirectory
         then sizedFileResponse path
-        else pure notFoundResponse
+        else pure Router.notFound
 
 {- | Resolves the file size once and builds a zero-copy 'FileBody' carrying it;
 if the file cannot be sized (a race after the existence check), answers 404.
@@ -62,7 +62,7 @@ sizedFileResponse path = do
     sized <- Socket.fileSizeBytes path
     case sized of
         Just size -> pure (fileResponse (contentTypeFor path) path size)
-        Nothing -> pure notFoundResponse
+        Nothing -> pure Router.notFound
 
 {- | Resolves the served filesystem path from the root and the request path
 components, or 'Nothing' if any component is unsafe. A component is unsafe if
@@ -138,14 +138,6 @@ fileResponse contentType path size =
         Http.okStatus
         [(Http.normaliseHeaderName (BS.pack "Content-Type"), BS.pack contentType)]
         (Http.FileBody path size)
-
--- | The shared 404 response with a plain-text body.
-notFoundResponse :: Http.Response
-notFoundResponse =
-    Http.Response
-        (Http.Status 404 "Not Found")
-        [(Http.normaliseHeaderName (BS.pack "Content-Type"), BS.pack "text/plain")]
-        (Http.StrictBody (BS.pack "not found\n"))
 
 -- | The number of non-empty @/@-separated segments in a mount prefix.
 prefixSegmentCount :: String -> Int

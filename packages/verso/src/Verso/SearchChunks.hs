@@ -20,21 +20,14 @@ module Verso.SearchChunks (
     Chunk (..),
     chunkPage,
     chunkFile,
-    lineRanges,
-    isDashesLine,
 ) where
 
 import qualified Data.ByteString.Char8 as BS
-import qualified Data.ByteString.Unsafe as BSU
 import qualified Data.List as List
-import qualified Foreign.C.String as CStr
-import qualified Foreign.C.Types as CTypes
-import qualified Foreign.Ptr as Ptr
 import qualified MicroHttp.Bytes as Bytes
 import qualified MicroHttp.Stream as Stream
 import qualified MicroHttp.Utf8 as Utf8
-
-foreign import ccall "string.h memchr" c_memchr :: CStr.CString -> CTypes.CInt -> CTypes.CSize -> IO (Ptr.Ptr ())
+import qualified Verso.PageLines as PageLines
 
 -- | One search-index chunk of a page.
 data Chunk = Chunk
@@ -47,17 +40,14 @@ data Chunk = Chunk
     }
     deriving (Eq, Show)
 
--- | A half-open byte range @[start, end)@ into the page content.
-type Range = (Int, Int)
-
 {- | Chunks a page held whole: context line (title plus ancestor headings),
 heading sections, size-capped (in bytes) at paragraph boundaries. The lines
 are O(1) views fed to the same machine 'chunkFile' drives from disk.
 -}
 chunkPage :: Int -> String -> BS.ByteString -> IO [Chunk]
 chunkPage cap title content = do
-    ranges <- lineRanges content
-    pure (finish (List.foldl' feedLine (newChunker cap title) (map (viewOf content) ranges)))
+    ranges <- PageLines.lineRanges content
+    pure (finish (List.foldl' feedLine (newChunker cap title) (map (PageLines.viewOf content) ranges)))
 
 {- | Chunks a page streamed from disk (RFC-0043): the file is read in blocks
 and fed to the machine one line at a time, so the page is never held whole.
@@ -113,10 +103,10 @@ frontmatterCapBytes = 65536
 feedLine :: Chunker -> BS.ByteString -> Chunker
 feedLine ck line = case ckFront ck of
     AtStart
-        | isDashesLine line (whole line) -> ck{ckFront = Buffering [line] (BS.length line)}
+        | PageLines.isDashesLine line (whole line) -> ck{ckFront = Buffering [line] (BS.length line)}
         | otherwise -> bodyLine ck{ckFront = Body} line
     Buffering held heldBytes
-        | isDashesLine line (whole line) -> ck{ckFront = Body}
+        | PageLines.isDashesLine line (whole line) -> ck{ckFront = Body}
         | heldBytes > frontmatterCapBytes -> bodyLine (replay ck held) line
         | otherwise -> ck{ckFront = Buffering (line : held) (heldBytes + BS.length line)}
     Body -> bodyLine ck line
@@ -190,7 +180,7 @@ finish ck0 =
      in [Chunk anchor seqNo text | (seqNo, (anchor, text)) <- zip [0 ..] (reverse (ckOut done))]
 
 -- | The range covering a whole line.
-whole :: BS.ByteString -> Range
+whole :: BS.ByteString -> PageLines.Range
 whole line = (0, BS.length line)
 
 newline :: BS.ByteString
@@ -201,35 +191,10 @@ blankSep = BS.pack "\n\n"
 
 -- | The bytes past leading and trailing blank space (@ \t\r\n@), as a view.
 trimBlank :: BS.ByteString -> BS.ByteString
-trimBlank bytes = viewOf bytes (trimRange bytes (0, BS.length bytes))
-
-{- | The page's lines as byte ranges (excluding the newline), with 'lines'
-semantics (no empty final line after a trailing newline). The line ends come
-from libc @memchr@ so the interpreter never walks the bytes between them.
--}
-lineRanges :: BS.ByteString -> IO [Range]
-lineRanges content =
-    BSU.unsafeUseAsCStringLen content $ \(basePtr, len) -> do
-        let findNewline i
-                | i >= len = pure Nothing
-                | otherwise = do
-                    p <- c_memchr (Ptr.plusPtr basePtr i) 10 (fromIntegral (len - i))
-                    pure (if p == Ptr.nullPtr then Nothing else Just (Ptr.minusPtr p basePtr))
-            go start
-                | start >= len = pure []
-                | otherwise = do
-                    newline' <- findNewline start
-                    case newline' of
-                        Nothing -> pure [(start, len)]
-                        Just j -> ((start, j) :) <$> go (j + 1)
-        go 0
-
--- | The bytes of a range as an O(1) view.
-viewOf :: BS.ByteString -> Range -> BS.ByteString
-viewOf content (s, e) = BS.take (e - s) (BS.drop s content)
+trimBlank bytes = PageLines.viewOf bytes (trimRange bytes (0, BS.length bytes))
 
 -- | Shrinks a range past leading and trailing blank space (@ \t\r\n@).
-trimRange :: BS.ByteString -> Range -> Range
+trimRange :: BS.ByteString -> PageLines.Range -> PageLines.Range
 trimRange content (s0, e0) = (advance s0, retreat e0)
   where
     advance s
@@ -243,13 +208,13 @@ isBlankByte :: Char -> Bool
 isBlankByte c = c == ' ' || c == '\t' || c == '\r' || c == '\n'
 
 -- | Whether the line is blank (spaces, tabs, and carriage returns only).
-isBlankAt :: BS.ByteString -> Range -> Bool
+isBlankAt :: BS.ByteString -> PageLines.Range -> Bool
 isBlankAt content (s, e) = go s
   where
     go i = i >= e || (isBlankByte (BS.index content i) && go (i + 1))
 
 -- | Whether the line opens or closes a code fence (``` after optional indent).
-isFenceAt :: BS.ByteString -> Range -> Bool
+isFenceAt :: BS.ByteString -> PageLines.Range -> Bool
 isFenceAt content (s, e) = go s
   where
     go k
@@ -260,26 +225,8 @@ isFenceAt content (s, e) = go s
                 && BS.index content (k + 1) == '`'
                 && BS.index content (k + 2) == '`'
 
-{- | Whether the line is a frontmatter delimiter: @---@ alone on the line,
-with spaces, tabs, and a carriage return tolerated on either side. One rule
-for the search chunker and 'Verso.Frontmatter'.
--}
-isDashesLine :: BS.ByteString -> Range -> Bool
-isDashesLine content (s, e) = dashes (skipBlanks s)
-  where
-    dashes k =
-        k + 3 <= e
-            && BS.index content k == '-'
-            && BS.index content (k + 1) == '-'
-            && BS.index content (k + 2) == '-'
-            && skipBlanks (k + 3) == e
-    -- Past any run of spaces, tabs, and carriage returns from k.
-    skipBlanks k
-        | k < e && (BS.index content k == ' ' || BS.index content k == '\t' || BS.index content k == '\r') = skipBlanks (k + 1)
-        | otherwise = k
-
 -- | The ATX heading's level and (decoded, trimmed) text, when the line is one.
-headingAt :: BS.ByteString -> Range -> Maybe (Int, String)
+headingAt :: BS.ByteString -> PageLines.Range -> Maybe (Int, String)
 headingAt content (s, e) =
     let level = countHashes s
      in if level >= 1 && level <= 6 && s + level < e && BS.index content (s + level) == ' '
@@ -289,4 +236,4 @@ headingAt content (s, e) =
     countHashes k
         | k < e && BS.index content k == '#' = 1 + countHashes (k + 1)
         | otherwise = 0
-    decodeRange range = Utf8.decodeUtf8 (BS.unpack (viewOf content range))
+    decodeRange range = Utf8.decodeUtf8 (BS.unpack (PageLines.viewOf content range))

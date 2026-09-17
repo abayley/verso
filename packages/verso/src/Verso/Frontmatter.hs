@@ -6,7 +6,7 @@ One definition of the block serves every reader (RFC-0039). 'leadingBlock'
 classifies bytes already in hand; 'slice' is its closed-block-or-empty form;
 'blockI' is the same test as an early-completing iteratee, so 'readBlock' can
 stream a file and stop at the closing delimiter without reading the body.
-Delimiter lines follow 'SearchChunks.isDashesLine': @---@ with surrounding
+Delimiter lines follow 'PageLines.isDashesLine': @---@ with surrounding
 blanks tolerated, nothing else on the line.
 -}
 module Verso.Frontmatter (
@@ -26,7 +26,7 @@ import qualified Data.List as List
 import qualified MicroHttp.Iteratee as Iteratee
 import qualified MicroHttp.Stream as Stream
 import qualified MicroHttp.Utf8 as Utf8
-import qualified Verso.SearchChunks as SearchChunks
+import qualified Verso.PageLines as PageLines
 
 -- | Where a document's leading frontmatter stands in the bytes seen so far.
 data Lead
@@ -44,11 +44,11 @@ whole content on MicroHs, which is the cost RFC-0039 removed.
 -}
 leadingBlock :: BS.ByteString -> IO Lead
 leadingBlock content = do
-    ranges <- SearchChunks.lineRanges content
+    ranges <- PageLines.lineRanges content
     pure $ case ranges of
         (first : rest)
-            | SearchChunks.isDashesLine content first ->
-                case List.find (SearchChunks.isDashesLine content) rest of
+            | PageLines.isDashesLine content first ->
+                case List.find (PageLines.isDashesLine content) rest of
                     Just (_, closeEnd) -> Frontmatter (BS.take closeEnd content)
                     Nothing -> Unclosed
         _ -> NoFrontmatter

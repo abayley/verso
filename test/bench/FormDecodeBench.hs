@@ -20,6 +20,13 @@ A sixth strategy -- one whole-pass C decode -- measured 0.05ms/decode against
 the numbers below (2026-07-12) and was removed with the interim C shim it
 exercised; RFC-0036 records the comparison and chose raw request bodies
 instead, so nothing on the hot path decodes at all.
+
+Every strategy but @string@ carries its own decode loop, and they predate
+ADR-0095: they still skip three bytes past a malformed escape, where the real
+decoder emits the @%@ and advances one. They are shapes being timed against each
+other, not implementations of the rule -- 'MicroHttp.Percent' is the only one of
+those. Only @string@ reaches production code, through 'Http.decodeFormValue'; to
+time the decoder itself, use @make bench-percent-decode@.
 -}
 module Main (main) where
 

@@ -86,8 +86,7 @@ extensionOf name =
         (_, _) -> ""
 
 {- | Percent-decodes the filename header: @%XX@ becomes its byte and a @+@ is
-left alone, which is the framework's path-segment rule ('Http.decodePathSegment').
-This was a fourth copy of that rule until the decoders were unified.
+left alone, which is the framework's path-segment rule (ADR-0095).
 -}
 percentDecode :: String -> String
 percentDecode = Http.decodePathSegment

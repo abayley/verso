@@ -24,7 +24,7 @@ main = do
     putStrLn ""
     putStrLn ("body = " ++ show (BS.length body) ++ " bytes, reps = " ++ show blockReps)
     putStrLn "block decoder    | total ms | ms/decode"
-    benchBlock "shared        " (fst . Percent.decodeBlock True)
+    benchBlock "shared        " (fst . Percent.decodeBlock Percent.PlusIsSpace)
     benchBlock "skip-3 (before)" (fst . oldBlock)
 
 -- | Request-shaped inputs: real path segments and query values, all short.

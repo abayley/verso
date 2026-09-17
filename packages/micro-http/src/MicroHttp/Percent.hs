@@ -12,11 +12,12 @@ not followed by two hexadecimal digits is emitted as itself and the scan advance
 one byte, so the @%41@ in @%%41@ still decodes. Decoding never rescans its own
 output, so @%2541@ is @%41@ and not @A@.
 
-Both a whole value and a block of a stream decode through the same walk
-('decodeBlock'), so a value decoded in blocks is byte-identical to the same value
-decoded whole (RFC-0042).
+A whole value and a block of a stream decode through the same walk, differing
+only in whether more bytes can still arrive, so a value decoded in blocks is
+byte-identical to the same value decoded whole (RFC-0042).
 -}
 module MicroHttp.Percent (
+    PlusRule (..),
     decodeWhole,
     decodeBlock,
 ) where
@@ -24,18 +25,27 @@ module MicroHttp.Percent (
 import qualified Data.ByteString.Char8 as BS
 import qualified Data.Char as Char
 
-{- | Decodes a whole value: no escape can be left incomplete, so a trailing bare
-@%@ or truncated escape is emitted verbatim.
+{- | What a literal @+@ means, which is the one way the two decoders differ: a
+form value inherits it from HTML's form encoding, where it stands for a space; a
+path segment has no such rule and keeps it.
 -}
-decodeWhole :: Bool -> BS.ByteString -> BS.ByteString
-decodeWhole plusIsSpace bytes = BS.pack (fst (walk True plusIsSpace bytes))
+data PlusRule
+    = PlusIsSpace
+    | PlusIsLiteral
+    deriving (Eq, Show)
+
+{- | Decodes a whole value. Nothing can arrive after it, so a trailing @%@ that
+begins no valid escape is malformed rather than incomplete, and the recovery rule
+applies to it like any other.
+-}
+decodeWhole :: PlusRule -> BS.ByteString -> BS.ByteString
+decodeWhole plusRule bytes = BS.pack (fst (walk True plusRule bytes))
 
 {- | Decodes one block of a stream: the decoded bytes, and the tail to carry into
 the next block, which the caller prepends to it. The carry is at most two bytes,
 a @%@ and whatever single byte follows it, because only an escape can straddle a
 block boundary; it is not always a partial escape, since a @%z@ at a block end is
-carried too and resolves as malformed once the next block arrives. When the flag
-is set a literal @+@ becomes a space, the form-value rule; a path segment keeps it.
+carried too and resolves as malformed once the next block arrives.
 
 At the end of a stream there is no next block, so the caller flushes what is left
 through 'decodeWhole' rather than emitting it verbatim.
@@ -45,10 +55,10 @@ three bytes are never split from each other and a @%@ that is itself the tail of
 malformed escape is not mistaken for a carry. A per-block list is packed once; the
 caller slices, so a block is bounded regardless of the chunk it came from.
 -}
-decodeBlock :: Bool -> BS.ByteString -> (BS.ByteString, BS.ByteString)
-decodeBlock plusIsSpace bytes = (BS.pack decoded, BS.drop cut bytes)
+decodeBlock :: PlusRule -> BS.ByteString -> (BS.ByteString, BS.ByteString)
+decodeBlock plusRule bytes = (BS.pack decoded, BS.drop cut bytes)
   where
-    (decoded, cut) = walk False plusIsSpace bytes
+    (decoded, cut) = walk False plusRule bytes
 
 {- | The one walk, over a whole value or one block: the decoded characters, and
 the index the carry starts at (the length when nothing is carried).
@@ -64,13 +74,13 @@ The walk yields the decoded characters and the cut together because a second pas
 to find the cut would have to repeat this one's hex tests, and the cut cannot be
 over-approximated: a carried complete escape would be flushed without decoding.
 -}
-walk :: Bool -> Bool -> BS.ByteString -> (String, Int)
-walk final plusIsSpace bytes = go 0
+walk :: Bool -> PlusRule -> BS.ByteString -> (String, Int)
+walk final plusRule bytes = go 0
   where
     len = BS.length bytes
     go i
         | i >= len = ([], len)
-        | c == '+' && plusIsSpace = emit ' ' (go (i + 1))
+        | c == '+' && plusRule == PlusIsSpace = emit ' ' (go (i + 1))
         | c /= '%' = emit c (go (i + 1))
         | i + 2 >= len = if final then emit c (go (i + 1)) else ([], i)
         | Char.isHexDigit hi && Char.isHexDigit lo = emit (hexPair hi lo) (go (i + 3))

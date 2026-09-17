@@ -223,15 +223,18 @@ finished :: Totals a -> Iteratee.Iter e (FormResult a)
 finished totals = Iteratee.Done (FormResult (reverse (fields totals)) (reverse (sunk totals))) (Iteratee.Chunk BS.empty)
 
 {- | Percent-decodes a stream of urlencoded value bytes into the given sink, a
-block at a time: @+@ becomes a space, @%XX@ becomes the byte, and a malformed
-escape passes through verbatim. An escape split across a block boundary is
-carried (at most two bytes: a @%@ and one hex digit) into the next block; at end
-of stream the carry is flushed verbatim, as the whole-value decoder left a
-trailing bare @%@ or truncated escape. The inner sink's end of stream follows
-the flush.
+block at a time, by the rule in 'MicroHttp.Percent': @+@ becomes a space and
+@%XX@ becomes the byte it names.
+
+What a block adds is the boundary. A @%@ too near the end of a block to judge is
+carried into the next one, where it is decoded with the bytes that follow it, so
+an escape split by a boundary still decodes. At end of stream there is no next
+block, so what is carried is decoded as the end of a value rather than emitted
+raw -- otherwise a trailing @\"%+\"@ would keep its @+@ instead of turning it into
+a space. The inner sink's end of stream follows that flush.
 -}
 decodeFormValueI :: Iteratee.Iter e a -> Iteratee.Iter e a
-decodeFormValueI = Iteratee.mapChunksI (Percent.decodeBlock True) (Percent.decodeWhole True)
+decodeFormValueI = Iteratee.mapChunksI (Percent.decodeBlock Percent.PlusIsSpace) (Percent.decodeWhole Percent.PlusIsSpace)
 
 {- | Normalises line ends in a stream into the given sink: @CRLF@ and a lone @CR@
 both become @LF@. A @CR@ at a block end is carried to see whether an @LF@

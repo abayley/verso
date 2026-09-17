@@ -326,11 +326,15 @@ bench-socket:
 # bench-socket had rotted, one on a duplicate C symbol and one on a socket
 # signature that had gained a field. Run this after changing a framework
 # signature the benches use.
-bench-build:
-	mkdir -p $(BUILD)/bench-link
-	for b in FormDecodeBench PercentDecodeBench SocketBench HtmlBuilderBench LinkParseBench SearchChunkBench IterateeReceiver SocketReceiver EgressSender; do \
+BENCH_SOURCES = $(wildcard $(BENCH)/*.hs)
+# Depends on the installed package: a bench resolves micro-http from the package
+# database, so without this a standalone run would link against a stale install
+# and pass on framework sources that no longer compile.
+bench-build: $(MICROHTTP_PKG)
+	@mkdir -p $(BUILD)/bench-link
+	@for b in $(BENCH_SOURCES); do \
 	    echo "linking $$b"; \
-	    $(MHS) $(MHSFLAGS) -optc -I$(CBITS) -i$(SRC) -i$(BENCH) $(BENCH)/$$b.hs -o $(BUILD)/bench-link/$$b || exit 1; \
+	    $(MHS) $(MHSFLAGS) -optc -I$(CBITS) -i$(SRC) -i$(BENCH) $$b -o $(BUILD)/bench-link/$$(basename $$b .hs) || exit 1; \
 	done
 	@echo "bench-build OK"
 

@@ -205,11 +205,11 @@ lowerAscii c
 
 -- | Percent-decodes a path segment; a literal @+@ is kept.
 decodePathSegment :: String -> String
-decodePathSegment = decode False
+decodePathSegment = decode Percent.PlusIsLiteral
 
 -- | Percent-decodes a form value; a literal @+@ becomes a space.
 decodeFormValue :: String -> String
-decodeFormValue = decode True
+decodeFormValue = decode Percent.PlusIsSpace
 
 {- | Percent-decodes a string; when the flag is set, a literal @+@ becomes a
 space. The decoding itself is 'Percent.decodeWhole' (RFC-0042 and the WHATWG
@@ -219,8 +219,8 @@ The @String@ here carries bytes, not characters: it comes from @Char8.unpack@ of
 the request line, so every character is a byte and @Char8.pack@ is its exact
 inverse. A character above @U+00FF@ is outside that contract and does not survive.
 -}
-decode :: Bool -> String -> String
-decode plusIsSpace = BSC.unpack . Percent.decodeWhole plusIsSpace . BSC.pack
+decode :: Percent.PlusRule -> String -> String
+decode plusRule = BSC.unpack . Percent.decodeWhole plusRule . BSC.pack
 
 {- | Parses a framed header block (the bytes before the CRLFCRLF terminator,
 which the framing iteratee has already located) into a 'RequestHead'. The

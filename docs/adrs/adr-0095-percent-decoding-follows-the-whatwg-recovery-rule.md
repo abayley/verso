@@ -77,9 +77,25 @@ The decoder makes one pass where both previous versions made two (a scan for the
 carry, then the decode). That pays back most of the new rule's cost but not all:
 telling advance-one from skip-three needs the hex tests at each `%` that
 skipping blindly avoided. Measured with `make bench-percent-decode` on a
-urlencoded body, the block decoder goes from 0.62 to 0.75 ms per 22800 bytes,
-1.19x. The `String` wrapper's pack and unpack cost 0.09 to 0.48 microseconds per
+urlencoded body, the block decoder goes from 0.64 to 0.81 ms per 22800 bytes,
+1.27x. The `String` wrapper's pack and unpack cost 0.09 to 0.43 microseconds per
 path segment, so a request pays a few microseconds across its segments and query
 values; segments are short and this is the shape that matters. Removing even
 that means carrying the request target as bytes instead of unpacking it into a
 `String` in `parseRequestHead`, which is a larger change and is not done here.
+
+### Where the value ends
+
+A `%` with fewer than two bytes after it means different things in the middle of
+a stream and at the end of a value: in a stream it is carried, because the next
+block may complete the escape, but at the end nothing can complete it, so it is
+malformed and the recovery rule applies to it like any other `%`. The walk takes
+that as a parameter rather than leaving the caller to flush a carry verbatim.
+
+Flushing verbatim is what the streaming decoder did before, and it was already
+subtly wrong for the old rule's own reasons; unifying spread it to the `String`
+decoder, which had been right, so `"a%+"` decoded to `"a%+"` instead of `"a% "`.
+The hand-picked cases missed it because none ended in `%+`. The decoder is now
+checked against the oracle over every string of up to four bytes drawn from
+`%`, `4`, `z`, `+` and `a`, at every block size -- 780 inputs -- so shapes nobody
+thought to write down are covered.

@@ -60,6 +60,10 @@ percentDecodeSpec = do
     it "given a truncated escape at the end, when decoded, then it passes through" $ do
         Http.decodeFormValue "a%4" `shouldBe` "a%4"
         Http.decodeFormValue "a%" `shouldBe` "a%"
+    it "given a plus right after a bare percent at the end, when decoded as a form value, then the plus is still a space" $ do
+        Http.decodeFormValue "a%+" `shouldBe` "a% "
+        Http.decodeFormValue "100%+" `shouldBe` "100% "
+        Http.decodePathSegment "a%+" `shouldBe` "a%+"
     it "given an escape naming a percent, when decoded, then the result is not rescanned" $
         Http.decodeFormValue "%2541" `shouldBe` "%41"
     it "given a bare percent before a valid escape, when decoded, then the bare percent is kept and the escape still decodes" $ do

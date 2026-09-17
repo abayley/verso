@@ -28,35 +28,51 @@ import qualified Data.Char as Char
 @%@ or truncated escape is emitted verbatim.
 -}
 decodeWhole :: Bool -> BS.ByteString -> BS.ByteString
-decodeWhole plusIsSpace bytes = BS.append decoded carry
-  where
-    (decoded, carry) = decodeBlock plusIsSpace bytes
+decodeWhole plusIsSpace bytes = BS.pack (fst (walk True plusIsSpace bytes))
 
-{- | Decodes one block of a stream: the decoded bytes, and the undecodable tail to
-carry into the next block. The carry is at most two bytes, a @%@ and one hex
-digit, because only an escape can straddle a block boundary. When the flag is set
-a literal @+@ becomes a space, the form-value rule; a path segment keeps it.
+{- | Decodes one block of a stream: the decoded bytes, and the tail to carry into
+the next block, which the caller prepends to it. The carry is at most two bytes,
+a @%@ and whatever single byte follows it, because only an escape can straddle a
+block boundary; it is not always a partial escape, since a @%z@ at a block end is
+carried too and resolves as malformed once the next block arrives. When the flag
+is set a literal @+@ becomes a space, the form-value rule; a path segment keeps it.
 
-The cut is found by the same left-to-right walk the decoder takes, so an escape's
+At the end of a stream there is no next block, so the caller flushes what is left
+through 'decodeWhole' rather than emitting it verbatim.
+
+The cut comes from the same left-to-right walk the decoder takes, so an escape's
 three bytes are never split from each other and a @%@ that is itself the tail of a
-malformed escape is not mistaken for a carry. A per-block list is packed once; a
-block is at most a stream chunk plus two bytes.
+malformed escape is not mistaken for a carry. A per-block list is packed once; the
+caller slices, so a block is bounded regardless of the chunk it came from.
 -}
 decodeBlock :: Bool -> BS.ByteString -> (BS.ByteString, BS.ByteString)
 decodeBlock plusIsSpace bytes = (BS.pack decoded, BS.drop cut bytes)
   where
+    (decoded, cut) = walk False plusIsSpace bytes
+
+{- | The one walk, over a whole value or one block: the decoded characters, and
+the index the carry starts at (the length when nothing is carried).
+
+@final@ says whether more bytes can still arrive. It only matters at a @%@ with
+fewer than two bytes after it: within a stream that is a carry, because the next
+block may complete the escape, but at the end of a value there is nothing left to
+complete it, so the @%@ is malformed and the recovery rule applies to it like any
+other. Getting that wrong leaves the carry undecoded, which is how a trailing
+@"%+"@ kept its @+@ instead of turning it into a space.
+
+The walk yields the decoded characters and the cut together because a second pass
+to find the cut would have to repeat this one's hex tests, and the cut cannot be
+over-approximated: a carried complete escape would be flushed without decoding.
+-}
+walk :: Bool -> Bool -> BS.ByteString -> (String, Int)
+walk final plusIsSpace bytes = go 0
+  where
     len = BS.length bytes
-    -- One walk yields both the decoded bytes and where the carry starts. The
-    -- carry cannot be over-approximated -- it is flushed verbatim, so carrying a
-    -- complete escape would leave it undecoded -- and a second pass to find it
-    -- exactly would have to repeat this one's hex tests.
-    (decoded, cut) = go 0
     go i
         | i >= len = ([], len)
         | c == '+' && plusIsSpace = emit ' ' (go (i + 1))
         | c /= '%' = emit c (go (i + 1))
-        -- Too few bytes left to tell: it may complete in the next block.
-        | i + 2 >= len = ([], i)
+        | i + 2 >= len = if final then emit c (go (i + 1)) else ([], i)
         | Char.isHexDigit hi && Char.isHexDigit lo = emit (hexPair hi lo) (go (i + 3))
         | otherwise = emit c (go (i + 1))
       where

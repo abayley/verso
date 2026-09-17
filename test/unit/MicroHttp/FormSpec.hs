@@ -35,6 +35,10 @@ decoderSpec =
             check "ab%41cd%42"
         it "given a bare percent at the end and a truncated escape, when decoded, then they pass through verbatim" $
             check "abc%" >> check "abc%a" >> check "a%zzb%"
+        it "given a plus right after a bare percent at the end, when decoded, then the plus is still a space" $
+            check "a%+" >> check "100%+" >> check "x%%+"
+        it "given every string of up to four escape-significant bytes, when decoded at every block size, then each equals the oracle" $
+            mapM_ check exhaustiveInputs
         it "given a percent-encoded multibyte character split at every boundary, when decoded, then its bytes are verbatim" $
             check "caf%C3%A9!"
         it "given a browser-shaped mixed value, when decoded, then it equals the oracle" $
@@ -196,6 +200,17 @@ feedPieces :: [String] -> Iteratee.Iter e a -> IO (Iteratee.Iter e a)
 feedPieces pieces it0 = case pieces of
     [] -> pure it0
     piece : rest -> Iteratee.feedChunk (bs piece) it0 >>= feedPieces rest
+
+{- | Every string of up to four bytes drawn from the alphabet that drives the
+decoder: the escape marker, a hex digit, a non-hex letter, the plus, and an
+ordinary byte. Exhaustive at this length, so no shape of malformed escape,
+truncated escape or plus-beside-percent is left to be thought of; it was a
+trailing @"%+"@ in this space that the hand-picked cases missed.
+-}
+exhaustiveInputs :: [String]
+exhaustiveInputs = concatMap (\n -> mapM (const alphabet) [1 .. n]) [1 .. 4 :: Int]
+  where
+    alphabet = "%4z+a"
 
 -- | The consumer, fed in blocks of every size, equals the oracle on the whole input at each size.
 agreesWithOracle :: (Eq a, Show a) => (Int -> BS.ByteString -> IO (Either TestError a)) -> (String -> a) -> String -> IO ()

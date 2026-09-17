@@ -231,7 +231,7 @@ trailing bare @%@ or truncated escape. The inner sink's end of stream follows
 the flush.
 -}
 decodeFormValueI :: Iteratee.Iter e a -> Iteratee.Iter e a
-decodeFormValueI = Iteratee.mapChunksI (Percent.decodeBlock True) id
+decodeFormValueI = Iteratee.mapChunksI (Percent.decodeBlock True) (Percent.decodeWhole True)
 
 {- | Normalises line ends in a stream into the given sink: @CRLF@ and a lone @CR@
 both become @LF@. A @CR@ at a block end is carried to see whether an @LF@

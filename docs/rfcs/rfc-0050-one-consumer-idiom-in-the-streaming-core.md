@@ -1,7 +1,7 @@
 ---
 id: RFC-0050
 name: One Consumer Idiom In The Streaming Core
-status: Draft
+status: In Progress
 owners:
     - alistair
 created: 2026-09-17
@@ -22,7 +22,7 @@ design_contract_rfcs:
 | Stage     | Timestamp  |
 | --------- | ---------- |
 | Authored  | 2026-09-17 |
-| Started   |            |
+| Started   | 2026-09-17 |
 | Completed |            |
 
 ## Summary
@@ -206,12 +206,62 @@ the measurement comes first.
 
 ### Phase 1: measure, and decide
 
-- [ ] Record a baseline with `make bench-iteratee` (and `make bench-egress`, which also drives these
-      consumers), on a quiet machine, best-of-N.
-- [ ] Write `foldChunksI` and `cappedI`, and re-express `foldBlocksI` only, the simplest consumer.
-- [ ] Re-measure. Record both numbers in this RFC whatever they say.
-- [ ] **Gate.** If the per-chunk cost is material, stop: set this RFC to Rejected, move it to
-      `docs/rfcs/rejected/`, and add the number to `streaming-algebra.md`. Otherwise continue.
+- [x] Record a baseline. **The plan changed on contact with the code**, twice, and both corrections
+      matter more than the original plan did.
+      `make bench-iteratee` does not drive any of the five consumers -- it uses a `countingSink`
+      defined in the bench, and its own comment says `readBodyStrict` is "deliberately not benched
+      here at this volume". Worse, it and `bench-egress` saturate a socket, where syscalls dominate
+      and would hide a per-chunk regression rather than expose it: the baseline this RFC proposed
+      would have been falsely permissive about exactly the cost being judged.
+      So the measurement is a new in-process bench, `make bench-consumer`
+      (`test/bench/ConsumerBench.hs`), which feeds chunks already in memory and times the loop alone.
+      And the consumer re-expressed first is `byteSinkI`, not `foldBlocksI`: `foldBlocksI` is not
+      exported (it has no callers outside `Stream.hs`), so it cannot be driven from a bench, while
+      `byteSinkI` is exported and its failable step exercises `foldChunksI`'s full signature.
+- [x] Write `foldChunksI` and `cappedI`, and re-express `byteSinkI`.
+- [x] Re-measure.
+
+#### What it measured
+
+Nanoseconds per chunk, best of 9, 8 MB per run at each chunk size; 64 bytes exaggerates per-chunk cost
+on purpose, 4096 is the decoder slice, 16384 a socket read. The writer only bumps a counter, so these
+are the loop's own cost, not the sink's work.
+
+| variant                         |    64 B |  4096 B | 16384 B | vs hand-written |
+| ------------------------------- | ------: | ------: | ------: | --------------: |
+| hand-written loop (before)      | 1135.94 | 1030.76 | 1003.91 |            1.00 |
+| `foldChunksI`                   | 1323.19 | 1194.34 | 1187.50 |       **~1.17** |
+| `cappedI` wrapped around it     | 2659.10 | 2499.02 | 2396.48 |       **~2.40** |
+| the same cap inline in the fold | 1441.35 | 1314.45 | 1255.86 |       **~1.26** |
+
+The ratios hold across all three chunk sizes, so they are per-chunk overhead and not a throughput
+artefact.
+
+**The shared fold is cheap and the shared cap, as a wrapper, is not.** `foldChunksI` costs about 17%
+of a loop whose whole cost is around a microsecond, so roughly 0.18 microseconds per chunk: at
+socket-sized chunks that is about 12 microseconds per megabyte streamed, against a real consumer that
+also writes to a file or a socket. `cappedI` costs 1.4 microseconds per chunk, more than the loop it
+wraps, because a chunk passes through a second consumer: its own `NeedInput`, then `feedChunk` into
+the inner one. That is precisely the "dictionary and an allocation per chunk" that
+`streaming-algebra.md:203` warns about, arriving exactly where the warning said it would.
+
+The fourth row is the constructive part: the same cap checked inside the fold, with the running count
+carried in the accumulator instead of a wrapper, costs 1.26x rather than 2.40x. So the cap is cheap to
+share; only its packaging as a combinator is expensive.
+
+**This inverts the fallback this RFC proposed.** "Share only the cap" was written as the safe retreat
+if the fold proved costly. It is the worst of the options measured: the fold is the cheap half.
+
+#### Also found
+
+`readBodyStrict` **exhausts the MicroHs evaluator stack** on 131072 chunks of 64 bytes (8 MB),
+`ERR: stack overflow`, before any of this change. It accumulates a list of every chunk and
+concatenates once at the end, and its own Haddock warns that concat is O(total x pieces). The bench
+gives it 1 MB so it survives. This is a pre-existing limit, not a regression, but phase 3 plans to
+re-express this consumer and must not make it worse; its per-chunk numbers are dominated by that final
+concat, so it is useless as a probe for loop cost.
+
+- [ ] **Gate.** Decide whether ~1.17x per chunk on the loop is worth one implementation of it.
 
 ### Phase 2: the consumers with no cap and no resource
 

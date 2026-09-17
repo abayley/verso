@@ -138,7 +138,7 @@ $(PROC_OBJ): $(MICROHTTP_CBITS)/microhttp_process.c $(MICROHTTP_INCLUDE)/microht
 	mkdir -p $(BUILD)
 	cc -O2 -Wall -c $< -o $@ -I$(MICROHTTP_INCLUDE)
 
-.PHONY: build-verso-ghc build-verso-ghc-prof run-verso-ghc run-verso-ghc-prof test-ghc test-ghc-unit test-ghc-integration test-ghc-smoke chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-build bench-form-decode bench-percent-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-memory bench-html-builder bench-link-parse bench-search-chunk search-lancedb search-nanoarrow search-model search-shim check clean
+.PHONY: build-verso-ghc build-verso-ghc-prof run-verso-ghc run-verso-ghc-prof test-ghc test-ghc-unit test-ghc-integration test-ghc-smoke chrome-gates docs editor-build editor-check editor-format editor-knip editor-lint editor-test editor-typecheck format format-check lint run-verso replay-tool test-editor-browser test-unit test-integration test coverage coverage-unit coverage-integration bench-build bench-consumer bench-form-decode bench-percent-decode bench-socket bench-socket-saturated bench-iteratee bench-egress bench-http bench-memory bench-html-builder bench-link-parse bench-search-chunk search-lancedb search-nanoarrow search-model search-shim check clean
 
 
 docs:
@@ -326,6 +326,12 @@ bench-socket:
 # bench-socket had rotted, one on a duplicate C symbol and one on a socket
 # signature that had gained a field. Run this after changing a framework
 # signature the benches use.
+# Per-chunk cost of the streaming consumers, in process (RFC-0050 phase 1).
+bench-consumer: $(MICROHTTP_PKG)
+	mkdir -p $(BUILD)
+	$(MHS) $(MHSFLAGS) -optc -I$(CBITS) -i$(SRC) -i$(BENCH) $(BENCH)/ConsumerBench.hs -o $(BUILD)/consumer-bench
+	$(BUILD)/consumer-bench
+
 BENCH_SOURCES = $(wildcard $(BENCH)/*.hs)
 # Depends on the installed package: a bench resolves micro-http from the package
 # database, so without this a standalone run would link against a stale install

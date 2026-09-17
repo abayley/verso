@@ -28,6 +28,8 @@ module MicroHttp.Iteratee (
     linesI,
     appendEnumerators,
     readBodyStrict,
+    foldChunksI,
+    cappedI,
     strictEnumerator,
     resourceEnumerator,
     byteSinkI,
@@ -430,18 +432,53 @@ end of stream, failing with the writer's error on a failed write. A
 transport failure delivered at end of stream is propagated unchanged.
 -}
 byteSinkI :: (IOClass.MonadIO m) => (BS.ByteString -> IO (Either e ())) -> IterT e m ()
-byteSinkI writeBytes = go
+byteSinkI writeBytes = foldChunksI (\_ bytes -> IOClass.liftIO (writeBytes bytes)) ()
+
+{- | The consumer loop, once: a chunk at a time through an effectful step that
+carries an accumulator and may fail, until the stream ends (RFC-0050). An empty
+chunk is skipped, an orderly end resolves with the accumulator, and a failed end
+propagates unchanged. A step returning 'Left' fails the consumer with that error,
+with the residue 'byteSinkI' leaves.
+
+This is the shape five consumers in this module and 'MicroHttp.Stream' write out
+by hand; whether they should all be expressed through it is RFC-0050's question,
+which is answered by measurement, not by counting the lines it would save.
+-}
+foldChunksI :: (Monad m) => (s -> BS.ByteString -> m (Either e s)) -> s -> IterT e m s
+foldChunksI step = go
   where
-    go = NeedInput consume
-    consume s = case s of
+    go acc = NeedInput (consume acc)
+    consume acc s = case s of
         Chunk bytes
-            | BS.null bytes -> go
-            | otherwise -> IterM (fmap afterWrite (IOClass.liftIO (writeBytes bytes)))
-        EndOfStream Nothing -> Done () (EndOfStream Nothing)
+            | BS.null bytes -> go acc
+            | otherwise -> IterM (fmap stepped (step acc bytes))
+        EndOfStream Nothing -> Done acc (EndOfStream Nothing)
         EndOfStream (Just err) -> IterFailed err (EndOfStream (Just err))
-    afterWrite sent = case sent of
+    stepped outcome = case outcome of
         Left err -> IterFailed err (Chunk BS.empty)
-        Right () -> go
+        Right acc' -> go acc'
+
+{- | Caps the bytes a consumer may be fed, failing with the supplied error before
+the chunk that would exceed the limit reaches it, so an over-cap stream leaves
+the inner consumer having seen at most @limit@ bytes and the offending chunk
+unconsumed in the residue (RFC-0050). The inner consumer's own end of stream is
+its to handle; this only counts what passes.
+-}
+cappedI :: (Monad m) => Int -> e -> IterT e m a -> IterT e m a
+cappedI limit tooLarge = go 0
+  where
+    go seen inner = case inner of
+        NeedInput _ -> NeedInput (step seen inner)
+        IterM m -> IterM (fmap (go seen) m)
+        other -> other
+    step seen inner s = case s of
+        Chunk bytes
+            | BS.null bytes -> go seen inner
+            | seen + BS.length bytes > limit -> IterFailed tooLarge (Chunk bytes)
+            | otherwise -> IterM (fmap (go (seen + BS.length bytes)) (feedChunk bytes inner))
+        end -> case inner of
+            NeedInput k -> k end
+            other -> other
 
 {- | Feeds one chunk to a consumer and resolves any effect it triggers, WITHOUT
 signalling end of stream, returning the consumer ready for more input. This is

@@ -1,7 +1,7 @@
 ---
 id: RFC-0050
 name: One Consumer Idiom In The Streaming Core
-status: In Progress
+status: Implemented
 owners:
     - alistair
 created: 2026-09-17
@@ -23,7 +23,7 @@ design_contract_rfcs:
 | --------- | ---------- |
 | Authored  | 2026-09-17 |
 | Started   | 2026-09-17 |
-| Completed |            |
+| Completed | 2026-09-17 |
 
 ## Summary
 
@@ -325,8 +325,10 @@ has one does not go through the fold.
 - [x] Re-measure and record the final numbers against the phase 1 baseline (above; `make
       bench-consumer` is now a standing target).
 - [x] `make check`.
-- [ ] Code review over the range (Standards, Spec, Correctness), remediate, then move this RFC to
-      `docs/rfcs/implemented/` and run `bun run rfc:index`.
+- [x] Code review over the range (Standards, Spec, Correctness), remediated:
+      `docs/reviews/rfc-0050-code-review-20260917.md`. Its sharpest findings were about this RFC's own
+      claims rather than the code -- an unfair bench baseline that overstated the fold's cost, and a
+      phase 3 figure that did not reproduce -- and both are corrected above.
 
 #### Where this landed
 

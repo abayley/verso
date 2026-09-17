@@ -55,4 +55,4 @@ Implemented RFC files live under `docs/rfcs/implemented/`. All other RFCs remain
 | [RFC-0047](implemented/rfc-0047-trash-owns-its-mechanics.md)                  | Implemented | Trash Owns Its Mechanics                                                        |
 | [RFC-0048](implemented/rfc-0048-maintenance-events-and-git-results.md)        | Implemented | Maintenance Events And Git Results                                              |
 | [RFC-0049](implemented/rfc-0049-framework-streamed-response-constructor.md)   | Implemented | Framework Streamed-Response Constructor                                         |
-| [RFC-0050](rfc-0050-one-consumer-idiom-in-the-streaming-core.md)              | In Progress | One Consumer Idiom In The Streaming Core                                        |
+| [RFC-0050](implemented/rfc-0050-one-consumer-idiom-in-the-streaming-core.md)  | Implemented | One Consumer Idiom In The Streaming Core                                        |

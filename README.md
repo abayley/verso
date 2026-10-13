@@ -1,11 +1,11 @@
-# MicroHttp
+# Verso
 
-MicroHttp is a small HTTP/1.1 server library for MicroHs, plus Verso, a
-Markdown wiki application built on it. It targets server-rendered HTML
-applications with web-component markup and fetch-based mutations, without
-depending on GHC-only web frameworks.
+Verso is a Markdown wiki: a Haskell server with a WYSIWYG Markdown editor written in TypeScript.
+It is built on MicroHttp, a small HTTP/1.1 server library with a streaming I/O core.
+Both are written for MicroHs, so they use only the Haskell subset MicroHs supports; the test suites
+also build under GHC.
 
-## MicroHttp Project Goals
+## MicroHttp Framework Goals
 
 The framework provides:
 
@@ -24,17 +24,27 @@ The framework provides:
 - Static file serving, configuration loading, request logging with rotation,
   and a fork/exec process seam.
 
-The project deliberately avoids:
+MicroHttp deliberately avoids:
 
 - Template Haskell and type families.
 - Heavy framework dependencies.
-- TLS, HTTP/2, and WebSockets.
+- TLS, HTTP/2, and WebSockets (use nginx as a proxy).
 - A database dependency; application state is filesystem-backed.
 
-## MicroHttp Repository Layout
+The server entrypoints are library functions:
+
+- `serve :: Settings -> Application -> IO (Either ServerError ())`
+- `serveOne :: Settings -> Application -> IO (Either ServerError ())`
+
+The tests are executable examples of the public seams:
+`test/unit/MicroHttp/ServerSpec.hs` (request parsing through the application
+boundary), `test/unit/MicroHttp/RouterSpec.hs` (route matching), and
+`test/unit/MicroHttp/HtmlSpec.hs` (monadic HTML rendering).
+
+## Repository Layout
 
 ```text
-micro-http/
+verso/
   packages/micro-http/     The web framework, a MicroCabal package (HTTP,
                            sockets, server, router, and its cbits).
   packages/verso/          The Verso wiki application: src/Verso and
@@ -119,7 +129,7 @@ Bun bundles the editor into the generated, untracked
 `packages/verso/static/editor/markdown-editor.js`. Biome (four-space indent, 120-character
 lines), tsc, Vitest, and Knip gate the TypeScript via `make editor-check`.
 
-## MicroHttp Installation
+## Installation
 
 Install MicroHs, MicroCabal, development tools, and the current test
 dependencies before running the project checks. The full installation notes
@@ -134,7 +144,7 @@ MHS_PACKAGE_DB = $(HOME)/.mcabal/mhs-0.16.5.0
 MHSFLAGS = -a$(MHS_PACKAGE_DB)
 ```
 
-## MicroHttp Build Commands
+## Build Commands
 
 Run the full project gate:
 
@@ -220,17 +230,7 @@ editor bundle. The socket adapter keeps listening and client sockets
 non-blocking so browser-style concurrent asset requests do not starve handler
 progress under MicroHs' socket FFI.
 
-The server entrypoints are library functions:
-
-- `serve :: Settings -> Application -> IO (Either ServerError ())`
-- `serveOne :: Settings -> Application -> IO (Either ServerError ())`
-
-The tests are executable examples of the public seams:
-`test/unit/MicroHttp/ServerSpec.hs` (request parsing through the application
-boundary), `test/unit/MicroHttp/RouterSpec.hs` (route matching), and
-`test/unit/MicroHttp/HtmlSpec.hs` (monadic HTML rendering).
-
-## MicroHttp Documentation
+## Documentation
 
 [docs/README.md](docs/README.md) maps what each documentation directory holds and where a new document
 goes. Useful entry points:

@@ -158,7 +158,7 @@ Test-first; committed when green.
 
 ### Phase 2: Records
 
-- [x] `CONTEXT.md` Trash entry note points at `Verso.Trash`; architecture page updated; RFC moved to
+- [x] `GLOSSARY.md` Trash entry note points at `Verso.Trash`; architecture page updated; RFC moved to
   `implemented/`; `bun run rfc:index`.
 
 ## Open Questions

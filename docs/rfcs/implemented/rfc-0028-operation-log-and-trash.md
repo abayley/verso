@@ -382,7 +382,7 @@ preferred.)
   (restore via the move machinery), rather than hard-deleting; refuse-if-referenced
   still applies.
 
-## CONTEXT.md additions (recorded during grilling)
+## GLOSSARY.md additions (recorded during grilling)
 
 - **Operation log** -- the append-only, outside-the-corpus log of logical moves and
   deletes; replayed on a refreshed corpus; undo appends inverses.

@@ -371,7 +371,7 @@ work (ADR-0078) is unrelated and stays.
 - [x] ADR: the interaction model (server-rendered pages, fetch commands,
       resource verbs vs POST controllers, no-JS form floor); note RFC-0035's
       htmx open question as closed by removal.
-- [x] Update CONTEXT.md language entries touched by the route changes
+- [x] Update GLOSSARY.md language entries touched by the route changes
       (Draft, Publish) and the decision register.
 
 ### Rollout Plan Escape Hatch

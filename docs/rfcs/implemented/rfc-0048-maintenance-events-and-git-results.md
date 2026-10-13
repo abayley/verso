@@ -177,7 +177,7 @@ Test-first; committed when green.
 
 ### Phase 3: Records
 
-- [x] Architecture page and `CONTEXT.md` (if it names the seam) updated; RFC moved to `implemented/`;
+- [x] Architecture page and `GLOSSARY.md` (if it names the seam) updated; RFC moved to `implemented/`;
   `bun run rfc:index`, `bun run adr:index`.
 
 ## Open Questions

@@ -211,7 +211,7 @@ Test-first; each phase is committed when green.
 
 ### Phase 5: Records
 
-- [x] `CONTEXT.md` gains "Tree path" and "Trash entry id".
+- [x] `GLOSSARY.md` gains "Tree path" and "Trash entry id".
 - [x] `docs/architecture/` note where the layout lives; RFC moved to `implemented/`; `bun run rfc:index`.
 
 ## Open Questions

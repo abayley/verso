@@ -39,7 +39,7 @@ elapsed.
 (1) Name the saved-page contract **round-trip (reopen) stability**:
 reopening a saved page shows the author what they last saw, measured through the
 real `marked` + serialiser pipeline, not representability in any external grammar
-(`CONTEXT.md`). (2) Retire the runtime validation gate -- no `remark` validation
+(`GLOSSARY.md`). (2) Retire the runtime validation gate -- no `remark` validation
 in `switchMode` or on edit -- and remove the parse-error UI and the always-null
 `preview` slot. Enforcement is **offline trust**: the per-extension golden
 round-trip tests ADR-0041 already designated as the correctness net. (3) Keep the

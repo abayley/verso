@@ -178,7 +178,7 @@ involvement, and no new FFI (`createDirectoryIfMissing` + `BS.writeFile`).
   kebab-case **slug** for the filename and writes `name: <title>` into the
   frontmatter, matching the tree's convention (`network-delivery/` <->
   `name: Network Delivery`). The display title and slug then diverge freely
-  (see CONTEXT.md "Title vs slug"); a later title edit (ADR-0057) never renames the
+  (see GLOSSARY.md "Title vs slug"); a later title edit (ADR-0057) never renames the
   file.
 - **Collision**: if the slug exists, append a numeric suffix (`foo`, `foo-2`),
   reusing the dedup pattern of `storeAsset`.
@@ -351,7 +351,7 @@ persistence, navigation, create, lazy-load error/retry) is verified.
   move only the file/folder; the external utility owns inbound-link and sidecar
   reconciliation."
 
-## CONTEXT.md additions (recorded during grilling)
+## GLOSSARY.md additions (recorded during grilling)
 
 - **Section** -- a folder of the document tree, titled and landed by its
   `index.md`, which is folded into the section (not a child).

@@ -237,7 +237,7 @@ goes. Useful entry points:
 
 - [Starter Design](docs/architecture/starter-design.md)
 - [Configuration Reference](docs/reference/configuration.md)
-- [Domain Glossary](CONTEXT.md), the vocabulary of the document tree
+- [Domain Glossary](GLOSSARY.md), the vocabulary of the document tree
 - [Coding Standards](STANDARDS.md)
 - [ADR Registry](docs/adrs/index.md)
 - [Project Organisation](docs/architecture/project-organisation.md)

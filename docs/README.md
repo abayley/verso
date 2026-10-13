@@ -61,21 +61,23 @@ is about one RFC.
 Documents in `docs/architecture/`, `docs/guides/` and `docs/reference/` are living: they are edited to
 stay true, and a stale one is a defect. Documents in `docs/reviews/`, `docs/rfcs/refs/`, the implemented
 RFCs, and `docs/architecture/initial-module-design/` are point-in-time: they record what was true when
-they were written and are not updated afterwards. Point-in-time documents carry a date in the filename
-where practical, as `<subject>-YYYYMMDD.md`.
+they were written and are not updated afterwards. The exception is a review's `-status.md` companion, which
+tracks what became of the review's recommendations and is living. Point-in-time documents carry a date in
+the filename where practical, as `<subject>-YYYYMMDD.md`.
 
 ## Documentation Sources Of Truth
 
-| Question                                   | Answered by                                                                                                          |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| What was decided, and what would reopen it | `docs/adrs/` and its generated `index.md`                                                                            |
-| How the system fits together               | `docs/architecture/` (network, project organisation, and so on)                                                      |
-| How each piece gets built                  | `docs/rfcs/` and its generated `index.md`                                                                            |
-| How to carry out an operational task       | `docs/guides/`                                                                                                       |
-| What a module is                           | The module's own Haddock header under `packages/*/src/`; there is deliberately no hand-kept module index, it drifted |
-| What a domain term means                   | `CONTEXT.md` at the repository root, the glossary maintained by the domain-modeling skill                            |
-| Which refactorings were made or deferred   | `docs/refactoring.log`, appended by the tdd skill; a log, not a document to edit                                     |
-| What a config key is, by lookup            | `docs/reference/configuration.md`                                                                                    |
+| Question                                            | Answered by                                                                                                          |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| What was decided, and what would reopen it          | `docs/adrs/` and its generated `index.md`                                                                            |
+| How the system fits together                        | `docs/architecture/` (network, project organisation, and so on)                                                      |
+| How each piece gets built                           | `docs/rfcs/` and its generated `index.md`                                                                            |
+| How to carry out an operational task                | `docs/guides/`                                                                                                       |
+| What a module is                                    | The module's own Haddock header under `packages/*/src/`; there is deliberately no hand-kept module index, it drifted |
+| What a domain term means                            | `GLOSSARY.md` at the repository root, the glossary maintained by the domain-modeling skill                           |
+| Which refactorings were made or deferred            | `docs/refactoring.log`, appended by the tdd skill; a log, not a document to edit                                     |
+| What a config key is, by lookup                     | `docs/reference/configuration.md`                                                                                    |
+| Which architecture-review candidates are still open | `docs/reviews/architecture-review-haskell-20260916-status.md`, the living status of the 2026-09-16 Haskell review    |
 
 A decision is written down once, in an ADR. Architecture documents explain mechanism and link to the
 register rather than restating decisions. Changing a decision means writing a new ADR, not editing prose

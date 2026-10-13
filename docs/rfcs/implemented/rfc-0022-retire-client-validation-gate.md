@@ -35,7 +35,7 @@ becomes round-trip stability under offline trust (ADR-0051).
 
 ## Context
 
-See ADR-0051 for the full decision and rationale, and `CONTEXT.md` for the
+See ADR-0051 for the full decision and rationale, and `GLOSSARY.md` for the
 **round-trip stability**, **Visual/Markdown/Split view**, and "no preview pane"
 language. Key production facts established during design:
 

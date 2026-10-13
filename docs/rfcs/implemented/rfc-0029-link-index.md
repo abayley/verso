@@ -408,7 +408,7 @@ how a link resolves.
   would require. It depends on an **FFI `stat(2)` binding, macOS-first**; cross-platform
   support is deferred to the portability RFC.
 
-## CONTEXT.md additions (on acceptance)
+## GLOSSARY.md additions (on acceptance)
 
 - **Link index**: the server's in-memory resolved `.md`->`.md` link graph of the
   **document tree** (each **page**'s outbound `.md` link targets and the inverted

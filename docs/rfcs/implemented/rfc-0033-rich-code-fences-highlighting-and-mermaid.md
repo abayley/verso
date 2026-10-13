@@ -289,7 +289,7 @@ match the page.
    committing to the node view. Record findings here.
 4. **Phase 2 — Mermaid.** Add the Mermaid node view (read = diagram, edit =
    source + live preview + errors), wired to the lazy loader. Browser tests.
-5. **Docs.** Done during design: `CONTEXT.md` gains the **Mermaid diagram** term and
+5. **Docs.** Done during design: `GLOSSARY.md` gains the **Mermaid diagram** term and
    ADR-0071 records the lazily-loaded-separate-bundle and Mermaid-as-code-block
    decisions. Mermaid's version is pinned exactly (deliberate, reviewed upgrades).
 

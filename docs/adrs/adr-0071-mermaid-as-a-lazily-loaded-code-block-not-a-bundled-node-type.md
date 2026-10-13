@@ -55,4 +55,4 @@ diagram is honestly "just a fenced code block with a renderer" and stays plain,
 portable Markdown with no stored image. The cost is a second build entrypoint and a
 runtime on-demand loader, and a NodeView that must keep its source `<code>` in the
 DOM (hidden) for both ProseMirror and the serialiser to read. Vocabulary (Mermaid
-diagram) is recorded in CONTEXT.md.
+diagram) is recorded in GLOSSARY.md.

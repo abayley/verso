@@ -198,7 +198,7 @@ refs and its sidecar `images.yaml`/`attachments.yaml` entries (so an unlinked
 attachment counts and travels with the page). Ownership is a **folder-wide**
 question -- the `assets/` folder is shared by every page at that level -- so each
 asset is classified by scanning *all* peer pages' bodies and sidecars
-(an **exclusive asset** vs a **shared asset**, CONTEXT.md):
+(an **exclusive asset** vs a **shared asset**, GLOSSARY.md):
 
 - **Exclusive** (no other page in the source folder references it, by body or
   sidecar): **relocate** to the destination `assets/` (removed from the source).
@@ -440,7 +440,7 @@ optimisation, not v1.
 - **ADR-0063**: Delete refuses while inbound links exist (no dangling links, no
   undo); recovery awaits the versioning store.
 
-## CONTEXT.md additions (on acceptance)
+## GLOSSARY.md additions (on acceptance)
 
 - **Move**: relocating a **page** or **section** to a new parent and/or slug,
   with the server rewriting relative links and reconciling assets/sidecar.

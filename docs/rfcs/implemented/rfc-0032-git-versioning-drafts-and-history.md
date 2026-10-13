@@ -109,8 +109,8 @@ it as complete in the phase checklist.
 
 ### RFC-0032 Terminology
 
-The project glossary (CONTEXT.md) reserves "history", "repo", and "corpus". This
-RFC introduces user-facing version vocabulary that must be added to CONTEXT.md
+The project glossary (GLOSSARY.md) reserves "history", "repo", and "corpus". This
+RFC introduces user-facing version vocabulary that must be added to GLOSSARY.md
 when work starts:
 
 - **Draft**: an unpublished, staged edit of a page, stored outside the document
@@ -498,7 +498,7 @@ browser-driven editor/visual slices follow).
   "Revision history" link in the metadata pane. Backend covered by integration
   tests (history returns the revision list; rollback reverts content and commits
   "Roll back ..."); the standalone history/diff pages are server-rendered HTML.
-- [x] Phase 7 — CONTEXT.md glossary additions (draft, publish, revision,
+- [x] Phase 7 — GLOSSARY.md glossary additions (draft, publish, revision,
   revision history, author identity) and ADR-0070 (covering the in-place-git
   decision, the draft/publish workflow, identity, and the `MicroHttp.Process`
   subprocess primitive).

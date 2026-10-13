@@ -17,7 +17,7 @@ Read these before changing code, in this order:
 
 - `STANDARDS.md` — the project coding rules, including the MicroHs-only syntax
   that GHC compiles silently to the wrong value.
-- `CONTEXT.md` — the domain glossary (page, section, move, operation log, trash).
+- `GLOSSARY.md` — the domain glossary (page, section, move, operation log, trash).
   Use its terms in code, tests and docs; the domain-modeling skill maintains it.
 - `packages/verso/src/Verso/App.hs` — where the application is assembled; every
   route starts here.
@@ -94,6 +94,13 @@ measure, so they are not otherwise part of `check`, and that let two of them rot
 unnoticed: one on a duplicate C symbol, one on a signature that had gained a
 field. A bench links against the micro-http package's own cbits, so a bench rule
 must not also pass the local `build/*.o`, or every C symbol is defined twice.
+
+Run a bench through its `make` target where one exists. An ad-hoc `mhs` or GHC
+link outside `make` must pass what `$(MHS_LINK_FLAGS)` or `$(GHC_LINK_FLAGS)`
+expands to (link with the Command Line Tools `ld`) on a host where Xcode's clang
+cannot read the CLT SDK stubs ("tapi error: malformed file"); see the comments on
+both variables in the `Makefile`. The `test/bench/*.sh` scripts are bash, not sh or zsh,
+and read `MHS_LINK_FLAGS` from the environment, which only `make` sets.
 
 ```bash
 make check

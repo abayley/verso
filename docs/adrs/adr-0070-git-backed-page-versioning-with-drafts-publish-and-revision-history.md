@@ -62,4 +62,4 @@ log, trash, undo, and replay-tool are retained for the import/recovery scenario
 (subsuming them into git is a possible future simplification, not done here). The
 `MicroHttp.Process` primitive is reusable framework infrastructure. Vocabulary
 (draft, publish, revision, revision history, author identity) is recorded in
-CONTEXT.md.
+GLOSSARY.md.
